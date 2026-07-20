@@ -242,19 +242,31 @@ label,
   margin-bottom: 14px;
 }
 .color-input {
-  width: 46px;
-  height: 38px;
-  padding: 2px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-control);
+  border-radius: 50%;
   background: none;
   cursor: pointer;
   flex-shrink: 0;
+  overflow: hidden;
+}
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+.color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
 }
 .swatch-preview {
-  width: 34px;
-  height: 38px;
-  border-radius: var(--radius-control);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   border: 1px solid var(--border);
   flex-shrink: 0;
   /* checkerboard so transparency is visible */
@@ -289,9 +301,6 @@ label,
 .swatch-btn.small {
   width: 26px;
   height: 26px;
-  padding: 0;
-  border-radius: 7px;
-  flex-shrink: 0;
 }
 
 /* Status control on a typed block (icon = status indicator) */
@@ -343,17 +352,17 @@ label,
   background: var(--surface-2);
 }
 .swatches {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   margin-bottom: 18px;
 }
 .swatch {
-  width: 100%;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 50%;
   cursor: pointer;
 }
 
@@ -719,11 +728,13 @@ input.typed-title:focus {
   margin-bottom: 6px;
 }
 .swatch-btn {
-  color: #fff;
-  border: none;
-  font-size: 11px;
-  padding: 6px 10px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 .icon-grid {
   display: grid;

@@ -175,11 +175,10 @@ export function TypeEditor({
           </button>
           <button
             className="swatch-btn"
+            title="Icon color"
             style={{ background: iconColor }}
             onClick={() => setColorOpen(true)}
-          >
-            color
-          </button>
+          />
           <label className="row" style={{ gap: 6 }}>
             <input
               type="checkbox"
@@ -276,7 +275,7 @@ export function TypeEditor({
       </div>
 
       {activeStatus && (
-        <div className="field">
+        <div className="field" style={{ marginTop: 18 }}>
           <span className="field-label">Status options — icon, color, completion, default</span>
           {statusFields.length > 1 && (
             <select

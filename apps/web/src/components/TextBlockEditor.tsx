@@ -6,7 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import { api, ApiError, type Block } from "../api.ts";
-import { HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
+import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 type SaveState = "idle" | "saving" | "error";
@@ -78,6 +78,7 @@ export function TextBlockEditor({
       TaskItem.configure({ nested: true }),
       Markdown.configure({ breaks: true, transformPastedText: true }),
       Placeholder.configure({ placeholder: "Write a note…" }),
+      CheckboxInput,
       SmartEnter,
       HeadingIndent,
     ],

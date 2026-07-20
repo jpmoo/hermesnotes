@@ -13,13 +13,15 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, X } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, type BlockType, type Collection, type Member } from "../api.ts";
+import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
+import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
+import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 
 type Format = "bullet" | "ordered" | "checklist";
 
@@ -52,8 +54,15 @@ function ListItem({
   const [content, setContent] = useState(member.content ?? "");
   const [props, setProps] = useState<Record<string, unknown>>(member.properties ?? {});
   const [checked, setChecked] = useState(Boolean(member.context?.checked));
+  const [expanded, setExpanded] = useState(false);
+  const [fullBlock, setFullBlock] = useState<Block | null>(null);
   const versionRef = useRef(member.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (expanded && !fullBlock) void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock);
+  }, [expanded, fullBlock, member.id]);
+  const reloadFull = () => void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock);
 
   const patchBlock = async (body: Record<string, unknown>) => {
     try {
@@ -107,41 +116,77 @@ function ListItem({
   };
 
   const boxChecked = statusField && syncStatus ? isComplete : checked;
-  const text = isText ? content : String(props.title ?? "");
+  const compactText = isText ? content : String(props.title ?? "");
+  const multiline = isText && content.includes("\n");
+  const firstLine = compactText.split("\n")[0] ?? "";
+  const restCount = (schema?.fields ?? []).filter(
+    (f) => f.key !== "title" && f.key !== statusKey,
+  ).length;
+  const hasMore = isText ? multiline || content.length > 80 : restCount > 0;
 
   return (
-    <div ref={sortable.setNodeRef} style={style} className={`list-item${boxChecked && format === "checklist" ? " done" : ""}`}>
-      <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
-        <GripVertical size={15} />
-      </button>
-
-      {format === "checklist" ? (
-        <input type="checkbox" checked={boxChecked} onChange={toggleCheck} className="li-check" />
-      ) : format === "ordered" ? (
-        <span className="li-marker">{index + 1}.</span>
-      ) : (
-        <span className="li-marker">•</span>
-      )}
-
-      {statusField && format !== "checklist" && (
-        <button className="li-status" onClick={cycleStatus} title={`Status: ${status.replace(/_/g, " ")}`}>
-          <BlockIcon
-            iconKey={statusField.optionIcons?.[status] ?? type?.iconKey}
-            color={statusField.optionColors?.[status] ?? type?.iconColor}
-            size={17}
-          />
+    <div ref={sortable.setNodeRef} style={style} className="list-item-wrap">
+      <div className={`list-item${boxChecked && format === "checklist" ? " done" : ""}`}>
+        <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
+          <GripVertical size={15} />
         </button>
-      )}
 
-      <input
-        className="li-text"
-        value={text}
-        placeholder={isText ? "Item…" : type?.name}
-        onChange={(e) => debouncedText(e.target.value)}
-      />
-      <button className="icon-btn li-remove" title="Remove" onClick={() => onRemove(member.id)}>
-        <X size={14} />
-      </button>
+        {format === "checklist" ? (
+          <input type="checkbox" checked={boxChecked} onChange={toggleCheck} className="li-check" />
+        ) : format === "ordered" ? (
+          <span className="li-marker">{index + 1}.</span>
+        ) : (
+          <span className="li-marker">•</span>
+        )}
+
+        {statusField && format !== "checklist" && (
+          <button className="li-status" onClick={cycleStatus} title={`Status: ${status.replace(/_/g, " ")}`}>
+            <BlockIcon
+              iconKey={statusField.optionIcons?.[status] ?? type?.iconKey}
+              color={statusField.optionColors?.[status] ?? type?.iconColor}
+              size={17}
+            />
+          </button>
+        )}
+
+        {!expanded && !multiline ? (
+          <input
+            className="li-text"
+            value={compactText}
+            placeholder={isText ? "Item…" : type?.name}
+            onChange={(e) => debouncedText(e.target.value)}
+          />
+        ) : (
+          <span className="li-text li-text-static" onClick={() => setExpanded(true)}>
+            {firstLine || type?.name || "Item"}
+          </span>
+        )}
+
+        {hasMore && (
+          <button
+            className="icon-btn li-expand"
+            title={expanded ? "Collapse" : "Expand"}
+            onClick={() => setExpanded((x) => !x)}
+          >
+            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </button>
+        )}
+        <button className="icon-btn li-remove" title="Remove" onClick={() => onRemove(member.id)}>
+          <X size={14} />
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="list-item-expanded">
+          {!fullBlock ? (
+            <div className="hint">Loading…</div>
+          ) : isText ? (
+            <TextBlockEditor block={fullBlock} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+          ) : (
+            <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+          )}
+        </div>
+      )}
     </div>
   );
 }

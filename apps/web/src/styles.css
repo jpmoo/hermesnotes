@@ -985,6 +985,28 @@ input.li-text:focus {
 .list-item:hover .li-remove {
   opacity: 1;
 }
+.li-expand {
+  border-color: transparent;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+/* One-line static text with a handle to expand */
+.li-text-static {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+.list-item-expanded {
+  margin: 2px 0 10px 26px;
+  border-left: 2px solid var(--border);
+  padding-left: 12px;
+}
 
 /* ── Modal ────────────────────────────────────────────────────── */
 .modal-backdrop {

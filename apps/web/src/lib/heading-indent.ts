@@ -1,6 +1,30 @@
-import { Extension } from "@tiptap/core";
+import { Extension, InputRule } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
+
+/**
+ * Create a checkbox from `[ ] `, `[x] `, or `- [ ] ` (the dash first becomes a
+ * bullet, then this converts that bullet list to a task list). Covers the cases
+ * the built-in task-item rule misses.
+ */
+export const CheckboxInput = Extension.create({
+  name: "checkboxInput",
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /^\s*\[([ xX]?)\]\s$/,
+        handler: ({ range, match, chain }) => {
+          const checked = /[xX]/.test(match[1] ?? "");
+          chain()
+            .deleteRange(range)
+            .toggleTaskList()
+            .updateAttributes("taskItem", { checked })
+            .run();
+        },
+      }),
+    ];
+  },
+});
 
 const STEP_EM = 1.5;
 

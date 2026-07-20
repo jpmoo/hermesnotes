@@ -60,11 +60,33 @@ label,
   height: 100%;
   transition: grid-template-columns 0.18s ease;
 }
+/* Collapsed = a narrow icon rail (logo + nav icons stay visible). */
 .app-shell.collapsed {
-  grid-template-columns: 0 1fr 320px;
+  grid-template-columns: 56px 1fr 320px;
 }
 .app-shell.collapsed .sidebar {
-  border-right-color: transparent;
+  padding: 18px 8px;
+  align-items: center;
+}
+.app-shell.collapsed .sidebar-head {
+  flex-direction: column;
+  height: auto;
+  gap: 10px;
+}
+.app-shell.collapsed .logo {
+  height: 28px;
+}
+.app-shell.collapsed .brand-name,
+.app-shell.collapsed .label {
+  display: none;
+}
+.app-shell.collapsed .nav-link {
+  justify-content: center;
+  width: 40px;
+  padding: 8px;
+}
+.app-shell.collapsed .user-info {
+  display: none;
 }
 
 .right-panel {
@@ -127,16 +149,6 @@ label,
   color: var(--text);
 }
 
-/* Matches the collapse button: same .icon-btn style, same vertical level.
-   Sidebar padding-top (18) + centered in the 40px head = 24px. */
-.floating-open {
-  position: fixed;
-  top: 24px;
-  left: 14px;
-  z-index: 30;
-  box-shadow: var(--shadow-soft);
-}
-
 .sidebar .logo {
   display: block;
   height: 32px;
@@ -166,6 +178,18 @@ label,
 
 .sidebar .spacer {
   flex: 1;
+}
+
+/* Sign out styled as a nav row (button reset). */
+.signout {
+  border: none;
+  background: transparent;
+  width: 100%;
+  font-size: 13px;
+}
+.signout:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .main {

@@ -1,3 +1,4 @@
+import { Inbox, LogOut, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api, type SetupStatus } from "./api.ts";
@@ -7,7 +8,7 @@ import { InboxPage } from "./pages/InboxPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
 
-function Sidebar({ onCollapse }: { onCollapse: () => void }) {
+function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const { user, logout } = useAuth();
   return (
     <aside className="sidebar">
@@ -20,22 +21,29 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
           />
           <span className="brand-name">Hermes Notes</span>
         </div>
-        <button className="icon-btn" title="Collapse sidebar" onClick={onCollapse}>
-          «
+        <button
+          className="icon-btn"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={onToggle}
+        >
+          {collapsed ? "»" : "«"}
         </button>
       </div>
-      <NavLink to="/" end className="nav-link">
-        Inbox
+      <NavLink to="/" end className="nav-link" title="Inbox">
+        <Inbox size={18} />
+        <span className="label">Inbox</span>
       </NavLink>
-      <NavLink to="/settings" className="nav-link">
-        Settings
+      <NavLink to="/settings" className="nav-link" title="Settings">
+        <Settings size={18} />
+        <span className="label">Settings</span>
       </NavLink>
       <div className="spacer" />
-      <div className="nav-link" style={{ cursor: "default" }}>
-        {user?.displayName ?? user?.email}
+      <div className="nav-link user-info" style={{ cursor: "default" }}>
+        <span className="label">{user?.displayName ?? user?.email}</span>
       </div>
-      <button className="ghost" onClick={() => void logout()} style={{ textAlign: "left" }}>
-        Sign out
+      <button className="nav-link signout" onClick={() => void logout()} title="Sign out">
+        <LogOut size={16} />
+        <span className="label">Sign out</span>
       </button>
     </aside>
   );
@@ -55,10 +63,9 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
   if (!user) return <AuthPage defaultMode={defaultAuthMode} />;
 
   return (
-    <>
-      <div className={`app-shell${collapsed ? " collapsed" : ""}`}>
-        <Sidebar onCollapse={() => setCollapsed(true)} />
-        <main className="main">
+    <div className={`app-shell${collapsed ? " collapsed" : ""}`}>
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((c) => !c)} />
+      <main className="main">
           <div className="main-inner">
             <Routes>
               <Route path="/" element={<InboxPage />} />
@@ -72,16 +79,6 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
           <div className="panel-placeholder">Note info &amp; options</div>
         </aside>
       </div>
-      {collapsed && (
-        <button
-          className="icon-btn floating-open"
-          title="Open sidebar"
-          onClick={() => setCollapsed(false)}
-        >
-          »
-        </button>
-      )}
-    </>
   );
 }
 

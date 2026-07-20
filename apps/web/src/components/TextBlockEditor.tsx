@@ -1,4 +1,6 @@
 import Placeholder from "@tiptap/extension-placeholder";
+import TaskItem from "@tiptap/extension-task-item";
+import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +10,11 @@ import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 type SaveState = "idle" | "saving" | "error";
 type Mode = "live" | "raw";
+
+/** Collapse the extra blank lines tiptap-markdown emits between blocks. */
+function normalizeMarkdown(md: string): string {
+  return md.replace(/\n{3,}/g, "\n\n").trim();
+}
 
 /**
  * Text block editor. "Live" is a WYSIWYG surface you type directly on; "Raw" is
@@ -59,14 +66,16 @@ export function TextBlockEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Markdown.configure({ breaks: true, transformPastedText: true }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Markdown.configure({ transformPastedText: true }),
       Placeholder.configure({ placeholder: "Write a note…" }),
     ],
     content: block.content ?? "",
     autofocus: block.content ? false : "end",
     editorProps: { attributes: { class: "note-editor" } },
     onUpdate: ({ editor }) => {
-      const md = editor.storage.markdown.getMarkdown() as string;
+      const md = normalizeMarkdown(editor.storage.markdown.getMarkdown() as string);
       scheduleSave(md);
     },
   });

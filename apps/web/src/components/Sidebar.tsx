@@ -25,7 +25,7 @@ const LABELS: Record<Target, string> = {
  * choices persist to localStorage.
  */
 export function Sidebar() {
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorTarget, setColorTarget] = useState<Target | null>(null);
@@ -117,16 +117,13 @@ export function Sidebar() {
         <Shapes size={18} />
         <span className="label">Types</span>
       </NavLink>
+
+      <div className="spacer" />
+
       <NavLink to="/settings" className="nav-link" title="Settings">
         <Settings size={18} />
         <span className="label">Settings</span>
       </NavLink>
-
-      <div className="spacer" />
-
-      <div className="nav-link user-info" style={{ cursor: "default" }}>
-        <span className="label">{user?.displayName ?? user?.email}</span>
-      </div>
       <button className="nav-link signout" onClick={() => void logout()} title="Sign out">
         <LogOut size={16} />
         <span className="label">Sign out</span>

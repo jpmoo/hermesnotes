@@ -154,9 +154,16 @@ label,
   gap: 2px;
   border-radius: var(--radius-control);
 }
+.nav-row {
+  position: relative;
+}
 .nav-row .nav-link {
   flex: 1;
   min-width: 0;
+}
+/* Translucent darken overlay — reads correctly on any custom background. */
+.nav-row:hover {
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.06);
 }
 /* Inner link inherits the row's custom colors; the row is the colored surface. */
 .inbox-link,
@@ -353,6 +360,11 @@ label,
   font-weight: 700;
   color: var(--accent-ink);
   margin: 0 0 4px;
+}
+.title-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .page-sub {
   color: var(--text-muted);
@@ -704,6 +716,28 @@ button:disabled {
   float: left;
   height: 0;
   pointer-events: none;
+}
+/* Task list checkboxes (- [ ] in live preview) */
+.note-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 0.55em;
+}
+.note-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.note-editor ul[data-type="taskList"] li > label {
+  margin-top: 3px;
+  user-select: none;
+}
+.note-editor ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.note-editor ul[data-type="taskList"] li > div > p {
+  margin: 0;
 }
 .note-editor > *:first-child {
   margin-top: 0;

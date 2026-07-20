@@ -87,6 +87,28 @@ export interface BlockRef {
   label: string;
 }
 
+export interface Collection {
+  id: string;
+  collectionKind: string;
+  properties: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface Member {
+  membershipId: string;
+  position: string;
+  context: Record<string, unknown>;
+  membershipVersion: number;
+  id: string;
+  blockTypeId: string | null;
+  collectionKind: string | null;
+  content: string | null;
+  properties: Record<string, unknown>;
+  version: number;
+}
+
 export interface SetupStatus {
   configured: boolean;
   hasUsers: boolean;

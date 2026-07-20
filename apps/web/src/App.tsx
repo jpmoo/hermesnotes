@@ -5,6 +5,8 @@ import { useAuth } from "./auth/AuthContext.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
+import { CollectionsPage } from "./pages/CollectionsPage.tsx";
+import { CollectionView } from "./pages/CollectionView.tsx";
 import { InboxPage } from "./pages/InboxPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
@@ -23,6 +25,8 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
           <div className="main-inner">
             <Routes>
               <Route path="/" element={<InboxPage />} />
+              <Route path="/collections" element={<CollectionsPage />} />
+              <Route path="/collections/:id" element={<CollectionView />} />
               <Route path="/types" element={<TypesPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />

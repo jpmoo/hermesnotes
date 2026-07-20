@@ -14,6 +14,7 @@ import { authRoutes } from "./auth/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { blockRoutes } from "./blocks/routes.js";
 import { blockTypeRoutes } from "./blocks/block-types-routes.js";
+import { collectionRoutes } from "./collections/routes.js";
 import { setupRoutes } from "./setup/routes.js";
 
 // Built web bundle (apps/web/dist), served on the same port when present.
@@ -60,6 +61,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authRoutes, { prefix: "/api" });
   await app.register(settingsRoutes, { prefix: "/api" });
   await app.register(blockTypeRoutes, { prefix: "/api" });
+  await app.register(collectionRoutes, { prefix: "/api" });
   await app.register(blockRoutes, { prefix: "/api" });
 
   // Serve the web bundle + SPA fallback when it's been built.

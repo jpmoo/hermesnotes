@@ -1,4 +1,4 @@
-import { Inbox, LogOut, MoreVertical, Settings, Shapes } from "lucide-react";
+import { Inbox, Library, LogOut, MoreVertical, Settings, Shapes } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.tsx";
@@ -114,6 +114,10 @@ export function Sidebar() {
         </div>
       </div>
 
+      <NavLink to="/collections" className="nav-link" title="Collections">
+        <Library size={18} />
+        <span className="label">Collections</span>
+      </NavLink>
       <NavLink to="/types" className="nav-link" title="Block types">
         <Shapes size={18} />
         <span className="label">Types</span>

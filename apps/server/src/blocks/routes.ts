@@ -149,7 +149,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!current) throw notFound("block");
 
-    const type = await resolveType(userId, current.blockTypeId);
+    const type = await resolveType(userId, current.blockTypeId ?? undefined);
     const nextContent = type.isText ? body.content ?? current.content ?? "" : current.content;
     const nextProps = type.isText ? current.properties : body.properties ?? current.properties;
     const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });

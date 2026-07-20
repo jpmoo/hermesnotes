@@ -12,6 +12,9 @@ git pull --ff-only
 echo "==> Installing dependencies…"
 pnpm install
 
+echo "==> Applying database migrations…"
+pnpm db:migrate
+
 echo "==> Building…"
 pnpm build
 

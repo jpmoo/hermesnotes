@@ -799,6 +799,133 @@ input.typed-title:focus {
   text-transform: capitalize;
 }
 
+/* ── Collections / list view ──────────────────────────────────── */
+.collection-open {
+  display: block;
+}
+input.collection-title {
+  font-family: var(--font-chrome);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  height: auto;
+  width: 100%;
+}
+input.collection-title:focus {
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+.seg {
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: capitalize;
+  padding: 7px 12px;
+  border-radius: 0;
+}
+.seg + .seg {
+  border-left: 1px solid var(--border);
+}
+.seg.active {
+  background: #eef4f6;
+  color: var(--accent-ink);
+}
+
+.list-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 9px;
+}
+.list-item:hover {
+  background: var(--surface-2);
+}
+.list-item.done .li-text {
+  text-decoration: line-through;
+  color: var(--text-faint);
+}
+.drag-handle {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  padding: 4px 2px;
+  cursor: grab;
+  display: inline-flex;
+  align-items: center;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.drag-handle:hover {
+  color: var(--text-muted);
+  background: transparent;
+}
+.li-marker {
+  width: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-chrome);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.li-check {
+  width: auto;
+  height: auto;
+  flex-shrink: 0;
+}
+.li-status {
+  border: none;
+  background: transparent;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.li-status:hover {
+  background: transparent;
+}
+input.li-text {
+  flex: 1;
+  border: none;
+  background: transparent;
+  height: auto;
+  padding: 6px 4px;
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+input.li-text:focus {
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+.li-remove {
+  opacity: 0;
+  border-color: transparent;
+  flex-shrink: 0;
+}
+.list-item:hover .li-remove {
+  opacity: 1;
+}
+
 /* ── Modal ────────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;

@@ -73,9 +73,8 @@ export const blocks = pgTable("blocks", {
   ownerId: uuid("owner_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  blockTypeId: uuid("block_type_id")
-    .notNull()
-    .references(() => blockTypes.id),
+  // Null for collections (blocks with collection_kind set).
+  blockTypeId: uuid("block_type_id").references(() => blockTypes.id),
   collectionKind: text("collection_kind").$type<CollectionKind>(),
   content: text("content"),
   properties: jsonb("properties").$type<Record<string, unknown>>().notNull().default({}),

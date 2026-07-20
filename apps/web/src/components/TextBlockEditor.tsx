@@ -11,9 +11,12 @@ import { ConfirmDialog } from "./ConfirmDialog.tsx";
 type SaveState = "idle" | "saving" | "error";
 type Mode = "live" | "raw";
 
-/** Collapse the extra blank lines tiptap-markdown emits between blocks. */
+/** Keep raw markdown tight: no backslash hard-breaks, no blank lines between lines. */
 function normalizeMarkdown(md: string): string {
-  return md.replace(/\n{3,}/g, "\n\n").trim();
+  return md
+    .replace(/\\\n/g, "\n") // backslash hard-breaks -> plain newline
+    .replace(/\n{2,}/g, "\n") // collapse blank lines
+    .trim();
 }
 
 /**
@@ -68,7 +71,7 @@ export function TextBlockEditor({
       StarterKit,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Markdown.configure({ transformPastedText: true }),
+      Markdown.configure({ breaks: true, transformPastedText: true }),
       Placeholder.configure({ placeholder: "Write a note…" }),
     ],
     content: block.content ?? "",

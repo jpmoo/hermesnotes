@@ -67,6 +67,17 @@ export function TypeEditor({
     initial?.propertySchema?.complete_values ?? [],
   );
   const [defaultValue, setDefaultValue] = useState(initial?.propertySchema?.default_value ?? "");
+  const initialStatus = initial?.propertySchema?.fields.find(
+    (f) => f.type === "status" && f.key === initial?.propertySchema?.status_field,
+  );
+  const [optIcons, setOptIcons] = useState<Record<string, string>>(
+    initialStatus?.optionIcons ?? {},
+  );
+  const [optColors, setOptColors] = useState<Record<string, string>>(
+    initialStatus?.optionColors ?? {},
+  );
+  const [iconPickTarget, setIconPickTarget] = useState<string | null>(null);
+  const [colorPickTarget, setColorPickTarget] = useState<string | null>(null);
   const [colorOpen, setColorOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [blockTypes, setBlockTypes] = useState<BlockType[]>([]);
@@ -113,6 +124,14 @@ export function TypeEditor({
         includeEmbed: f.includeEmbed,
         options:
           f.type === "select" || f.type === "status" ? parseOptions(f.options) : undefined,
+        optionIcons:
+          activeStatus && f.key === activeStatus.key && Object.keys(optIcons).length
+            ? optIcons
+            : undefined,
+        optionColors:
+          activeStatus && f.key === activeStatus.key && Object.keys(optColors).length
+            ? optColors
+            : undefined,
         refTypeId: f.type === "reference" ? f.refTypeId : undefined,
       })),
       status_field: activeStatus ? activeStatus.key : null,
@@ -257,7 +276,7 @@ export function TypeEditor({
 
       {activeStatus && (
         <div className="field">
-          <span className="field-label">Status / completion</span>
+          <span className="field-label">Status options — icon, color, completion, default</span>
           {statusFields.length > 1 && (
             <select
               value={statusField || activeStatus.key}
@@ -271,37 +290,49 @@ export function TypeEditor({
               ))}
             </select>
           )}
-          <div className="hint" style={{ marginBottom: 6 }}>
-            Values that count as “complete”:
-          </div>
-          <div className="row" style={{ flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
-            {statusOptions.map((o) => (
-              <label className="row" style={{ gap: 5 }} key={o}>
-                <input
-                  type="checkbox"
-                  checked={completeValues.includes(o)}
-                  onChange={(e) =>
-                    setCompleteValues((prev) =>
-                      e.target.checked ? [...prev, o] : prev.filter((v) => v !== o),
-                    )
-                  }
-                  style={{ width: "auto" }}
-                />
-                <span className="hint">{o}</span>
-              </label>
-            ))}
-          </div>
-          <label className="field" style={{ marginBottom: 0 }}>
-            <span>Default value</span>
-            <select value={defaultValue} onChange={(e) => setDefaultValue(e.target.value)}>
-              <option value="">—</option>
+          {statusOptions.length === 0 ? (
+            <div className="hint">Add comma-separated options to the status field above.</div>
+          ) : (
+            <div className="status-opts">
               {statusOptions.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
+                <div className="status-opt-row" key={o}>
+                  <button className="icon-choice" title="Icon" onClick={() => setIconPickTarget(o)}>
+                    <BlockIcon iconKey={optIcons[o]} color={optColors[o]} size={18} />
+                  </button>
+                  <button
+                    className="swatch-btn small"
+                    title="Color"
+                    style={{ background: optColors[o] ?? "#9aa0a6" }}
+                    onClick={() => setColorPickTarget(o)}
+                  />
+                  <span className="status-opt-name">{o.replace(/_/g, " ")}</span>
+                  <label className="row" style={{ gap: 5 }}>
+                    <input
+                      type="checkbox"
+                      checked={completeValues.includes(o)}
+                      onChange={(e) =>
+                        setCompleteValues((prev) =>
+                          e.target.checked ? [...prev, o] : prev.filter((v) => v !== o),
+                        )
+                      }
+                      style={{ width: "auto" }}
+                    />
+                    <span className="hint">complete</span>
+                  </label>
+                  <label className="row" style={{ gap: 5 }}>
+                    <input
+                      type="radio"
+                      name="status-default"
+                      checked={defaultValue === o}
+                      onChange={() => setDefaultValue(o)}
+                      style={{ width: "auto" }}
+                    />
+                    <span className="hint">default</span>
+                  </label>
+                </div>
               ))}
-            </select>
-          </label>
+            </div>
+          )}
         </div>
       )}
 
@@ -334,6 +365,28 @@ export function TypeEditor({
         onSelect={(k) => {
           setIconKey(k);
           setIconPickerOpen(false);
+        }}
+      />
+
+      {/* Per-status-option icon + color */}
+      <IconPickerModal
+        open={iconPickTarget !== null}
+        value={iconPickTarget ? optIcons[iconPickTarget] ?? null : null}
+        color={iconPickTarget ? optColors[iconPickTarget] : undefined}
+        onCancel={() => setIconPickTarget(null)}
+        onSelect={(k) => {
+          if (iconPickTarget) setOptIcons((prev) => ({ ...prev, [iconPickTarget]: k }));
+          setIconPickTarget(null);
+        }}
+      />
+      <ColorPickerModal
+        open={colorPickTarget !== null}
+        title="Status color"
+        value={colorPickTarget ? optColors[colorPickTarget] ?? "#5fa4b5" : "#5fa4b5"}
+        onCancel={() => setColorPickTarget(null)}
+        onSave={(c) => {
+          if (colorPickTarget) setOptColors((prev) => ({ ...prev, [colorPickTarget]: c }));
+          setColorPickTarget(null);
         }}
       />
     </div>

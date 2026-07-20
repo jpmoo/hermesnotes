@@ -129,9 +129,6 @@ label,
 .sidebar:not(.expanded) .sidebar-head {
   justify-content: center;
 }
-.sidebar:not(.expanded) .logo {
-  height: 28px;
-}
 .sidebar:not(.expanded) .brand-name,
 .sidebar:not(.expanded) .label,
 .sidebar:not(.expanded) .nav-kebab,
@@ -161,9 +158,19 @@ label,
   flex: 1;
   min-width: 0;
 }
-/* Translucent darken overlay — reads correctly on any custom background. */
-.nav-row:hover {
-  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.06);
+/* Subtle darken overlay on hover — reads correctly on any custom background. */
+.nav-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #000;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.nav-row:hover::after {
+  opacity: 0.05;
 }
 /* Inner link inherits the row's custom colors; the row is the colored surface. */
 .inbox-link,
@@ -181,23 +188,25 @@ label,
 }
 .nav-kebab {
   position: relative;
+  z-index: 1; /* above the row's hover overlay so its own hover reads clearly */
 }
 .kebab-btn {
   border: none;
   background: transparent;
   color: inherit;
-  opacity: 0.7;
+  opacity: 0.6;
   width: 26px;
   height: 26px;
   padding: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: background 0.12s, opacity 0.12s;
 }
 .kebab-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.16);
   opacity: 1;
 }
 .menu {
@@ -242,9 +251,98 @@ label,
   border-radius: var(--radius-control);
   background: none;
   cursor: pointer;
+  flex-shrink: 0;
+}
+.swatch-preview {
+  width: 34px;
+  height: 38px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  /* checkerboard so transparency is visible */
+  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+    linear-gradient(-45deg, #ccc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ccc 75%),
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
 }
 .color-hex {
   flex: 1;
+}
+
+/* Status option editor rows */
+.status-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.status-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status-opt-name {
+  text-transform: capitalize;
+  font-size: 13px;
+  flex: 1;
+  min-width: 80px;
+}
+.swatch-btn.small {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+
+/* Status control on a typed block (icon = status indicator) */
+.status-control {
+  position: relative;
+}
+.status-btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 9px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.status-btn:hover {
+  border-color: var(--border-strong);
+}
+.status-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-lift);
+  padding: 4px;
+}
+.status-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  text-transform: capitalize;
+}
+.status-menu-item:hover {
+  background: var(--surface-2);
 }
 .swatches {
   display: grid;
@@ -300,7 +398,7 @@ label,
 
 .sidebar .logo {
   display: block;
-  height: 32px;
+  height: 30px;
   width: auto;
   margin: 0;
 }
@@ -421,18 +519,30 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="url"],
-select {
+input[type="number"],
+input[type="date"],
+input[type="datetime-local"],
+select,
+textarea {
   width: 100%;
-  padding: 9px 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-control);
-  background: var(--surface);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
   font-size: 13px;
   color: var(--text);
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--border-strong);
 }
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
+  background: var(--surface);
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
 }

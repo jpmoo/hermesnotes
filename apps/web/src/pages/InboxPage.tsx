@@ -6,14 +6,6 @@ import { BlockIcon } from "../lib/icons.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 
-function inboxIconColor(): string | undefined {
-  try {
-    return (JSON.parse(localStorage.getItem("hn.inbox.colors") ?? "{}") as { icon?: string }).icon;
-  } catch {
-    return undefined;
-  }
-}
-
 export function InboxPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [types, setTypes] = useState<BlockType[]>([]);
@@ -66,7 +58,7 @@ export function InboxPage() {
   return (
     <>
       <h1 className="page-title title-with-icon">
-        <InboxIcon size={22} color={inboxIconColor()} />
+        <InboxIcon size={22} color="#26282b" />
         Inbox
       </h1>
       <p className="page-sub">Atomic blocks with no parent and no children.</p>

@@ -37,6 +37,10 @@ export const fieldDefSchema = z.object({
   includeEmbed: z.boolean().default(false),
   /** for select/status fields */
   options: z.array(z.string()).optional(),
+  /** status fields: per-option Lucide icon key (option value -> kebab icon key) */
+  optionIcons: z.record(z.string()).optional(),
+  /** status fields: per-option color (option value -> color) */
+  optionColors: z.record(z.string()).optional(),
   /** for reference fields: the block_type id this field points at */
   refTypeId: z.string().uuid().optional(),
   required: z.boolean().optional(),

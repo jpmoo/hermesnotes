@@ -2,6 +2,7 @@ import { Inbox, LogOut, MoreVertical, Settings, Shapes } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.tsx";
+import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
 type Target = "bg" | "text" | "icon";
@@ -26,7 +27,7 @@ const LABELS: Record<Target, string> = {
  */
 export function Sidebar() {
   const { logout } = useAuth();
-  const [hovered, setHovered] = useState(false);
+  const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorTarget, setColorTarget] = useState<Target | null>(null);
   const [colors, setColors] = useState<InboxColors>(() => {
@@ -63,8 +64,8 @@ export function Sidebar() {
   return (
     <aside
       className={`sidebar${expanded ? " expanded" : ""}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div className="sidebar-head">
         <div className="brand">

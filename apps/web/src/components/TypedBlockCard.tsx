@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import type { FieldDef } from "@hermes/shared";
+import { useEffect, useRef, useState } from "react";
 import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -6,6 +7,66 @@ import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 
 type SaveState = "idle" | "saving" | "error";
+
+/** Icon-as-status control: the block icon reflects status; click to change it. */
+function StatusControl({
+  field,
+  value,
+  onChange,
+  fallbackIconKey,
+  fallbackColor,
+}: {
+  field: FieldDef;
+  value: unknown;
+  onChange: (value: string) => void;
+  fallbackIconKey: string | null;
+  fallbackColor: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const cur = value == null ? "" : String(value);
+  const icons = field.optionIcons ?? {};
+  const colors = field.optionColors ?? {};
+
+  return (
+    <div className="status-control" ref={ref}>
+      <button
+        className="status-btn"
+        title={cur ? `Status: ${cur.replace(/_/g, " ")}` : "Set status"}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <BlockIcon iconKey={icons[cur] ?? fallbackIconKey} color={colors[cur] ?? fallbackColor} size={20} />
+      </button>
+      {open && (
+        <div className="status-menu">
+          {(field.options ?? []).map((o) => (
+            <button
+              key={o}
+              className="status-menu-item"
+              onClick={() => {
+                onChange(o);
+                setOpen(false);
+              }}
+            >
+              <BlockIcon iconKey={icons[o]} color={colors[o]} size={16} />
+              <span>{o.replace(/_/g, " ")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Schema-driven editor for a typed block (task/event/custom). */
 export function TypedBlockCard({
@@ -25,9 +86,13 @@ export function TypedBlockCard({
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
-  const fields = [...(type.propertySchema?.fields ?? [])].sort((a, b) => a.order - b.order);
+  const schema = type.propertySchema;
+  const fields = [...(schema?.fields ?? [])].sort((a, b) => a.order - b.order);
   const titleField = fields.find((f) => f.key === "title");
-  const rest = fields.filter((f) => f.key !== "title");
+  const statusKey = schema?.status_field ?? null;
+  const statusField = fields.find((f) => f.type === "status" && f.key === statusKey) ?? null;
+  // Status lives in the icon; title lives in the header — the rest go in the body.
+  const rest = fields.filter((f) => f.key !== "title" && f.key !== statusKey);
 
   const save = async (next: Record<string, unknown>) => {
     setSaveState("saving");
@@ -62,7 +127,17 @@ export function TypedBlockCard({
   return (
     <div className="card typed-card">
       <div className="typed-head">
-        {type.showIcon && <BlockIcon iconKey={type.iconKey} color={type.iconColor} size={20} />}
+        {statusField ? (
+          <StatusControl
+            field={statusField}
+            value={props[statusField.key]}
+            onChange={(v) => update(statusField.key, v)}
+            fallbackIconKey={type.iconKey}
+            fallbackColor={type.iconColor}
+          />
+        ) : (
+          type.showIcon && <BlockIcon iconKey={type.iconKey} color={type.iconColor} size={20} />
+        )}
         <input
           className="typed-title"
           placeholder={titleField?.label ?? "Title"}

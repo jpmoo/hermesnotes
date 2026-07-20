@@ -1,17 +1,17 @@
 import { PanelRight } from "lucide-react";
-import { useState } from "react";
+import { useHoverIntent } from "../lib/useHoverIntent.ts";
 
 /**
  * Auto-hiding right panel (mirrors the left sidebar): a 56px rail that reveals
- * on hover. Empty placeholder for now — note info & options will live here.
+ * on hover (with a short intent delay). Placeholder for now.
  */
 export function RightPanel() {
-  const [hovered, setHovered] = useState(false);
+  const { active, onMouseEnter, onMouseLeave } = useHoverIntent();
   return (
     <aside
-      className={`right-panel${hovered ? " expanded" : ""}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={`right-panel${active ? " expanded" : ""}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div className="panel-rail-icon" title="Note info & options">
         <PanelRight size={18} />

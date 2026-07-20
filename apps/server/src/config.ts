@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "./env.js";
 import { initDb } from "./db.js";
 
@@ -15,8 +16,10 @@ interface PersistedConfig {
   authSecret?: string;
 }
 
+// Repo-root-relative so it's stable regardless of launch cwd (see load-env.ts).
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const configPath =
-  process.env.HERMES_CONFIG_PATH ?? join(process.cwd(), "data", "hermes.config.json");
+  process.env.HERMES_CONFIG_PATH ?? join(repoRoot, "data", "hermes.config.json");
 
 let state: { databaseUrl?: string; authSecret: string } | null = null;
 

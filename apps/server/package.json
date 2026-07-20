@@ -16,6 +16,7 @@
     "@hermes/db": "workspace:*",
     "@hermes/shared": "workspace:*",
     "@node-rs/argon2": "^2.0.2",
+    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.36.4",
     "fastify": "^5.1.0",
     "postgres": "^3.4.5",

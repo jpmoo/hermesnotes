@@ -1,3 +1,4 @@
+import "./load-env.js"; // must be first — populates process.env before env.ts reads it
 import { buildApp } from "./app.js";
 import { env } from "./env.js";
 import { initConfig } from "./config.js";

@@ -193,8 +193,7 @@ label,
 .kebab-btn {
   border: none;
   background: transparent;
-  color: inherit;
-  opacity: 0.6;
+  color: inherit; /* exact same color as the item text */
   width: 26px;
   height: 26px;
   padding: 0;
@@ -203,11 +202,10 @@ label,
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.12s, opacity 0.12s;
+  transition: background 0.12s;
 }
 .kebab-btn:hover {
   background: rgba(0, 0, 0, 0.16);
-  opacity: 1;
 }
 .menu {
   position: absolute;
@@ -545,6 +543,17 @@ textarea:focus {
   background: var(--surface);
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
+}
+/* Consistent height so text fields match the pulldowns beside them. */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="url"],
+input[type="number"],
+input[type="date"],
+input[type="datetime-local"],
+select {
+  height: 40px;
 }
 
 label.field {

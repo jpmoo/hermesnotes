@@ -12,6 +12,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
     "@fastify/cors": "^10.0.1",
+    "@fastify/static": "^8.0.3",
     "@hermes/db": "workspace:*",
     "@hermes/shared": "workspace:*",
     "@node-rs/argon2": "^2.0.2",

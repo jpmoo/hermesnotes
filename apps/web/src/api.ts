@@ -1,4 +1,7 @@
-const BASE = "/api";
+// Subpath-aware API base: import.meta.env.BASE_URL is the Vite `base` (e.g.
+// "/hermesnotes/"), so this resolves to "/hermesnotes/api". Caddy strips the
+// prefix before the server, which serves the API under "/api".
+const BASE = `${import.meta.env.BASE_URL}api`;
 
 export class ApiError extends Error {
   constructor(

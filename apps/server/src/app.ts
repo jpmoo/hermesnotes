@@ -1,5 +1,9 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import { env } from "./env.js";
@@ -10,6 +14,9 @@ import { authRoutes } from "./auth/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { blockRoutes } from "./blocks/routes.js";
 import { setupRoutes } from "./setup/routes.js";
+
+// Built web bundle (apps/web/dist), served on the same port when present.
+const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist");
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -34,10 +41,12 @@ export async function buildApp(): Promise<FastifyInstance> {
     return reply.code(500).send({ error: "internal error" });
   });
 
-  // Until the database is configured, only setup + health are reachable.
+  // Gate only the API before setup. Static assets and the SPA shell must always
+  // load so the browser can render the setup wizard itself.
   app.addHook("onRequest", async (req, reply) => {
-    const url = req.url.split("?")[0] ?? "";
-    if (url === "/health" || url.startsWith("/setup")) return;
+    const path = req.url.split("?")[0] ?? "";
+    if (!path.startsWith("/api")) return; // static / SPA / health
+    if (path.startsWith("/api/setup")) return; // setup always reachable
     if (!isDbReady()) {
       return reply.code(503).send({ error: "setup_required" });
     }
@@ -45,10 +54,25 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get("/health", async () => ({ ok: true }));
 
-  await app.register(setupRoutes);
-  await app.register(authRoutes);
-  await app.register(settingsRoutes);
-  await app.register(blockRoutes);
+  // API under /api so it never collides with client-side routes (e.g. /settings).
+  await app.register(setupRoutes, { prefix: "/api" });
+  await app.register(authRoutes, { prefix: "/api" });
+  await app.register(settingsRoutes, { prefix: "/api" });
+  await app.register(blockRoutes, { prefix: "/api" });
+
+  // Serve the web bundle + SPA fallback when it's been built.
+  const staticEnabled = existsSync(webDist);
+  if (staticEnabled) {
+    await app.register(fastifyStatic, { root: webDist, wildcard: false });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === "GET" && !req.url.startsWith("/api")) {
+        return reply.sendFile("index.html");
+      }
+      return reply.code(404).send({ error: "not found" });
+    });
+  } else {
+    app.log.warn(`web bundle not found at ${webDist} — API only (run \`pnpm build\`)`);
+  }
 
   return app;
 }

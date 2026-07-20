@@ -3,7 +3,8 @@ import { api, ApiError, type AccessKey, type CreatedAccessKey } from "../api.ts"
 
 /** Build the fragment-based skip-login URL for a freshly created key. */
 function keyUrl(token: string): string {
-  return `${window.location.origin}/#k=${encodeURIComponent(token)}`;
+  // BASE_URL is the subpath mount (e.g. "/hermesnotes/").
+  return `${window.location.origin}${import.meta.env.BASE_URL}#k=${encodeURIComponent(token)}`;
 }
 
 export function AccessKeys() {

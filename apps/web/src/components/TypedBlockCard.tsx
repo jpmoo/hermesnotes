@@ -1,5 +1,5 @@
 import type { FieldDef } from "@hermes/shared";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -8,7 +8,7 @@ import { FieldInput } from "./FieldInput.tsx";
 
 type SaveState = "idle" | "saving" | "error";
 
-/** Icon-as-status control: the block icon reflects status; click to change it. */
+/** Icon-as-status control: the block icon reflects status; click cycles to next. */
 function StatusControl({
   field,
   value,
@@ -22,49 +22,26 @@ function StatusControl({
   fallbackIconKey: string | null;
   fallbackColor: string | null;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
-
+  const options = field.options ?? [];
   const cur = value == null ? "" : String(value);
   const icons = field.optionIcons ?? {};
   const colors = field.optionColors ?? {};
 
+  const cycle = () => {
+    if (!options.length) return;
+    const idx = options.indexOf(cur);
+    const next = options[(idx + 1) % options.length];
+    if (next) onChange(next);
+  };
+
   return (
-    <div className="status-control" ref={ref}>
-      <button
-        className="status-btn"
-        title={cur ? `Status: ${cur.replace(/_/g, " ")}` : "Set status"}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <BlockIcon iconKey={icons[cur] ?? fallbackIconKey} color={colors[cur] ?? fallbackColor} size={20} />
-      </button>
-      {open && (
-        <div className="status-menu">
-          {(field.options ?? []).map((o) => (
-            <button
-              key={o}
-              className="status-menu-item"
-              onClick={() => {
-                onChange(o);
-                setOpen(false);
-              }}
-            >
-              <BlockIcon iconKey={icons[o]} color={colors[o]} size={16} />
-              <span>{o.replace(/_/g, " ")}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <button
+      className="status-btn"
+      title={cur ? `Status: ${cur.replace(/_/g, " ")} — click to cycle` : "Set status — click to cycle"}
+      onClick={cycle}
+    >
+      <BlockIcon iconKey={icons[cur] ?? fallbackIconKey} color={colors[cur] ?? fallbackColor} size={20} />
+    </button>
   );
 }
 

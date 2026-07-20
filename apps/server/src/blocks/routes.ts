@@ -48,7 +48,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     const type = await resolveType(userId, body.blockTypeId);
     const content = type.isText ? body.content ?? "" : null;
-    const properties = type.isText ? {} : body.properties ?? {};
+    // Seed schema defaults (e.g. the status field's default_value) on creation.
+    const defaults: Record<string, unknown> = {};
+    const schema = type.propertySchema;
+    if (!type.isText && schema?.status_field && schema.default_value != null) {
+      defaults[schema.status_field] = schema.default_value;
+    }
+    const properties = type.isText ? {} : { ...defaults, ...(body.properties ?? {}) };
     const embedSource = computeEmbedSource(type, { content, properties });
 
     const [row] = await db

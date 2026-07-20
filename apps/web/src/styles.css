@@ -515,6 +515,118 @@ button:disabled {
   margin: 4px auto 22px;
 }
 
+/* ── Typed block card ─────────────────────────────────────────── */
+.typed-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.typed-title {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 2px 0;
+}
+.typed-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 16px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+.typed-field {
+  margin-bottom: 4px;
+}
+.type-name {
+  font-family: var(--font-chrome);
+  text-transform: capitalize;
+}
+
+/* ── Types page & editor ──────────────────────────────────────── */
+.type-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.icon-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-2);
+}
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.swatch-btn {
+  color: #fff;
+  border: none;
+  font-size: 11px;
+  padding: 6px 10px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px;
+}
+.icon-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.icon-choice.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(95, 164, 181, 0.2);
+}
+.fields-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.field-row .f-key {
+  width: 130px;
+}
+.field-row .f-label {
+  width: 130px;
+}
+.field-row .f-type {
+  width: 120px;
+}
+.field-row .f-options {
+  flex: 1;
+  min-width: 140px;
+}
+.type-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: capitalize;
+}
+
 /* ── Modal ────────────────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;

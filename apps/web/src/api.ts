@@ -70,6 +70,18 @@ export interface OllamaModel {
   family?: string;
 }
 
+export interface BlockType {
+  id: string;
+  name: string;
+  iconKey: string | null;
+  iconColor: string | null;
+  iconSource: string;
+  showIcon: boolean;
+  propertySchema: import("@hermes/shared").PropertySchema | null;
+  schemaVersion: number;
+  isText: boolean;
+}
+
 export interface SetupStatus {
   configured: boolean;
   hasUsers: boolean;

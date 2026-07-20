@@ -60,6 +60,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@hermes/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@tiptap/extension-placeholder':
         specifier: ^2.10.3
         version: 2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2)

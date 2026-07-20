@@ -8,6 +8,7 @@ import { AuthPage } from "./pages/AuthPage.tsx";
 import { InboxPage } from "./pages/InboxPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
+import { TypesPage } from "./pages/TypesPage.tsx";
 
 function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "register" }) {
   const { user, loading } = useAuth();
@@ -22,6 +23,7 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
           <div className="main-inner">
             <Routes>
               <Route path="/" element={<InboxPage />} />
+              <Route path="/types" element={<TypesPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

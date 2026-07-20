@@ -6,16 +6,16 @@ import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
+import { computeEmbedSource } from "./embed-source.js";
 
-/** Resolve this user's `text` block type id (seeded at signup). */
-async function textTypeId(ownerId: string): Promise<string> {
-  const [row] = await db
-    .select({ id: blockTypes.id })
-    .from(blockTypes)
-    .where(and(eq(blockTypes.ownerId, ownerId), eq(blockTypes.name, "text")))
-    .limit(1);
-  if (!row) throw badRequest("text block type missing for user");
-  return row.id;
+/** Resolve a block type for this owner, defaulting to the seeded `text` type. */
+async function resolveType(ownerId: string, blockTypeId?: string) {
+  const where = blockTypeId
+    ? and(eq(blockTypes.id, blockTypeId), eq(blockTypes.ownerId, ownerId))
+    : and(eq(blockTypes.ownerId, ownerId), eq(blockTypes.name, "text"));
+  const [row] = await db.select().from(blockTypes).where(where).limit(1);
+  if (!row) throw badRequest(blockTypeId ? "unknown block type" : "text block type missing");
+  return row;
 }
 
 const blockView = {
@@ -34,20 +34,33 @@ const blockView = {
 export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
-  // Create a text block (Phase 1). embed_source = content; left stale for the worker.
+  // Create a block of any type. Text types embed content; typed blocks derive
+  // embed_source from their properties. Left stale for the embedding worker.
   app.post("/blocks", async (req, reply) => {
     const userId = requireUser(req);
-    const { content } = z.object({ content: z.string().default("") }).parse(req.body);
-    const typeId = await textTypeId(userId);
-    const embedSource = content; // text blocks store & embed markdown directly
+    const body = z
+      .object({
+        blockTypeId: z.string().uuid().optional(),
+        content: z.string().optional(),
+        properties: z.record(z.unknown()).optional(),
+      })
+      .parse(req.body);
+
+    const type = await resolveType(userId, body.blockTypeId);
+    const content = type.isText ? body.content ?? "" : null;
+    const properties = type.isText ? {} : body.properties ?? {};
+    const embedSource = computeEmbedSource(type, { content, properties });
+
     const [row] = await db
       .insert(blocks)
       .values({
         ownerId: userId,
-        blockTypeId: typeId,
+        blockTypeId: type.id,
         content,
+        properties,
         embedSource,
-        embedSourceHash: null, // stale → embedding worker will fill
+        embedSourceHash: null,
+        blockTypeSchemaVersion: type.schemaVersion,
       })
       .returning(blockView);
     reply.code(201);
@@ -87,41 +100,50 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     return row;
   });
 
-  // Update text content with optimistic concurrency (doc §11).
+  // Update a block (content for text, properties for typed) with optimistic
+  // concurrency (doc §11).
   app.patch("/blocks/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const { content, version } = z
-      .object({ content: z.string(), version: z.number().int() })
+    const body = z
+      .object({
+        content: z.string().optional(),
+        properties: z.record(z.unknown()).optional(),
+        version: z.number().int(),
+      })
       .parse(req.body);
 
-    const embedSource = content;
+    const [current] = await db
+      .select({
+        content: blocks.content,
+        properties: blocks.properties,
+        blockTypeId: blocks.blockTypeId,
+      })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!current) throw notFound("block");
+
+    const type = await resolveType(userId, current.blockTypeId);
+    const nextContent = type.isText ? body.content ?? current.content ?? "" : current.content;
+    const nextProps = type.isText ? current.properties : body.properties ?? current.properties;
+    const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
     const hash = sha256(embedSource);
-    // Only re-stale the embedding when the markdown content actually changed.
+
     const [updated] = await db
       .update(blocks)
       .set({
-        content,
+        content: nextContent,
+        properties: nextProps,
         embedSource,
         embedSourceHash: sql`CASE WHEN ${blocks.embedSourceHash} = ${hash} THEN ${blocks.embedSourceHash} ELSE NULL END`,
         version: sql`${blocks.version} + 1`,
         updatedAt: new Date(),
       })
-      .where(
-        and(eq(blocks.id, id), eq(blocks.ownerId, userId), eq(blocks.version, version)),
-      )
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId), eq(blocks.version, body.version)))
       .returning(blockView);
 
-    if (!updated) {
-      // Distinguish "not found" from "version conflict".
-      const [exists] = await db
-        .select({ id: blocks.id })
-        .from(blocks)
-        .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
-        .limit(1);
-      if (!exists) throw notFound("block");
-      throw conflict("version conflict — reload and retry");
-    }
+    if (!updated) throw conflict("version conflict — reload and retry");
     return updated;
   });
 

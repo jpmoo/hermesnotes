@@ -95,14 +95,25 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Options for a reference field: blocks of a given type, as {id, label}.
+  // Optional `q` filters by title/content for a dynamic search box.
   app.get("/blocks/references", async (req) => {
     const userId = requireUser(req);
-    const { typeId } = z.object({ typeId: z.string().uuid() }).parse(req.query);
+    const { typeId, q } = z
+      .object({ typeId: z.string().uuid(), q: z.string().optional() })
+      .parse(req.query);
+    const filters = [eq(blocks.ownerId, userId), eq(blocks.blockTypeId, typeId)];
+    if (q && q.trim()) {
+      const like = `%${q.trim()}%`;
+      filters.push(
+        sql`(${blocks.properties}->>'title' ILIKE ${like} OR ${blocks.content} ILIKE ${like})`,
+      );
+    }
     const rows = await db
       .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
       .from(blocks)
-      .where(and(eq(blocks.ownerId, userId), eq(blocks.blockTypeId, typeId)))
-      .orderBy(desc(blocks.updatedAt));
+      .where(and(...filters))
+      .orderBy(desc(blocks.updatedAt))
+      .limit(25);
     return rows.map((r) => {
       const title = (r.properties as Record<string, unknown>)?.title;
       const label =

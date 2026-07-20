@@ -6,16 +6,21 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import { api, ApiError, type Block } from "../api.ts";
+import { HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 type SaveState = "idle" | "saving" | "error";
 type Mode = "live" | "raw";
 
-/** Keep raw markdown tight: no backslash hard-breaks, no blank lines between lines. */
+/**
+ * Soft line breaks (single Enter) become single newlines; paragraph breaks
+ * (double Enter) stay as one blank line. Strip backslash hard-breaks, cap runs
+ * of blank lines at one.
+ */
 function normalizeMarkdown(md: string): string {
   return md
     .replace(/\\\n/g, "\n") // backslash hard-breaks -> plain newline
-    .replace(/\n{2,}/g, "\n") // collapse blank lines
+    .replace(/\n{3,}/g, "\n\n") // at most one blank line
     .trim();
 }
 
@@ -73,6 +78,8 @@ export function TextBlockEditor({
       TaskItem.configure({ nested: true }),
       Markdown.configure({ breaks: true, transformPastedText: true }),
       Placeholder.configure({ placeholder: "Write a note…" }),
+      SmartEnter,
+      HeadingIndent,
     ],
     content: block.content ?? "",
     autofocus: block.content ? false : "end",

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { api, type BlockRef } from "../api.ts";
+import { useEffect, useRef, useState } from "react";
+import { api, type Block, type BlockRef } from "../api.ts";
 
-/** Select control for a reference field: lists blocks of the target type. */
+/** Reference picker: a dynamic search box (not a select of every block). */
 export function ReferenceInput({
   refTypeId,
   value,
@@ -11,28 +11,95 @@ export function ReferenceInput({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
-  const [opts, setOpts] = useState<BlockRef[]>([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BlockRef[]>([]);
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const id = value == null ? "" : String(value);
+
+  // Resolve the current value's label.
+  useEffect(() => {
+    if (!id) {
+      setLabel("");
+      return;
+    }
+    void api
+      .get<Block>(`/blocks/${id}`)
+      .then((b) => {
+        const t = b.properties?.title;
+        setLabel(
+          (typeof t === "string" && t.trim()) ||
+            (b.content ?? "").replace(/\s+/g, " ").trim().slice(0, 60) ||
+            "Untitled",
+        );
+      })
+      .catch(() => setLabel("(unknown)"));
+  }, [id]);
+
+  // Debounced search while open.
+  useEffect(() => {
+    if (!open || !refTypeId) return;
+    const t = setTimeout(() => {
+      void api
+        .get<BlockRef[]>(
+          `/blocks/references?typeId=${encodeURIComponent(refTypeId)}&q=${encodeURIComponent(query)}`,
+        )
+        .then(setResults)
+        .catch(() => setResults([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [query, open, refTypeId]);
 
   useEffect(() => {
-    if (!refTypeId) return;
-    void api
-      .get<BlockRef[]>(`/blocks/references?typeId=${encodeURIComponent(refTypeId)}`)
-      .then(setOpts)
-      .catch(() => setOpts([]));
-  }, [refTypeId]);
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   if (!refTypeId) return <span className="hint">No target type set</span>;
 
-  const val = value == null ? "" : String(value);
   return (
-    <select value={val} onChange={(e) => onChange(e.target.value || null)}>
-      <option value="">—</option>
-      {opts.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-      {val && !opts.some((o) => o.id === val) && <option value={val}>(unknown)</option>}
-    </select>
+    <div className="ref-combo" ref={ref}>
+      <input
+        type="text"
+        value={open ? query : label}
+        placeholder="Search…"
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {id && !open && (
+        <button className="ref-clear" title="Clear" onClick={() => onChange(null)}>
+          ×
+        </button>
+      )}
+      {open && (
+        <div className="menu ref-results">
+          {results.map((o) => (
+            <button
+              key={o.id}
+              className="menu-item"
+              onClick={() => {
+                onChange(o.id);
+                setOpen(false);
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+          {results.length === 0 && (
+            <div className="hint" style={{ padding: "6px 10px" }}>
+              No matches.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

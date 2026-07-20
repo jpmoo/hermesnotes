@@ -14,6 +14,7 @@
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@hermes/shared": "workspace:*",
+    "@tiptap/core": "^2.10.3",
     "@tiptap/extension-placeholder": "^2.10.3",
     "@tiptap/extension-task-item": "^2.10.3",
     "@tiptap/extension-task-list": "^2.10.3",

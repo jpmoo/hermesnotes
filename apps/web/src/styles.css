@@ -172,14 +172,15 @@ label,
 .nav-row:hover::after {
   opacity: 0.05;
 }
-/* Inner link inherits the row's custom colors; the row is the colored surface. */
-.inbox-link,
-.inbox-link:hover,
-.inbox-link.active {
+/* Inner link inherits the row's custom colors; the row is the colored surface.
+   Scoped under .nav-row so it beats the global .nav-link.active highlight. */
+.nav-row .nav-link,
+.nav-row .nav-link:hover,
+.nav-row .nav-link.active {
   background: transparent;
   color: inherit;
 }
-.inbox-link.active {
+.nav-row .nav-link.active {
   font-weight: 700;
 }
 /* Icon keeps its own color (independent of text color) unless overridden inline. */

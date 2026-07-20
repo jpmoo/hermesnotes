@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
+import { RightPanel } from "./components/RightPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { InboxPage } from "./pages/InboxPage.tsx";
@@ -26,10 +27,7 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
             </Routes>
           </div>
         </main>
-        <aside className="right-panel">
-          {/* Placeholder — note info & options will live here. */}
-          <div className="panel-placeholder">Note info &amp; options</div>
-        </aside>
+        <RightPanel />
       </div>
   );
 }

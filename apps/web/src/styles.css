@@ -57,17 +57,43 @@ label,
 .app-shell {
   position: relative;
   display: grid;
-  /* Col 1 reserves the rail width; the sidebar overlays it and expands on hover. */
-  grid-template-columns: 56px 1fr 320px;
+  /* Cols 1 & 3 reserve rail width; both panels overlay and expand on hover. */
+  grid-template-columns: 56px 1fr 56px;
   height: 100%;
 }
 
+/* Auto-hiding right panel (mirrors the left sidebar). */
 .right-panel {
-  grid-column: 3;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 40;
+  width: 320px;
   background: var(--surface);
   border-left: 1px solid var(--border);
   padding: 18px 16px;
   overflow-y: auto;
+  transition: width 0.16s ease, box-shadow 0.16s ease;
+}
+.right-panel.expanded {
+  box-shadow: -2px 0 16px rgba(0, 0, 0, 0.1);
+}
+.right-panel:not(.expanded) {
+  width: 56px;
+  padding: 18px 8px;
+  overflow: hidden;
+}
+.right-panel:not(.expanded) .panel-body {
+  display: none;
+}
+.right-panel.expanded .panel-rail-icon {
+  display: none;
+}
+.panel-rail-icon {
+  display: flex;
+  justify-content: center;
+  color: var(--text-faint);
 }
 .panel-placeholder {
   font-family: var(--font-chrome);

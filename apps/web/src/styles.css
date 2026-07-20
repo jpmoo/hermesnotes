@@ -85,6 +85,19 @@ label,
   height: 40px;
   margin-bottom: 14px;
 }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.brand-name {
+  font-family: var(--font-chrome);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
 
 .icon-btn {
   border: 1px solid var(--border);
@@ -387,39 +400,47 @@ button:disabled {
   padding: 0;
 }
 
-.markdown {
+.note-editor {
   font-family: var(--font-body);
   line-height: 1.55;
   min-height: 24px;
   cursor: text;
+  outline: none;
 }
-.markdown > *:first-child {
+.note-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.note-editor > *:first-child {
   margin-top: 0;
 }
-.markdown > *:last-child {
+.note-editor > *:last-child {
   margin-bottom: 0;
 }
-.markdown h1,
-.markdown h2,
-.markdown h3,
-.markdown h4,
-.markdown h5,
-.markdown h6 {
+.note-editor h1,
+.note-editor h2,
+.note-editor h3,
+.note-editor h4,
+.note-editor h5,
+.note-editor h6 {
   font-family: var(--font-chrome);
   line-height: 1.25;
   margin: 0.7em 0 0.35em;
   color: var(--accent-ink);
 }
-.markdown h1 { font-size: 1.5em; }
-.markdown h2 { font-size: 1.3em; }
-.markdown h3 { font-size: 1.15em; }
-.markdown h4 { font-size: 1.05em; }
-.markdown p { margin: 0 0 0.55em; }
-.markdown ul,
-.markdown ol { margin: 0 0 0.55em; padding-left: 1.4em; }
-.markdown li { margin: 0.15em 0; }
-.markdown a { color: var(--accent); }
-.markdown code {
+.note-editor h1 { font-size: 1.5em; }
+.note-editor h2 { font-size: 1.3em; }
+.note-editor h3 { font-size: 1.15em; }
+.note-editor h4 { font-size: 1.05em; }
+.note-editor p { margin: 0 0 0.55em; }
+.note-editor ul,
+.note-editor ol { margin: 0 0 0.55em; padding-left: 1.4em; }
+.note-editor li { margin: 0.15em 0; }
+.note-editor a { color: var(--accent); }
+.note-editor code {
   font-family: ui-monospace, Menlo, Consolas, monospace;
   font-size: 0.88em;
   background: var(--surface-2);
@@ -427,25 +448,25 @@ button:disabled {
   border-radius: 5px;
   padding: 1px 5px;
 }
-.markdown pre {
+.note-editor pre {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 12px;
   overflow-x: auto;
 }
-.markdown pre code {
+.note-editor pre code {
   border: none;
   background: transparent;
   padding: 0;
 }
-.markdown blockquote {
+.note-editor blockquote {
   margin: 0 0 0.55em;
   padding-left: 12px;
   border-left: 3px solid var(--border-strong);
   color: var(--text-muted);
 }
-.markdown hr {
+.note-editor hr {
   border: 0;
   border-top: 1px solid var(--border);
   margin: 1em 0;

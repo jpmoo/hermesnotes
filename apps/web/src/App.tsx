@@ -12,11 +12,14 @@ function Sidebar({ onCollapse }: { onCollapse: () => void }) {
   return (
     <aside className="sidebar">
       <div className="sidebar-head">
-        <img
-          className="logo"
-          src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`}
-          alt="Hermes Notes"
-        />
+        <div className="brand">
+          <img
+            className="logo"
+            src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`}
+            alt="Hermes Notes"
+          />
+          <span className="brand-name">Hermes Notes</span>
+        </div>
         <button className="icon-btn" title="Collapse sidebar" onClick={onCollapse}>
           «
         </button>

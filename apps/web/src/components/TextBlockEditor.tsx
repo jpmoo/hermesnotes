@@ -1,23 +1,19 @@
-import DOMPurify from "dompurify";
-import { marked } from "marked";
+import Placeholder from "@tiptap/extension-placeholder";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
+import { Markdown } from "tiptap-markdown";
 import { api, ApiError, type Block } from "../api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
-marked.setOptions({ gfm: true, breaks: true });
-
 type SaveState = "idle" | "saving" | "error";
-type Mode = "edit" | "preview";
-
-function renderMarkdown(src: string): string {
-  const html = marked.parse(src ?? "", { async: false }) as string;
-  return DOMPurify.sanitize(html);
-}
+type Mode = "live" | "raw";
 
 /**
- * Markdown text block. Raw mode is a plain textarea (no auto-formatting
- * surprises); Preview renders the markdown. Content is stored as markdown and
- * embedded as-is. Autosaves debounced with optimistic-concurrency handling.
+ * Text block editor. "Live" is a WYSIWYG surface you type directly on; "Raw" is
+ * the markdown source in a textarea. Content is stored as markdown either way
+ * (TipTap serializes via tiptap-markdown). Both modes autosave (debounced) with
+ * optimistic-concurrency handling.
  */
 export function TextBlockEditor({
   block,
@@ -28,27 +24,13 @@ export function TextBlockEditor({
   onConflict: () => void;
   onDeleted: (id: string) => void;
 }) {
-  const [text, setText] = useState(block.content ?? "");
-  const [mode, setMode] = useState<Mode>(block.content ? "preview" : "edit");
+  const [mode, setMode] = useState<Mode>("live");
+  const [markdown, setMarkdown] = useState(block.content ?? "");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const taRef = useRef<HTMLTextAreaElement>(null);
-
-  const autosize = () => {
-    const el = taRef.current;
-    if (el) {
-      el.style.height = "auto";
-      el.style.height = `${el.scrollHeight}px`;
-    }
-  };
-
-  useEffect(() => {
-    if (mode === "edit") autosize();
-  }, [mode]);
-
-  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
 
   const save = async (value: string) => {
     setSaveState("saving");
@@ -68,11 +50,54 @@ export function TextBlockEditor({
     }
   };
 
-  const onChange = (value: string) => {
-    setText(value);
-    autosize();
+  const scheduleSave = (value: string) => {
+    setMarkdown(value);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void save(value), 700);
+  };
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Markdown.configure({ breaks: true, transformPastedText: true }),
+      Placeholder.configure({ placeholder: "Write a note…" }),
+    ],
+    content: block.content ?? "",
+    autofocus: block.content ? false : "end",
+    editorProps: { attributes: { class: "note-editor" } },
+    onUpdate: ({ editor }) => {
+      const md = editor.storage.markdown.getMarkdown() as string;
+      scheduleSave(md);
+    },
+  });
+
+  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+
+  const autosize = () => {
+    const el = taRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  };
+  useEffect(() => {
+    if (mode === "raw") autosize();
+  }, [mode]);
+
+  const toggle = () => {
+    if (mode === "live") {
+      // markdown state is kept current by onUpdate — just show the source.
+      setMode("raw");
+    } else {
+      // reparse edited markdown back into the WYSIWYG doc (no re-emit).
+      editor?.commands.setContent(markdown, false);
+      setMode("live");
+    }
+  };
+
+  const onRawChange = (value: string) => {
+    scheduleSave(value);
+    autosize();
   };
 
   const remove = async () => {
@@ -82,26 +107,21 @@ export function TextBlockEditor({
 
   return (
     <div className="card">
-      {mode === "edit" ? (
+      {mode === "live" ? (
+        <EditorContent editor={editor} />
+      ) : (
         <textarea
           ref={taRef}
           className="md-input"
-          value={text}
-          placeholder="Write a note… (markdown supported)"
-          onChange={(e) => onChange(e.target.value)}
-          autoFocus={!block.content}
-        />
-      ) : (
-        <div
-          className="markdown"
-          title="Double-click to edit"
-          onDoubleClick={() => setMode("edit")}
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+          value={markdown}
+          placeholder="Write a note… (markdown)"
+          onChange={(e) => onRawChange(e.target.value)}
+          autoFocus
         />
       )}
       <div className="block-meta">
-        <button className="ghost" onClick={() => setMode(mode === "edit" ? "preview" : "edit")}>
-          {mode === "edit" ? "Preview" : "Edit"}
+        <button className="ghost" onClick={toggle}>
+          {mode === "live" ? "Raw" : "Live preview"}
         </button>
         {block.embedPending ? (
           <span className="pill pending">embedding…</span>

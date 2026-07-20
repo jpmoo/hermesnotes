@@ -55,41 +55,15 @@ label,
 
 /* ── Layout shell ─────────────────────────────────────────────── */
 .app-shell {
+  position: relative;
   display: grid;
-  grid-template-columns: 232px 1fr 320px;
-  height: 100%;
-  transition: grid-template-columns 0.18s ease;
-}
-/* Collapsed = a narrow icon rail (logo + nav icons stay visible). */
-.app-shell.collapsed {
+  /* Col 1 reserves the rail width; the sidebar overlays it and expands on hover. */
   grid-template-columns: 56px 1fr 320px;
-}
-.app-shell.collapsed .sidebar {
-  padding: 18px 8px;
-  align-items: center;
-}
-.app-shell.collapsed .sidebar-head {
-  flex-direction: column;
-  height: auto;
-  gap: 10px;
-}
-.app-shell.collapsed .logo {
-  height: 28px;
-}
-.app-shell.collapsed .brand-name,
-.app-shell.collapsed .label {
-  display: none;
-}
-.app-shell.collapsed .nav-link {
-  justify-content: center;
-  width: 40px;
-  padding: 8px;
-}
-.app-shell.collapsed .user-info {
-  display: none;
+  height: 100%;
 }
 
 .right-panel {
+  grid-column: 3;
   background: var(--surface);
   border-left: 1px solid var(--border);
   padding: 18px 16px;
@@ -101,15 +75,136 @@ label,
   color: var(--text-faint);
 }
 
+/* Auto-hiding overlay sidebar: 56px rail by default, expands on hover. */
 .sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 40;
+  width: 232px;
   background: var(--surface);
   border-right: 1px solid var(--border);
   padding: 18px 14px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow: hidden;
   white-space: nowrap;
+  transition: width 0.16s ease, box-shadow 0.16s ease;
+}
+.sidebar.expanded {
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.1);
+}
+.sidebar:not(.expanded) {
+  width: 56px;
+  padding: 18px 8px;
+  align-items: center;
+}
+.sidebar:not(.expanded) .sidebar-head {
+  justify-content: center;
+}
+.sidebar:not(.expanded) .logo {
+  height: 28px;
+}
+.sidebar:not(.expanded) .brand-name,
+.sidebar:not(.expanded) .label,
+.sidebar:not(.expanded) .nav-kebab,
+.sidebar:not(.expanded) .user-info {
+  display: none;
+}
+.sidebar:not(.expanded) .nav-link {
+  justify-content: center;
+  width: 40px;
+  padding: 8px;
+}
+.sidebar:not(.expanded) .nav-row {
+  justify-content: center;
+}
+
+/* Inbox row: nav link + kebab menu */
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.nav-row .nav-link {
+  flex: 1;
+  min-width: 0;
+}
+.nav-kebab {
+  position: relative;
+}
+.kebab-btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-faint);
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+}
+.kebab-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  min-width: 196px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-lift);
+  padding: 4px;
+}
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+.menu-item:hover {
+  background: var(--surface-2);
+}
+
+/* Color picker modal */
+.color-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.color-input {
+  width: 46px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: none;
+  cursor: pointer;
+}
+.color-hex {
+  flex: 1;
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.swatch {
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
 }
 
 .sidebar-head {
@@ -193,6 +288,7 @@ label,
 }
 
 .main {
+  grid-column: 2;
   overflow-y: auto;
   padding: 28px 32px 80px;
   /* Reserve gutter on both edges so the right-side scrollbar doesn't shift

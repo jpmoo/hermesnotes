@@ -71,9 +71,9 @@ label,
 
 .sidebar .logo {
   display: block;
-  width: 100%;
-  max-width: 172px;
-  margin: 6px 4px 18px;
+  width: 44px;
+  height: auto;
+  margin: 4px 6px 18px;
 }
 
 .nav-link {
@@ -262,9 +262,10 @@ button:disabled {
   padding: 28px 26px;
 }
 .auth-card img.logo {
-  width: 176px;
+  width: 132px;
+  height: auto;
   display: block;
-  margin: 0 auto 20px;
+  margin: 4px auto 22px;
 }
 
 /* ── TipTap editor ────────────────────────────────────────────── */

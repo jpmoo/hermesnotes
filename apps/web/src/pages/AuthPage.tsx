@@ -28,7 +28,7 @@ export function AuthPage({ defaultMode = "login" }: { defaultMode?: "login" | "r
   return (
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={submit}>
-        <img className="logo" src={`${import.meta.env.BASE_URL}brand/HermesLogo.png`} alt="Hermes Notes" />
+        <img className="logo" src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`} alt="Hermes Notes" />
         {mode === "register" && (
           <label className="field">
             <span>Display name (optional)</span>

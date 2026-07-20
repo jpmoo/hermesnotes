@@ -67,11 +67,11 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
       </div>
       {collapsed && (
         <button
-          className="primary floating-open"
+          className="icon-btn floating-open"
           title="Open sidebar"
           onClick={() => setCollapsed(false)}
         >
-          ☰
+          »
         </button>
       )}
     </>

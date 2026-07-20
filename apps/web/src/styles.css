@@ -513,6 +513,7 @@ label,
 }
 
 /* ── Forms & buttons ──────────────────────────────────────────── */
+input:not([type]),
 input[type="text"],
 input[type="email"],
 input[type="password"],
@@ -545,6 +546,7 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
 }
 /* Consistent height so text fields match the pulldowns beside them. */
+input:not([type]),
 input[type="text"],
 input[type="email"],
 input[type="password"],
@@ -653,8 +655,9 @@ button:disabled {
   gap: 10px;
   margin-bottom: 6px;
 }
-.typed-title {
+input.typed-title {
   flex: 1;
+  height: auto;
   border: none;
   outline: none;
   background: transparent;
@@ -663,6 +666,10 @@ button:disabled {
   font-weight: 600;
   color: var(--text);
   padding: 2px 0;
+}
+input.typed-title:focus {
+  box-shadow: none;
+  background: transparent;
 }
 .typed-fields {
   display: grid;

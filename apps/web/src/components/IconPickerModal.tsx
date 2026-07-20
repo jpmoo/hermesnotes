@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { pascalToKebab, useAllIcons } from "../lib/icons.tsx";
 
-const MAX_SHOWN = 300;
-
 /** Searchable modal over the full Lucide set. Returns the kebab-case key. */
 export function IconPickerModal({
   open,
@@ -29,16 +27,18 @@ export function IconPickerModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onCancel]);
 
-  // [kebab, Component] pairs, filtered by the search query.
+  // [kebab, Component] pairs, filtered by the search query (whole set, deduped).
   const entries = useMemo(() => {
     if (!all) return [];
     const query = q.trim().toLowerCase();
+    const seen = new Set<string>();
     const out: Array<[string, (typeof all)[string]]> = [];
     for (const name of Object.keys(all)) {
       const kebab = pascalToKebab(name);
+      if (seen.has(kebab)) continue;
       if (query && !kebab.includes(query)) continue;
+      seen.add(kebab);
       out.push([kebab, all[name]!]);
-      if (out.length >= MAX_SHOWN) break;
     }
     return out;
   }, [all, q]);

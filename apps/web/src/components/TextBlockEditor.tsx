@@ -1,15 +1,22 @@
-import Placeholder from "@tiptap/extension-placeholder";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Block } from "../api.ts";
 
+marked.setOptions({ gfm: true, breaks: true });
+
 type SaveState = "idle" | "saving" | "error";
+type Mode = "edit" | "preview";
+
+function renderMarkdown(src: string): string {
+  const html = marked.parse(src ?? "", { async: false }) as string;
+  return DOMPurify.sanitize(html);
+}
 
 /**
- * Rich-prose editor for a single text block (design doc: TipTap is scoped to
- * text-block content only). Owns its own draft + version; autosaves debounced.
- * The server strips this HTML to plain text for the embedding.
+ * Markdown text block. Raw mode is a plain textarea (no auto-formatting
+ * surprises); Preview renders the markdown. Content is stored as markdown and
+ * embedded as-is. Autosaves debounced with optimistic-concurrency handling.
  */
 export function TextBlockEditor({
   block,
@@ -20,28 +27,32 @@ export function TextBlockEditor({
   onConflict: () => void;
   onDeleted: (id: string) => void;
 }) {
-  const versionRef = useRef(block.version);
+  const [text, setText] = useState(block.content ?? "");
+  const [mode, setMode] = useState<Mode>(block.content ? "preview" : "edit");
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  const taRef = useRef<HTMLTextAreaElement>(null);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Placeholder.configure({ placeholder: "Write a note…" }),
-    ],
-    content: block.content ?? "",
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => void save(html), 700);
-    },
-  });
+  const autosize = () => {
+    const el = taRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  };
 
-  const save = async (html: string) => {
+  useEffect(() => {
+    if (mode === "edit") autosize();
+  }, [mode]);
+
+  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+
+  const save = async (value: string) => {
     setSaveState("saving");
     try {
       const updated = await api.patch<Block>(`/blocks/${block.id}`, {
-        content: html,
+        content: value,
         version: versionRef.current,
       });
       versionRef.current = updated.version;
@@ -55,7 +66,12 @@ export function TextBlockEditor({
     }
   };
 
-  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+  const onChange = (value: string) => {
+    setText(value);
+    autosize();
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void save(value), 700);
+  };
 
   const remove = async () => {
     await api.del(`/blocks/${block.id}`);
@@ -64,8 +80,27 @@ export function TextBlockEditor({
 
   return (
     <div className="card">
-      <EditorContent editor={editor} />
+      {mode === "edit" ? (
+        <textarea
+          ref={taRef}
+          className="md-input"
+          value={text}
+          placeholder="Write a note… (markdown supported)"
+          onChange={(e) => onChange(e.target.value)}
+          autoFocus={!block.content}
+        />
+      ) : (
+        <div
+          className="markdown"
+          title="Double-click to edit"
+          onDoubleClick={() => setMode("edit")}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+        />
+      )}
       <div className="block-meta">
+        <button className="ghost" onClick={() => setMode(mode === "edit" ? "preview" : "edit")}>
+          {mode === "edit" ? "Preview" : "Edit"}
+        </button>
         {block.embedPending ? (
           <span className="pill pending">embedding…</span>
         ) : block.embeddedAt ? (

@@ -58,6 +58,10 @@ label,
   display: grid;
   grid-template-columns: 232px 1fr;
   height: 100%;
+  transition: grid-template-columns 0.18s ease;
+}
+.app-shell.collapsed {
+  grid-template-columns: 0 1fr;
 }
 
 .sidebar {
@@ -67,6 +71,40 @@ label,
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.icon-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-control);
+  line-height: 1;
+  font-size: 15px;
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.floating-open {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 30;
+  width: 34px;
+  height: 34px;
+  box-shadow: var(--shadow-soft);
 }
 
 .sidebar .logo {
@@ -105,8 +143,8 @@ label,
   padding: 28px 32px 80px;
 }
 .main-inner {
-  max-width: 760px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 .page-title {
@@ -268,22 +306,82 @@ button:disabled {
   margin: 4px auto 22px;
 }
 
-/* ── TipTap editor ────────────────────────────────────────────── */
-.tiptap {
+/* ── Markdown text block ──────────────────────────────────────── */
+.md-input {
+  width: 100%;
+  border: none;
   outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
   font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
   min-height: 24px;
+  padding: 0;
 }
-.tiptap p {
-  margin: 0 0 6px;
+
+.markdown {
+  font-family: var(--font-body);
+  line-height: 1.55;
+  min-height: 24px;
+  cursor: text;
 }
-.tiptap p:last-child {
+.markdown > *:first-child {
+  margin-top: 0;
+}
+.markdown > *:last-child {
   margin-bottom: 0;
 }
-.tiptap p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: var(--text-faint);
-  float: left;
-  height: 0;
-  pointer-events: none;
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font-family: var(--font-chrome);
+  line-height: 1.25;
+  margin: 0.7em 0 0.35em;
+  color: var(--accent-ink);
+}
+.markdown h1 { font-size: 1.5em; }
+.markdown h2 { font-size: 1.3em; }
+.markdown h3 { font-size: 1.15em; }
+.markdown h4 { font-size: 1.05em; }
+.markdown p { margin: 0 0 0.55em; }
+.markdown ul,
+.markdown ol { margin: 0 0 0.55em; padding-left: 1.4em; }
+.markdown li { margin: 0.15em 0; }
+.markdown a { color: var(--accent); }
+.markdown code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.markdown pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.markdown pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+.markdown blockquote {
+  margin: 0 0 0.55em;
+  padding-left: 12px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
 }

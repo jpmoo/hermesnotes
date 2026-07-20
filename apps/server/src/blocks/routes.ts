@@ -4,7 +4,6 @@ import { z } from "zod";
 import { blocks, blockTypes, memberships } from "@hermes/db";
 import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
-import { htmlToText } from "../lib/htmltext.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 
@@ -40,7 +39,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { content } = z.object({ content: z.string().default("") }).parse(req.body);
     const typeId = await textTypeId(userId);
-    const embedSource = htmlToText(content); // text blocks embed stripped plain text
+    const embedSource = content; // text blocks store & embed markdown directly
     const [row] = await db
       .insert(blocks)
       .values({
@@ -96,9 +95,9 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .object({ content: z.string(), version: z.number().int() })
       .parse(req.body);
 
-    const embedSource = htmlToText(content);
+    const embedSource = content;
     const hash = sha256(embedSource);
-    // Only re-stale the embedding when the embedded (plain-text) content changed.
+    // Only re-stale the embedding when the markdown content actually changed.
     const [updated] = await db
       .update(blocks)
       .set({

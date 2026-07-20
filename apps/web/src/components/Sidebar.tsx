@@ -77,14 +77,18 @@ export function Sidebar() {
         </div>
       </div>
 
-      <div className="nav-row">
-        <NavLink to="/" end className="nav-link" title="Inbox" style={inboxStyle}>
-          <Inbox size={18} color={colors.icon} />
+      <div className="nav-row" style={inboxStyle}>
+        <NavLink to="/" end className="nav-link inbox-link" title="Inbox">
+          <Inbox
+            size={18}
+            className="inbox-icon"
+            style={colors.icon ? { color: colors.icon } : undefined}
+          />
           <span className="label">Inbox</span>
         </NavLink>
         <div className="nav-kebab" ref={menuRef}>
           <button
-            className="icon-btn kebab-btn"
+            className="kebab-btn"
             title="Inbox options"
             onClick={() => setMenuOpen((o) => !o)}
           >
@@ -128,10 +132,14 @@ export function Sidebar() {
         open={colorTarget !== null}
         title={colorTarget ? LABELS[colorTarget] : ""}
         value={colorTarget ? colors[colorTarget] ?? "#5fa4b5" : "#5fa4b5"}
-        onCancel={() => setColorTarget(null)}
+        onCancel={() => {
+          setColorTarget(null);
+          setHovered(false);
+        }}
         onSave={(c) => {
           if (colorTarget) applyColor(colorTarget, c);
           setColorTarget(null);
+          setHovered(false);
         }}
       />
     </aside>

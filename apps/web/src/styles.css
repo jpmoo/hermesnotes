@@ -147,30 +147,51 @@ label,
   justify-content: center;
 }
 
-/* Inbox row: nav link + kebab menu */
+/* Inbox row: colored pill wrapping the nav link + kebab menu */
 .nav-row {
   display: flex;
   align-items: center;
   gap: 2px;
+  border-radius: var(--radius-control);
 }
 .nav-row .nav-link {
   flex: 1;
   min-width: 0;
 }
+/* Inner link inherits the row's custom colors; the row is the colored surface. */
+.inbox-link,
+.inbox-link:hover,
+.inbox-link.active {
+  background: transparent;
+  color: inherit;
+}
+.inbox-link.active {
+  font-weight: 700;
+}
+/* Icon keeps its own color (independent of text color) unless overridden inline. */
+.inbox-icon {
+  color: var(--text-muted);
+}
 .nav-kebab {
   position: relative;
 }
 .kebab-btn {
-  border-color: transparent;
+  border: none;
   background: transparent;
-  color: var(--text-faint);
+  color: inherit;
+  opacity: 0.7;
   width: 26px;
   height: 26px;
-  font-size: 14px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 .kebab-btn:hover {
-  background: var(--surface-2);
-  color: var(--text);
+  background: rgba(0, 0, 0, 0.08);
+  opacity: 1;
 }
 .menu {
   position: absolute;

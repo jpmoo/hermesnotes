@@ -261,6 +261,15 @@ button.ghost {
   background: transparent;
   color: var(--text-muted);
 }
+button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+button.danger:hover {
+  background: var(--danger);
+  filter: brightness(0.95);
+}
 button:disabled {
   opacity: 0.55;
   cursor: default;
@@ -304,6 +313,54 @@ button:disabled {
   height: auto;
   display: block;
   margin: 4px auto 22px;
+}
+
+/* ── Modal ────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(30, 32, 35, 0.4);
+  animation: modalFade 0.12s ease;
+}
+.modal-card {
+  width: 100%;
+  max-width: 384px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.2);
+  padding: 22px 22px 18px;
+  animation: modalPop 0.14s ease;
+}
+.modal-title {
+  font-family: var(--font-chrome);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  margin: 0 0 8px;
+}
+.modal-message {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@keyframes modalFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ── Markdown text block ──────────────────────────────────────── */

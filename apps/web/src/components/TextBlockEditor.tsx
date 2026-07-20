@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Block } from "../api.ts";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -29,6 +30,7 @@ export function TextBlockEditor({
 }) {
   const [text, setText] = useState(block.content ?? "");
   const [mode, setMode] = useState<Mode>(block.content ? "preview" : "edit");
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -112,10 +114,22 @@ export function TextBlockEditor({
           {saveState === "saving" ? "saving…" : saveState === "error" ? "save failed" : "saved"}
         </span>
         <span style={{ flex: 1 }} />
-        <button className="ghost" onClick={() => void remove()}>
+        <button className="ghost" onClick={() => setConfirmOpen(true)}>
           Delete
         </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Delete this note?"
+        message="This permanently removes the block and its embedding. This can't be undone."
+        confirmLabel="Delete"
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void remove();
+        }}
+      />
     </div>
   );
 }

@@ -26,8 +26,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (err instanceof HttpError) {
       return reply.code(err.statusCode).send({ error: err.message });
     }
-    if ((err as { statusCode?: number }).statusCode) {
-      return reply.code((err as { statusCode: number }).statusCode).send({ error: err.message });
+    const maybe = err as { statusCode?: number; message?: string };
+    if (maybe.statusCode) {
+      return reply.code(maybe.statusCode).send({ error: maybe.message ?? "error" });
     }
     app.log.error(err);
     return reply.code(500).send({ error: "internal error" });

@@ -124,6 +124,53 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
+  // Search existing (non-collection) blocks to add to a collection.
+  app.get("/blocks/search", async (req) => {
+    const userId = requireUser(req);
+    const { q, typeId, excludeCollectionId } = z
+      .object({
+        q: z.string().optional(),
+        typeId: z.string().uuid().optional(),
+        excludeCollectionId: z.string().uuid().optional(),
+      })
+      .parse(req.query);
+
+    const filters = [eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NULL`];
+    if (typeId) filters.push(eq(blocks.blockTypeId, typeId));
+    if (q && q.trim()) {
+      const like = `%${q.trim()}%`;
+      filters.push(
+        sql`(${blocks.properties}->>'title' ILIKE ${like} OR ${blocks.content} ILIKE ${like})`,
+      );
+    }
+    if (excludeCollectionId) {
+      filters.push(
+        sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id} AND m.collection_id = ${excludeCollectionId})`,
+      );
+    }
+
+    const rows = await db
+      .select({
+        id: blocks.id,
+        blockTypeId: blocks.blockTypeId,
+        properties: blocks.properties,
+        content: blocks.content,
+      })
+      .from(blocks)
+      .where(and(...filters))
+      .orderBy(desc(blocks.updatedAt))
+      .limit(30);
+
+    return rows.map((r) => {
+      const title = (r.properties as Record<string, unknown>)?.title;
+      const label =
+        (typeof title === "string" && title.trim()) ||
+        (r.content ?? "").replace(/\s+/g, " ").trim().slice(0, 80) ||
+        "Untitled";
+      return { id: r.id, blockTypeId: r.blockTypeId, label };
+    });
+  });
+
   app.get("/blocks/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);

@@ -87,6 +87,12 @@ export interface BlockRef {
   label: string;
 }
 
+export interface BlockSearchResult {
+  id: string;
+  blockTypeId: string | null;
+  label: string;
+}
+
 export interface Collection {
   id: string;
   collectionKind: string;

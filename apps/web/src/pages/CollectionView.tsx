@@ -18,6 +18,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { FinderModal } from "../components/FinderModal.tsx";
+import { NewItemModal } from "../components/NewItemModal.tsx";
 
 type Format = "bullet" | "ordered" | "checklist";
 
@@ -152,6 +154,8 @@ export function CollectionView() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [finderOpen, setFinderOpen] = useState(false);
+  const [newType, setNewType] = useState<BlockType | null>(null);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -196,12 +200,6 @@ export function CollectionView() {
   const setFormat = (f: Format) => {
     setCollection((c) => (c ? { ...c, properties: { ...c.properties, list_format: f } } : c));
     void api.patch(`/collections/${id}`, { list_format: f });
-  };
-
-  const addItem = async (type?: BlockType) => {
-    setMenuOpen(false);
-    await api.post(`/collections/${id}/members`, type && !type.isText ? { create: { blockTypeId: type.id } } : { create: {} });
-    await load();
   };
 
   const onRemove = async (blockId: string) => {
@@ -255,14 +253,31 @@ export function CollectionView() {
         </div>
         <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
           <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
-            + Add item
+            + Add
           </button>
           {menuOpen && (
             <div className="menu" style={{ left: 0, right: "auto" }}>
+              <button
+                className="menu-item"
+                onClick={() => {
+                  setFinderOpen(true);
+                  setMenuOpen(false);
+                }}
+              >
+                Find existing…
+              </button>
+              <div className="menu-sep" />
               {ordered.map((t) => (
-                <button key={t.id} className="menu-item type-item" onClick={() => void addItem(t)}>
+                <button
+                  key={t.id}
+                  className="menu-item type-item"
+                  onClick={() => {
+                    setNewType(t);
+                    setMenuOpen(false);
+                  }}
+                >
                   <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
-                  <span style={{ textTransform: "capitalize" }}>{t.name}</span>
+                  <span style={{ textTransform: "capitalize" }}>New: {t.name}</span>
                 </button>
               ))}
             </div>
@@ -291,6 +306,25 @@ export function CollectionView() {
             </div>
           </SortableContext>
         </DndContext>
+      )}
+
+      {finderOpen && (
+        <FinderModal
+          collectionId={id}
+          types={types}
+          onClose={() => setFinderOpen(false)}
+          onAdded={() => void load()}
+        />
+      )}
+      {newType && (
+        <NewItemModal
+          collectionId={id}
+          type={newType}
+          onClose={() => {
+            setNewType(null);
+            void load();
+          }}
+        />
       )}
     </>
   );

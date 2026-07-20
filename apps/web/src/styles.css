@@ -799,6 +799,34 @@ input.typed-title:focus {
   text-transform: capitalize;
 }
 
+/* ── Finder / add-existing modal ──────────────────────────────── */
+.finder {
+  max-width: 460px;
+}
+.finder-results {
+  max-height: 320px;
+  overflow-y: auto;
+}
+.finder-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 4px;
+  border-top: 1px solid var(--border);
+}
+.finder-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
+
 /* ── Reference search combobox ────────────────────────────────── */
 .ref-combo {
   position: relative;

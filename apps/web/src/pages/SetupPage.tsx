@@ -49,7 +49,7 @@ export function SetupPage({ onDone }: { onDone: () => void }) {
   return (
     <div className="auth-wrap">
       <form className="auth-card" style={{ maxWidth: 440 }} onSubmit={submit}>
-        <img className="logo" src="/brand/HermesLogo.png" alt="Hermes Notes" />
+        <img className="logo" src={`${import.meta.env.BASE_URL}brand/HermesLogo.png`} alt="Hermes Notes" />
         <h2 className="chrome" style={{ margin: "0 0 4px", fontSize: 16 }}>
           Set up the database
         </h2>

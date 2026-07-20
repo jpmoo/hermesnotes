@@ -11,7 +11,7 @@ function Sidebar() {
   const { user, logout } = useAuth();
   return (
     <aside className="sidebar">
-      <img className="logo" src="/brand/HermesLogo.png" alt="Hermes Notes" />
+      <img className="logo" src={`${import.meta.env.BASE_URL}brand/HermesLogo.png`} alt="Hermes Notes" />
       <NavLink to="/" end className="nav-link">
         Inbox
       </NavLink>

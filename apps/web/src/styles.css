@@ -608,6 +608,19 @@ button:disabled {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(95, 164, 181, 0.2);
 }
+
+/* Icon picker modal */
+.icon-picker {
+  max-width: 460px;
+}
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 6px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 2px;
+}
 .fields-table {
   display: flex;
   flex-direction: column;

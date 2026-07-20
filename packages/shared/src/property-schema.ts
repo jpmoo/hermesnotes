@@ -18,6 +18,7 @@ export const fieldTypeSchema = z.enum([
   "select",
   "status",
   "url",
+  "reference", // points at another block (of ref_type_id); value is that block's id
 ]);
 export type FieldType = z.infer<typeof fieldTypeSchema>;
 
@@ -36,6 +37,8 @@ export const fieldDefSchema = z.object({
   includeEmbed: z.boolean().default(false),
   /** for select/status fields */
   options: z.array(z.string()).optional(),
+  /** for reference fields: the block_type id this field points at */
+  refTypeId: z.string().uuid().optional(),
   required: z.boolean().optional(),
 });
 export type FieldDef = z.infer<typeof fieldDefSchema>;
@@ -79,7 +82,7 @@ export function deriveEmbedSource(
   properties: Record<string, unknown>,
 ): string {
   return schema.fields
-    .filter((f) => f.includeEmbed)
+    .filter((f) => f.includeEmbed && f.type !== "reference") // ref values are ids, not text
     .sort((a, b) => a.order - b.order)
     .map((f) => properties[f.key])
     .filter((v): v is string | number => v !== null && v !== undefined && v !== "")

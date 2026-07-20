@@ -88,6 +88,25 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(blocks.updatedAt));
   });
 
+  // Options for a reference field: blocks of a given type, as {id, label}.
+  app.get("/blocks/references", async (req) => {
+    const userId = requireUser(req);
+    const { typeId } = z.object({ typeId: z.string().uuid() }).parse(req.query);
+    const rows = await db
+      .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+      .from(blocks)
+      .where(and(eq(blocks.ownerId, userId), eq(blocks.blockTypeId, typeId)))
+      .orderBy(desc(blocks.updatedAt));
+    return rows.map((r) => {
+      const title = (r.properties as Record<string, unknown>)?.title;
+      const label =
+        (typeof title === "string" && title.trim()) ||
+        (r.content ?? "").replace(/\s+/g, " ").trim().slice(0, 60) ||
+        "Untitled";
+      return { id: r.id, label };
+    });
+  });
+
   app.get("/blocks/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);

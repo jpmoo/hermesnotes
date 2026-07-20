@@ -1,8 +1,9 @@
 import type { FieldType, PropertySchema } from "@hermes/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError, type BlockType } from "../api.ts";
-import { BlockIcon, ICON_KEYS } from "../lib/icons.tsx";
+import { BlockIcon } from "../lib/icons.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
+import { IconPickerModal } from "./IconPickerModal.tsx";
 
 const FIELD_TYPES: FieldType[] = [
   "text",
@@ -13,6 +14,7 @@ const FIELD_TYPES: FieldType[] = [
   "select",
   "status",
   "url",
+  "reference",
 ];
 
 interface EditField {
@@ -21,6 +23,7 @@ interface EditField {
   type: FieldType;
   includeEmbed: boolean;
   options: string; // comma-separated in the UI
+  refTypeId?: string; // for reference fields
 }
 
 function toEditFields(schema: PropertySchema | null): EditField[] {
@@ -35,6 +38,7 @@ function toEditFields(schema: PropertySchema | null): EditField[] {
       type: f.type,
       includeEmbed: f.includeEmbed,
       options: (f.options ?? []).join(", "),
+      refTypeId: f.refTypeId,
     }));
 }
 
@@ -64,8 +68,14 @@ export function TypeEditor({
   );
   const [defaultValue, setDefaultValue] = useState(initial?.propertySchema?.default_value ?? "");
   const [colorOpen, setColorOpen] = useState(false);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [blockTypes, setBlockTypes] = useState<BlockType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void api.get<BlockType[]>("/block-types").then(setBlockTypes);
+  }, []);
 
   const statusFields = fields.filter((f) => f.type === "status");
   const activeStatus = statusFields.find((f) => f.key === statusField) ?? statusFields[0];
@@ -103,6 +113,7 @@ export function TypeEditor({
         includeEmbed: f.includeEmbed,
         options:
           f.type === "select" || f.type === "status" ? parseOptions(f.options) : undefined,
+        refTypeId: f.type === "reference" ? f.refTypeId : undefined,
       })),
       status_field: activeStatus ? activeStatus.key : null,
       complete_values: activeStatus ? completeValues : undefined,
@@ -135,11 +146,18 @@ export function TypeEditor({
 
       <div className="field">
         <span className="field-label">Icon</span>
-        <div className="row" style={{ marginBottom: 8 }}>
+        <div className="row">
           <span className="icon-preview">
             <BlockIcon iconKey={iconKey} color={iconColor} size={22} />
           </span>
-          <button className="swatch-btn" style={{ background: iconColor }} onClick={() => setColorOpen(true)}>
+          <button className="ghost" onClick={() => setIconPickerOpen(true)}>
+            Choose icon…
+          </button>
+          <button
+            className="swatch-btn"
+            style={{ background: iconColor }}
+            onClick={() => setColorOpen(true)}
+          >
             color
           </button>
           <label className="row" style={{ gap: 6 }}>
@@ -151,18 +169,6 @@ export function TypeEditor({
             />
             <span className="hint">Show icon</span>
           </label>
-        </div>
-        <div className="icon-grid">
-          {ICON_KEYS.map((k) => (
-            <button
-              key={k}
-              className={`icon-choice${k === iconKey ? " selected" : ""}`}
-              title={k}
-              onClick={() => setIconKey(k)}
-            >
-              <BlockIcon iconKey={k} color={iconColor} size={18} />
-            </button>
-          ))}
         </div>
       </div>
 
@@ -201,6 +207,22 @@ export function TypeEditor({
                   value={f.options}
                   onChange={(e) => setField(i, { options: e.target.value })}
                 />
+              )}
+              {f.type === "reference" && (
+                <select
+                  className="f-options"
+                  value={f.refTypeId ?? ""}
+                  onChange={(e) => setField(i, { refTypeId: e.target.value || undefined })}
+                >
+                  <option value="">target type…</option>
+                  {blockTypes
+                    .filter((bt) => !bt.isText)
+                    .map((bt) => (
+                      <option key={bt.id} value={bt.id}>
+                        {bt.name}
+                      </option>
+                    ))}
+                </select>
               )}
               <label className="row" style={{ gap: 4 }} title="Include in embedding">
                 <input
@@ -303,6 +325,18 @@ export function TypeEditor({
           setColorOpen(false);
         }}
       />
+
+      <IconPickerModal
+        open={iconPickerOpen}
+        value={iconKey}
+        color={iconColor}
+        onCancel={() => setIconPickerOpen(false)}
+        onSelect={(k) => {
+          setIconKey(k);
+          setIconPickerOpen(false);
+        }}
+      />
     </div>
   );
 }
+

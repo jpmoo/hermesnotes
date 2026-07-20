@@ -4,19 +4,16 @@ import {
   Calendar,
   CheckSquare,
   Clock,
-  Coffee,
   FileText,
   Flag,
   Folder,
   Heart,
-  Image,
   Inbox,
   Layers,
   LayoutGrid,
   Link,
   List,
   MapPin,
-  Music,
   Package,
   Pencil,
   Star,
@@ -25,17 +22,19 @@ import {
   Target,
   Type,
   User,
-  Video,
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect, useReducer } from "react";
 
 /**
- * Curated Lucide icon set for block types (design doc §10 uses Lucide, kebab-case
- * keys). A curated map keeps the bundle small; can grow into a full lazy-loaded
- * picker later. Keys match design-doc seed defaults where applicable.
+ * Icon rendering. A tiny curated set is statically imported for instant common
+ * rendering; the full Lucide set (~1500) is lazy-loaded only when a custom icon
+ * or the picker actually needs it (via ./all-icons), keeping the main bundle lean.
+ * Stored keys are kebab-case (design doc §10); the full map is PascalCase-keyed.
  */
-export const ICON_SET: Record<string, LucideIcon> = {
+
+const CURATED: Record<string, LucideIcon> = {
   "check-square": CheckSquare,
   calendar: Calendar,
   table: Table,
@@ -57,16 +56,56 @@ export const ICON_SET: Record<string, LucideIcon> = {
   user: User,
   heart: Heart,
   zap: Zap,
-  image: Image,
-  video: Video,
-  music: Music,
   package: Package,
   pencil: Pencil,
-  coffee: Coffee,
   inbox: Inbox,
 };
 
-export const ICON_KEYS = Object.keys(ICON_SET);
+export function kebabToPascal(kebab: string): string {
+  return kebab
+    .split("-")
+    .map((p) => (p ? p[0]!.toUpperCase() + p.slice(1) : ""))
+    .join("");
+}
+export function pascalToKebab(name: string): string {
+  return name
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .toLowerCase();
+}
+
+// ── lazy full-set cache ─────────────────────────────────────────
+type IconMap = Record<string, LucideIcon>;
+let fullIcons: IconMap | null = null;
+let loadPromise: Promise<IconMap> | null = null;
+const subscribers = new Set<() => void>();
+
+export function loadAllIcons(): Promise<IconMap> {
+  if (fullIcons) return Promise.resolve(fullIcons);
+  loadPromise ??= import("./all-icons.ts").then((m) => {
+    fullIcons = m.icons as unknown as IconMap;
+    subscribers.forEach((f) => f());
+    return fullIcons;
+  });
+  return loadPromise;
+}
+
+/** Full icon map once loaded (null until then). Loads only when `enabled`. */
+export function useAllIcons(enabled = true): IconMap | null {
+  const [, force] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (!enabled || fullIcons) return;
+    subscribers.add(force);
+    void loadAllIcons();
+    return () => void subscribers.delete(force);
+  }, [enabled]);
+  return fullIcons;
+}
+
+export function resolveIcon(iconKey: string | null | undefined): LucideIcon {
+  if (!iconKey) return FileText;
+  return CURATED[iconKey] ?? fullIcons?.[kebabToPascal(iconKey)] ?? FileText;
+}
 
 export function BlockIcon({
   iconKey,
@@ -77,6 +116,8 @@ export function BlockIcon({
   color?: string | null;
   size?: number;
 }) {
-  const Icon = (iconKey && ICON_SET[iconKey]) || FileText;
+  // Only pull the full set if this icon isn't in the curated fast-path.
+  useAllIcons(!(iconKey && CURATED[iconKey]));
+  const Icon = resolveIcon(iconKey);
   return <Icon size={size} color={color ?? undefined} />;
 }

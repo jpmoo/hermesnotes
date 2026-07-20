@@ -1,4 +1,5 @@
 import type { FieldDef } from "@hermes/shared";
+import { ReferenceInput } from "./ReferenceInput.tsx";
 
 /** Renders the appropriate control for a property_schema field (design doc §3). */
 export function FieldInput({
@@ -38,6 +39,8 @@ export function FieldInput({
       );
     case "url":
       return <input type="url" value={str} onChange={(e) => onChange(e.target.value)} />;
+    case "reference":
+      return <ReferenceInput refTypeId={field.refTypeId} value={value} onChange={onChange} />;
     case "select":
     case "status":
       return (

@@ -82,6 +82,11 @@ export interface BlockType {
   isText: boolean;
 }
 
+export interface BlockRef {
+  id: string;
+  label: string;
+}
+
 export interface SetupStatus {
   configured: boolean;
   hasUsers: boolean;

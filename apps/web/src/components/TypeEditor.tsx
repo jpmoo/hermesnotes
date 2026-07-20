@@ -166,11 +166,12 @@ export function TypeEditor({
       <div className="field">
         <span className="field-label">Icon</span>
         <div className="row">
-          <span className="icon-preview">
+          <button
+            className="icon-preview icon-preview-btn"
+            title="Choose icon"
+            onClick={() => setIconPickerOpen(true)}
+          >
             <BlockIcon iconKey={iconKey} color={iconColor} size={22} />
-          </span>
-          <button className="ghost" onClick={() => setIconPickerOpen(true)}>
-            Choose icon…
           </button>
           <button
             className="swatch-btn"
@@ -191,7 +192,7 @@ export function TypeEditor({
         </div>
       </div>
 
-      <div className="field">
+      <div className="field" style={{ marginTop: 18 }}>
         <span className="field-label">Fields</span>
         <div className="fields-table">
           {fields.map((f, i) => (

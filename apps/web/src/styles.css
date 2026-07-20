@@ -696,6 +696,15 @@ button:disabled {
   border-radius: var(--radius-control);
   background: var(--surface-2);
 }
+.icon-preview-btn {
+  padding: 0;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.icon-preview-btn:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
 .field-label {
   display: block;
   font-size: 12px;

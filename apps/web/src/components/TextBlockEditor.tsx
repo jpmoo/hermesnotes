@@ -123,13 +123,6 @@ export function TextBlockEditor({
         <button className="ghost" onClick={toggle}>
           {mode === "live" ? "Raw" : "Live preview"}
         </button>
-        {block.embedPending ? (
-          <span className="pill pending">embedding…</span>
-        ) : block.embeddedAt ? (
-          <span className="pill embedded">embedded</span>
-        ) : (
-          <span className="pill">not embedded</span>
-        )}
         <span>
           {saveState === "saving" ? "saving…" : saveState === "error" ? "save failed" : "saved"}
         </span>

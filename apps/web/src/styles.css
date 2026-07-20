@@ -56,15 +56,27 @@ label,
 /* ── Layout shell ─────────────────────────────────────────────── */
 .app-shell {
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: 232px 1fr 320px;
   height: 100%;
   transition: grid-template-columns 0.18s ease;
 }
 .app-shell.collapsed {
-  grid-template-columns: 0 1fr;
+  grid-template-columns: 0 1fr 320px;
 }
 .app-shell.collapsed .sidebar {
   border-right-color: transparent;
+}
+
+.right-panel {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 18px 16px;
+  overflow-y: auto;
+}
+.panel-placeholder {
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  color: var(--text-faint);
 }
 
 .sidebar {

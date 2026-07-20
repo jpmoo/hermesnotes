@@ -42,9 +42,7 @@ export function InboxPage() {
   return (
     <>
       <h1 className="page-title">Inbox</h1>
-      <p className="page-sub">
-        Atomic blocks with no parent and no children. Add one and it embeds automatically.
-      </p>
+      <p className="page-sub">Atomic blocks with no parent and no children.</p>
 
       {settings && !settings.connected && (
         <div className="card" style={{ borderColor: "#f0e4bf", background: "#fdf9ee" }}>

@@ -67,6 +67,10 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
             </Routes>
           </div>
         </main>
+        <aside className="right-panel">
+          {/* Placeholder — note info & options will live here. */}
+          <div className="panel-placeholder">Note info &amp; options</div>
+        </aside>
       </div>
       {collapsed && (
         <button

@@ -1105,6 +1105,9 @@ input.li-text:focus {
 .modal-card {
   width: 100%;
   max-width: 384px;
+  /* Never taller than the viewport — scroll inside instead of off the page. */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -1117,7 +1120,12 @@ input.li-text:focus {
   font-size: 16px;
   font-weight: 700;
   color: var(--accent-ink);
-  margin: 0 0 8px;
+  position: sticky;
+  top: -22px;
+  background: var(--surface);
+  margin: -22px -22px 8px;
+  padding: 22px 22px 10px;
+  z-index: 1;
 }
 .modal-message {
   color: var(--text-muted);
@@ -1129,6 +1137,13 @@ input.li-text:focus {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  /* Keep the action buttons in view while a tall modal body scrolls. */
+  position: sticky;
+  bottom: -18px;
+  background: var(--surface);
+  padding: 12px 0 18px;
+  margin-bottom: -18px;
+  box-shadow: 0 -8px 8px -8px rgba(0, 0, 0, 0.12);
 }
 @keyframes modalFade {
   from { opacity: 0; }

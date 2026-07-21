@@ -28,7 +28,7 @@ export function MentionChip({ node }: NodeViewProps) {
   const id = href.startsWith("block:") ? href.slice(6) : "";
   const [icon, setIcon] = useState<Icon | null>(null);
   const [collection, setCollection] = useState(false);
-  const { setSelectedBlockId } = usePanels();
+  const { pushBlock } = usePanels();
   const nav = useNavigate();
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function MentionChip({ node }: NodeViewProps) {
     e.stopPropagation();
     if (isTag || !id) return;
     if (collection) nav(`/collections/${id}`);
-    else setSelectedBlockId(id);
+    else pushBlock(id);
   };
 
   return (

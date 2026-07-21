@@ -69,7 +69,7 @@ export function TypedBlockCard({
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  const { setSelectedBlockId } = usePanels();
+  const { selectBlock } = usePanels();
 
   const schema = type.propertySchema;
   const fields = [...(schema?.fields ?? [])].sort((a, b) => a.order - b.order);
@@ -116,7 +116,7 @@ export function TypedBlockCard({
   };
 
   return (
-    <div className="card typed-card" onPointerDownCapture={() => setSelectedBlockId(block.id)}>
+    <div className="card typed-card" onPointerDownCapture={() => selectBlock(block.id)}>
       <div className="typed-head">
         {statusField ? (
           <StatusControl

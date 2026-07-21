@@ -35,43 +35,17 @@ function extractTags(texts: string[]): Set<string> {
 }
 
 /**
- * Sync `#` mentions in a block's text to its tags: add tags now present, and
- * remove tags that were in the old text but no longer are. Tags added manually
- * (never present in the text) are untouched. Returns whether anything changed.
+ * Add tags for `#` mentions present in a block's text. Add-only: removing a
+ * mention from the text does NOT remove the tag (that stays a manual action),
+ * which avoids provenance edge cases. Returns whether anything was added.
  */
-async function syncTextTags(
-  userId: string,
-  blockId: string,
-  oldTexts: string[],
-  newTexts: string[],
-): Promise<boolean> {
-  const oldNames = extractTags(oldTexts);
-  const newNames = extractTags(newTexts);
-  const toRemove = [...oldNames].filter((n) => !newNames.has(n));
-  if (newNames.size === 0 && toRemove.length === 0) return false;
-
+async function syncTextTags(userId: string, blockId: string, texts: string[]): Promise<boolean> {
+  const names = extractTags(texts);
+  if (names.size === 0) return false;
   let changed = false;
   await db.transaction(async (tx) => {
-    const tagId = async (name: string) => {
+    for (const name of names) {
       await tx.insert(tags).values({ ownerId: userId, name }).onConflictDoNothing();
-      const [t] = await tx
-        .select({ id: tags.id })
-        .from(tags)
-        .where(and(eq(tags.ownerId, userId), eq(tags.name, name)))
-        .limit(1);
-      return t?.id;
-    };
-    for (const name of newNames) {
-      const id = await tagId(name);
-      if (!id) continue;
-      const r = await tx
-        .insert(blockTags)
-        .values({ blockId, tagId: id })
-        .onConflictDoNothing()
-        .returning({ tagId: blockTags.tagId });
-      if (r.length) changed = true;
-    }
-    for (const name of toRemove) {
       const [t] = await tx
         .select({ id: tags.id })
         .from(tags)
@@ -79,8 +53,9 @@ async function syncTextTags(
         .limit(1);
       if (!t) continue;
       const r = await tx
-        .delete(blockTags)
-        .where(and(eq(blockTags.blockId, blockId), eq(blockTags.tagId, t.id)))
+        .insert(blockTags)
+        .values({ blockId, tagId: t.id })
+        .onConflictDoNothing()
         .returning({ tagId: blockTags.tagId });
       if (r.length) changed = true;
     }
@@ -554,17 +529,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     if (!updated) throw conflict("version conflict — reload and retry");
 
-    // Sync #tag mentions in the content/text to the block's tags.
-    const asText = (p: Record<string, unknown> | null | undefined, c: string | null) => [
-      c ?? "",
-      ...Object.values(p ?? {}).filter((v): v is string => typeof v === "string"),
-    ];
-    const tagsChanged = await syncTextTags(
-      userId,
-      id,
-      asText(current.properties as Record<string, unknown>, current.content),
-      asText(nextProps as Record<string, unknown>, nextContent),
-    );
+    // Add tags for any #tag mentions in the content/text (add-only).
+    const tagsChanged = await syncTextTags(userId, id, [
+      nextContent ?? "",
+      ...Object.values(nextProps ?? {}).filter((v): v is string => typeof v === "string"),
+    ]);
 
     // Recurring task just completed → spawn the next occurrence.
     let recurred = false;

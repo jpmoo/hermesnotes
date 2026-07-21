@@ -38,7 +38,7 @@ export function TextBlockEditor({
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const propsTimer = useRef<ReturnType<typeof setTimeout>>();
-  const { setSelectedBlockId } = usePanels();
+  const { selectBlock } = usePanels();
 
   // The body IS the "description" field; any other schema fields render below it.
   const extraFields = [...(type?.propertySchema?.fields ?? [])]
@@ -91,7 +91,7 @@ export function TextBlockEditor({
   };
 
   return (
-    <div className="card" onPointerDownCapture={() => setSelectedBlockId(block.id)}>
+    <div className="card" onPointerDownCapture={() => selectBlock(block.id)}>
       <MarkdownEditor
         value={block.content ?? ""}
         onChange={scheduleSave}

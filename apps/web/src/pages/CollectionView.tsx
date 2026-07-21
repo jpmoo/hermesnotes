@@ -183,7 +183,7 @@ function ListItem({
           {!fullBlock ? (
             <div className="hint">Loading…</div>
           ) : isText ? (
-            <TextBlockEditor block={fullBlock} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+            <TextBlockEditor block={fullBlock} type={type} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
           ) : (
             <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
           )}
@@ -261,7 +261,7 @@ function ListItem({
           {!fullBlock ? (
             <div className="hint">Loading…</div>
           ) : isText ? (
-            <TextBlockEditor block={fullBlock} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+            <TextBlockEditor block={fullBlock} type={type} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
           ) : (
             <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
           )}

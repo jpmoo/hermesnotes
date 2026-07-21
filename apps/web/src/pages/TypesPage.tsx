@@ -87,7 +87,7 @@ export function TypesPage() {
               <div style={{ flex: 1 }}>
                 <div className="chrome" style={{ fontSize: 14, textTransform: "capitalize" }}>
                   {t.name}
-                  {t.isText && <span className="pill" style={{ marginLeft: 8 }}>built-in</span>}
+                  {t.builtin && <span className="pill" style={{ marginLeft: 8 }}>built in</span>}
                 </div>
                 <div className="hint">
                   {t.isText
@@ -95,15 +95,13 @@ export function TypesPage() {
                     : `${t.propertySchema?.fields.length ?? 0} field(s)`}
                 </div>
               </div>
-              {!t.isText && (
-                <>
-                  <button className="ghost" onClick={() => setEditor({ mode: "edit", type: t })}>
-                    Edit
-                  </button>
-                  <button className="ghost" onClick={() => setDeleting(t)}>
-                    Delete
-                  </button>
-                </>
+              <button className="ghost" onClick={() => setEditor({ mode: "edit", type: t })}>
+                Edit
+              </button>
+              {!t.builtin && (
+                <button className="ghost" onClick={() => setDeleting(t)}>
+                  Delete
+                </button>
               )}
             </div>
             {openId === t.id && <TypeBlockList type={t} />}

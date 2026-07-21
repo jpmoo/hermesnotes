@@ -41,6 +41,7 @@ interface EditField {
   refTypeId?: string; // for reference fields
   startLabel?: string; // for datespan
   endLabel?: string; // for datespan
+  locked?: boolean; // built-in core field: editable but not removable
 }
 
 function toEditFields(schema: PropertySchema | null): EditField[] {
@@ -59,6 +60,7 @@ function toEditFields(schema: PropertySchema | null): EditField[] {
       refTypeId: f.refTypeId,
       startLabel: f.startLabel,
       endLabel: f.endLabel,
+      locked: f.locked,
     }));
 }
 
@@ -129,10 +131,13 @@ export function TypeEditor({
       return next;
     });
 
+  const isText = initial?.isText ?? false;
+
   const save = async () => {
     setError(null);
     if (!name.trim()) return setError("Name is required");
-    if (!fields.some((f) => f.key === "title")) return setError("A 'title' field is required");
+    if (!isText && !fields.some((f) => f.key === "title"))
+      return setError("A 'title' field is required");
     if (fields.some((f) => !f.key.trim())) return setError("Every field needs a key");
 
     const schema: PropertySchema = {
@@ -155,6 +160,7 @@ export function TypeEditor({
         refTypeId: f.type === "reference" ? f.refTypeId : undefined,
         startLabel: f.type === "datespan" ? f.startLabel?.trim() || undefined : undefined,
         endLabel: f.type === "datespan" ? f.endLabel?.trim() || undefined : undefined,
+        locked: f.locked || undefined,
       })),
       status_field: activeStatus ? activeStatus.key : null,
       complete_values: activeStatus ? completeValues : undefined,
@@ -222,6 +228,8 @@ export function TypeEditor({
                 className="f-key"
                 placeholder="key"
                 value={f.key}
+                disabled={f.locked}
+                title={f.locked ? "Built-in field — key is fixed" : undefined}
                 onChange={(e) => setField(i, { key: e.target.value })}
               />
               <input
@@ -298,8 +306,8 @@ export function TypeEditor({
               </button>
               <button
                 className="icon-btn"
-                title="Remove"
-                disabled={f.key === "title"}
+                title={f.locked || f.key === "title" ? "Built-in field — can't be removed" : "Remove"}
+                disabled={f.key === "title" || f.locked}
                 onClick={() => removeField(i)}
               >
                 ✕

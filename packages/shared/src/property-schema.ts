@@ -49,6 +49,8 @@ export const fieldDefSchema = z.object({
   startLabel: z.string().optional(),
   endLabel: z.string().optional(),
   required: z.boolean().optional(),
+  /** built-in core field: can be edited but not removed from the type. */
+  locked: z.boolean().optional(),
 });
 export type FieldDef = z.infer<typeof fieldDefSchema>;
 

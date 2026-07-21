@@ -387,7 +387,9 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     const type = await resolveType(userId, current.blockTypeId ?? undefined);
     const nextContent = type.isText ? body.content ?? current.content ?? "" : current.content;
-    const nextProps = type.isText ? current.properties : body.properties ?? current.properties;
+    // Text blocks now carry fields too (their body is `content`; other fields
+    // live in properties), so both kinds may update properties.
+    const nextProps = body.properties ?? current.properties;
     const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
     const hash = sha256(embedSource);
 

@@ -78,6 +78,8 @@ export const blockTypes = pgTable(
     propertySchema: jsonb("property_schema").$type<PropertySchema>(),
     schemaVersion: integer("schema_version").notNull().default(1),
     isText: boolean("is_text").notNull().default(false),
+    // Seeded core type (text/task/event): can't be deleted; has locked fields.
+    builtin: boolean("builtin").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

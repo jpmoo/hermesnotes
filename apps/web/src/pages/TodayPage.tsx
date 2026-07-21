@@ -157,6 +157,7 @@ export function TodayPage() {
             <TextBlockEditor
               key={sheet.note.id}
               block={sheet.note}
+              type={typeById.get(sheet.note.blockTypeId)}
               onConflict={load}
               onDeleted={load}
               canDelete={false}

@@ -8,6 +8,7 @@ type Inserter = Pick<Database, "insert">;
 interface SeedType {
   name: string;
   isText: boolean;
+  builtin: boolean;
   propertySchema: PropertySchema | null;
 }
 
@@ -17,20 +18,31 @@ interface SeedType {
  * `text`; the rest are declared so the type palette exists from day one.
  */
 const SEED_TYPES: SeedType[] = [
-  { name: "text", isText: true, propertySchema: null },
+  {
+    name: "text",
+    isText: true,
+    builtin: true,
+    propertySchema: {
+      fields: [
+        { key: "description", label: "Body", type: "text", order: 0, includeEmbed: true, locked: true },
+      ],
+    },
+  },
   {
     name: "task",
     isText: false,
+    builtin: true,
     propertySchema: {
       fields: [
-        { key: "title", type: "text", order: 0, includeEmbed: true },
+        { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
         { key: "description", type: "text", order: 1, includeEmbed: true },
-        { key: "due_date", type: "date", order: 2, includeEmbed: false },
+        { key: "due_date", type: "date", order: 2, includeEmbed: false, locked: true },
         {
           key: "status",
           type: "status",
           order: 3,
           includeEmbed: false,
+          locked: true,
           options: ["not_started", "in_progress", "blocked", "done", "archived", "wont_do"],
           optionIcons: {
             not_started: "circle",
@@ -58,9 +70,10 @@ const SEED_TYPES: SeedType[] = [
   {
     name: "event",
     isText: false,
+    builtin: true,
     propertySchema: {
       fields: [
-        { key: "title", type: "text", order: 0, includeEmbed: true },
+        { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
         { key: "description", type: "text", order: 1, includeEmbed: true },
         { key: "start", type: "datetime", order: 2, includeEmbed: false },
         { key: "end", type: "datetime", order: 3, includeEmbed: false },
@@ -76,6 +89,7 @@ export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<voi
       ownerId,
       name: t.name,
       isText: t.isText,
+      builtin: t.builtin,
       propertySchema: t.propertySchema,
       iconKey: DEFAULT_TYPE_ICONS[t.name] ?? null,
       iconSource: "lucide" as const,

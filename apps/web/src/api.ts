@@ -95,6 +95,7 @@ export interface BlockType {
   propertySchema: import("@hermes/shared").PropertySchema | null;
   schemaVersion: number;
   isText: boolean;
+  builtin: boolean;
 }
 
 export interface BlockRef {

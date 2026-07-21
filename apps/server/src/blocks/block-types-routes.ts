@@ -18,6 +18,7 @@ const typeView = {
   propertySchema: blockTypes.propertySchema,
   schemaVersion: blockTypes.schemaVersion,
   isText: blockTypes.isText,
+  builtin: blockTypes.builtin,
   createdAt: blockTypes.createdAt,
   updatedAt: blockTypes.updatedAt,
 };
@@ -27,6 +28,25 @@ function requireTitle(schema: PropertySchema) {
   if (!schema.fields.some((f) => f.key === "title")) {
     throw badRequest("non-text block types must include a 'title' field");
   }
+}
+
+/**
+ * Locked (built-in core) fields can be edited but not removed. Ensure every
+ * locked field in `current` is still present in `next`, and re-stamp the locked
+ * flag so a client can't quietly unlock it.
+ */
+function preserveLocked(current: PropertySchema | null, next: PropertySchema): PropertySchema {
+  const lockedKeys = (current?.fields ?? []).filter((f) => f.locked).map((f) => f.key);
+  for (const key of lockedKeys) {
+    if (!next.fields.some((f) => f.key === key)) {
+      throw badRequest(`the '${key}' field is built-in and can't be removed`);
+    }
+  }
+  const lockedSet = new Set(lockedKeys);
+  return {
+    ...next,
+    fields: next.fields.map((f) => (lockedSet.has(f.key) ? { ...f, locked: true } : f)),
+  };
 }
 
 export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
@@ -99,11 +119,10 @@ export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
 
     let nextSchema = current.propertySchema;
     let schemaChanged = false;
-    if (body.propertySchema !== undefined && !current.isText) {
-      requireTitle(body.propertySchema);
-      nextSchema = body.propertySchema;
-      schemaChanged =
-        JSON.stringify(body.propertySchema) !== JSON.stringify(current.propertySchema);
+    if (body.propertySchema !== undefined) {
+      if (!current.isText) requireTitle(body.propertySchema);
+      nextSchema = preserveLocked(current.propertySchema, body.propertySchema);
+      schemaChanged = JSON.stringify(nextSchema) !== JSON.stringify(current.propertySchema);
     }
     const nextVersion = schemaChanged ? current.schemaVersion + 1 : current.schemaVersion;
 
@@ -154,12 +173,12 @@ export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const [t] = await db
-      .select({ isText: blockTypes.isText })
+      .select({ isText: blockTypes.isText, builtin: blockTypes.builtin })
       .from(blockTypes)
       .where(and(eq(blockTypes.id, id), eq(blockTypes.ownerId, userId)))
       .limit(1);
     if (!t) throw notFound("block type");
-    if (t.isText) throw conflict("the text type cannot be deleted");
+    if (t.builtin || t.isText) throw conflict("built-in types can't be deleted");
 
     const [usage] = await db
       .select({ c: count() })

@@ -5,11 +5,12 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
-import { api, ApiError, type Block } from "../api.ts";
+import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { FieldInput } from "./FieldInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
 
 type SaveState = "idle" | "saving" | "error";
@@ -35,24 +36,55 @@ function normalizeMarkdown(md: string): string {
  */
 export function TextBlockEditor({
   block,
+  type,
   onConflict,
   onDeleted,
   canDelete = true,
 }: {
   block: Block;
+  type?: BlockType;
   onConflict: () => void;
   onDeleted: (id: string) => void;
   canDelete?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(block.content ?? "");
+  const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  const propsTimer = useRef<ReturnType<typeof setTimeout>>();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const { setSelectedBlockId } = usePanels();
+
+  // The body IS the "description" field; any other schema fields render below it.
+  const extraFields = [...(type?.propertySchema?.fields ?? [])]
+    .filter((f) => f.key !== "description")
+    .sort((a, b) => a.order - b.order);
+
+  const saveProps = async (next: Record<string, unknown>) => {
+    setSaveState("saving");
+    try {
+      const updated = await api.patch<Block>(`/blocks/${block.id}`, {
+        properties: next,
+        version: versionRef.current,
+      });
+      versionRef.current = updated.version;
+      setUpdatedAt(updated.updatedAt);
+      setSaveState("idle");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) return onConflict();
+      setSaveState("error");
+    }
+  };
+  const updateField = (key: string, value: unknown) => {
+    const next = { ...props, [key]: value };
+    setProps(next);
+    if (propsTimer.current) clearTimeout(propsTimer.current);
+    propsTimer.current = setTimeout(() => void saveProps(next), 700);
+  };
 
   const save = async (value: string) => {
     setSaveState("saving");
@@ -99,7 +131,13 @@ export function TextBlockEditor({
     },
   });
 
-  useEffect(() => () => timer.current && clearTimeout(timer.current), []);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+      if (propsTimer.current) clearTimeout(propsTimer.current);
+    },
+    [],
+  );
 
   const autosize = () => {
     const el = taRef.current;
@@ -147,6 +185,29 @@ export function TextBlockEditor({
           autoFocus
         />
       )}
+      {extraFields.length > 0 && (
+        <div className="typed-fields">
+          {extraFields.map((f) => (
+            <label
+              className={`field typed-field${
+                f.type === "text" || f.type === "url" || f.type === "datespan" || f.type === "attachments"
+                  ? " full"
+                  : ""
+              }`}
+              key={f.key}
+            >
+              <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
+              <FieldInput
+                field={f}
+                value={props[f.key]}
+                onChange={(v) => updateField(f.key, v)}
+                blockId={block.id}
+              />
+            </label>
+          ))}
+        </div>
+      )}
+
       <TagEditor blockId={block.id} />
       <div className="block-meta">
         <button className="ghost" onClick={toggle}>

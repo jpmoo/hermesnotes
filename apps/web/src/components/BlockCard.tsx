@@ -17,5 +17,5 @@ export function BlockCard({
   if (type && !type.isText) {
     return <TypedBlockCard block={block} type={type} onConflict={onConflict} onDeleted={onDeleted} />;
   }
-  return <TextBlockEditor block={block} onConflict={onConflict} onDeleted={onDeleted} />;
+  return <TextBlockEditor block={block} type={type} onConflict={onConflict} onDeleted={onDeleted} />;
 }

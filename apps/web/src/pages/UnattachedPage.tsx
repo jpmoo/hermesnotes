@@ -102,12 +102,13 @@ export function UnattachedPage() {
       ) : blocks.length === 0 ? (
         <div className="hint">Nothing unattached — every block has a home.</div>
       ) : (
-        renderList((b) => (
+        renderList((b, compact) => (
           <BlockCard
             block={b}
             type={typeById.get(b.blockTypeId)}
             onConflict={refresh}
             onDeleted={onDeleted}
+            compact={compact}
           />
         ))
       )}

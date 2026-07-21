@@ -1,5 +1,6 @@
-import { Download, FileText, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Paperclip, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, apiBase, type Attachment } from "../api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
@@ -121,5 +122,61 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         onConfirm={() => confirm && void remove(confirm)}
       />
     </div>
+  );
+}
+
+/**
+ * Compact attachments affordance for masonry cards: a paperclip shown only when
+ * the block has files. Clicking opens a modal with the full add/delete/download
+ * field.
+ */
+export function AttachmentsChip({ blockId }: { blockId: string }) {
+  const [count, setCount] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const load = () =>
+    void api
+      .get<Attachment[]>(`/blocks/${blockId}/attachments`)
+      .then((a) => setCount(a.length))
+      .catch(() => setCount(0));
+  useEffect(load, [blockId]);
+
+  if (count === null || count === 0) return null;
+
+  const close = () => {
+    setOpen(false);
+    load();
+  };
+
+  return (
+    <>
+      <button
+        className="attach-chip"
+        title={`${count} attachment${count === 1 ? "" : "s"}`}
+        onClick={() => setOpen(true)}
+      >
+        <Paperclip size={13} />
+        <span>{count}</span>
+      </button>
+      {open &&
+        createPortal(
+          <div className="modal-backdrop" onClick={close}>
+            <div
+              className="modal-card"
+              style={{ maxWidth: 480 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="modal-title">Attachments</h2>
+              <AttachmentsField blockId={blockId} />
+              <div className="type-actions">
+                <button className="ghost" onClick={close}>
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

@@ -14,8 +14,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FieldDef } from "@hermes/shared";
-import { GripVertical } from "lucide-react";
+import { GripVertical, Maximize2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
 
@@ -80,10 +81,33 @@ function valueFor(b: Viewable, key: SortKey): string {
   return v == null ? "" : String(v);
 }
 
+/** A masonry card: compact preview + an expand button that opens the full card. */
+function MasonryCard({ render }: { render: (compact: boolean) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="masonry-item">
+      <button className="icon-btn masonry-expand" title="Expand" onClick={() => setOpen(true)}>
+        <Maximize2 size={13} />
+      </button>
+      {render(true)}
+      {open &&
+        createPortal(
+          <div className="modal-backdrop" onClick={() => setOpen(false)}>
+            <div className="modal-card block-modal" onClick={(e) => e.stopPropagation()}>
+              {render(false)}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 /** One draggable row in manual mode: a grip handle plus the card. */
 function ManualRow({ id, children }: { id: string; children: ReactNode }) {
   const s = useSortable({ id });
-  const style = { transform: CSS.Transform.toString(s.transform), transition: s.transition };
+  // Translate (not Transform) so variable-height cards don't stretch mid-drag.
+  const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
     <div ref={s.setNodeRef} style={style} className="bv-manual-row">
       <button className="drag-handle bv-grip" {...s.attributes} {...s.listeners} title="Drag to arrange">
@@ -114,7 +138,7 @@ export function useBlockView<T extends Viewable>(
   sorted: T[];
   active: boolean;
   toolbar: ReactNode;
-  renderList: (renderCard: (item: T) => ReactNode) => ReactNode;
+  renderList: (renderCard: (item: T, compact: boolean) => ReactNode) => ReactNode;
 } {
   const enableView = opts.enableView ?? true;
   const externalManual = opts.manual ?? null;
@@ -336,7 +360,7 @@ export function useBlockView<T extends Viewable>(
     </div>
   );
 
-  const renderList = (renderCard: (item: T) => ReactNode): ReactNode => {
+  const renderList = (renderCard: (item: T, compact: boolean) => ReactNode): ReactNode => {
     if (manualMode) {
       return (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -344,7 +368,7 @@ export function useBlockView<T extends Viewable>(
             <div className="bv-manual-list">
               {sorted.map((it) => (
                 <ManualRow key={it.id} id={it.id}>
-                  {renderCard(it)}
+                  {renderCard(it, false)}
                 </ManualRow>
               ))}
             </div>
@@ -356,7 +380,7 @@ export function useBlockView<T extends Viewable>(
       return (
         <div className="block-stack">
           {sorted.map((it) => (
-            <div key={it.id}>{renderCard(it)}</div>
+            <div key={it.id}>{renderCard(it, false)}</div>
           ))}
         </div>
       );
@@ -364,9 +388,7 @@ export function useBlockView<T extends Viewable>(
     return (
       <div className="masonry" style={{ columnCount: columns }}>
         {sorted.map((it) => (
-          <div className="masonry-item" key={it.id}>
-            {renderCard(it)}
-          </div>
+          <MasonryCard key={it.id} render={(compact) => renderCard(it, compact)} />
         ))}
       </div>
     );

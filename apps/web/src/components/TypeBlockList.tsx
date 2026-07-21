@@ -44,8 +44,14 @@ export function TypeBlockList({ type }: { type: BlockType }) {
       ) : (
         <>
           {toolbar}
-          {renderList((b) => (
-            <BlockCard block={b} type={type} onConflict={() => void load()} onDeleted={onDeleted} />
+          {renderList((b, compact) => (
+            <BlockCard
+              block={b}
+              type={type}
+              onConflict={() => void load()}
+              onDeleted={onDeleted}
+              compact={compact}
+            />
           ))}
         </>
       )}

@@ -8,14 +8,32 @@ export function BlockCard({
   type,
   onConflict,
   onDeleted,
+  compact = false,
 }: {
   block: Block;
   type: BlockType | undefined;
   onConflict: () => void;
   onDeleted: (id: string) => void;
+  compact?: boolean;
 }) {
   if (type && !type.isText) {
-    return <TypedBlockCard block={block} type={type} onConflict={onConflict} onDeleted={onDeleted} />;
+    return (
+      <TypedBlockCard
+        block={block}
+        type={type}
+        onConflict={onConflict}
+        onDeleted={onDeleted}
+        compact={compact}
+      />
+    );
   }
-  return <TextBlockEditor block={block} type={type} onConflict={onConflict} onDeleted={onDeleted} />;
+  return (
+    <TextBlockEditor
+      block={block}
+      type={type}
+      onConflict={onConflict}
+      onDeleted={onDeleted}
+      compact={compact}
+    />
+  );
 }

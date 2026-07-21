@@ -420,6 +420,9 @@ label,
 }
 
 .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-muted);
@@ -1670,11 +1673,53 @@ input.li-text:focus {
   column-gap: 14px;
 }
 .masonry-item {
+  position: relative;
   break-inside: avoid;
   margin-bottom: 14px;
 }
 .masonry-item > .card {
   margin: 0;
+}
+.masonry-expand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  opacity: 0.7;
+}
+.masonry-item:hover .masonry-expand {
+  opacity: 1;
+}
+
+/* Compact attachments chip (paperclip) shown in front of the tags. */
+.tags-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+.attach-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* Expanded-note modal is wider than a form modal. */
+.modal-card.block-modal {
+  max-width: 680px;
 }
 
 /* ── Reference multi-select chips ─────────────────────────────── */
@@ -1860,10 +1905,6 @@ input.li-text:focus {
   border-color: var(--accent);
   background: rgba(95, 164, 181, 0.06);
 }
-/* Masonry is a dense overview — hide the upload dropzone (existing files still list). */
-.masonry .attach-drop {
-  display: none;
-}
 .attach-list {
   list-style: none;
   margin: 8px 0 0;
@@ -2014,4 +2055,36 @@ input.li-text:focus {
 }
 .doc-sections .doc-section-row + .doc-section-row {
   margin-top: 18px;
+}
+
+/* ── Long-text field (paragraph markdown editor) ──────────────── */
+.longtext {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  padding: 8px 11px;
+  transition: border-color 0.12s, background 0.12s;
+}
+.longtext:focus-within {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
+}
+.longtext .note-editor {
+  min-height: 56px;
+}
+.longtext .md-input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 56px;
+  border-radius: 0;
+}
+.longtext .md-input:focus {
+  box-shadow: none;
+}
+.longtext-toggle {
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
 }

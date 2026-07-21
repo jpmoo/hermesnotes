@@ -1,6 +1,7 @@
 import type { FieldDef } from "@hermes/shared";
 import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
+import { LongTextField } from "./LongTextField.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
 
 /** datespan value shape: two local wall-clock strings. */
@@ -29,6 +30,14 @@ export function FieldInput({
         <AttachmentsField blockId={blockId} />
       ) : (
         <span className="hint">Save the block first to attach files.</span>
+      );
+    case "longtext":
+      return (
+        <LongTextField
+          value={value}
+          onChange={(v) => onChange(v)}
+          placeholder={field.label ?? "Write…"}
+        />
       );
     case "boolean":
       return (

@@ -7,6 +7,7 @@ import { IconPickerModal } from "./IconPickerModal.tsx";
 
 const FIELD_TYPES: FieldType[] = [
   "text",
+  "longtext",
   "datetime",
   "datespan",
   "number",
@@ -20,6 +21,7 @@ const FIELD_TYPES: FieldType[] = [
 
 const TYPE_LABELS: Record<FieldType, string> = {
   text: "Text",
+  longtext: "Long Text",
   date: "Date",
   datetime: "Date/Time",
   datespan: "Date/Time Span",

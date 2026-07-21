@@ -74,12 +74,13 @@ export function AllBlocksPage() {
       ) : blocks.length === 0 ? (
         <div className="hint">No blocks match this filter.</div>
       ) : (
-        renderList((b) => (
+        renderList((b, compact) => (
           <BlockCard
             block={b}
             type={typeById.get(b.blockTypeId)}
             onConflict={reload}
             onDeleted={onDeleted}
+            compact={compact}
           />
         ))
       )}

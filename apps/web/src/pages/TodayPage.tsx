@@ -124,8 +124,14 @@ export function TodayPage() {
 
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
   const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
-  const card = (b: Block) => (
-    <BlockCard block={b} type={typeById.get(b.blockTypeId)} onConflict={load} onDeleted={() => void load()} />
+  const card = (b: Block, compact: boolean) => (
+    <BlockCard
+      block={b}
+      type={typeById.get(b.blockTypeId)}
+      onConflict={load}
+      onDeleted={() => void load()}
+      compact={compact}
+    />
   );
 
   const STANDARD_LABELS: Record<string, string> = {

@@ -64,9 +64,11 @@ export const HeadingIndent = Extension.create({
                 indent = 0;
                 contentIndent = 0;
               } else {
-                // Everything else under the heading — paragraphs, lists,
-                // checklists — shares that indent.
+                // The first block right after a heading takes its indent; a
+                // paragraph break (double line break) drops back to the margin
+                // and stays there — even after you type — until the next heading.
                 indent = contentIndent;
+                contentIndent = 0;
               }
               if (indent > 0) {
                 // margin-left (not padding) so lists keep their bullet/checkbox

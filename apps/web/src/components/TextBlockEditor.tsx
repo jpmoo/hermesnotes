@@ -9,6 +9,7 @@ import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { usePanels } from "../lib/right-panel.tsx";
+import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
@@ -40,12 +41,14 @@ export function TextBlockEditor({
   onConflict,
   onDeleted,
   canDelete = true,
+  compact = false,
 }: {
   block: Block;
   type?: BlockType;
   onConflict: () => void;
   onDeleted: (id: string) => void;
   canDelete?: boolean;
+  compact?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(block.content ?? "");
@@ -63,6 +66,8 @@ export function TextBlockEditor({
   const extraFields = [...(type?.propertySchema?.fields ?? [])]
     .filter((f) => f.key !== "description")
     .sort((a, b) => a.order - b.order);
+  const hasAttachField = extraFields.some((f) => f.type === "attachments");
+  const bodyFields = compact ? extraFields.filter((f) => f.type !== "attachments") : extraFields;
 
   const saveProps = async (next: Record<string, unknown>) => {
     setSaveState("saving");
@@ -185,12 +190,16 @@ export function TextBlockEditor({
           autoFocus
         />
       )}
-      {extraFields.length > 0 && (
+      {bodyFields.length > 0 && (
         <div className="typed-fields">
-          {extraFields.map((f) => (
+          {bodyFields.map((f) => (
             <label
               className={`field typed-field${
-                f.type === "text" || f.type === "url" || f.type === "datespan" || f.type === "attachments"
+                f.type === "text" ||
+                f.type === "longtext" ||
+                f.type === "url" ||
+                f.type === "datespan" ||
+                f.type === "attachments"
                   ? " full"
                   : ""
               }`}
@@ -208,7 +217,14 @@ export function TextBlockEditor({
         </div>
       )}
 
-      <TagEditor blockId={block.id} />
+      {compact && hasAttachField ? (
+        <div className="tags-line">
+          <AttachmentsChip blockId={block.id} />
+          <TagEditor blockId={block.id} />
+        </div>
+      ) : (
+        <TagEditor blockId={block.id} />
+      )}
       <div className="block-meta">
         <button className="ghost" onClick={toggle}>
           {mode === "live" ? "Raw" : "Live preview"}

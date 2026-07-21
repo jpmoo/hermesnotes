@@ -5,6 +5,7 @@ import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { fmtDateTime } from "../lib/format.ts";
 import { usePanels } from "../lib/right-panel.tsx";
+import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
@@ -54,11 +55,13 @@ export function TypedBlockCard({
   type,
   onConflict,
   onDeleted,
+  compact = false,
 }: {
   block: Block;
   type: BlockType;
   onConflict: () => void;
   onDeleted: (id: string) => void;
+  compact?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -75,6 +78,9 @@ export function TypedBlockCard({
   const statusField = fields.find((f) => f.type === "status" && f.key === statusKey) ?? null;
   // Status lives in the icon; title lives in the header — the rest go in the body.
   const rest = fields.filter((f) => f.key !== "title" && f.key !== statusKey);
+  const hasAttachField = rest.some((f) => f.type === "attachments");
+  // In masonry (compact) the attachments field is replaced by a paperclip chip.
+  const bodyFields = compact ? rest.filter((f) => f.type !== "attachments") : rest;
 
   const save = async (next: Record<string, unknown>) => {
     setSaveState("saving");
@@ -129,12 +135,16 @@ export function TypedBlockCard({
         />
       </div>
 
-      {rest.length > 0 && (
+      {bodyFields.length > 0 && (
         <div className="typed-fields">
-          {rest.map((f) => (
+          {bodyFields.map((f) => (
             <label
               className={`field typed-field${
-                f.type === "text" || f.type === "url" || f.type === "datespan" || f.type === "attachments"
+                f.type === "text" ||
+                f.type === "longtext" ||
+                f.type === "url" ||
+                f.type === "datespan" ||
+                f.type === "attachments"
                   ? " full"
                   : ""
               }`}
@@ -152,7 +162,14 @@ export function TypedBlockCard({
         </div>
       )}
 
-      <TagEditor blockId={block.id} />
+      {compact && hasAttachField ? (
+        <div className="tags-line">
+          <AttachmentsChip blockId={block.id} />
+          <TagEditor blockId={block.id} />
+        </div>
+      ) : (
+        <TagEditor blockId={block.id} />
+      )}
 
       <div className="block-meta">
         <span className="type-name">{type.name}</span>

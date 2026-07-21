@@ -11,6 +11,7 @@ import { z } from "zod";
 
 export const fieldTypeSchema = z.enum([
   "text",
+  "longtext", // paragraph-sized markdown editor (expands, live/raw), like a note body
   "date", // legacy date-only; rendered with the date/time picker (time optional)
   "datetime", // "Date/Time": a single calendar + 12-hour time; value "YYYY-MM-DDTHH:mm"
   "datespan", // "Date/Time Span": { start, end } each "YYYY-MM-DDTHH:mm", with labels

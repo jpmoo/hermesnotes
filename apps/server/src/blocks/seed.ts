@@ -25,7 +25,7 @@ const SEED_TYPES: SeedType[] = [
     builtin: true,
     propertySchema: {
       fields: [
-        { key: "description", label: "Body", type: "text", order: 0, includeEmbed: true, locked: true },
+        { key: "description", label: "Body", type: "longtext", order: 0, includeEmbed: true, locked: true },
       ],
     },
   },
@@ -36,7 +36,7 @@ const SEED_TYPES: SeedType[] = [
     propertySchema: {
       fields: [
         { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
-        { key: "description", type: "text", order: 1, includeEmbed: true },
+        { key: "description", type: "longtext", order: 1, includeEmbed: true },
         { key: "due_date", type: "date", order: 2, includeEmbed: false, locked: true },
         {
           key: "status",
@@ -75,7 +75,7 @@ const SEED_TYPES: SeedType[] = [
     propertySchema: {
       fields: [
         { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
-        { key: "description", type: "text", order: 1, includeEmbed: true, locked: true },
+        { key: "description", type: "longtext", order: 1, includeEmbed: true, locked: true },
         { key: "start", type: "datetime", order: 2, includeEmbed: false, locked: true },
         { key: "end", type: "datetime", order: 3, includeEmbed: false, locked: true },
         { key: "location", type: "text", order: 4, includeEmbed: true },
@@ -89,7 +89,7 @@ const SEED_TYPES: SeedType[] = [
     propertySchema: {
       fields: [
         { key: "title", label: "Name", type: "text", order: 0, includeEmbed: true, locked: true },
-        { key: "description", label: "About", type: "text", order: 1, includeEmbed: true, locked: true },
+        { key: "description", label: "About", type: "longtext", order: 1, includeEmbed: true, locked: true },
         // refTypeId wired to the organization type itself after insert.
         { key: "parent", label: "Parent Organization", type: "reference", order: 2, includeEmbed: false, locked: true },
       ],
@@ -103,7 +103,7 @@ const SEED_TYPES: SeedType[] = [
       fields: [
         { key: "title", label: "Name", type: "text", order: 0, includeEmbed: true, locked: true },
         { key: "role", label: "Title/Role", type: "text", order: 1, includeEmbed: true, locked: true },
-        { key: "description", label: "About", type: "text", order: 2, includeEmbed: true, locked: true },
+        { key: "description", label: "About", type: "longtext", order: 2, includeEmbed: true, locked: true },
         { key: "organization", label: "Organization", type: "reference", order: 3, includeEmbed: false, locked: true },
       ],
     },

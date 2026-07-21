@@ -44,7 +44,8 @@ function DocSection({
   children: ReactNode;
 }) {
   const s = useSortable({ id, disabled: !draggable });
-  const style = { transform: CSS.Transform.toString(s.transform), transition: s.transition };
+  // Translate (not Transform) so variable-height cards don't stretch mid-drag.
+  const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
     <div ref={s.setNodeRef} style={style} className="doc-section-row">
       {draggable && (

@@ -18,10 +18,18 @@ const FIELD_TYPES: FieldType[] = [
   "attachments",
 ];
 
-const TYPE_LABELS: Partial<Record<FieldType, string>> = {
+const TYPE_LABELS: Record<FieldType, string> = {
+  text: "Text",
+  date: "Date",
   datetime: "Date/Time",
   datespan: "Date/Time Span",
-  attachments: "File attachments",
+  number: "Number",
+  boolean: "Boolean",
+  select: "Select",
+  status: "Status",
+  url: "URL",
+  reference: "Reference",
+  attachments: "File Attachments",
 };
 
 interface EditField {
@@ -229,7 +237,7 @@ export function TypeEditor({
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {TYPE_LABELS[t] ?? t}
+                    {TYPE_LABELS[t]}
                   </option>
                 ))}
               </select>

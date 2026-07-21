@@ -1316,7 +1316,11 @@ input.li-text:focus {
   gap: 8px;
 }
 .note-editor ul[data-type="taskList"] li > label {
-  margin-top: 3px;
+  /* Center the checkbox within the first line so it aligns with the text. */
+  display: inline-flex;
+  align-items: center;
+  height: 1.55em;
+  margin: 0;
   user-select: none;
 }
 .note-editor ul[data-type="taskList"] li > div {

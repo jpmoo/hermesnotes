@@ -4,6 +4,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   unique,
@@ -20,6 +21,7 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name"),
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -46,6 +48,10 @@ export const userSettings = pgTable("user_settings", {
   inferenceModel: text("inference_model"),
   // UI preferences that sync across devices (e.g. Inbox pill colors).
   preferences: jsonb("preferences").$type<Record<string, unknown>>().notNull().default({}),
+  // Default semantic-similarity floor used where no per-query slider exists.
+  defaultSimilarity: real("default_similarity").notNull().default(0.75),
+  // IANA timezone (e.g. "America/New_York") for day boundaries; null = server local.
+  timezone: text("timezone"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -40,6 +40,7 @@ export interface User {
   id: string;
   email: string;
   displayName: string | null;
+  isAdmin: boolean;
 }
 
 export interface Block {
@@ -60,6 +61,8 @@ export interface Settings {
   embedModel: string | null;
   embedDim: number | null;
   inferenceModel: string | null;
+  defaultSimilarity: number;
+  timezone: string | null;
   connected: boolean;
 }
 

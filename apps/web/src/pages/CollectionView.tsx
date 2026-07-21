@@ -26,7 +26,7 @@ import { QueryPanel } from "../components/QueryPanel.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
-import { useBlockSort } from "../lib/useBlockSort.tsx";
+import { useBlockView } from "../lib/useBlockView.tsx";
 
 type Format = "bullet" | "ordered" | "checklist" | "blocks";
 
@@ -261,7 +261,9 @@ export function CollectionView() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const typeById = new Map(types.map((t) => [t.id, t]));
-  const { sorted, sortBar, active: sortActive } = useBlockSort(members, types);
+  const { sorted, toolbar: sortBar, active: sortActive } = useBlockView(members, types, {
+    enableView: false,
+  });
 
   const load = async () => {
     const [data, ts] = await Promise.all([

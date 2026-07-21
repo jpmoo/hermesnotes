@@ -22,7 +22,7 @@ export interface QueriedBlock {
 }
 
 /** Block ids whose embedding is within the similarity floor of the query text. */
-async function semanticIds(userId: string, value: string, floor: number): Promise<string[]> {
+export async function semanticIds(userId: string, value: string, floor: number): Promise<string[]> {
   const [s] = await db
     .select({ url: userSettings.ollamaUrl, model: userSettings.embedModel })
     .from(userSettings)
@@ -62,8 +62,10 @@ function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): S
       const d = new Date(resolveDateToken(c.date, now));
       return c.op === "before" ? lt(blocks.updatedAt, d) : gt(blocks.updatedAt, d);
     }
-    case "tag":
-      return sql`EXISTS (SELECT 1 FROM ${blockTags} bt JOIN ${tags} tg ON tg.id = bt.tag_id WHERE bt.block_id = ${blocks.id} AND tg.name = ${c.tag})`;
+    case "tag": {
+      const has = sql`EXISTS (SELECT 1 FROM ${blockTags} bt JOIN ${tags} tg ON tg.id = bt.tag_id WHERE bt.block_id = ${blocks.id} AND tg.name = ${c.tag})`;
+      return c.op === "exclude" ? sql`NOT ${has}` : has;
+    }
     case "text": {
       const like = `%${c.value}%`;
       return sql`(${blocks.properties}->>'title' ILIKE ${like} OR ${blocks.content} ILIKE ${like} OR ${blocks.embedSource} ILIKE ${like})`;

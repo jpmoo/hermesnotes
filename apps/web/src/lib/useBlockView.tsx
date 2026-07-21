@@ -1,10 +1,11 @@
 import type { FieldDef } from "@hermes/shared";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
 
-/** Minimal shape a sortable block must expose. Both Block and Member satisfy it. */
-interface Sortable {
+/** Minimal shape a viewable block must expose. Both Block and Member satisfy it. */
+interface Viewable {
+  id: string;
   blockTypeId: string | null;
   properties: Record<string, unknown>;
   content: string | null;
@@ -17,11 +18,14 @@ interface SortLevel {
   key: SortKey;
   dir: "asc" | "desc";
 }
+type ViewMode = "block" | "masonry" | "masonry-collapsed";
 
+const VIEW_KEY = "hn.blockview.mode";
+const COLS_KEY = "hn.blockview.cols";
 const pretty = (k: string) => k.replace(/_/g, " ");
 
 /** Field keys shared by the schemas of every block type present in `items`. */
-function commonFields(items: Sortable[], types: BlockType[]): FieldDef[] {
+function commonFields(items: Viewable[], types: BlockType[]): FieldDef[] {
   const typeById = new Map(types.map((t) => [t.id, t]));
   const presentIds = [...new Set(items.map((i) => i.blockTypeId))];
   let common: FieldDef[] | null = null;
@@ -37,7 +41,7 @@ function commonFields(items: Sortable[], types: BlockType[]): FieldDef[] {
   return common ?? [];
 }
 
-function valueFor(b: Sortable, key: SortKey): string {
+function valueFor(b: Viewable, key: SortKey): string {
   if (key === "alpha") return oneLineText(b.properties, b.content).toLowerCase();
   if (key === "created") return b.createdAt;
   if (key === "edited") return b.updatedAt;
@@ -46,17 +50,40 @@ function valueFor(b: Sortable, key: SortKey): string {
 }
 
 /**
- * Multi-level sort control for a list of blocks. Sort keys: alphabetical (title,
- * falling back to description), created date, edited date, and any property
- * common to all block types represented in the list (labelled by the field's
- * label, falling back to its key). Returns the sorted array plus the control UI;
- * with no levels chosen the input order is preserved.
+ * Sort + view controls for a block list. Sort keys: alphabetical (title, else
+ * description), created, edited, and any property common to all represented
+ * types (labelled by the field's label, falling back to its key). View modes:
+ * vertical block list, masonry (natural height), and masonry (constant height),
+ * with a persistent column count. Returns the sorted items, the toolbar UI, and
+ * a `renderList` helper that lays cards out per the chosen view.
  */
-export function useBlockSort<T extends Sortable>(
+export function useBlockView<T extends Viewable>(
   items: T[],
   types: BlockType[],
-): { sorted: T[]; sortBar: React.ReactNode; active: boolean } {
+  opts: { enableView?: boolean } = {},
+): {
+  sorted: T[];
+  active: boolean;
+  toolbar: ReactNode;
+  renderList: (renderCard: (item: T) => ReactNode) => ReactNode;
+} {
+  const enableView = opts.enableView ?? true;
   const [levels, setLevels] = useState<SortLevel[]>([]);
+  const [viewMode, setViewModeState] = useState<ViewMode>(
+    () => (localStorage.getItem(VIEW_KEY) as ViewMode) || "block",
+  );
+  const [columns, setColumnsState] = useState<number>(
+    () => Number(localStorage.getItem(COLS_KEY)) || 3,
+  );
+  const setViewMode = (v: ViewMode) => {
+    setViewModeState(v);
+    localStorage.setItem(VIEW_KEY, v);
+  };
+  const setColumns = (n: number) => {
+    const c = Math.min(6, Math.max(1, n));
+    setColumnsState(c);
+    localStorage.setItem(COLS_KEY, String(c));
+  };
 
   const fields = useMemo(() => commonFields(items, types), [items, types]);
   const options = useMemo(
@@ -71,7 +98,6 @@ export function useBlockSort<T extends Sortable>(
     ],
     [fields],
   );
-  const labelFor = (k: SortKey) => options.find((o) => o.key === k)?.label ?? k;
 
   const active = levels.length > 0;
   const sorted = useMemo(() => {
@@ -81,11 +107,9 @@ export function useBlockSort<T extends Sortable>(
       for (const lv of levels) {
         const va = valueFor(a, lv.key);
         const vb = valueFor(b, lv.key);
-        const ea = va === "";
-        const eb = vb === "";
-        if (ea || eb) {
-          if (ea && eb) continue;
-          return ea ? 1 : -1; // empties always last
+        if (va === "" || vb === "") {
+          if (va === "" && vb === "") continue;
+          return va === "" ? 1 : -1; // empties last
         }
         const na = Number(va);
         const nb = Number(vb);
@@ -111,7 +135,13 @@ export function useBlockSort<T extends Sortable>(
     setLevels((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const removeLevel = (i: number) => setLevels((ls) => ls.filter((_, idx) => idx !== i));
 
-  const sortBar = (
+  const VIEWS: { key: ViewMode; label: string }[] = [
+    { key: "block", label: "Block" },
+    { key: "masonry", label: "Masonry" },
+    { key: "masonry-collapsed", label: "Masonry (compact)" },
+  ];
+
+  const toolbar = (
     <div className="sort-bar">
       <span className="sort-label">Sort</span>
       {levels.map((lv, i) => (
@@ -144,13 +174,58 @@ export function useBlockSort<T extends Sortable>(
           Clear
         </button>
       )}
-      {active && (
-        <span className="sort-summary hint">
-          {levels.map((l) => labelFor(l.key)).join(" · ")}
+
+      {enableView && (
+        <span className="view-controls">
+          <div className="segmented">
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                className={`seg${viewMode === v.key ? " active" : ""}`}
+                onClick={() => setViewMode(v.key)}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          {viewMode !== "block" && (
+            <span className="cols-ctl">
+              <span className="hint">Cols</span>
+              <button className="icon-btn" onClick={() => setColumns(columns - 1)} title="Fewer columns">
+                −
+              </button>
+              <span className="cols-n">{columns}</span>
+              <button className="icon-btn" onClick={() => setColumns(columns + 1)} title="More columns">
+                +
+              </button>
+            </span>
+          )}
         </span>
       )}
     </div>
   );
 
-  return { sorted, sortBar, active };
+  const renderList = (renderCard: (item: T) => ReactNode): ReactNode => {
+    if (!enableView || viewMode === "block") {
+      return (
+        <div className="block-stack">
+          {sorted.map((it) => (
+            <div key={it.id}>{renderCard(it)}</div>
+          ))}
+        </div>
+      );
+    }
+    const cls = "masonry" + (viewMode === "masonry-collapsed" ? " collapsed" : "");
+    return (
+      <div className={cls} style={{ columnCount: columns }}>
+        {sorted.map((it) => (
+          <div className="masonry-item" key={it.id}>
+            {renderCard(it)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  return { sorted, active, toolbar, renderList };
 }

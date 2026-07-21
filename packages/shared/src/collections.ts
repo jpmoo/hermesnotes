@@ -32,7 +32,12 @@ export const conditionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("blockType"), typeId: z.string().uuid() }),
   z.object({ kind: z.literal("created"), op: z.enum(["before", "after"]), date: z.string() }),
   z.object({ kind: z.literal("edited"), op: z.enum(["before", "after"]), date: z.string() }),
-  z.object({ kind: z.literal("tag"), tag: z.string() }),
+  z.object({
+    kind: z.literal("tag"),
+    tag: z.string(),
+    // absent = include (kept optional so the recursive group schema stays sound)
+    op: z.enum(["include", "exclude"]).optional(),
+  }),
   z.object({
     kind: z.literal("property"),
     key: z.string(),

@@ -24,6 +24,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       embedModel: row.embedModel,
       embedDim: row.embedDim,
       inferenceModel: row.inferenceModel,
+      defaultSimilarity: row.defaultSimilarity,
+      timezone: row.timezone,
       connected: Boolean(row.ollamaUrl && row.embedModel),
     };
   });
@@ -90,6 +92,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         ollamaUrl: z.string().url().nullable().optional(),
         embedModel: z.string().nullable().optional(),
         inferenceModel: z.string().nullable().optional(),
+        defaultSimilarity: z.number().min(0).max(1).optional(),
+        timezone: z.string().nullable().optional(),
       })
       .parse(req.body);
 
@@ -127,6 +131,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
           embedDim,
           inferenceModel:
             body.inferenceModel !== undefined ? body.inferenceModel : current.inferenceModel,
+          defaultSimilarity:
+            body.defaultSimilarity !== undefined ? body.defaultSimilarity : current.defaultSimilarity,
+          timezone: body.timezone !== undefined ? body.timezone : current.timezone,
           updatedAt: new Date(),
         })
         .where(eq(userSettings.userId, userId));
@@ -147,6 +154,9 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       embedDim,
       inferenceModel:
         body.inferenceModel !== undefined ? body.inferenceModel : current.inferenceModel,
+      defaultSimilarity:
+        body.defaultSimilarity !== undefined ? body.defaultSimilarity : current.defaultSimilarity,
+      timezone: body.timezone !== undefined ? body.timezone : current.timezone,
       connected: Boolean(nextUrl && nextEmbed),
       reembedTriggered: embedChanged,
     };

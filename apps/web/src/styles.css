@@ -1610,3 +1610,115 @@ input.li-text:focus {
 .segmented.wrap {
   flex-wrap: wrap;
 }
+
+/* ── Block view: masonry + view controls ──────────────────────── */
+.view-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.cols-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cols-n {
+  min-width: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.block-stack > * + * {
+  margin-top: 0;
+}
+.masonry {
+  column-gap: 14px;
+}
+.masonry-item {
+  break-inside: avoid;
+  margin-bottom: 14px;
+}
+.masonry-item > .card {
+  margin: 0;
+}
+.masonry.collapsed .masonry-item {
+  height: 240px;
+  overflow: hidden;
+  position: relative;
+}
+.masonry.collapsed .masonry-item::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 36px;
+  background: linear-gradient(transparent, var(--surface));
+  pointer-events: none;
+}
+
+/* ── Reference multi-select chips ─────────────────────────────── */
+.ref-multi .ref-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 40px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  cursor: text;
+}
+.ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: rgba(95, 164, 181, 0.14);
+  font-size: 12.5px;
+  max-width: 220px;
+}
+.ref-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-chip-x {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 1px;
+  border-radius: 50%;
+}
+.ref-chip-x:hover {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.08);
+}
+.ref-chip-input {
+  flex: 1;
+  min-width: 90px;
+  border: 0 !important;
+  background: transparent !important;
+  height: 26px !important;
+  padding: 0 4px !important;
+}
+.ref-chip-input:focus {
+  box-shadow: none !important;
+}
+
+/* ── Types page: expandable per-type block list ───────────────── */
+.type-handle {
+  color: var(--text-muted);
+}
+.type-blocklist {
+  margin: 4px 0 18px 22px;
+  padding-left: 16px;
+  border-left: 2px solid var(--border);
+}
+.type-search {
+  margin-bottom: 12px;
+}

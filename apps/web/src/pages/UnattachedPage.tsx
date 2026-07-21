@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Settings } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
-import { useBlockSort } from "../lib/useBlockSort.tsx";
+import { useBlockView } from "../lib/useBlockView.tsx";
 
 export function UnattachedPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -50,7 +50,7 @@ export function UnattachedPage() {
 
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
 
-  const { sorted, sortBar } = useBlockSort(blocks, types);
+  const { toolbar, renderList } = useBlockView(blocks, types);
 
   // Text type first, then the rest alphabetically.
   const ordered = [...types].sort((a, b) =>
@@ -95,16 +95,15 @@ export function UnattachedPage() {
         </button>
       </div>
 
-      {blocks.length > 0 && sortBar}
+      {blocks.length > 0 && toolbar}
 
       {loading ? (
         <div className="hint">Loading…</div>
       ) : blocks.length === 0 ? (
         <div className="hint">Nothing unattached — every block has a home.</div>
       ) : (
-        sorted.map((b) => (
+        renderList((b) => (
           <BlockCard
-            key={b.id}
             block={b}
             type={typeById.get(b.blockTypeId)}
             onConflict={refresh}

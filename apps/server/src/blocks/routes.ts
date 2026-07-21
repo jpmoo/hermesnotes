@@ -1,10 +1,10 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { filterQuerySchema, normalizeFilter, oneLineLabel } from "@hermes/shared";
-import { blocks, blockTags, blockTypes, memberships, tags } from "@hermes/db";
+import { blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
-import { runQuery } from "../collections/query.js";
+import { runQuery, semanticIds } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
@@ -95,11 +95,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id})`,
           // no children (not a collection with members)
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.collection_id = ${blocks.id})`,
-          // not referenced by another block: some other block's property value
-          // equals this block's id (reference fields store the target id).
+          // not referenced by another block: this block's id appears anywhere in
+          // another block's properties (reference fields store the target id, as
+          // a scalar or an array element for multi-references).
           sql`NOT EXISTS (
-            SELECT 1 FROM ${blocks} ref, jsonb_each_text(ref.properties) kv
-            WHERE ref.owner_id = ${userId} AND ref.id <> ${blocks.id} AND kv.value = ${blocks.id}::text
+            SELECT 1 FROM ${blocks} ref
+            WHERE ref.owner_id = ${userId} AND ref.id <> ${blocks.id}
+              AND jsonb_path_exists(ref.properties, '$.** ? (@ == $id)', jsonb_build_object('id', ${blocks.id}::text))
           )`,
         ),
       )
@@ -128,6 +130,42 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
     }));
+  });
+
+  /**
+   * Blocks of a given type (for the Types page), newest-edited first. An
+   * optional `q` matches title / description / body content, plus semantic
+   * similarity above the account's default threshold (no per-query slider here).
+   */
+  app.get("/blocks/of-type/:typeId", async (req) => {
+    const userId = requireUser(req);
+    const { typeId } = z.object({ typeId: z.string().uuid() }).parse(req.params);
+    const { q } = z.object({ q: z.string().optional() }).parse(req.query);
+
+    const filters = [
+      eq(blocks.ownerId, userId),
+      eq(blocks.blockTypeId, typeId),
+      sql`${blocks.collectionKind} IS NULL`,
+      sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+    ];
+    if (q && q.trim()) {
+      const like = `%${q.trim()}%`;
+      const [s] = await db
+        .select({ sim: userSettings.defaultSimilarity })
+        .from(userSettings)
+        .where(eq(userSettings.userId, userId))
+        .limit(1);
+      const ids = await semanticIds(userId, q.trim(), s?.sim ?? 0.75);
+      const textMatch = sql`(${blocks.properties}->>'title' ILIKE ${like} OR ${blocks.properties}->>'description' ILIKE ${like} OR ${blocks.content} ILIKE ${like})`;
+      filters.push(ids.length ? or(textMatch, inArray(blocks.id, ids))! : textMatch);
+    }
+
+    return db
+      .select(blockView)
+      .from(blocks)
+      .where(and(...filters))
+      .orderBy(desc(blocks.updatedAt))
+      .limit(200);
   });
 
   // Options for a reference field: blocks of a given type, as {id, label}.

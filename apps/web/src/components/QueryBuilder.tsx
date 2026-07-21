@@ -35,7 +35,7 @@ function defaultCondition(kind: Kind, types: BlockType[], fields: FieldDef[]): C
     case "edited":
       return { kind, op: "after", date: "" };
     case "tag":
-      return { kind, tag: "" };
+      return { kind, tag: "", op: "include" };
     case "property":
       return { kind, key: fields[0]?.key ?? "", op: "eq", value: "" };
     case "text":
@@ -144,13 +144,22 @@ function ConditionRow({
       )}
 
       {c.kind === "tag" && (
-        <input
-          type="text"
-          list="hn-tags"
-          placeholder="tag"
-          value={c.tag}
-          onChange={(e) => onChange({ ...c, tag: e.target.value })}
-        />
+        <>
+          <select
+            value={c.op ?? "include"}
+            onChange={(e) => onChange({ ...c, op: e.target.value as "include" | "exclude" })}
+          >
+            <option value="include">includes</option>
+            <option value="exclude">excludes</option>
+          </select>
+          <input
+            type="text"
+            list="hn-tags"
+            placeholder="tag"
+            value={c.tag}
+            onChange={(e) => onChange({ ...c, tag: e.target.value })}
+          />
+        </>
       )}
 
       {c.kind === "property" && (

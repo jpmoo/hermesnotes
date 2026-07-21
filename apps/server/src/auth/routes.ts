@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { apiTokens, users, userSettings } from "@hermes/db";
@@ -39,26 +39,34 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (existing.length) throw conflict("email already registered");
 
     const passwordHash = await hashPassword(password);
-    const userId = await db.transaction(async (tx) => {
+    const { userId, isAdmin } = await db.transaction(async (tx) => {
+      // The first account to register becomes the admin.
+      const counted = await tx.select({ count: sql<number>`count(*)::int` }).from(users);
+      const admin = (counted[0]?.count ?? 0) === 0;
       const [row] = await tx
         .insert(users)
-        .values({ email, passwordHash, displayName: displayName ?? null })
+        .values({ email, passwordHash, displayName: displayName ?? null, isAdmin: admin })
         .returning({ id: users.id });
       const id = row!.id;
       await tx.insert(userSettings).values({ userId: id });
       await seedBlockTypes(tx, id);
-      return id;
+      return { userId: id, isAdmin: admin };
     });
 
     setSessionCookie(reply, userId);
     reply.code(201);
-    return { id: userId, email, displayName: displayName ?? null };
+    return { id: userId, email, displayName: displayName ?? null, isAdmin };
   });
 
   app.post("/auth/login", async (req, reply) => {
     const { email, password } = credentials.omit({ displayName: true }).parse(req.body);
     const [user] = await db
-      .select({ id: users.id, passwordHash: users.passwordHash, displayName: users.displayName })
+      .select({
+        id: users.id,
+        passwordHash: users.passwordHash,
+        displayName: users.displayName,
+        isAdmin: users.isAdmin,
+      })
       .from(users)
       .where(eq(users.email, email))
       .limit(1);
@@ -66,7 +74,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       throw unauthorized("invalid email or password");
     }
     setSessionCookie(reply, user.id);
-    return { id: user.id, email, displayName: user.displayName };
+    return { id: user.id, email, displayName: user.displayName, isAdmin: user.isAdmin };
   });
 
   app.post("/auth/logout", async (_req, reply) => {
@@ -106,7 +114,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get("/auth/me", { preHandler: authenticate }, async (req) => {
     const userId = requireUser(req);
     const [user] = await db
-      .select({ id: users.id, email: users.email, displayName: users.displayName })
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        isAdmin: users.isAdmin,
+      })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);

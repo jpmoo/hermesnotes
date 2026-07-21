@@ -2,9 +2,10 @@ import { and, eq, gte, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { PropertySchema } from "@hermes/shared";
-import { blocks, blockTypes } from "@hermes/db";
+import { blocks, blockTypes, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
+import { zonedDayRange } from "../lib/timezone.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 
 const blockView = {
@@ -109,9 +110,13 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       note = created;
     }
 
-    // Activity: blocks created or edited on this date (server-local day).
-    const start = new Date(`${date}T00:00:00`);
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    // Activity: blocks created or edited on this date, in the user's timezone.
+    const [tzRow] = await db
+      .select({ tz: userSettings.timezone })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    const { start, end } = zonedDayRange(date, tzRow?.tz ?? null);
     const activity = await db
       .select(blockView)
       .from(blocks)

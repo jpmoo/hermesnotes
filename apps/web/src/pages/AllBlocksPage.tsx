@@ -8,7 +8,7 @@ import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
 import { emptyGroup } from "../lib/filter.ts";
 import { usePanels } from "../lib/right-panel.tsx";
-import { useBlockSort } from "../lib/useBlockSort.tsx";
+import { useBlockView } from "../lib/useBlockView.tsx";
 
 export function AllBlocksPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -48,7 +48,7 @@ export function AllBlocksPage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: filter }).then(setBlocks);
 
-  const { sorted, sortBar } = useBlockSort(blocks, types);
+  const { toolbar, renderList } = useBlockView(blocks, types);
 
   return (
     <>
@@ -67,16 +67,15 @@ export function AllBlocksPage() {
         <span className="hint">{blocks.length} block(s)</span>
       </div>
 
-      {blocks.length > 0 && sortBar}
+      {blocks.length > 0 && toolbar}
 
       {loading ? (
         <div className="hint">Loading…</div>
       ) : blocks.length === 0 ? (
         <div className="hint">No blocks match this filter.</div>
       ) : (
-        sorted.map((b) => (
+        renderList((b) => (
           <BlockCard
-            key={b.id}
             block={b}
             type={typeById.get(b.blockTypeId)}
             onConflict={reload}

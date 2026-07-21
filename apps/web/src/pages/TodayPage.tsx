@@ -7,6 +7,7 @@ import { BlockCard } from "../components/BlockCard.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TodayCalendar } from "../components/TodayCalendar.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useBlockView } from "../lib/useBlockView.tsx";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayStr = () => {
@@ -70,16 +71,16 @@ export function TodayPage() {
     year: "numeric",
   });
 
-  const cards = (list: Block[]) =>
-    list.map((b) => (
-      <BlockCard
-        key={b.id}
-        block={b}
-        type={typeById.get(b.blockTypeId)}
-        onConflict={load}
-        onDeleted={onDeleted}
-      />
-    ));
+  const relevantView = useBlockView(sheet?.relevant ?? [], types);
+  const activityView = useBlockView(sheet?.activity ?? [], types);
+  const card = (b: Block) => (
+    <BlockCard
+      block={b}
+      type={typeById.get(b.blockTypeId)}
+      onConflict={load}
+      onDeleted={onDeleted}
+    />
+  );
 
   return (
     <>
@@ -111,7 +112,10 @@ export function TodayPage() {
             {sheet.relevant.length === 0 ? (
               <div className="hint">Nothing dated to this day.</div>
             ) : (
-              cards(sheet.relevant)
+              <>
+                {relevantView.toolbar}
+                {relevantView.renderList(card)}
+              </>
             )}
           </section>
 
@@ -120,7 +124,10 @@ export function TodayPage() {
             {sheet.activity.length === 0 ? (
               <div className="hint">No activity on this day.</div>
             ) : (
-              cards(sheet.activity)
+              <>
+                {activityView.toolbar}
+                {activityView.renderList(card)}
+              </>
             )}
           </section>
         </>

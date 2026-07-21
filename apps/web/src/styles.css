@@ -2231,3 +2231,43 @@ input.li-text:focus {
 .mention-chip.tag:hover {
   background: var(--surface-3, rgba(0, 0, 0, 0.06));
 }
+
+/* ── Editor selection toolbar (bubble menu) ───────────────────── */
+.edit-bubble {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow-lift);
+}
+.bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bubble-btn:hover {
+  background: var(--surface-2);
+}
+.bubble-btn.active {
+  background: rgba(95, 164, 181, 0.18);
+  color: var(--accent-ink);
+}
+.bubble-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: var(--border);
+}

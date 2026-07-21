@@ -9,6 +9,7 @@ import { Markdown } from "tiptap-markdown";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
+import { EditorBubbleMenu } from "./EditorBubbleMenu.tsx";
 import { MentionMenu } from "./MentionMenu.tsx";
 
 type Mode = "live" | "raw";
@@ -111,7 +112,10 @@ export function MarkdownEditor({
   return (
     <div className="md-editor">
       {mode === "live" ? (
-        <EditorContent editor={editor} />
+        <>
+          <EditorContent editor={editor} />
+          {editor && <EditorBubbleMenu editor={editor} />}
+        </>
       ) : (
         <textarea
           ref={taRef}

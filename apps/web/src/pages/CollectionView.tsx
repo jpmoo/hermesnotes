@@ -14,7 +14,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FilterQuery } from "@hermes/shared";
-import { ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
@@ -295,8 +295,9 @@ export function CollectionView() {
 
   return (
     <>
-      <button className="ghost" onClick={() => nav("/collections")} style={{ marginBottom: 10 }}>
-        ← Collections
+      <button className="ghost back-link" onClick={() => nav("/collections")}>
+        <ArrowLeft size={16} />
+        Collections
       </button>
       <input
         className="collection-title"

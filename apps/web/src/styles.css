@@ -787,6 +787,18 @@ input.typed-title:focus {
   text-transform: capitalize;
 }
 
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  padding-left: 6px;
+}
+.back-link:hover {
+  color: var(--accent-ink);
+}
+
 /* ── Query builder ────────────────────────────────────────────── */
 .query-builder {
   border: 1px solid var(--border);

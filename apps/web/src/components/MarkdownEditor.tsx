@@ -51,7 +51,14 @@ export function MarkdownEditor({
   const editor = useEditor({
     extensions: [
       StarterKit,
-      Link.configure({ openOnClick: false, autolink: true, linkOnPaste: true }),
+      // Allow our custom mention schemes to survive markdown re-parsing (raw→live
+      // and reload), so they convert back into mention chips.
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        protocols: ["block", "tag"],
+      }),
       TaskList,
       TaskItem.configure({ nested: true }),
       Markdown.configure({ breaks: true, transformPastedText: true }),

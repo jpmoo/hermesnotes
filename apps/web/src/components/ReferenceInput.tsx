@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Block, type BlockRef } from "../api.ts";
+import { firstLineHtml } from "../lib/markdown-excerpt.ts";
 
 /** Reference picker: a dynamic search box (not a select of every block). */
 export function ReferenceInput({
@@ -84,14 +85,13 @@ export function ReferenceInput({
           {results.map((o) => (
             <button
               key={o.id}
-              className="menu-item"
+              className="menu-item li-md"
               onClick={() => {
                 onChange(o.id);
                 setOpen(false);
               }}
-            >
-              {o.label}
-            </button>
+              dangerouslySetInnerHTML={{ __html: firstLineHtml(o.label) }}
+            />
           ))}
           {results.length === 0 && (
             <div className="hint" style={{ padding: "6px 10px" }}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type BlockSearchResult, type BlockType } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { firstLineHtml } from "../lib/markdown-excerpt.ts";
 
 /** Search existing blocks and add them to a collection (manual membership). */
 export function FinderModal({
@@ -72,7 +73,10 @@ export function FinderModal({
                     color={type?.iconColor}
                     size={16}
                   />
-                  <span className="finder-label">{r.label}</span>
+                  <span
+                    className="finder-label li-md"
+                    dangerouslySetInnerHTML={{ __html: firstLineHtml(r.label) }}
+                  />
                   <button
                     className="ghost"
                     disabled={added.has(r.id)}

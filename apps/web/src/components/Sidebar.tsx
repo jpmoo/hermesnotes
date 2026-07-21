@@ -81,7 +81,14 @@ export function Sidebar() {
         <button
           className="icon-btn panel-pin"
           title={leftPinned ? "Unpin sidebar" : "Pin sidebar open"}
-          onClick={() => setLeftPinned(!leftPinned)}
+          onClick={() => {
+            if (leftPinned) {
+              setLeftPinned(false);
+              setHovered(false); // collapse to the rail on unpin
+            } else {
+              setLeftPinned(true);
+            }
+          }}
         >
           {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
         </button>

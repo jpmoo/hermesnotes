@@ -8,7 +8,7 @@ import { usePanels } from "../lib/right-panel.tsx";
  */
 export function RightPanel() {
   const { setSlotEl, rightPinned, setRightPinned, title, hasContent } = usePanels();
-  const { active: hovered, onMouseEnter, onMouseLeave } = useHoverIntent();
+  const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const expanded = rightPinned || hovered;
 
   return (
@@ -26,7 +26,14 @@ export function RightPanel() {
           <button
             className="icon-btn panel-pin"
             title={rightPinned ? "Unpin panel" : "Pin panel open"}
-            onClick={() => setRightPinned(!rightPinned)}
+            onClick={() => {
+              if (rightPinned) {
+                setRightPinned(false);
+                setHovered(false); // collapse to the rail on unpin
+              } else {
+                setRightPinned(true);
+              }
+            }}
           >
             {rightPinned ? <PinOff size={14} /> : <Pin size={14} />}
           </button>

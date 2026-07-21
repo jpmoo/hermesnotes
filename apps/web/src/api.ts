@@ -96,6 +96,7 @@ export interface BlockType {
   schemaVersion: number;
   isText: boolean;
   builtin: boolean;
+  blockCount?: number;
 }
 
 export interface BlockRef {

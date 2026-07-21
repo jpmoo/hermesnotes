@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { propertySchemaSchema, type PropertySchema } from "@hermes/shared";
@@ -55,7 +55,10 @@ export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
   app.get("/block-types", async (req) => {
     const userId = requireUser(req);
     return db
-      .select(typeView)
+      .select({
+        ...typeView,
+        blockCount: sql<number>`(SELECT count(*)::int FROM ${blocks} b WHERE b.block_type_id = ${blockTypes.id})`,
+      })
       .from(blockTypes)
       .where(eq(blockTypes.ownerId, userId))
       .orderBy(blockTypes.name);

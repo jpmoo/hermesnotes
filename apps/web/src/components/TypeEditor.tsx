@@ -304,14 +304,11 @@ export function TypeEditor({
               <button className="icon-btn" title="Move down" onClick={() => move(i, 1)}>
                 ↓
               </button>
-              <button
-                className="icon-btn"
-                title={f.locked || f.key === "title" ? "Built-in field — can't be removed" : "Remove"}
-                disabled={f.key === "title" || f.locked}
-                onClick={() => removeField(i)}
-              >
-                ✕
-              </button>
+              {!(f.key === "title" || f.locked) && (
+                <button className="icon-btn" title="Remove" onClick={() => removeField(i)}>
+                  ✕
+                </button>
+              )}
             </div>
           ))}
         </div>

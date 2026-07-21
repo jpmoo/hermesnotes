@@ -90,9 +90,7 @@ export function TypesPage() {
                   {t.builtin && <span className="pill" style={{ marginLeft: 8 }}>built in</span>}
                 </div>
                 <div className="hint">
-                  {t.isText
-                    ? "Free-form markdown text (body labelled “Body”)"
-                    : `${t.propertySchema?.fields.length ?? 0} field(s)`}
+                  {t.propertySchema?.fields.length ?? 0} field(s) · {t.blockCount ?? 0} block(s)
                 </div>
               </div>
               <button className="ghost" onClick={() => setEditor({ mode: "edit", type: t })}>

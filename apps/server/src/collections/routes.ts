@@ -253,6 +253,16 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       })
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .returning(collectionView);
+
+    // Editing a snapshot collection's query re-materializes it immediately, so
+    // the caller never has to hit "refresh" after saving.
+    if (
+      "filter_query" in patch &&
+      nextProps.membership_mode === "smart" &&
+      nextProps.smart_mode === "snapshot"
+    ) {
+      await materialize(userId, id, safeFilter(nextProps.filter_query));
+    }
     return row;
   });
 

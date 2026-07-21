@@ -50,15 +50,15 @@ export function TextBlockEditor({
   const patch = async (body: Record<string, unknown>) => {
     setSaveState("saving");
     try {
-      const updated = await api.patch<Block>(`/blocks/${block.id}`, {
+      const updated = await api.patch<Block & { tagsChanged?: boolean }>(`/blocks/${block.id}`, {
         ...body,
         version: versionRef.current,
       });
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
-      // A saved #tag mention may have been applied to the block — refresh chips.
-      if (JSON.stringify(body).includes("(tag:")) setTagsRefresh((k) => k + 1);
+      // #tag mentions were synced to the block's tags — refresh the chips.
+      if (updated.tagsChanged) setTagsRefresh((k) => k + 1);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) return onConflict();
       setSaveState("error");

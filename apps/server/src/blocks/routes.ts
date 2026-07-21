@@ -19,8 +19,8 @@ import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "./embed-source.js";
 
-/** Apply `#` mentions (stored as `(tag:<name>)` links) found in text to the block. */
-async function mergeTextTags(userId: string, blockId: string, texts: string[]): Promise<boolean> {
+/** Tag names from `#` mentions (stored as `(tag:<name>)` links) in some text. */
+function extractTags(texts: string[]): Set<string> {
   const names = new Set<string>();
   for (const t of texts) {
     if (typeof t !== "string") continue;
@@ -31,19 +31,61 @@ async function mergeTextTags(userId: string, blockId: string, texts: string[]): 
       if (n) names.add(n);
     }
   }
-  if (names.size === 0) return false;
+  return names;
+}
+
+/**
+ * Sync `#` mentions in a block's text to its tags: add tags now present, and
+ * remove tags that were in the old text but no longer are. Tags added manually
+ * (never present in the text) are untouched. Returns whether anything changed.
+ */
+async function syncTextTags(
+  userId: string,
+  blockId: string,
+  oldTexts: string[],
+  newTexts: string[],
+): Promise<boolean> {
+  const oldNames = extractTags(oldTexts);
+  const newNames = extractTags(newTexts);
+  const toRemove = [...oldNames].filter((n) => !newNames.has(n));
+  if (newNames.size === 0 && toRemove.length === 0) return false;
+
+  let changed = false;
   await db.transaction(async (tx) => {
-    for (const name of names) {
+    const tagId = async (name: string) => {
       await tx.insert(tags).values({ ownerId: userId, name }).onConflictDoNothing();
-      const [tag] = await tx
+      const [t] = await tx
         .select({ id: tags.id })
         .from(tags)
         .where(and(eq(tags.ownerId, userId), eq(tags.name, name)))
         .limit(1);
-      if (tag) await tx.insert(blockTags).values({ blockId, tagId: tag.id }).onConflictDoNothing();
+      return t?.id;
+    };
+    for (const name of newNames) {
+      const id = await tagId(name);
+      if (!id) continue;
+      const r = await tx
+        .insert(blockTags)
+        .values({ blockId, tagId: id })
+        .onConflictDoNothing()
+        .returning({ tagId: blockTags.tagId });
+      if (r.length) changed = true;
+    }
+    for (const name of toRemove) {
+      const [t] = await tx
+        .select({ id: tags.id })
+        .from(tags)
+        .where(and(eq(tags.ownerId, userId), eq(tags.name, name)))
+        .limit(1);
+      if (!t) continue;
+      const r = await tx
+        .delete(blockTags)
+        .where(and(eq(blockTags.blockId, blockId), eq(blockTags.tagId, t.id)))
+        .returning({ tagId: blockTags.tagId });
+      if (r.length) changed = true;
     }
   });
-  return true;
+  return changed;
 }
 
 /**
@@ -512,11 +554,17 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     if (!updated) throw conflict("version conflict — reload and retry");
 
-    // Apply any #tag mentions in the content/text to the block's tags.
-    await mergeTextTags(userId, id, [
-      nextContent ?? "",
-      ...Object.values(nextProps ?? {}).filter((v): v is string => typeof v === "string"),
-    ]);
+    // Sync #tag mentions in the content/text to the block's tags.
+    const asText = (p: Record<string, unknown> | null | undefined, c: string | null) => [
+      c ?? "",
+      ...Object.values(p ?? {}).filter((v): v is string => typeof v === "string"),
+    ];
+    const tagsChanged = await syncTextTags(
+      userId,
+      id,
+      asText(current.properties as Record<string, unknown>, current.content),
+      asText(nextProps as Record<string, unknown>, nextContent),
+    );
 
     // Recurring task just completed → spawn the next occurrence.
     let recurred = false;
@@ -528,7 +576,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         nextProps as Record<string, unknown>,
       );
     }
-    return { ...updated, recurred };
+    return { ...updated, recurred, tagsChanged };
   });
 
   // ── Tags ─────────────────────────────────────────────────────

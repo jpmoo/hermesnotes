@@ -1841,6 +1841,10 @@ input.li-text:focus {
   border-color: var(--accent);
   background: rgba(95, 164, 181, 0.06);
 }
+/* Masonry is a dense overview — hide the upload dropzone (existing files still list). */
+.masonry .attach-drop {
+  display: none;
+}
 .attach-list {
   list-style: none;
   margin: 8px 0 0;

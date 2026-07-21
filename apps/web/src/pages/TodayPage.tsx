@@ -154,7 +154,13 @@ export function TodayPage() {
         return sheet ? (
           <section key="scratchpad" className="today-section">
             <h2 className="today-h">Scratchpad</h2>
-            <TextBlockEditor key={sheet.note.id} block={sheet.note} onConflict={load} onDeleted={load} />
+            <TextBlockEditor
+              key={sheet.note.id}
+              block={sheet.note}
+              onConflict={load}
+              onDeleted={load}
+              canDelete={false}
+            />
           </section>
         ) : null;
       case "relevant":

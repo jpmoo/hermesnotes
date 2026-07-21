@@ -1,4 +1,4 @@
-import { Download, FileText, Paperclip, Trash2, Upload } from "lucide-react";
+import { Download, FileText, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, apiBase, type Attachment } from "../api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -120,18 +120,6 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         onCancel={() => setConfirm(null)}
         onConfirm={() => confirm && void remove(confirm)}
       />
-    </div>
-  );
-}
-
-/** Small labelled wrapper used for the always-on attachments area on text notes. */
-export function AttachmentsSection({ blockId }: { blockId: string }) {
-  return (
-    <div className="attach-section">
-      <span className="attach-label">
-        <Paperclip size={13} /> Attachments
-      </span>
-      <AttachmentsField blockId={blockId} />
     </div>
   );
 }

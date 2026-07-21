@@ -9,7 +9,6 @@ import { api, ApiError, type Block } from "../api.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { usePanels } from "../lib/right-panel.tsx";
-import { AttachmentsSection } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { TagEditor } from "./TagEditor.tsx";
 
@@ -38,10 +37,12 @@ export function TextBlockEditor({
   block,
   onConflict,
   onDeleted,
+  canDelete = true,
 }: {
   block: Block;
   onConflict: () => void;
   onDeleted: (id: string) => void;
+  canDelete?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(block.content ?? "");
@@ -147,7 +148,6 @@ export function TextBlockEditor({
         />
       )}
       <TagEditor blockId={block.id} />
-      <AttachmentsSection blockId={block.id} />
       <div className="block-meta">
         <button className="ghost" onClick={toggle}>
           {mode === "live" ? "Raw" : "Live preview"}
@@ -158,22 +158,26 @@ export function TextBlockEditor({
         {saveState === "saving" && <span>saving…</span>}
         {saveState === "error" && <span className="error">save failed</span>}
         <span style={{ flex: 1 }} />
-        <button className="ghost" onClick={() => setConfirmOpen(true)}>
-          Delete
-        </button>
+        {canDelete && (
+          <button className="ghost" onClick={() => setConfirmOpen(true)}>
+            Delete
+          </button>
+        )}
       </div>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Delete this note?"
-        message="This permanently removes the block and its embedding. This can't be undone."
-        confirmLabel="Delete"
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={() => {
-          setConfirmOpen(false);
-          void remove();
-        }}
-      />
+      {canDelete && (
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Delete this note?"
+          message="This permanently removes the block and its embedding. This can't be undone."
+          confirmLabel="Delete"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            void remove();
+          }}
+        />
+      )}
     </div>
   );
 }

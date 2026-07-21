@@ -114,6 +114,7 @@ export interface Attachment {
 
 export interface BlockInfo {
   id: string;
+  title: string;
   createdAt: string;
   updatedAt: string;
   type: string;

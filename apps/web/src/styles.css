@@ -491,6 +491,33 @@ label,
   margin: 0;
 }
 
+/* Section theming: a soft band at the top of the window tinted with the
+   active section's rail colors, plus a matching title text/icon color. */
+.main.themed {
+  position: relative;
+}
+.section-shade {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 150px;
+  background: linear-gradient(var(--section-bg), transparent);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+.main.themed .main-inner {
+  position: relative;
+  z-index: 1;
+}
+.main.themed .page-title {
+  color: var(--section-text);
+}
+.main.themed .page-title svg {
+  color: var(--section-icon);
+}
+
 .page-title {
   font-family: var(--font-chrome);
   font-size: 20px;
@@ -1891,6 +1918,13 @@ input.li-text:focus {
 }
 .info-block {
   margin-top: 6px;
+}
+.info-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+  line-height: 1.3;
 }
 .info-grid {
   display: grid;

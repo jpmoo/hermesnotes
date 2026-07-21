@@ -350,6 +350,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     return {
       id: b.id,
+      title: labelOf(props, b.content),
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
       type,

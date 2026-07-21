@@ -1,4 +1,4 @@
-import { ListFilter, PanelRight, Pin, PinOff, X } from "lucide-react";
+import { ListFilter, PanelRight, Pin, PinOff } from "lucide-react";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
@@ -45,16 +45,7 @@ export function RightPanel() {
         {showInfo && (
           <div className="info-block">
             {hasContent && <div className="panel-divider" />}
-            <div className="panel-head-sub">
-              <span className="panel-h">Block info</span>
-              <button
-                className="icon-btn"
-                title="Clear selection"
-                onClick={() => setSelectedBlockId(null)}
-              >
-                <X size={13} />
-              </button>
-            </div>
+            <div className="panel-h">Block info</div>
             <BlockInfoPane blockId={selectedBlockId} onSelect={setSelectedBlockId} />
           </div>
         )}

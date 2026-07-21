@@ -58,6 +58,7 @@ export function BlockInfoPane({
 
   return (
     <div className="info-pane">
+      {info.title && <div className="info-title">{info.title}</div>}
       <dl className="info-grid">
         <dt>Type</dt>
         <dd>{info.type}</dd>

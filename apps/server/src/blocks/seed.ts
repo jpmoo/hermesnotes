@@ -1,9 +1,10 @@
+import { eq } from "drizzle-orm";
 import { DEFAULT_TYPE_ICONS, type PropertySchema } from "@hermes/shared";
 import { blockTypes } from "@hermes/db";
 import type { Database } from "@hermes/db";
 
-/** Accepts either the base db handle or a transaction — both expose `insert`. */
-type Inserter = Pick<Database, "insert">;
+/** Accepts either the base db handle or a transaction — both expose insert/update. */
+type Inserter = Pick<Database, "insert" | "update">;
 
 interface SeedType {
   name: string;
@@ -74,25 +75,70 @@ const SEED_TYPES: SeedType[] = [
     propertySchema: {
       fields: [
         { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
-        { key: "description", type: "text", order: 1, includeEmbed: true },
-        { key: "start", type: "datetime", order: 2, includeEmbed: false },
-        { key: "end", type: "datetime", order: 3, includeEmbed: false },
+        { key: "description", type: "text", order: 1, includeEmbed: true, locked: true },
+        { key: "start", type: "datetime", order: 2, includeEmbed: false, locked: true },
+        { key: "end", type: "datetime", order: 3, includeEmbed: false, locked: true },
         { key: "location", type: "text", order: 4, includeEmbed: true },
+      ],
+    },
+  },
+  {
+    name: "organization",
+    isText: false,
+    builtin: true,
+    propertySchema: {
+      fields: [
+        { key: "title", label: "Name", type: "text", order: 0, includeEmbed: true, locked: true },
+        { key: "description", label: "About", type: "text", order: 1, includeEmbed: true, locked: true },
+        // refTypeId wired to the organization type itself after insert.
+        { key: "parent", label: "Parent Organization", type: "reference", order: 2, includeEmbed: false, locked: true },
+      ],
+    },
+  },
+  {
+    name: "person",
+    isText: false,
+    builtin: true,
+    propertySchema: {
+      fields: [
+        { key: "title", label: "Name", type: "text", order: 0, includeEmbed: true, locked: true },
+        { key: "role", label: "Title/Role", type: "text", order: 1, includeEmbed: true, locked: true },
+        { key: "description", label: "About", type: "text", order: 2, includeEmbed: true, locked: true },
+        { key: "organization", label: "Organization", type: "reference", order: 3, includeEmbed: false, locked: true },
       ],
     },
   },
 ];
 
 export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<void> {
-  await db.insert(blockTypes).values(
-    SEED_TYPES.map((t) => ({
-      ownerId,
-      name: t.name,
-      isText: t.isText,
-      builtin: t.builtin,
-      propertySchema: t.propertySchema,
-      iconKey: DEFAULT_TYPE_ICONS[t.name] ?? null,
-      iconSource: "lucide" as const,
-    })),
-  );
+  const inserted = await db
+    .insert(blockTypes)
+    .values(
+      SEED_TYPES.map((t) => ({
+        ownerId,
+        name: t.name,
+        isText: t.isText,
+        builtin: t.builtin,
+        propertySchema: t.propertySchema,
+        iconKey: DEFAULT_TYPE_ICONS[t.name] ?? null,
+        iconSource: "lucide" as const,
+      })),
+    )
+    .returning({ id: blockTypes.id, name: blockTypes.name });
+
+  // Wire the person/organization reference fields to the organization type.
+  const orgId = inserted.find((t) => t.name === "organization")?.id;
+  if (!orgId) return;
+  for (const t of SEED_TYPES) {
+    if ((t.name !== "person" && t.name !== "organization") || !t.propertySchema) continue;
+    const typeId = inserted.find((i) => i.name === t.name)?.id;
+    if (!typeId) continue;
+    const schema: PropertySchema = {
+      ...t.propertySchema,
+      fields: t.propertySchema.fields.map((f) =>
+        f.type === "reference" ? { ...f, refTypeId: orgId } : f,
+      ),
+    };
+    await db.update(blockTypes).set({ propertySchema: schema }).where(eq(blockTypes.id, typeId));
+  }
 }

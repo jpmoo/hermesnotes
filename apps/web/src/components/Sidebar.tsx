@@ -13,18 +13,13 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
-import { api } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
 type Target = "bg" | "text" | "icon";
-interface NavColors {
-  bg?: string;
-  text?: string;
-  icon?: string;
-}
 
 const TARGETS: Target[] = ["bg", "text", "icon"];
 const LABELS: Record<Target, string> = {
@@ -37,6 +32,7 @@ const LABELS: Record<Target, string> = {
 // The Unattached row keeps the legacy "inbox_colors" key so saved colors carry over.
 const TODAY_KEY = "today_colors";
 const UNATTACHED_KEY = "inbox_colors";
+const ALLBLOCKS_KEY = "allblocks_colors";
 const COLLECTIONS_KEY = "collections_colors";
 
 /**
@@ -49,7 +45,7 @@ const COLLECTIONS_KEY = "collections_colors";
 export function Sidebar() {
   const { logout } = useAuth();
   const { leftPinned, setLeftPinned } = usePanels();
-  const [prefs, setPrefs] = useState<Record<string, NavColors>>({});
+  const { colors, setPref } = usePreferences();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [modal, setModal] = useState<{ key: string; target: Target } | null>(null);
   const {
@@ -64,20 +60,6 @@ export function Sidebar() {
   // kebab menu / color modal it spawned is open.
   const expanded = leftPinned || hovered || openMenu !== null || modal !== null;
 
-  // Load persisted row colors from the server (synced across devices).
-  useEffect(() => {
-    let alive = true;
-    void api
-      .get<{ preferences: Record<string, unknown> }>("/settings/preferences")
-      .then((res) => {
-        if (alive) setPrefs((res.preferences ?? {}) as Record<string, NavColors>);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   useEffect(() => {
     if (openMenu === null) return;
     const onDown = (e: MouseEvent) => {
@@ -88,9 +70,7 @@ export function Sidebar() {
   }, [openMenu]);
 
   const applyColor = (key: string, target: Target, value: string) => {
-    const next = { ...(prefs[key] ?? {}), [target]: value };
-    setPrefs((p) => ({ ...p, [key]: next }));
-    void api.patch("/settings/preferences", { [key]: next }).catch(() => {});
+    setPref(key, { ...colors(key), [target]: value });
   };
 
   const unpin = () => {
@@ -106,7 +86,7 @@ export function Sidebar() {
     Icon: LucideIcon,
     label: string,
   ) => {
-    const c = prefs[key] ?? {};
+    const c = colors(key);
     const rowStyle: CSSProperties = {};
     if (c.bg) rowStyle.background = c.bg;
     if (c.text) rowStyle.color = c.text;
@@ -167,10 +147,7 @@ export function Sidebar() {
 
       {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
       {colorRow(UNATTACHED_KEY, "/", true, Unlink, "Unattached")}
-      <NavLink to="/blocks" className="nav-link" title="All blocks">
-        <Layers size={18} />
-        <span className="label">All blocks</span>
-      </NavLink>
+      {colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks")}
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
 
       <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />
@@ -192,7 +169,7 @@ export function Sidebar() {
       <ColorPickerModal
         open={modal !== null}
         title={modal ? LABELS[modal.target] : ""}
-        value={(modal ? prefs[modal.key]?.[modal.target] : undefined) ?? "#5fa4b5"}
+        value={(modal ? colors(modal.key)[modal.target] : undefined) ?? "#5fa4b5"}
         onCancel={() => setModal(null)}
         onSave={(color) => {
           if (modal) applyColor(modal.key, modal.target, color);

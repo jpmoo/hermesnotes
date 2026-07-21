@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useState, type CSSProperties } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
+import { PreferencesProvider, usePreferences } from "./lib/preferences.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
@@ -22,20 +23,43 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
   if (!user) return <AuthPage defaultMode={defaultAuthMode} />;
 
   return (
-    <PanelsProvider>
-      <Shell />
-    </PanelsProvider>
+    <PreferencesProvider>
+      <PanelsProvider>
+        <Shell />
+      </PanelsProvider>
+    </PreferencesProvider>
   );
+}
+
+// Which preference key themes each route's window top.
+function sectionKey(path: string): string | null {
+  if (path === "/") return "inbox_colors";
+  if (path.startsWith("/today")) return "today_colors";
+  if (path.startsWith("/blocks")) return "allblocks_colors";
+  if (path.startsWith("/collections")) return "collections_colors";
+  return null;
 }
 
 function Shell() {
   const { leftPinned, rightPinned } = usePanels();
+  const { colors } = usePreferences();
+  const { pathname } = useLocation();
+  const key = sectionKey(pathname);
+  const c = key ? colors(key) : {};
+  const themed = Boolean(c.bg || c.text || c.icon);
+  const style = {
+    "--section-bg": c.bg ?? "transparent",
+    "--section-text": c.text ?? "var(--accent-ink)",
+    "--section-icon": c.icon ?? "currentColor",
+  } as CSSProperties;
+
   return (
     <div
       className={`app-shell${leftPinned ? " left-pinned" : ""}${rightPinned ? " right-pinned" : ""}`}
     >
       <Sidebar />
-      <main className="main">
+      <main className={`main${themed ? " themed" : ""}`} style={style}>
+        {themed && <div className="section-shade" aria-hidden />}
         <div className="main-inner">
           <Routes>
             <Route path="/" element={<UnattachedPage />} />

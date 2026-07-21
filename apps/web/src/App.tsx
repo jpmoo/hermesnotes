@@ -4,7 +4,7 @@ import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
-import { RightPanelProvider } from "./lib/right-panel.tsx";
+import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
@@ -20,24 +20,33 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
   if (!user) return <AuthPage defaultMode={defaultAuthMode} />;
 
   return (
-    <RightPanelProvider>
-      <div className="app-shell">
-        <Sidebar />
-        <main className="main">
-          <div className="main-inner">
-            <Routes>
-              <Route path="/" element={<InboxPage />} />
-              <Route path="/collections" element={<CollectionsPage />} />
-              <Route path="/collections/:id" element={<CollectionView />} />
-              <Route path="/types" element={<TypesPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </div>
-        </main>
-        <RightPanel />
-      </div>
-    </RightPanelProvider>
+    <PanelsProvider>
+      <Shell />
+    </PanelsProvider>
+  );
+}
+
+function Shell() {
+  const { leftPinned, rightPinned } = usePanels();
+  return (
+    <div
+      className={`app-shell${leftPinned ? " left-pinned" : ""}${rightPinned ? " right-pinned" : ""}`}
+    >
+      <Sidebar />
+      <main className="main">
+        <div className="main-inner">
+          <Routes>
+            <Route path="/" element={<InboxPage />} />
+            <Route path="/collections" element={<CollectionsPage />} />
+            <Route path="/collections/:id" element={<CollectionView />} />
+            <Route path="/types" element={<TypesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </div>
+      </main>
+      <RightPanel />
+    </div>
   );
 }
 

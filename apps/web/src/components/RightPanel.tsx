@@ -1,15 +1,15 @@
-import { ListFilter, PanelRight, Pin, X } from "lucide-react";
+import { ListFilter, PanelRight, Pin, PinOff } from "lucide-react";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
-import { useRightPanel } from "../lib/right-panel.tsx";
+import { usePanels } from "../lib/right-panel.tsx";
 
 /**
- * Auto-hiding right panel. A routed page can portal content into its slot and
- * flag `hasContent`; the panel then reveals on hover, and can be pinned open.
+ * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
+ * can portal content into its slot and flag `hasContent`.
  */
 export function RightPanel() {
-  const { setSlotEl, active, setActive, title, hasContent } = useRightPanel();
+  const { setSlotEl, rightPinned, setRightPinned, title, hasContent } = usePanels();
   const { active: hovered, onMouseEnter, onMouseLeave } = useHoverIntent();
-  const expanded = active || hovered;
+  const expanded = rightPinned || hovered;
 
   return (
     <aside
@@ -21,20 +21,16 @@ export function RightPanel() {
         {hasContent ? <ListFilter size={18} /> : <PanelRight size={18} />}
       </div>
       <div className="panel-body">
-        {hasContent && (
-          <div className="panel-head">
-            <span className="panel-title">{title}</span>
-            {active ? (
-              <button className="icon-btn" title="Unpin" onClick={() => setActive(false)}>
-                <X size={15} />
-              </button>
-            ) : (
-              <button className="icon-btn" title="Pin open" onClick={() => setActive(true)}>
-                <Pin size={14} />
-              </button>
-            )}
-          </div>
-        )}
+        <div className="panel-head">
+          <span className="panel-title">{hasContent ? title : "Details"}</span>
+          <button
+            className="icon-btn panel-pin"
+            title={rightPinned ? "Unpin panel" : "Pin panel open"}
+            onClick={() => setRightPinned(!rightPinned)}
+          >
+            {rightPinned ? <PinOff size={14} /> : <Pin size={14} />}
+          </button>
+        </div>
         <div ref={setSlotEl} />
         {!hasContent && <div className="panel-placeholder">Note info &amp; options</div>}
       </div>

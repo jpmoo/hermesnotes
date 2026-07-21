@@ -1,8 +1,9 @@
-import { Inbox, Library, LogOut, MoreVertical, Settings, Shapes } from "lucide-react";
+import { Inbox, Library, LogOut, MoreVertical, Pin, PinOff, Settings, Shapes } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
+import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
 type Target = "bg" | "text" | "icon";
@@ -28,6 +29,7 @@ const LABELS: Record<Target, string> = {
 export function Sidebar() {
   const { logout } = useAuth();
   const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
+  const { leftPinned, setLeftPinned } = usePanels();
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorTarget, setColorTarget] = useState<Target | null>(null);
   const [colors, setColors] = useState<InboxColors>(() => {
@@ -39,8 +41,8 @@ export function Sidebar() {
   });
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Stay expanded while a menu or modal spawned from here is open.
-  const expanded = hovered || menuOpen || colorTarget !== null;
+  // Pinned stays open; also stay expanded while a menu/modal from here is open.
+  const expanded = leftPinned || hovered || menuOpen || colorTarget !== null;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -76,6 +78,13 @@ export function Sidebar() {
           />
           <span className="brand-name">Hermes Notes</span>
         </div>
+        <button
+          className="icon-btn panel-pin"
+          title={leftPinned ? "Unpin sidebar" : "Pin sidebar open"}
+          onClick={() => setLeftPinned(!leftPinned)}
+        >
+          {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
+        </button>
       </div>
 
       <div className="nav-row" style={inboxStyle}>

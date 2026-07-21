@@ -24,7 +24,7 @@ import { NewItemModal } from "../components/NewItemModal.tsx";
 import { QueryPanel } from "../components/QueryPanel.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
-import { useRightPanel } from "../lib/right-panel.tsx";
+import { usePanels } from "../lib/right-panel.tsx";
 
 type Format = "bullet" | "ordered" | "checklist";
 
@@ -212,7 +212,7 @@ export function CollectionView() {
   const [newType, setNewType] = useState<BlockType | null>(null);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const { slotEl, setActive, setTitle, setHasContent } = useRightPanel();
+  const { slotEl, setRightPinned, setTitle, setHasContent } = usePanels();
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -266,9 +266,8 @@ export function CollectionView() {
     setTitle("Query");
     return () => {
       setHasContent(false);
-      setActive(false);
     };
-  }, [isSmart, setHasContent, setTitle, setActive]);
+  }, [isSmart, setHasContent, setTitle]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -370,7 +369,7 @@ export function CollectionView() {
         {isSmart && (
           <>
             <span className="pill">{isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            <button className="ghost" onClick={() => setActive(true)}>
+            <button className="ghost" onClick={() => setRightPinned(true)}>
               Edit query
             </button>
             {!isDynamic && (

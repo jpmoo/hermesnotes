@@ -57,9 +57,19 @@ label,
 .app-shell {
   position: relative;
   display: grid;
-  /* Cols 1 & 3 reserve rail width; both panels overlay and expand on hover. */
-  grid-template-columns: 56px 1fr 56px;
+  /* Rails reserve 56px; a pinned panel widens its column so content reflows
+     (unpinned panels overlay and expand on hover instead). */
+  --left-col: 56px;
+  --right-col: 56px;
+  grid-template-columns: var(--left-col) 1fr var(--right-col);
   height: 100%;
+  transition: grid-template-columns 0.16s ease;
+}
+.app-shell.left-pinned {
+  --left-col: 232px;
+}
+.app-shell.right-pinned {
+  --right-col: 420px;
 }
 
 /* Auto-hiding right panel (mirrors the left sidebar). */
@@ -140,8 +150,17 @@ label,
 }
 .sidebar:not(.expanded) .brand-name,
 .sidebar:not(.expanded) .label,
-.sidebar:not(.expanded) .nav-kebab {
+.sidebar:not(.expanded) .nav-kebab,
+.sidebar:not(.expanded) .panel-pin {
   display: none;
+}
+.panel-pin {
+  border-color: transparent;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.panel-pin:hover {
+  color: var(--text);
 }
 
 /* Inbox row: colored pill wrapping the nav link + kebab menu */

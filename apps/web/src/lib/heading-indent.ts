@@ -12,7 +12,9 @@ export const CheckboxInput = Extension.create({
   addInputRules() {
     return [
       new InputRule({
-        find: /^\s*\[([ xX]?)\]\s$/,
+        // Matches "[ ] ", "[x] ", and a leading-dash form "- [ ] " (whether or
+        // not the dash already became a bullet).
+        find: /^\s*(?:[-*+]\s+)?\[([ xX]?)\]\s$/,
         handler: ({ range, match, chain }) => {
           const checked = /[xX]/.test(match[1] ?? "");
           chain()

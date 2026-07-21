@@ -28,6 +28,35 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  /** UI preferences (Inbox colors, etc.) — a free-form jsonb bag that syncs across devices. */
+  app.get("/settings/preferences", async (req) => {
+    const userId = requireUser(req);
+    const [row] = await db
+      .select({ preferences: userSettings.preferences })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    return { preferences: row?.preferences ?? {} };
+  });
+
+  /** Shallow-merge a patch into the stored UI preferences. */
+  app.patch("/settings/preferences", async (req) => {
+    const userId = requireUser(req);
+    const patch = z.record(z.unknown()).parse(req.body ?? {});
+    const [current] = await db
+      .select({ preferences: userSettings.preferences })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    if (!current) throw notFound("settings");
+    const next = { ...(current.preferences ?? {}), ...patch };
+    await db
+      .update(userSettings)
+      .set({ preferences: next, updatedAt: new Date() })
+      .where(eq(userSettings.userId, userId));
+    return { preferences: next };
+  });
+
   /**
    * Connect: list the models installed on an Ollama host. Accepts an explicit
    * url (to test before saving) or falls back to the stored one.

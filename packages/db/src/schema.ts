@@ -44,6 +44,8 @@ export const userSettings = pgTable("user_settings", {
   embedModel: text("embed_model"),
   embedDim: integer("embed_dim"),
   inferenceModel: text("inference_model"),
+  // UI preferences that sync across devices (e.g. Inbox pill colors).
+  preferences: jsonb("preferences").$type<Record<string, unknown>>().notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

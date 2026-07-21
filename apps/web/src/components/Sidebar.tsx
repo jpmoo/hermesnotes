@@ -1,8 +1,10 @@
 import { Inbox, Library, LogOut, MoreVertical, Pin, PinOff, Settings, Shapes } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
+import { api } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
 type Target = "bg" | "text" | "icon";
@@ -12,7 +14,7 @@ interface InboxColors {
   icon?: string;
 }
 
-const STORAGE = "hn.inbox.colors";
+const PREF_KEY = "inbox_colors";
 const LABELS: Record<Target, string> = {
   bg: "Change Background Color",
   text: "Change Text Color",
@@ -20,28 +22,44 @@ const LABELS: Record<Target, string> = {
 };
 
 /**
- * Left navigation. Auto-hides to a 56px icon rail and reveals on hover (no
- * open/close button). The Inbox row carries a kebab menu (when revealed) to
- * customize its background / text / icon colors via a color-picker modal;
- * choices persist to localStorage.
+ * Left navigation. Auto-hides to a 56px icon rail. Hovering an empty area of the
+ * rail reveals it (icons stay click-to-navigate with a tooltip); a pin keeps it
+ * open. The Inbox row carries a kebab menu (when revealed) to customize its
+ * background / text / icon colors, which persist server-side and sync across
+ * devices.
  */
 export function Sidebar() {
   const { logout } = useAuth();
   const { leftPinned, setLeftPinned } = usePanels();
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorTarget, setColorTarget] = useState<Target | null>(null);
-  const [colors, setColors] = useState<InboxColors>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE) ?? "{}") as InboxColors;
-    } catch {
-      return {};
-    }
-  });
+  const [colors, setColors] = useState<InboxColors>({});
   const menuRef = useRef<HTMLDivElement>(null);
+  const {
+    active: hovered,
+    setActive: setHovered,
+    onMouseEnter: armOpen,
+    onMouseLeave: collapse,
+    cancelOpen,
+  } = useHoverIntent();
 
-  // The rail expands only via the pin (icons stay clickable + tooltip'd); a
-  // spawned menu/modal also holds it open.
-  const expanded = leftPinned || menuOpen || colorTarget !== null;
+  // The rail expands when pinned, when hovering an empty area, or while a
+  // menu/modal it spawned is open.
+  const expanded = leftPinned || hovered || menuOpen || colorTarget !== null;
+
+  // Load persisted Inbox colors from the server (synced across devices).
+  useEffect(() => {
+    let alive = true;
+    void api
+      .get<{ preferences: Record<string, unknown> }>("/settings/preferences")
+      .then((res) => {
+        if (alive) setColors((res.preferences?.[PREF_KEY] as InboxColors) ?? {});
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -55,7 +73,13 @@ export function Sidebar() {
   const applyColor = (target: Target, value: string) => {
     const next = { ...colors, [target]: value };
     setColors(next);
-    localStorage.setItem(STORAGE, JSON.stringify(next));
+    void api.patch("/settings/preferences", { [PREF_KEY]: next }).catch(() => {});
+  };
+
+  const unpin = () => {
+    setLeftPinned(false);
+    setHovered(false);
+    cancelOpen();
   };
 
   const inboxStyle: CSSProperties = {};
@@ -63,7 +87,7 @@ export function Sidebar() {
   if (colors.text) inboxStyle.color = colors.text;
 
   return (
-    <aside className={`sidebar${expanded ? " expanded" : ""}`}>
+    <aside className={`sidebar${expanded ? " expanded" : ""}`} onMouseLeave={collapse}>
       <div className="sidebar-head">
         <div className="brand">
           <img
@@ -76,7 +100,7 @@ export function Sidebar() {
         <button
           className="icon-btn panel-pin"
           title={leftPinned ? "Collapse sidebar" : "Expand sidebar"}
-          onClick={() => setLeftPinned(!leftPinned)}
+          onClick={() => (leftPinned ? unpin() : setLeftPinned(true))}
         >
           {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
         </button>
@@ -123,7 +147,7 @@ export function Sidebar() {
         <span className="label">Collections</span>
       </NavLink>
 
-      <div className="spacer" />
+      <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />
 
       <div className="nav-divider" />
       <NavLink to="/types" className="nav-link" title="Block types">

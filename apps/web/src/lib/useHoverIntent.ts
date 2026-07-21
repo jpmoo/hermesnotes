@@ -17,6 +17,10 @@ export function useHoverIntent(enterDelay = 320, leaveDelay = 220) {
     if (enterTimer.current) clearTimeout(enterTimer.current);
     leaveTimer.current = setTimeout(() => setActive(false), leaveDelay);
   };
+  // Cancel a pending open without collapsing (e.g. moving onto an icon).
+  const cancelOpen = () => {
+    if (enterTimer.current) clearTimeout(enterTimer.current);
+  };
 
-  return { active, setActive, onMouseEnter, onMouseLeave };
+  return { active, setActive, onMouseEnter, onMouseLeave, cancelOpen };
 }

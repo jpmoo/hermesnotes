@@ -1,7 +1,16 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { filterQuerySchema, normalizeFilter, oneLineLabel } from "@hermes/shared";
+import {
+  filterQuerySchema,
+  isComplete,
+  nextSpan,
+  normalizeFilter,
+  oneLineLabel,
+  recurrenceContinues,
+  recurrenceSchema,
+  type PropertySchema,
+} from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { runQuery, semanticIds } from "../collections/query.js";
@@ -9,6 +18,62 @@ import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "./embed-source.js";
+
+/**
+ * When a recurring task transitions to complete, spawn the next occurrence: a
+ * copy with the status reset and the schedule datespan advanced per the rule.
+ * Returns whether a new block was created.
+ */
+async function spawnRecurrence(
+  userId: string,
+  type: { id: string; schemaVersion: number; propertySchema: PropertySchema | null },
+  prevProps: Record<string, unknown>,
+  nextProps: Record<string, unknown>,
+): Promise<boolean> {
+  const schema = type.propertySchema;
+  if (!schema?.status_field) return false;
+  if (!(isComplete(schema, nextProps) && !isComplete(schema, prevProps))) return false;
+
+  const recField = schema.fields.find((f) => f.type === "recurrence");
+  const spanField = schema.fields.find((f) => f.type === "datespan");
+  if (!recField || !spanField) return false;
+
+  const parsed = recurrenceSchema.safeParse(nextProps[recField.key]);
+  if (!parsed.success) return false;
+  const rec = parsed.data;
+
+  const span = (nextProps[spanField.key] ?? {}) as { start?: string; end?: string };
+  const now = new Date();
+  const completedOn = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate(),
+  ).padStart(2, "0")}`;
+  const next = nextSpan(span, rec, completedOn);
+  if (!next?.end) return false;
+
+  const currentN = rec.n ?? 1;
+  if (!recurrenceContinues(rec, currentN, next.end)) return false;
+
+  const copyProps: Record<string, unknown> = {
+    ...nextProps,
+    [schema.status_field]: schema.default_value ?? null,
+    [spanField.key]: next,
+    [recField.key]: { ...rec, n: currentN + 1 },
+  };
+  const embedSource = computeEmbedSource(
+    { isText: false, propertySchema: schema },
+    { content: null, properties: copyProps },
+  );
+  await db.insert(blocks).values({
+    ownerId: userId,
+    blockTypeId: type.id,
+    content: null,
+    properties: copyProps,
+    embedSource,
+    embedSourceHash: null,
+    blockTypeSchemaVersion: type.schemaVersion,
+  });
+  return true;
+}
 
 /** Resolve a block type for this owner, defaulting to the seeded `text` type. */
 async function resolveType(ownerId: string, blockTypeId?: string) {
@@ -408,7 +473,18 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .returning(blockView);
 
     if (!updated) throw conflict("version conflict — reload and retry");
-    return updated;
+
+    // Recurring task just completed → spawn the next occurrence.
+    let recurred = false;
+    if (!type.isText && body.properties) {
+      recurred = await spawnRecurrence(
+        userId,
+        { id: type.id, schemaVersion: type.schemaVersion, propertySchema: type.propertySchema },
+        (current.properties ?? {}) as Record<string, unknown>,
+        nextProps as Record<string, unknown>,
+      );
+    }
+    return { ...updated, recurred };
   });
 
   // ── Tags ─────────────────────────────────────────────────────

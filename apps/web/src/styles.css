@@ -2088,3 +2088,44 @@ input.li-text:focus {
   padding: 2px 8px;
   font-size: 11px;
 }
+
+/* ── Recurrence editor ────────────────────────────────────────── */
+.recur-every {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.recur-every input {
+  width: 80px;
+  flex: none;
+}
+.recur-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.recur-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+}
+.recur-end {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.recur-end-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.recur-end-row input[type="number"] {
+  width: 72px;
+  flex: none;
+}
+.recur-end-row input[type="date"] {
+  width: auto;
+  flex: none;
+}

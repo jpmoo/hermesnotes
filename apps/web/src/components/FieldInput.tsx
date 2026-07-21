@@ -2,6 +2,7 @@ import type { FieldDef } from "@hermes/shared";
 import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 import { LongTextField } from "./LongTextField.tsx";
+import { RecurrenceField } from "./RecurrenceField.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
 
 /** datespan value shape: two local wall-clock strings. */
@@ -39,6 +40,8 @@ export function FieldInput({
           placeholder={field.label ?? "Write…"}
         />
       );
+    case "recurrence":
+      return <RecurrenceField value={value} onChange={onChange} />;
     case "boolean":
       return (
         <input

@@ -85,13 +85,15 @@ export function TypedBlockCard({
   const save = async (next: Record<string, unknown>) => {
     setSaveState("saving");
     try {
-      const updated = await api.patch<Block>(`/blocks/${block.id}`, {
+      const updated = await api.patch<Block & { recurred?: boolean }>(`/blocks/${block.id}`, {
         properties: next,
         version: versionRef.current,
       });
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
+      // A recurring task just spawned its next occurrence — refresh the list.
+      if (updated.recurred) onConflict();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         onConflict();

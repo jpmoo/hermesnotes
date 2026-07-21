@@ -22,6 +22,7 @@ export const fieldTypeSchema = z.enum([
   "url",
   "reference", // points at another block (of ref_type_id); value is that block's id
   "attachments", // interactive file uploads stored server-side, keyed by block id
+  "recurrence", // task-only: a recurrence rule edited in a modal
 ]);
 export type FieldType = z.infer<typeof fieldTypeSchema>;
 
@@ -94,7 +95,14 @@ export function deriveEmbedSource(
   properties: Record<string, unknown>,
 ): string {
   return schema.fields
-    .filter((f) => f.includeEmbed && f.type !== "reference" && f.type !== "attachments")
+    .filter(
+      (f) =>
+        f.includeEmbed &&
+        f.type !== "reference" &&
+        f.type !== "attachments" &&
+        f.type !== "recurrence" &&
+        f.type !== "datespan",
+    )
     .sort((a, b) => a.order - b.order)
     .map((f) => properties[f.key])
     .filter((v): v is string | number => v !== null && v !== undefined && v !== "")

@@ -37,7 +37,17 @@ const SEED_TYPES: SeedType[] = [
       fields: [
         { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
         { key: "description", type: "longtext", order: 1, includeEmbed: true },
-        { key: "due_date", type: "date", order: 2, includeEmbed: false, locked: true },
+        {
+          key: "schedule",
+          label: "Schedule",
+          type: "datespan",
+          order: 2,
+          includeEmbed: false,
+          locked: true,
+          startLabel: "Available",
+          endLabel: "Due",
+        },
+        { key: "recurrence", label: "Recurrence", type: "recurrence", order: 4, includeEmbed: false, locked: true },
         {
           key: "status",
           type: "status",
@@ -76,8 +86,16 @@ const SEED_TYPES: SeedType[] = [
       fields: [
         { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
         { key: "description", type: "longtext", order: 1, includeEmbed: true, locked: true },
-        { key: "start", type: "datetime", order: 2, includeEmbed: false, locked: true },
-        { key: "end", type: "datetime", order: 3, includeEmbed: false, locked: true },
+        {
+          key: "when",
+          label: "When",
+          type: "datespan",
+          order: 2,
+          includeEmbed: false,
+          locked: true,
+          startLabel: "Start",
+          endLabel: "End",
+        },
         { key: "location", type: "text", order: 4, includeEmbed: true },
       ],
     },

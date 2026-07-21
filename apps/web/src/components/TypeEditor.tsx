@@ -32,6 +32,7 @@ const TYPE_LABELS: Record<FieldType, string> = {
   url: "URL",
   reference: "Reference",
   attachments: "File Attachments",
+  recurrence: "Recurrence",
 };
 
 interface EditField {
@@ -243,11 +244,13 @@ export function TypeEditor({
               <select
                 className="f-type"
                 value={f.type}
+                disabled={f.locked}
+                title={f.locked ? "Built-in field — type is fixed" : undefined}
                 onChange={(e) => setField(i, { type: e.target.value as FieldType })}
               >
-                {FIELD_TYPES.map((t) => (
+                {(FIELD_TYPES.includes(f.type) ? FIELD_TYPES : [f.type, ...FIELD_TYPES]).map((t) => (
                   <option key={t} value={t}>
-                    {TYPE_LABELS[t]}
+                    {TYPE_LABELS[t] ?? t}
                   </option>
                 ))}
               </select>

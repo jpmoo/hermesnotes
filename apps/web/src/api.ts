@@ -113,6 +113,8 @@ export interface Member {
   content: string | null;
   properties: Record<string, unknown>;
   version: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SetupStatus {

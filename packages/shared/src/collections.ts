@@ -113,7 +113,8 @@ export const membershipContextSchema = z
   .passthrough();
 export type MembershipContext = z.infer<typeof membershipContextSchema>;
 
-export const listFormatSchema = z.enum(["bullet", "ordered", "checklist"]);
+export const listFormatSchema = z.enum(["bullet", "ordered", "checklist", "blocks"]);
+export type ListFormat = z.infer<typeof listFormatSchema>;
 export const sortModeSchema = z.enum([
   "manual",
   "alpha",

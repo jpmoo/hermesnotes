@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   collectionKindSchema,
   filterQuerySchema,
+  listFormatSchema,
   membershipModeSchema,
   normalizeFilter,
   smartModeSchema,
@@ -105,6 +106,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         membershipMode: membershipModeSchema.default("explicit"),
         smartMode: smartModeSchema.default("dynamic"),
         filterQuery: filterQuerySchema.optional(),
+        listFormat: listFormatSchema.optional(),
       })
       .parse(req.body);
 
@@ -120,7 +122,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       properties.filter_query = safeFilter(body.filterQuery);
     }
     if (body.kind === "list") {
-      properties.list_format = "bullet";
+      properties.list_format = body.listFormat ?? "bullet";
       properties.sort_mode = "manual";
       properties.sync_checkbox_with_status = true;
     }
@@ -171,6 +173,8 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         content: b.content,
         properties: b.properties,
         version: b.version,
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
       }));
       return { collection, members };
     }
@@ -187,6 +191,8 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         content: blocks.content,
         properties: blocks.properties,
         version: blocks.version,
+        createdAt: blocks.createdAt,
+        updatedAt: blocks.updatedAt,
       })
       .from(memberships)
       .innerJoin(blocks, eq(blocks.id, memberships.blockId))

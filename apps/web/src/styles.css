@@ -1514,3 +1514,59 @@ input.li-text:focus {
   letter-spacing: 0.03em;
   color: var(--text-muted);
 }
+
+/* ── Multi-level sort bar (lists, unattached, all blocks) ─────── */
+.sort-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+.sort-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.sort-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.sort-level select {
+  width: auto;
+  height: 32px;
+  padding: 0 8px;
+}
+.sort-then {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+.sort-dir {
+  font-size: 14px;
+  font-weight: 700;
+  width: 30px;
+}
+.sort-add {
+  padding: 5px 10px;
+}
+.sort-summary {
+  margin-left: auto;
+}
+
+/* "blocks" list format: slim drag/remove header above each full card. */
+.block-item + .block-item {
+  margin-top: 6px;
+}
+.list-item.card-head {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+}

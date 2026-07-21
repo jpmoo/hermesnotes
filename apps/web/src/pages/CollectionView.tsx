@@ -26,8 +26,9 @@ import { QueryPanel } from "../components/QueryPanel.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useBlockSort } from "../lib/useBlockSort.tsx";
 
-type Format = "bullet" | "ordered" | "checklist";
+type Format = "bullet" | "ordered" | "checklist" | "blocks";
 
 /** One sortable list row. Owns its own inline edit + autosave. */
 function ListItem({
@@ -57,10 +58,11 @@ function ListItem({
   const statusKey = schema?.status_field ?? null;
   const statusField = schema?.fields.find((f) => f.type === "status" && f.key === statusKey) ?? null;
 
+  const asCard = format === "blocks";
   const [content, setContent] = useState(member.content ?? "");
   const [props, setProps] = useState<Record<string, unknown>>(member.properties ?? {});
   const [checked, setChecked] = useState(Boolean(member.context?.checked));
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(asCard);
   const [fullBlock, setFullBlock] = useState<Block | null>(null);
   const versionRef = useRef(member.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -127,6 +129,41 @@ function ListItem({
     (f) => f.key !== "title" && f.key !== statusKey,
   ).length;
   const hasMore = isText ? multiline || content.length > 80 : restCount > 0;
+
+  // "blocks" format: every item is a full editable card with a slim header.
+  if (asCard) {
+    return (
+      <div ref={sortable.setNodeRef} style={style} className="list-item-wrap block-item">
+        <div className="list-item card-head">
+          {!readonly && (
+            <button
+              className="drag-handle"
+              {...sortable.attributes}
+              {...sortable.listeners}
+              title="Drag to reorder"
+            >
+              <GripVertical size={15} />
+            </button>
+          )}
+          <span style={{ flex: 1 }} />
+          {!readonly && (
+            <button className="icon-btn li-remove" title="Remove" onClick={() => onRemove(member.id)}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        <div className="list-item-expanded">
+          {!fullBlock ? (
+            <div className="hint">Loading…</div>
+          ) : isText ? (
+            <TextBlockEditor block={fullBlock} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+          ) : (
+            <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={sortable.setNodeRef} style={style} className="list-item-wrap">
@@ -224,6 +261,7 @@ export function CollectionView() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const typeById = new Map(types.map((t) => [t.id, t]));
+  const { sorted, sortBar, active: sortActive } = useBlockSort(members, types);
 
   const load = async () => {
     const [data, ts] = await Promise.all([
@@ -293,7 +331,7 @@ export function CollectionView() {
   };
 
   const onDragEnd = (e: DragEndEvent) => {
-    if (isDynamic) return;
+    if (isDynamic || sortActive) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldI = members.findIndex((m) => m.id === active.id);
@@ -328,7 +366,7 @@ export function CollectionView() {
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
         <div className="segmented">
-          {(["bullet", "ordered", "checklist"] as Format[]).map((f) => (
+          {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
             <button
               key={f}
               className={`seg${format === f ? " active" : ""}`}
@@ -385,13 +423,15 @@ export function CollectionView() {
         )}
       </div>
 
+      {members.length > 0 && sortBar}
+
       {members.length === 0 ? (
         <div className="hint">Empty list. Add an item.</div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={members.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext items={sorted.map((m) => m.id)} strategy={verticalListSortingStrategy}>
             <div className="list-items">
-              {members.map((m, i) => (
+              {sorted.map((m, i) => (
                 <ListItem
                   key={m.id}
                   member={m}
@@ -401,7 +441,7 @@ export function CollectionView() {
                   syncStatus={syncStatus}
                   collectionId={id}
                   onRemove={onRemove}
-                  readonly={isDynamic}
+                  readonly={isDynamic || sortActive}
                 />
               ))}
             </div>

@@ -1,9 +1,10 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { oneLineLabel } from "@hermes/shared";
+import { filterQuerySchema, normalizeFilter, oneLineLabel } from "@hermes/shared";
 import { blocks, blockTags, blockTypes, memberships, tags } from "@hermes/db";
 import { db } from "../db.js";
+import { runQuery } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
@@ -102,6 +103,30 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         ),
       )
       .orderBy(desc(blocks.updatedAt));
+  });
+
+  /**
+   * All blocks, optionally filtered by a query. Empty filter returns every
+   * (non-collection) block. Powers the "All blocks" view and its query builder.
+   */
+  app.post("/blocks/query", async (req) => {
+    const userId = requireUser(req);
+    const { filterQuery } = z
+      .object({ filterQuery: filterQuerySchema.optional() })
+      .parse(req.body ?? {});
+    const matched = await runQuery(userId, normalizeFilter(filterQuery));
+    return matched.map((b) => ({
+      id: b.id,
+      blockTypeId: b.blockTypeId,
+      collectionKind: null,
+      content: b.content,
+      properties: b.properties,
+      embeddedAt: null,
+      embedPending: false,
+      version: b.version,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+    }));
   });
 
   // Options for a reference field: blocks of a given type, as {id, label}.

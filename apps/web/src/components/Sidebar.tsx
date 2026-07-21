@@ -1,4 +1,5 @@
 import {
+  Layers,
   Library,
   LogOut,
   MoreVertical,
@@ -163,6 +164,10 @@ export function Sidebar() {
       </div>
 
       {colorRow(UNATTACHED_KEY, "/", true, Unlink, "Unattached")}
+      <NavLink to="/blocks" className="nav-link" title="All blocks">
+        <Layers size={18} />
+        <span className="label">All blocks</span>
+      </NavLink>
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
 
       <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />

@@ -11,8 +11,9 @@ import { z } from "zod";
 
 export const fieldTypeSchema = z.enum([
   "text",
-  "date",
-  "datetime",
+  "date", // legacy date-only; rendered with the date/time picker (time optional)
+  "datetime", // "Date/Time": a single calendar + 12-hour time; value "YYYY-MM-DDTHH:mm"
+  "datespan", // "Date/Time Span": { start, end } each "YYYY-MM-DDTHH:mm", with labels
   "number",
   "boolean",
   "select",
@@ -43,6 +44,9 @@ export const fieldDefSchema = z.object({
   optionColors: z.record(z.string()).optional(),
   /** for reference fields: the block_type id this field points at */
   refTypeId: z.string().uuid().optional(),
+  /** for datespan fields: labels for the two endpoints (e.g. "Available" / "Due") */
+  startLabel: z.string().optional(),
+  endLabel: z.string().optional(),
   required: z.boolean().optional(),
 });
 export type FieldDef = z.infer<typeof fieldDefSchema>;

@@ -7,8 +7,8 @@ import { IconPickerModal } from "./IconPickerModal.tsx";
 
 const FIELD_TYPES: FieldType[] = [
   "text",
-  "date",
   "datetime",
+  "datespan",
   "number",
   "boolean",
   "select",
@@ -17,6 +17,11 @@ const FIELD_TYPES: FieldType[] = [
   "reference",
 ];
 
+const TYPE_LABELS: Partial<Record<FieldType, string>> = {
+  datetime: "Date/Time",
+  datespan: "Date/Time Span",
+};
+
 interface EditField {
   key: string;
   label: string;
@@ -24,6 +29,8 @@ interface EditField {
   includeEmbed: boolean;
   options: string; // comma-separated in the UI
   refTypeId?: string; // for reference fields
+  startLabel?: string; // for datespan
+  endLabel?: string; // for datespan
 }
 
 function toEditFields(schema: PropertySchema | null): EditField[] {
@@ -35,10 +42,13 @@ function toEditFields(schema: PropertySchema | null): EditField[] {
     .map((f) => ({
       key: f.key,
       label: f.label ?? "",
-      type: f.type,
+      // legacy date-only fields become Date/Time.
+      type: f.type === "date" ? "datetime" : f.type,
       includeEmbed: f.includeEmbed,
       options: (f.options ?? []).join(", "),
       refTypeId: f.refTypeId,
+      startLabel: f.startLabel,
+      endLabel: f.endLabel,
     }));
 }
 
@@ -133,6 +143,8 @@ export function TypeEditor({
             ? optColors
             : undefined,
         refTypeId: f.type === "reference" ? f.refTypeId : undefined,
+        startLabel: f.type === "datespan" ? f.startLabel?.trim() || undefined : undefined,
+        endLabel: f.type === "datespan" ? f.endLabel?.trim() || undefined : undefined,
       })),
       status_field: activeStatus ? activeStatus.key : null,
       complete_values: activeStatus ? completeValues : undefined,
@@ -215,7 +227,7 @@ export function TypeEditor({
               >
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {t}
+                    {TYPE_LABELS[t] ?? t}
                   </option>
                 ))}
               </select>
@@ -226,6 +238,22 @@ export function TypeEditor({
                   value={f.options}
                   onChange={(e) => setField(i, { options: e.target.value })}
                 />
+              )}
+              {f.type === "datespan" && (
+                <>
+                  <input
+                    className="f-options"
+                    placeholder="start label (e.g. Available)"
+                    value={f.startLabel ?? ""}
+                    onChange={(e) => setField(i, { startLabel: e.target.value })}
+                  />
+                  <input
+                    className="f-options"
+                    placeholder="end label (e.g. Due)"
+                    value={f.endLabel ?? ""}
+                    onChange={(e) => setField(i, { endLabel: e.target.value })}
+                  />
+                </>
               )}
               {f.type === "reference" && (
                 <select

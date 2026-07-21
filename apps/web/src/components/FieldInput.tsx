@@ -1,5 +1,12 @@
 import type { FieldDef } from "@hermes/shared";
+import { DateTimePicker } from "./DateTimePicker.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
+
+/** datespan value shape: two local wall-clock strings. */
+interface Span {
+  start?: string;
+  end?: string;
+}
 
 /** Renders the appropriate control for a property_schema field (design doc §3). */
 export function FieldInput({
@@ -24,11 +31,32 @@ export function FieldInput({
         />
       );
     case "date":
-      return <input type="date" value={str} onChange={(e) => onChange(e.target.value)} />;
     case "datetime":
+      return <DateTimePicker value={str} onChange={(v) => onChange(v)} />;
+    case "datespan": {
+      const span = (value ?? {}) as Span;
+      const setSpan = (patch: Span) => onChange({ ...span, ...patch });
       return (
-        <input type="datetime-local" value={str} onChange={(e) => onChange(e.target.value)} />
+        <div className="span-field">
+          <div className="span-leg">
+            <span className="span-label">{field.startLabel?.trim() || "Start"}</span>
+            <DateTimePicker
+              value={span.start ?? ""}
+              onChange={(v) => setSpan({ start: v })}
+              placeholder="Set start"
+            />
+          </div>
+          <div className="span-leg">
+            <span className="span-label">{field.endLabel?.trim() || "End"}</span>
+            <DateTimePicker
+              value={span.end ?? ""}
+              onChange={(v) => setSpan({ end: v })}
+              placeholder="Set end"
+            />
+          </div>
+        </div>
       );
+    }
     case "number":
       return (
         <input

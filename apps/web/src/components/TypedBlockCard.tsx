@@ -131,7 +131,9 @@ export function TypedBlockCard({
         <div className="typed-fields">
           {rest.map((f) => (
             <label
-              className={`field typed-field${f.type === "text" || f.type === "url" ? " full" : ""}`}
+              className={`field typed-field${
+                f.type === "text" || f.type === "url" || f.type === "datespan" ? " full" : ""
+              }`}
               key={f.key}
             >
               <span>{f.label ?? f.key.replace(/_/g, " ")}</span>

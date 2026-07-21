@@ -336,7 +336,8 @@ export function QueryBuilder({
       for (const f of t.propertySchema.fields) if (!byKey.has(f.key)) byKey.set(f.key, f);
     }
   }
-  const fields = [...byKey.values()];
+  // datespan values are objects ({start,end}) — not a scalar to filter on.
+  const fields = [...byKey.values()].filter((f) => f.type !== "datespan");
 
   useEffect(() => {
     const t = setTimeout(() => {

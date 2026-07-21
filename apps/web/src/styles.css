@@ -1346,3 +1346,171 @@ input.li-text:focus {
   border-top: 1px solid var(--border);
   margin: 1em 0;
 }
+
+/* ── Date/Time picker ─────────────────────────────────────────── */
+.dtp {
+  position: relative;
+}
+.dtp-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+.dtp-trigger:hover {
+  border-color: var(--border-strong);
+}
+.dtp-trigger > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dtp-placeholder {
+  color: var(--text-faint);
+}
+.dtp-clear {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+  border-radius: 6px;
+  padding: 2px;
+}
+.dtp-clear:hover {
+  color: var(--text);
+  background: var(--surface-3, rgba(0, 0, 0, 0.05));
+}
+.dtp-pop {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 268px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+.dtp-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.dtp-month {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dtp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.dtp-dow {
+  margin-bottom: 2px;
+}
+.dtp-dow-cell {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 2px 0;
+}
+.dtp-day {
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  padding: 0;
+}
+.dtp-day:hover {
+  background: rgba(95, 164, 181, 0.12);
+}
+.dtp-day.out {
+  color: var(--text-faint);
+}
+.dtp-day.today {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.dtp-day.sel {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.dtp-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.dtp-spin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dtp-spin .icon-btn {
+  height: 18px;
+  width: 34px;
+  padding: 0;
+  color: var(--text-muted);
+}
+.dtp-num {
+  width: 44px !important;
+  height: 32px !important;
+  text-align: center;
+  padding: 0 !important;
+  font-variant-numeric: tabular-nums;
+}
+.dtp-colon {
+  font-weight: 600;
+  color: var(--text-muted);
+  align-self: center;
+  margin-top: 18px;
+}
+.dtp-ampm {
+  width: auto !important;
+  height: 32px !important;
+  padding: 0 8px !important;
+  margin-left: auto;
+  align-self: center;
+}
+.dtp-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+/* Date/Time span: two labeled legs. */
+.span-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.span-leg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.span-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}

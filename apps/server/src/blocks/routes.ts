@@ -497,6 +497,24 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(tags.name);
   });
 
+  /** Create a standalone tag (used by the "#" mention "create" option). */
+  app.post("/tags", async (req) => {
+    const userId = requireUser(req);
+    const { name } = z.object({ name: z.string().trim().min(1) }).parse(req.body);
+    const [row] = await db
+      .insert(tags)
+      .values({ ownerId: userId, name })
+      .onConflictDoNothing()
+      .returning({ id: tags.id, name: tags.name });
+    if (row) return row;
+    const [existing] = await db
+      .select({ id: tags.id, name: tags.name })
+      .from(tags)
+      .where(and(eq(tags.ownerId, userId), eq(tags.name, name)))
+      .limit(1);
+    return existing;
+  });
+
   app.get("/blocks/:id/tags", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);

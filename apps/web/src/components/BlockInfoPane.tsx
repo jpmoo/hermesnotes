@@ -1,34 +1,35 @@
 import { Copy } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { api, type BlockInfo } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 
-/** Block connections drill through the info pane; collection connections link out. */
+/** Block connections drill through the info pane; collection connections navigate. */
 function ConnGroup({
   label,
   items,
   onSelect,
+  onOpen,
 }: {
   label: string;
   items: { id: string; label: string }[];
   onSelect?: (id: string) => void;
+  onOpen?: (id: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
     <div className="info-conn">
       <div className="info-conn-label">{label}</div>
-      {items.map((it) =>
-        onSelect ? (
-          <button key={it.id} className="info-conn-item" title={it.label} onClick={() => onSelect(it.id)}>
-            {it.label}
-          </button>
-        ) : (
-          <Link key={it.id} className="info-conn-item" to={`/collections/${it.id}`} title={it.label}>
-            {it.label}
-          </Link>
-        ),
-      )}
+      {items.map((it) => (
+        <button
+          key={it.id}
+          className="info-conn-item"
+          title={it.label}
+          onClick={() => (onSelect ? onSelect(it.id) : onOpen?.(it.id))}
+        >
+          {it.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -42,6 +43,7 @@ export function BlockInfoPane({
   onSelect: (id: string) => void;
 }) {
   const [info, setInfo] = useState<BlockInfo | null>(null);
+  const nav = useNavigate();
 
   useEffect(() => {
     setInfo(null);
@@ -91,7 +93,11 @@ export function BlockInfoPane({
           <div className="hint">No connections.</div>
         ) : (
           <>
-            <ConnGroup label="In collection" items={info.inCollections} />
+            <ConnGroup
+              label="In collection"
+              items={info.inCollections}
+              onOpen={(id) => nav(`/collections/${id}`)}
+            />
             <ConnGroup label="Links to" items={info.linksTo} onSelect={onSelect} />
             <ConnGroup label="Linked from" items={info.linkedFrom} onSelect={onSelect} />
             {info.tags.length > 0 && (

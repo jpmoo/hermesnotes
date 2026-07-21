@@ -2129,3 +2129,44 @@ input.li-text:focus {
   width: auto;
   flex: none;
 }
+
+/* ── Inline mentions (@ people, # tags, | types) ──────────────── */
+.mention-menu {
+  min-width: 220px;
+  max-width: 340px;
+  max-height: 264px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lift);
+  padding: 4px;
+}
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text);
+}
+.mention-item.active,
+.mention-item:hover {
+  background: var(--surface-2);
+}
+.mention-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Links inside the markdown editor. */
+.note-editor a {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

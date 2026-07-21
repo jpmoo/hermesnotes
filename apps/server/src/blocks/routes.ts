@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { blocks, blockTypes, memberships } from "@hermes/db";
+import { blocks, blockTags, blockTypes, memberships, tags } from "@hermes/db";
 import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
@@ -228,6 +228,55 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     if (!updated) throw conflict("version conflict — reload and retry");
     return updated;
+  });
+
+  // ── Tags ─────────────────────────────────────────────────────
+  app.get("/tags", async (req) => {
+    const userId = requireUser(req);
+    return db
+      .select({ id: tags.id, name: tags.name })
+      .from(tags)
+      .where(eq(tags.ownerId, userId))
+      .orderBy(tags.name);
+  });
+
+  app.get("/blocks/:id/tags", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const rows = await db
+      .select({ name: tags.name })
+      .from(blockTags)
+      .innerJoin(tags, eq(tags.id, blockTags.tagId))
+      .where(and(eq(blockTags.blockId, id), eq(tags.ownerId, userId)))
+      .orderBy(tags.name);
+    return rows.map((r) => r.name);
+  });
+
+  app.put("/blocks/:id/tags", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { tags: names } = z.object({ tags: z.array(z.string()) }).parse(req.body);
+    const [b] = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!b) throw notFound("block");
+
+    const clean = [...new Set(names.map((n) => n.trim().toLowerCase()).filter(Boolean))];
+    await db.transaction(async (tx) => {
+      await tx.delete(blockTags).where(eq(blockTags.blockId, id));
+      for (const name of clean) {
+        await tx.insert(tags).values({ ownerId: userId, name }).onConflictDoNothing();
+        const [tag] = await tx
+          .select({ id: tags.id })
+          .from(tags)
+          .where(and(eq(tags.ownerId, userId), eq(tags.name, name)))
+          .limit(1);
+        if (tag) await tx.insert(blockTags).values({ blockId: id, tagId: tag.id }).onConflictDoNothing();
+      }
+    });
+    return { tags: clean };
   });
 
   app.delete("/blocks/:id", async (req) => {

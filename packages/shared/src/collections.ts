@@ -16,14 +16,43 @@ export type CollectionKind = z.infer<typeof collectionKindSchema>;
 export const membershipModeSchema = z.enum(["explicit", "smart"]);
 export type MembershipMode = z.infer<typeof membershipModeSchema>;
 
-/** Smart-collection filter (doc §6). Materialized on write-through. */
+/** Smart-collection filter: an interactive query builder (doc §6). */
+export const propertyOpSchema = z.enum([
+  "eq",
+  "neq",
+  "contains",
+  "lt",
+  "gt",
+  "empty",
+  "notEmpty",
+]);
+export type PropertyOp = z.infer<typeof propertyOpSchema>;
+
+export const conditionSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("blockType"), typeId: z.string().uuid() }),
+  z.object({ kind: z.literal("created"), op: z.enum(["before", "after"]), date: z.string() }),
+  z.object({ kind: z.literal("edited"), op: z.enum(["before", "after"]), date: z.string() }),
+  z.object({ kind: z.literal("tag"), tag: z.string() }),
+  z.object({
+    kind: z.literal("property"),
+    key: z.string(),
+    op: propertyOpSchema,
+    value: z.string().optional(),
+  }),
+  z.object({ kind: z.literal("text"), value: z.string() }),
+  z.object({ kind: z.literal("semantic"), value: z.string(), floor: z.number().min(0).max(1) }),
+]);
+export type Condition = z.infer<typeof conditionSchema>;
+
 export const filterQuerySchema = z.object({
-  tags: z.array(z.string()).optional(),
-  block_type: z.string().optional(),
-  properties_match: z.record(z.unknown()).optional(),
-  text_search: z.string().nullable().optional(),
+  match: z.enum(["all", "any"]).default("all"),
+  conditions: z.array(conditionSchema).default([]),
 });
 export type FilterQuery = z.infer<typeof filterQuerySchema>;
+
+/** How a smart collection resolves membership. */
+export const smartModeSchema = z.enum(["dynamic", "snapshot"]);
+export type SmartMode = z.infer<typeof smartModeSchema>;
 
 /** document region for a membership row (doc §5). */
 export const regionSchema = z.enum(["header", "body", "footer"]);

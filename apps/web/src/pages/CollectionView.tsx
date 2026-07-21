@@ -13,6 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { FilterQuery } from "@hermes/shared";
 import { ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -20,6 +21,7 @@ import { api, type Block, type BlockType, type Collection, type Member } from ".
 import { BlockIcon } from "../lib/icons.tsx";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
+import { QueryEditModal } from "../components/QueryEditModal.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 
@@ -34,6 +36,7 @@ function ListItem({
   syncStatus,
   collectionId,
   onRemove,
+  readonly = false,
 }: {
   member: Member;
   type: BlockType | undefined;
@@ -42,6 +45,7 @@ function ListItem({
   syncStatus: boolean;
   collectionId: string;
   onRemove: (blockId: string) => void;
+  readonly?: boolean;
 }) {
   const sortable = useSortable({ id: member.id });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
@@ -127,9 +131,11 @@ function ListItem({
   return (
     <div ref={sortable.setNodeRef} style={style} className="list-item-wrap">
       <div className={`list-item${boxChecked && format === "checklist" ? " done" : ""}`}>
-        <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
-          <GripVertical size={15} />
-        </button>
+        {!readonly && (
+          <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
+            <GripVertical size={15} />
+          </button>
+        )}
 
         {format === "checklist" ? (
           <input type="checkbox" checked={boxChecked} onChange={toggleCheck} className="li-check" />
@@ -171,9 +177,11 @@ function ListItem({
             {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
         )}
-        <button className="icon-btn li-remove" title="Remove" onClick={() => onRemove(member.id)}>
-          <X size={14} />
-        </button>
+        {!readonly && (
+          <button className="icon-btn li-remove" title="Remove" onClick={() => onRemove(member.id)}>
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       {expanded && (
@@ -201,6 +209,7 @@ export function CollectionView() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
   const [newType, setNewType] = useState<BlockType | null>(null);
+  const [queryEditOpen, setQueryEditOpen] = useState(false);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -235,6 +244,17 @@ export function CollectionView() {
 
   const format = ((collection?.properties.list_format as Format) ?? "bullet") as Format;
   const syncStatus = collection?.properties.sync_checkbox_with_status !== false;
+  const membershipMode = (collection?.properties.membership_mode as string) ?? "explicit";
+  const smartMode = (collection?.properties.smart_mode as string) ?? "dynamic";
+  const isSmart = membershipMode === "smart";
+  const isDynamic = isSmart && smartMode === "dynamic";
+  const filterQuery =
+    (collection?.properties.filter_query as FilterQuery) ?? { match: "all", conditions: [] };
+
+  const refresh = async () => {
+    await api.post(`/collections/${id}/materialize`);
+    await load();
+  };
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -253,6 +273,7 @@ export function CollectionView() {
   };
 
   const onDragEnd = (e: DragEndEvent) => {
+    if (isDynamic) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldI = members.findIndex((m) => m.id === active.id);
@@ -296,38 +317,54 @@ export function CollectionView() {
             </button>
           ))}
         </div>
-        <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
-          <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
-            + Add
-          </button>
-          {menuOpen && (
-            <div className="menu" style={{ left: 0, right: "auto" }}>
-              <button
-                className="menu-item"
-                onClick={() => {
-                  setFinderOpen(true);
-                  setMenuOpen(false);
-                }}
-              >
-                Find existing…
-              </button>
-              <div className="menu-sep" />
-              {ordered.map((t) => (
+        {!isDynamic && (
+          <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
+            <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
+              + Add
+            </button>
+            {menuOpen && (
+              <div className="menu" style={{ left: 0, right: "auto" }}>
                 <button
-                  key={t.id}
-                  className="menu-item type-item"
+                  className="menu-item"
                   onClick={() => {
-                    setNewType(t);
+                    setFinderOpen(true);
                     setMenuOpen(false);
                   }}
                 >
-                  <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
-                  <span style={{ textTransform: "capitalize" }}>New: {t.name}</span>
+                  Find existing…
                 </button>
-              ))}
-            </div>
-          )}
-        </div>
+                <div className="menu-sep" />
+                {ordered.map((t) => (
+                  <button
+                    key={t.id}
+                    className="menu-item type-item"
+                    onClick={() => {
+                      setNewType(t);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
+                    <span style={{ textTransform: "capitalize" }}>New: {t.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {isSmart && (
+          <>
+            <span className="pill">{isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
+            <button className="ghost" onClick={() => setQueryEditOpen(true)}>
+              Edit query
+            </button>
+            {!isDynamic && (
+              <button className="ghost" onClick={() => void refresh()}>
+                Refresh from query
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {members.length === 0 ? (
@@ -346,6 +383,7 @@ export function CollectionView() {
                   syncStatus={syncStatus}
                   collectionId={id}
                   onRemove={onRemove}
+                  readonly={isDynamic}
                 />
               ))}
             </div>
@@ -367,6 +405,17 @@ export function CollectionView() {
           type={newType}
           onClose={() => {
             setNewType(null);
+            void load();
+          }}
+        />
+      )}
+      {queryEditOpen && (
+        <QueryEditModal
+          collectionId={id}
+          initial={filterQuery}
+          onClose={() => setQueryEditOpen(false)}
+          onSaved={() => {
+            setQueryEditOpen(false);
             void load();
           }}
         />

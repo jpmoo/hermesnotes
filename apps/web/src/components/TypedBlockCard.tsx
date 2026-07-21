@@ -5,6 +5,7 @@ import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
+import { TagEditor } from "./TagEditor.tsx";
 
 type SaveState = "idle" | "saving" | "error";
 
@@ -133,6 +134,8 @@ export function TypedBlockCard({
           ))}
         </div>
       )}
+
+      <TagEditor blockId={block.id} />
 
       <div className="block-meta">
         <span className="type-name">{type.name}</span>

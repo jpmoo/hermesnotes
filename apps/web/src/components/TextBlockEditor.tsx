@@ -8,6 +8,7 @@ import { Markdown } from "tiptap-markdown";
 import { api, ApiError, type Block } from "../api.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { TagEditor } from "./TagEditor.tsx";
 
 type SaveState = "idle" | "saving" | "error";
 type Mode = "live" | "raw";
@@ -139,6 +140,7 @@ export function TextBlockEditor({
           autoFocus
         />
       )}
+      <TagEditor blockId={block.id} />
       <div className="block-meta">
         <button className="ghost" onClick={toggle}>
           {mode === "live" ? "Raw" : "Live preview"}

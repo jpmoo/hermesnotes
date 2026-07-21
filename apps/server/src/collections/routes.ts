@@ -2,13 +2,19 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { generateKeyBetween } from "fractional-indexing";
 import { z } from "zod";
-import { collectionKindSchema } from "@hermes/shared";
+import {
+  collectionKindSchema,
+  filterQuerySchema,
+  membershipModeSchema,
+  smartModeSchema,
+} from "@hermes/shared";
 import { blocks, blockTypes, memberships } from "@hermes/db";
 import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
+import { runQuery } from "./query.js";
 
 const ICON_BY_KIND: Record<string, string> = {
   document: "file-text",
@@ -36,6 +42,40 @@ const collectionView = {
   version: blocks.version,
 };
 
+function labelOf(b: { properties: Record<string, unknown>; content: string | null }): string {
+  const title = b.properties?.title;
+  return (
+    (typeof title === "string" && title.trim()) ||
+    (b.content ?? "").replace(/\s+/g, " ").trim().slice(0, 80) ||
+    "Untitled"
+  );
+}
+
+function safeFilter(value: unknown): import("@hermes/shared").FilterQuery {
+  const parsed = filterQuerySchema.safeParse(value);
+  return parsed.success ? parsed.data : { match: "all", conditions: [] };
+}
+
+/** Replace a snapshot collection's memberships with the query's current matches. */
+async function materialize(
+  userId: string,
+  collectionId: string,
+  filter: import("@hermes/shared").FilterQuery,
+): Promise<void> {
+  const matches = await runQuery(userId, filter);
+  await db.transaction(async (tx) => {
+    await tx.delete(memberships).where(eq(memberships.collectionId, collectionId));
+    let prev: string | null = null;
+    for (const m of matches) {
+      prev = generateKeyBetween(prev, null);
+      await tx
+        .insert(memberships)
+        .values({ collectionId, blockId: m.id, position: prev })
+        .onConflictDoNothing();
+    }
+  });
+}
+
 export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -62,16 +102,23 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         kind: collectionKindSchema,
         title: z.string().default("Untitled"),
         description: z.string().optional(),
+        membershipMode: membershipModeSchema.default("explicit"),
+        smartMode: smartModeSchema.default("dynamic"),
+        filterQuery: filterQuerySchema.optional(),
       })
       .parse(req.body);
 
     const properties: Record<string, unknown> = {
       title: body.title,
       description: body.description ?? "",
-      membership_mode: "explicit",
+      membership_mode: body.membershipMode,
       icon_key: ICON_BY_KIND[body.kind] ?? "folder",
       icon_color: "#5fa4b5",
     };
+    if (body.membershipMode === "smart") {
+      properties.smart_mode = body.smartMode;
+      properties.filter_query = body.filterQuery ?? { match: "all", conditions: [] };
+    }
     if (body.kind === "list") {
       properties.list_format = "bullet";
       properties.sort_mode = "manual";
@@ -89,6 +136,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         embedSourceHash: null,
       })
       .returning(collectionView);
+
+    // Snapshot: materialize current matches into memberships once.
+    if (body.membershipMode === "smart" && body.smartMode === "snapshot" && row) {
+      await materialize(userId, row.id, body.filterQuery ?? { match: "all", conditions: [] });
+    }
     reply.code(201);
     return row;
   });
@@ -103,6 +155,25 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .limit(1);
     if (!collection || !collection.collectionKind) throw notFound("collection");
+
+    const props = collection.properties as Record<string, unknown>;
+    // Smart + dynamic: membership is the live query result (synthesized members).
+    if (props.membership_mode === "smart" && props.smart_mode === "dynamic") {
+      const matched = await runQuery(userId, safeFilter(props.filter_query));
+      const members = matched.map((b, i) => ({
+        membershipId: `q:${b.id}`,
+        position: String(i).padStart(6, "0"),
+        context: {} as Record<string, unknown>,
+        membershipVersion: 1,
+        id: b.id,
+        blockTypeId: b.blockTypeId,
+        collectionKind: null as string | null,
+        content: b.content,
+        properties: b.properties,
+        version: b.version,
+      }));
+      return { collection, members };
+    }
 
     const members = await db
       .select({
@@ -123,6 +194,37 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(asc(memberships.position));
 
     return { collection, members };
+  });
+
+  // Live preview of a query (for the builder) — count + a sample of matches.
+  app.post("/collections/query-preview", async (req) => {
+    const userId = requireUser(req);
+    const { filterQuery } = z.object({ filterQuery: filterQuerySchema }).parse(req.body);
+    const matches = await runQuery(userId, filterQuery);
+    return {
+      count: matches.length,
+      blocks: matches.slice(0, 50).map((b) => ({
+        id: b.id,
+        blockTypeId: b.blockTypeId,
+        label: labelOf(b),
+      })),
+    };
+  });
+
+  // Re-run a snapshot collection's query into its membership list.
+  app.post("/collections/:id/materialize", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const [c] = await db
+      .select({ properties: blocks.properties })
+      .from(blocks)
+      .where(
+        and(eq(blocks.id, id), eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NOT NULL`),
+      )
+      .limit(1);
+    if (!c) throw notFound("collection");
+    await materialize(userId, id, safeFilter((c.properties as Record<string, unknown>).filter_query));
+    return { ok: true };
   });
 
   app.patch("/collections/:id", async (req) => {

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
+import { CreateCollectionModal } from "../components/CreateCollectionModal.tsx";
 
 function title(c: Collection): string {
   const t = c.properties.title;
@@ -26,16 +27,6 @@ export function CollectionsPage() {
     void load();
   }, []);
 
-  const newList = async () => {
-    setCreating(true);
-    try {
-      const c = await api.post<Collection>("/collections", { kind: "list", title: "Untitled list" });
-      nav(`/collections/${c.id}`);
-    } finally {
-      setCreating(false);
-    }
-  };
-
   const remove = async (c: Collection) => {
     await api.del(`/collections/${c.id}`);
     setDeleting(null);
@@ -48,10 +39,11 @@ export function CollectionsPage() {
       <p className="page-sub">Ordered, filterable groupings of blocks.</p>
 
       <div className="row" style={{ marginBottom: 18 }}>
-        <button className="primary" onClick={() => void newList()} disabled={creating}>
-          + New list
+        <button className="primary" onClick={() => setCreating(true)}>
+          + New collection
         </button>
       </div>
+      {creating && <CreateCollectionModal onClose={() => setCreating(false)} />}
 
       {loading ? (
         <div className="hint">Loading…</div>

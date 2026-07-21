@@ -787,6 +787,89 @@ input.typed-title:focus {
   text-transform: capitalize;
 }
 
+/* ── Query builder ────────────────────────────────────────────── */
+.query-builder {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+.cond-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.cond-kind {
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 78px;
+}
+.cond-row input,
+.cond-row select {
+  width: auto;
+  min-width: 90px;
+  flex: 0 1 auto;
+}
+.cond-row .cond-key {
+  width: 130px;
+}
+.cond-floor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.cond-floor input[type="range"] {
+  width: 90px;
+}
+.cond-remove {
+  border-color: transparent;
+  margin-left: auto;
+}
+
+/* ── Tag chips ─────────────────────────────────────────────────── */
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-chrome);
+  font-size: 11px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: #eef4f6;
+  color: var(--accent-ink);
+}
+.tag-chip button {
+  border: none;
+  background: transparent;
+  color: var(--accent-ink);
+  padding: 0 3px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tag-input {
+  width: 70px !important;
+  height: 26px !important;
+  border: 1px dashed var(--border-strong) !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  padding: 2px 10px !important;
+  font-size: 11px;
+}
+
 /* ── Finder / add-existing modal ──────────────────────────────── */
 .finder {
   max-width: 460px;

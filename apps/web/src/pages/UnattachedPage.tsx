@@ -50,7 +50,7 @@ export function UnattachedPage() {
 
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
 
-  const { toolbar, renderList } = useBlockView(blocks, types);
+  const { toolbar, renderList } = useBlockView(blocks, types, { scope: "unattached" });
 
   // Text type first, then the rest alphabetically.
   const ordered = [...types].sort((a, b) =>

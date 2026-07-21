@@ -122,8 +122,8 @@ export function TodayPage() {
       saveLayout([...layout, { t: "block", id: bid }]);
   };
 
-  const relevantView = useBlockView(sheet?.relevant ?? [], types);
-  const activityView = useBlockView(sheet?.activity ?? [], types);
+  const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
+  const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
   const card = (b: Block) => (
     <BlockCard block={b} type={typeById.get(b.blockTypeId)} onConflict={load} onDeleted={() => void load()} />
   );

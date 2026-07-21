@@ -15,7 +15,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { ArrowLeft, ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -32,6 +32,30 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
 
 type Format = "bullet" | "ordered" | "checklist" | "blocks";
+
+/** A draggable document section row (a full card with a grip handle). */
+function DocSection({
+  id,
+  draggable,
+  children,
+}: {
+  id: string;
+  draggable: boolean;
+  children: ReactNode;
+}) {
+  const s = useSortable({ id, disabled: !draggable });
+  const style = { transform: CSS.Transform.toString(s.transform), transition: s.transition };
+  return (
+    <div ref={s.setNodeRef} style={style} className="doc-section-row">
+      {draggable && (
+        <button className="drag-handle doc-grip" {...s.attributes} {...s.listeners} title="Drag to reorder">
+          <GripVertical size={15} />
+        </button>
+      )}
+      <div className="doc-section-body">{children}</div>
+    </div>
+  );
+}
 
 /** One sortable list row. Owns its own inline edit + autosave. */
 function ListItem({
@@ -462,21 +486,33 @@ export function CollectionView() {
       {members.length === 0 ? (
         <div className="hint">{isDocument ? "Empty document. Add a section." : "Empty list. Add an item."}</div>
       ) : isDocument ? (
-        <div className="doc-sections">
-          {members.map((m) =>
-            m.collectionKind ? (
-              <CollectionSection key={m.id} collectionId={m.id} types={types} />
-            ) : (
-              <BlockCard
-                key={m.id}
-                block={m as unknown as Block}
-                type={m.blockTypeId ? typeById.get(m.blockTypeId) : undefined}
-                onConflict={() => void load()}
-                onDeleted={onRemove}
-              />
-            ),
-          )}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(e) => {
+            const { active, over } = e;
+            if (over && active.id !== over.id) onSectionMove(String(active.id), String(over.id));
+          }}
+        >
+          <SortableContext items={members.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+            <div className="doc-sections">
+              {members.map((m) => (
+                <DocSection key={m.id} id={m.id} draggable={!isDynamic}>
+                  {m.collectionKind ? (
+                    <CollectionSection collectionId={m.id} types={types} />
+                  ) : (
+                    <BlockCard
+                      block={m as unknown as Block}
+                      type={m.blockTypeId ? typeById.get(m.blockTypeId) : undefined}
+                      onConflict={() => void load()}
+                      onDeleted={onRemove}
+                    />
+                  )}
+                </DocSection>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={sorted.map((m) => m.id)} strategy={verticalListSortingStrategy}>

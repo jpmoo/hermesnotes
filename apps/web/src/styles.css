@@ -1950,3 +1950,38 @@ input.li-text:focus {
   border-radius: 999px;
   background: rgba(95, 164, 181, 0.14);
 }
+
+/* ── Manual drag ordering (block views + documents) ───────────── */
+.bv-manual-toggle {
+  margin-right: 6px;
+}
+.bv-manual-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bv-manual-row,
+.doc-section-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.bv-grip,
+.doc-grip {
+  margin-top: 10px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  cursor: grab;
+}
+.bv-grip:active,
+.doc-grip:active {
+  cursor: grabbing;
+}
+.bv-manual-body,
+.doc-section-body {
+  flex: 1;
+  min-width: 0;
+}
+.doc-sections .doc-section-row + .doc-section-row {
+  margin-top: 18px;
+}

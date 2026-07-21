@@ -48,7 +48,7 @@ export function AllBlocksPage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: filter }).then(setBlocks);
 
-  const { toolbar, renderList } = useBlockView(blocks, types);
+  const { toolbar, renderList } = useBlockView(blocks, types, { scope: "allblocks" });
 
   return (
     <>

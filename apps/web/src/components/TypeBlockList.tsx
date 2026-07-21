@@ -27,7 +27,7 @@ export function TypeBlockList({ type }: { type: BlockType }) {
   }, [load]);
 
   const onDeleted = (id: string) => setBlocks((b) => b.filter((x) => x.id !== id));
-  const { toolbar, renderList } = useBlockView(blocks, [type]);
+  const { toolbar, renderList } = useBlockView(blocks, [type], { scope: `type-${type.id}` });
 
   return (
     <div className="type-blocklist">

@@ -212,7 +212,7 @@ export function CollectionView() {
   const [newType, setNewType] = useState<BlockType | null>(null);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const { slotEl, setRightPinned, setTitle, setHasContent } = usePanels();
+  const { slotEl, setTitle, setHasContent } = usePanels();
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -369,9 +369,6 @@ export function CollectionView() {
         {isSmart && (
           <>
             <span className="pill">{isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            <button className="ghost" onClick={() => setRightPinned(true)}>
-              Edit query
-            </button>
             {!isDynamic && (
               <button className="ghost" onClick={() => void refresh()}>
                 Refresh from query

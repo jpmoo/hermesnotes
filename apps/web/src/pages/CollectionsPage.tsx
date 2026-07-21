@@ -1,4 +1,4 @@
-import { MoreVertical } from "lucide-react";
+import { Library, MoreVertical } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
@@ -67,7 +67,10 @@ export function CollectionsPage() {
 
   return (
     <>
-      <h1 className="page-title">Collections</h1>
+      <h1 className="page-title title-with-icon">
+        <Library size={22} color="#26282b" />
+        Collections
+      </h1>
       <p className="page-sub">Ordered, filterable groupings of blocks.</p>
 
       <div className="row" style={{ marginBottom: 18 }}>

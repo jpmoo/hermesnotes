@@ -1382,6 +1382,28 @@ input.li-text:focus {
   background: transparent;
   padding: 0;
 }
+/* Active-line raw source (Obsidian-style): the block under the cursor shows its
+   editable markdown. Styled to blend into the body, not look like a code block. */
+.note-editor pre.source-line {
+  background: var(--surface-1);
+  border: none;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
+  padding: 0 0 0 10px;
+  margin: 0 0 0.55em;
+  overflow-x: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: var(--text-muted);
+}
+.note-editor pre.source-line code {
+  font-family: inherit;
+  font-size: inherit;
+  white-space: inherit;
+}
 .note-editor blockquote {
   margin: 0 0 0.55em;
   padding-left: 12px;

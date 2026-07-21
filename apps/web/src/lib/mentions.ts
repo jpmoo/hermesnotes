@@ -46,6 +46,8 @@ export const Mentions = Extension.create<{ handlers: MentionHandlers | null }>({
         pluginKey: new PluginKey(`mention-${char}`),
         allowSpaces: false,
         startOfLine: false,
+        // Don't trigger inside a raw source block (code) — the chars are literal there.
+        allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
         // Items are fetched by the React dropdown; the built-in list is unused.
         items: () => [],
         command: ({ editor, range, props }) => {

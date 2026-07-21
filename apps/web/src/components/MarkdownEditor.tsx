@@ -6,6 +6,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
+import { ActiveLineSource, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
@@ -42,6 +43,7 @@ export function MarkdownEditor({
   const [sug, setSug] = useState<MentionState | null>(null);
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const lastEmit = useRef(value);
 
   const handlers = useMemo<MentionHandlers>(
     () => ({ onOpen: setSug, onUpdate: setSug, onClose: () => setSug(null), keydown }),
@@ -67,17 +69,21 @@ export function MarkdownEditor({
       SmartEnter,
       HeadingIndent,
       MentionNode,
+      SourceBlock,
+      ActiveLineSource,
       Mentions.configure({ handlers }),
     ],
     content: value,
     autofocus: autofocus ? "end" : false,
     editorProps: { attributes: { class: "note-editor" } },
     onCreate: ({ editor }) => linksToMentions(editor),
-    onUpdate: ({ editor, transaction }) => {
-      // The load-time link→mention conversion doesn't change the markdown.
-      if (transaction.getMeta("mentionConvert")) return;
+    onUpdate: ({ editor }) => {
       const md = normalizeMarkdown(editor.storage.markdown.getMarkdown() as string);
       setMarkdown(md);
+      // Cursor-move source swaps (and link→mention conversion) don't change the
+      // markdown — only emit real edits so they don't spuriously re-save.
+      if (md === lastEmit.current) return;
+      lastEmit.current = md;
       onChange(md);
     },
   });

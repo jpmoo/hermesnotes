@@ -383,7 +383,7 @@ export function TypeEditor({
       )}
 
       {error && <div className="error">{error}</div>}
-      <div className="modal-actions" style={{ marginTop: 8 }}>
+      <div className="type-actions">
         <button className="ghost" onClick={onCancel}>
           Cancel
         </button>

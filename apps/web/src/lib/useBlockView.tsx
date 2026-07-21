@@ -34,7 +34,7 @@ interface SortLevel {
   key: SortKey;
   dir: "asc" | "desc";
 }
-type ViewMode = "block" | "masonry" | "masonry-collapsed";
+type ViewMode = "block" | "masonry";
 
 const VIEW_KEY = "hn.blockview.mode";
 const COLS_KEY = "hn.blockview.cols";
@@ -135,8 +135,8 @@ export function useBlockView<T extends Viewable>(
       return [];
     }
   });
-  const [viewMode, setViewModeState] = useState<ViewMode>(
-    () => (readLS(VIEW_KEY) as ViewMode) || "block",
+  const [viewMode, setViewModeState] = useState<ViewMode>(() =>
+    readLS(VIEW_KEY) === "masonry" ? "masonry" : "block",
   );
   const [columns, setColumnsState] = useState<number>(() => Number(readLS(COLS_KEY)) || 3);
 
@@ -209,8 +209,8 @@ export function useBlockView<T extends Viewable>(
     setLevels((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const removeLevel = (i: number) => setLevels((ls) => ls.filter((_, idx) => idx !== i));
 
-  const toggleManual = () => {
-    const on = !manualMode;
+  const chooseManual = (on: boolean) => {
+    if (on === manualMode) return;
     if (on) {
       setLevels([]);
       // Seed the local order from the current display so drag starts where things are.
@@ -243,25 +243,33 @@ export function useBlockView<T extends Viewable>(
   const VIEWS: { key: ViewMode; label: string }[] = [
     { key: "block", label: "Block" },
     { key: "masonry", label: "Masonry" },
-    { key: "masonry-collapsed", label: "Masonry (compact)" },
   ];
 
   const toolbar = (
     <div className="sort-bar">
-      {manualAvailable && (
-        <button
-          className={`seg bv-manual-toggle${manualMode ? " active" : ""}`}
-          onClick={toggleManual}
-        >
-          Manual
-        </button>
+      {manualAvailable ? (
+        <div className="segmented">
+          <button
+            className={`seg${manualMode ? " active" : ""}`}
+            onClick={() => chooseManual(true)}
+          >
+            Manual Sort
+          </button>
+          <button
+            className={`seg${!manualMode ? " active" : ""}`}
+            onClick={() => chooseManual(false)}
+          >
+            Properties Sort
+          </button>
+        </div>
+      ) : (
+        <span className="sort-label">Sort</span>
       )}
 
       {manualMode ? (
         <span className="hint">Drag blocks into place</span>
       ) : (
         <>
-          <span className="sort-label">Sort</span>
           {levels.map((lv, i) => (
             <span className="sort-level" key={i}>
               {i > 0 && <span className="sort-then">then</span>}
@@ -353,9 +361,8 @@ export function useBlockView<T extends Viewable>(
         </div>
       );
     }
-    const cls = "masonry" + (viewMode === "masonry-collapsed" ? " collapsed" : "");
     return (
-      <div className={cls} style={{ columnCount: columns }}>
+      <div className="masonry" style={{ columnCount: columns }}>
         {sorted.map((it) => (
           <div className="masonry-item" key={it.id}>
             {renderCard(it)}

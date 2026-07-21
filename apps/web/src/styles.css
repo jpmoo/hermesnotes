@@ -1243,6 +1243,13 @@ input.li-text:focus {
   line-height: 1.5;
   margin: 0 0 18px;
 }
+/* Type editor is a full-page card, not a modal — plain (non-sticky) actions. */
+.type-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1668,21 +1675,6 @@ input.li-text:focus {
 }
 .masonry-item > .card {
   margin: 0;
-}
-.masonry.collapsed .masonry-item {
-  height: 240px;
-  overflow: hidden;
-  position: relative;
-}
-.masonry.collapsed .masonry-item::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 36px;
-  background: linear-gradient(transparent, var(--surface));
-  pointer-events: none;
 }
 
 /* ── Reference multi-select chips ─────────────────────────────── */

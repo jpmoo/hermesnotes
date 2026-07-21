@@ -54,24 +54,26 @@ export const HeadingIndent = Extension.create({
 
             const decos: Decoration[] = [];
             let contentIndent = 0;
-            let prevWasContent = false;
             doc.forEach((node, offset) => {
               let indent = 0;
               if (node.type.name === "heading") {
                 indent = Math.max(0, (node.attrs.level as number) - minLevel);
                 contentIndent = indent + 1;
-                prevWasContent = false;
+              } else if (node.type.name === "paragraph" && node.content.size === 0) {
+                // An empty line (blank paragraph) clears the indent.
+                indent = 0;
+                contentIndent = 0;
               } else {
-                // A content block after another content block is a fresh
-                // paragraph (double line break) → back to the margin.
-                if (prevWasContent) contentIndent = 0;
+                // Everything else under the heading — paragraphs, lists,
+                // checklists — shares that indent.
                 indent = contentIndent;
-                prevWasContent = true;
               }
               if (indent > 0) {
+                // margin-left (not padding) so lists keep their bullet/checkbox
+                // gutter; the block just shifts right as a whole.
                 decos.push(
                   Decoration.node(offset, offset + node.nodeSize, {
-                    style: `padding-left:${(indent * STEP_EM).toFixed(2)}em`,
+                    style: `margin-left:${(indent * STEP_EM).toFixed(2)}em`,
                   }),
                 );
               }

@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
-import { firstLineHtml } from "../lib/markdown-excerpt.ts";
+import { oneLineHtml, oneLineText } from "../lib/display.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
 import { QueryPanel } from "../components/QueryPanel.tsx";
@@ -160,7 +160,7 @@ function ListItem({
             className="li-text li-text-static li-md"
             onClick={() => setExpanded(true)}
             dangerouslySetInnerHTML={{
-              __html: firstLineHtml(content) || '<span class="li-empty">Empty note</span>',
+              __html: oneLineHtml(props, content) || '<span class="li-empty">Empty note</span>',
             }}
           />
         ) : !expanded ? (
@@ -172,7 +172,7 @@ function ListItem({
           />
         ) : (
           <span className="li-text li-text-static" onClick={() => setExpanded(true)}>
-            {String(props.title ?? "") || type?.name || "Item"}
+            {oneLineText(props) || type?.name || "Item"}
           </span>
         )}
 

@@ -65,7 +65,15 @@ function ValueInput({
 }) {
   const t = field?.type;
   if (t === "date" || t === "datetime")
-    return <input type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
+    return (
+      <input
+        type="text"
+        list="hn-dates"
+        placeholder="YYYY-MM-DD or today+1"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
   if (t === "number")
     return <input type="number" value={value} onChange={(e) => onChange(e.target.value)} />;
   if (t === "boolean")
@@ -125,7 +133,13 @@ function ConditionRow({
             <option value="after">after</option>
             <option value="before">before</option>
           </select>
-          <input type="date" value={c.date} onChange={(e) => onChange({ ...c, date: e.target.value })} />
+          <input
+            type="text"
+            list="hn-dates"
+            placeholder="YYYY-MM-DD or today-7"
+            value={c.date}
+            onChange={(e) => onChange({ ...c, date: e.target.value })}
+          />
         </>
       )}
 
@@ -144,7 +158,7 @@ function ConditionRow({
           <select value={c.key} onChange={(e) => onChange({ ...c, key: e.target.value })}>
             {fields.map((f) => (
               <option key={f.key} value={f.key}>
-                {f.label ?? f.key.replace(/_/g, " ")}
+                {f.label?.trim() || f.key.replace(/_/g, " ")}
               </option>
             ))}
           </select>
@@ -336,8 +350,28 @@ export function QueryBuilder({
       for (const f of t.propertySchema.fields) if (!byKey.has(f.key)) byKey.set(f.key, f);
     }
   }
-  // datespan values are objects ({start,end}) — not a scalar to filter on.
-  const fields = [...byKey.values()].filter((f) => f.type !== "datespan");
+  // A datespan is an object ({start,end}); surface its two endpoints as separate
+  // date properties (dotted keys the server reads as a json path), each carrying
+  // the user's start/end labels.
+  const pretty = (k: string) => k.replace(/_/g, " ");
+  const fields: FieldDef[] = [...byKey.values()].flatMap((f) => {
+    if (f.type !== "datespan") return [f];
+    const base = f.label?.trim() || pretty(f.key);
+    return [
+      {
+        ...f,
+        key: `${f.key}.start`,
+        type: "datetime",
+        label: `${base} · ${f.startLabel?.trim() || "Start"}`,
+      },
+      {
+        ...f,
+        key: `${f.key}.end`,
+        type: "datetime",
+        label: `${base} · ${f.endLabel?.trim() || "End"}`,
+      },
+    ];
+  });
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -366,6 +400,11 @@ export function QueryBuilder({
       )}
       <datalist id="hn-tags">
         {tags.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
+      <datalist id="hn-dates">
+        {["today", "today+1", "today+7", "today-1", "today-7", "now"].map((t) => (
           <option key={t} value={t} />
         ))}
       </datalist>

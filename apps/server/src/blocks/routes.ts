@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { oneLineLabel } from "@hermes/shared";
 import { blocks, blockTags, blockTypes, memberships, tags } from "@hermes/db";
 import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
@@ -114,14 +115,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(and(...filters))
       .orderBy(desc(blocks.updatedAt))
       .limit(25);
-    return rows.map((r) => {
-      const title = (r.properties as Record<string, unknown>)?.title;
-      const label =
-        (typeof title === "string" && title.trim()) ||
-        (r.content ?? "").replace(/\s+/g, " ").trim().slice(0, 60) ||
-        "Untitled";
-      return { id: r.id, label };
-    });
+    return rows.map((r) => ({
+      id: r.id,
+      label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
+    }));
   });
 
   // Search existing (non-collection) blocks to add to a collection.
@@ -161,14 +158,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .orderBy(desc(blocks.updatedAt))
       .limit(30);
 
-    return rows.map((r) => {
-      const title = (r.properties as Record<string, unknown>)?.title;
-      const label =
-        (typeof title === "string" && title.trim()) ||
-        (r.content ?? "").replace(/\s+/g, " ").trim().slice(0, 80) ||
-        "Untitled";
-      return { id: r.id, blockTypeId: r.blockTypeId, label };
-    });
+    return rows.map((r) => ({
+      id: r.id,
+      blockTypeId: r.blockTypeId,
+      label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
+    }));
   });
 
   app.get("/blocks/:id", async (req) => {

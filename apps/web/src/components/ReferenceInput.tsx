@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Block, type BlockRef } from "../api.ts";
 import { firstLineHtml } from "../lib/markdown-excerpt.ts";
+import { oneLineText } from "../lib/display.ts";
 
 /** Reference picker: a dynamic search box (not a select of every block). */
 export function ReferenceInput({
@@ -28,12 +29,7 @@ export function ReferenceInput({
     void api
       .get<Block>(`/blocks/${id}`)
       .then((b) => {
-        const t = b.properties?.title;
-        setLabel(
-          (typeof t === "string" && t.trim()) ||
-            (b.content ?? "").replace(/\s+/g, " ").trim().slice(0, 60) ||
-            "Untitled",
-        );
+        setLabel(oneLineText(b.properties, b.content) || "Untitled");
       })
       .catch(() => setLabel("(unknown)"));
   }, [id]);

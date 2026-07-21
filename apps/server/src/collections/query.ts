@@ -1,7 +1,13 @@
 import { and, eq, gt, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { blockEmbeddings, blockTags, blocks, padEmbedding, tags, userSettings } from "@hermes/db";
 import { EMBEDDING_INDEX_DIM } from "@hermes/db/schema";
-import { normalizeFilter, type Condition, type FilterGroup, type FilterQuery } from "@hermes/shared";
+import {
+  normalizeFilter,
+  resolveDateToken,
+  type Condition,
+  type FilterGroup,
+  type FilterQuery,
+} from "@hermes/shared";
 import { db } from "../db.js";
 import { embed } from "../ollama/client.js";
 
@@ -44,18 +50,18 @@ async function semanticIds(userId: string, value: string, floor: number): Promis
   return rows.map((r) => r.blockId);
 }
 
-function conditionSql(c: Condition, sem: Map<Condition, string[]>): SQL {
+function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): SQL {
   switch (c.kind) {
     case "blockType":
       return eq(blocks.blockTypeId, c.typeId);
-    case "created":
-      return c.op === "before"
-        ? lt(blocks.createdAt, new Date(c.date))
-        : gt(blocks.createdAt, new Date(c.date));
-    case "edited":
-      return c.op === "before"
-        ? lt(blocks.updatedAt, new Date(c.date))
-        : gt(blocks.updatedAt, new Date(c.date));
+    case "created": {
+      const d = new Date(resolveDateToken(c.date, now));
+      return c.op === "before" ? lt(blocks.createdAt, d) : gt(blocks.createdAt, d);
+    }
+    case "edited": {
+      const d = new Date(resolveDateToken(c.date, now));
+      return c.op === "before" ? lt(blocks.updatedAt, d) : gt(blocks.updatedAt, d);
+    }
     case "tag":
       return sql`EXISTS (SELECT 1 FROM ${blockTags} bt JOIN ${tags} tg ON tg.id = bt.tag_id WHERE bt.block_id = ${blocks.id} AND tg.name = ${c.tag})`;
     case "text": {
@@ -63,8 +69,15 @@ function conditionSql(c: Condition, sem: Map<Condition, string[]>): SQL {
       return sql`(${blocks.properties}->>'title' ILIKE ${like} OR ${blocks.content} ILIKE ${like} OR ${blocks.embedSource} ILIKE ${like})`;
     }
     case "property": {
-      const p = sql`${blocks.properties}->>${c.key}`;
-      const v = c.value ?? "";
+      // Dotted keys address a nested json value, e.g. a datespan's
+      // "available.start" -> properties -> 'available' ->> 'start'.
+      const dot = c.key.indexOf(".");
+      const p =
+        dot > 0
+          ? sql`${blocks.properties}->${c.key.slice(0, dot)}->>${c.key.slice(dot + 1)}`
+          : sql`${blocks.properties}->>${c.key}`;
+      // Relative date tokens (today, today+1, now) resolve at query time.
+      const v = resolveDateToken(c.value ?? "", now);
       switch (c.op) {
         case "eq":
           return sql`${p} = ${v}`;
@@ -91,9 +104,9 @@ function conditionSql(c: Condition, sem: Map<Condition, string[]>): SQL {
   }
 }
 
-function groupSql(g: FilterGroup, sem: Map<Condition, string[]>): SQL {
+function groupSql(g: FilterGroup, sem: Map<Condition, string[]>, now: Date): SQL {
   const parts = g.items.map((it) =>
-    it.kind === "group" ? groupSql(it, sem) : conditionSql(it, sem),
+    it.kind === "group" ? groupSql(it, sem, now) : conditionSql(it, sem, now),
   );
   if (parts.length === 0) return sql`true`;
   return (g.match === "any" ? or(...parts) : and(...parts)) ?? sql`true`;
@@ -119,7 +132,7 @@ export async function runQuery(userId: string, filter: FilterQuery): Promise<Que
   );
 
   const scope = and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NULL`);
-  const combined = groupSql(root, sem);
+  const combined = groupSql(root, sem, new Date());
 
   return db
     .select({

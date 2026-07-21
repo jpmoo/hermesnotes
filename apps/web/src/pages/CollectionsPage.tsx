@@ -6,10 +6,10 @@ import { BlockIcon } from "../lib/icons.tsx";
 import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { CreateCollectionModal } from "../components/CreateCollectionModal.tsx";
+import { oneLineText } from "../lib/display.ts";
 
 function title(c: Collection): string {
-  const t = c.properties.title;
-  return (typeof t === "string" && t.trim()) || "Untitled";
+  return oneLineText(c.properties) || "Untitled";
 }
 
 type Target = "bg" | "text" | "icon";

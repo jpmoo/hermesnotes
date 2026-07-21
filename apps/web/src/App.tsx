@@ -9,6 +9,7 @@ import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
 import { AllBlocksPage } from "./pages/AllBlocksPage.tsx";
+import { TodayPage } from "./pages/TodayPage.tsx";
 import { UnattachedPage } from "./pages/UnattachedPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
@@ -38,6 +39,8 @@ function Shell() {
         <div className="main-inner">
           <Routes>
             <Route path="/" element={<UnattachedPage />} />
+            <Route path="/today" element={<TodayPage />} />
+            <Route path="/today/:date" element={<TodayPage />} />
             <Route path="/blocks" element={<AllBlocksPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionView />} />

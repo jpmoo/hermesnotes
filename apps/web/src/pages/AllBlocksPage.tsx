@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
-import { SaveAsListModal } from "../components/SaveAsListModal.tsx";
+import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
 import { emptyGroup } from "../lib/filter.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockSort } from "../lib/useBlockSort.tsx";
@@ -62,7 +62,7 @@ export function AllBlocksPage() {
 
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
         <button className="primary" onClick={() => setSaveOpen(true)}>
-          Save as list…
+          Save as collection…
         </button>
         <span className="hint">{blocks.length} block(s)</span>
       </div>
@@ -85,7 +85,7 @@ export function AllBlocksPage() {
         ))
       )}
 
-      {saveOpen && <SaveAsListModal filter={filter} onClose={() => setSaveOpen(false)} />}
+      {saveOpen && <SaveAsCollectionModal filter={filter} onClose={() => setSaveOpen(false)} />}
 
       {slotEl &&
         createPortal(

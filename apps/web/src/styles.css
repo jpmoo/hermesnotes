@@ -1570,3 +1570,43 @@ input.li-text:focus {
   border: 0;
   background: transparent;
 }
+
+/* ── Today page ───────────────────────────────────────────────── */
+.today-section {
+  margin-bottom: 26px;
+}
+.today-h {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.today-cal {
+  padding: 4px 2px;
+}
+/* Dot marking a date that has a scratchpad note. */
+.dtp-day {
+  position: relative;
+}
+.dtp-day.has-note::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.dtp-day.sel.has-note::after {
+  background: #fff;
+}
+/* Let the kind picker wrap onto multiple rows in narrow modals. */
+.segmented.wrap {
+  flex-wrap: wrap;
+}

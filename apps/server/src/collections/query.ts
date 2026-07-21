@@ -131,7 +131,12 @@ export async function runQuery(userId: string, filter: FilterQuery): Promise<Que
     }),
   );
 
-  const scope = and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NULL`);
+  const scope = and(
+    eq(blocks.ownerId, userId),
+    sql`${blocks.collectionKind} IS NULL`,
+    // Today scratchpad notes are hidden from all general queries.
+    sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+  );
   const combined = groupSql(root, sem, new Date());
 
   return db

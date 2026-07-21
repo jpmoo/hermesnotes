@@ -90,6 +90,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
+          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
           // no parent (not a member of any collection)
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id})`,
           // no children (not a collection with members)
@@ -136,7 +137,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const { typeId, q } = z
       .object({ typeId: z.string().uuid(), q: z.string().optional() })
       .parse(req.query);
-    const filters = [eq(blocks.ownerId, userId), eq(blocks.blockTypeId, typeId)];
+    const filters = [
+      eq(blocks.ownerId, userId),
+      eq(blocks.blockTypeId, typeId),
+      sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+    ];
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;
       filters.push(
@@ -166,7 +171,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(req.query);
 
-    const filters = [eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NULL`];
+    const filters = [
+      eq(blocks.ownerId, userId),
+      sql`${blocks.collectionKind} IS NULL`,
+      sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+    ];
     if (typeId) filters.push(eq(blocks.blockTypeId, typeId));
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;

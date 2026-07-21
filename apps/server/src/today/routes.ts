@@ -1,0 +1,159 @@
+import { and, eq, gte, lt, or, sql } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import type { PropertySchema } from "@hermes/shared";
+import { blocks, blockTypes } from "@hermes/db";
+import { db } from "../db.js";
+import { badRequest } from "../lib/errors.js";
+import { authenticate, requireUser } from "../auth/middleware.js";
+
+const blockView = {
+  id: blocks.id,
+  blockTypeId: blocks.blockTypeId,
+  collectionKind: blocks.collectionKind,
+  content: blocks.content,
+  properties: blocks.properties,
+  embeddedAt: blocks.embeddedAt,
+  embedPending: sql<boolean>`(${blocks.embedSourceHash} IS NULL AND ${blocks.embedSource} IS NOT NULL)`,
+  version: blocks.version,
+  createdAt: blocks.createdAt,
+  updatedAt: blocks.updatedAt,
+};
+
+const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** Date portion of a "YYYY-MM-DD[THH:mm]" value, or null. */
+function dateOf(v: unknown): string | null {
+  if (typeof v !== "string" || !v) return null;
+  const d = v.split("T")[0];
+  return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
+/**
+ * A block is "relevant" to a date if any datetime/date property lands on it, or
+ * the date falls within any datespan property (inclusive of start/end, ignoring
+ * time).
+ */
+function isRelevant(
+  schema: PropertySchema | null,
+  props: Record<string, unknown>,
+  date: string,
+): boolean {
+  if (!schema) return false;
+  for (const f of schema.fields) {
+    if (f.type === "datetime" || f.type === "date") {
+      if (dateOf(props[f.key]) === date) return true;
+    } else if (f.type === "datespan") {
+      const span = props[f.key] as { start?: unknown; end?: unknown } | undefined;
+      if (span && typeof span === "object") {
+        const s = dateOf(span.start);
+        const e = dateOf(span.end);
+        if (s && s === date) return true;
+        if (e && e === date) return true;
+        if (s && e && s <= date && date <= e) return true;
+      }
+    }
+  }
+  return false;
+}
+
+export async function todayRoutes(app: FastifyInstance): Promise<void> {
+  app.addHook("preHandler", authenticate);
+
+  /** Dates that have a non-empty scratchpad note (for the calendar). */
+  app.get("/today/dates", async (req) => {
+    const userId = requireUser(req);
+    const rows = await db
+      .select({ d: sql<string>`${blocks.properties}->>'today_note'` })
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`jsonb_exists(${blocks.properties}, 'today_note')`,
+          sql`COALESCE(${blocks.content}, '') <> ''`,
+        ),
+      );
+    return [...new Set(rows.map((r) => r.d).filter(Boolean))];
+  });
+
+  /** The Today sheet for a date: scratchpad note + relevant + activity blocks. */
+  app.get("/today/:date", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+
+    // Find-or-create the dated scratchpad note (a hidden text block).
+    let [note] = await db
+      .select(blockView)
+      .from(blocks)
+      .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>'today_note' = ${date}`))
+      .limit(1);
+    if (!note) {
+      const [textType] = await db
+        .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
+        .from(blockTypes)
+        .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.name, "text")))
+        .limit(1);
+      if (!textType) throw badRequest("text block type missing");
+      const [created] = await db
+        .insert(blocks)
+        .values({
+          ownerId: userId,
+          blockTypeId: textType.id,
+          content: "",
+          properties: { today_note: date },
+          embedSource: "",
+          embedSourceHash: null,
+          blockTypeSchemaVersion: textType.schemaVersion,
+        })
+        .returning(blockView);
+      note = created;
+    }
+
+    // Activity: blocks created or edited on this date (server-local day).
+    const start = new Date(`${date}T00:00:00`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const activity = await db
+      .select(blockView)
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.collectionKind} IS NULL`,
+          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          or(
+            and(gte(blocks.createdAt, start), lt(blocks.createdAt, end)),
+            and(gte(blocks.updatedAt, start), lt(blocks.updatedAt, end)),
+          ),
+        ),
+      )
+      .orderBy(sql`${blocks.updatedAt} DESC`)
+      .limit(500);
+
+    // Relevant: schema-aware, filtered in JS over candidate blocks.
+    const types = await db
+      .select({ id: blockTypes.id, schema: blockTypes.propertySchema })
+      .from(blockTypes)
+      .where(eq(blockTypes.ownerId, userId));
+    const schemaById = new Map(types.map((t) => [t.id, t.schema]));
+    const candidates = await db
+      .select(blockView)
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.collectionKind} IS NULL`,
+          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+        ),
+      )
+      .limit(2000);
+    const relevant = candidates.filter((b) =>
+      isRelevant(
+        b.blockTypeId ? schemaById.get(b.blockTypeId) ?? null : null,
+        b.properties as Record<string, unknown>,
+        date,
+      ),
+    );
+
+    return { note, relevant, activity };
+  });
+}

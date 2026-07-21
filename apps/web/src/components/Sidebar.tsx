@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   Layers,
   Library,
   LogOut,
@@ -34,6 +35,7 @@ const LABELS: Record<Target, string> = {
 
 // Preference keys (server-side, synced across devices) for each colorable row.
 // The Unattached row keeps the legacy "inbox_colors" key so saved colors carry over.
+const TODAY_KEY = "today_colors";
 const UNATTACHED_KEY = "inbox_colors";
 const COLLECTIONS_KEY = "collections_colors";
 
@@ -163,6 +165,7 @@ export function Sidebar() {
         </button>
       </div>
 
+      {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
       {colorRow(UNATTACHED_KEY, "/", true, Unlink, "Unattached")}
       <NavLink to="/blocks" className="nav-link" title="All blocks">
         <Layers size={18} />

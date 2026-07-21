@@ -716,7 +716,8 @@ input.typed-title:focus {
 }
 .typed-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  /* auto-fit collapses empty tracks, so a lone field fills the whole width. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 8px 16px;
   padding: 8px 0 4px;
   border-top: 1px solid var(--border);
@@ -724,6 +725,13 @@ input.typed-title:focus {
 }
 .typed-field {
   margin-bottom: 4px;
+}
+/* Text/url fields take the full row rather than tiling. */
+.typed-field.full {
+  grid-column: 1 / -1;
+}
+.meta-dates {
+  color: var(--text-faint);
 }
 .type-name {
   font-family: var(--font-chrome);

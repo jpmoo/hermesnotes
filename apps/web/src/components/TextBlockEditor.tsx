@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import { api, ApiError, type Block } from "../api.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
+import { fmtDateTime } from "../lib/format.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { TagEditor } from "./TagEditor.tsx";
 
@@ -44,6 +45,7 @@ export function TextBlockEditor({
   const [markdown, setMarkdown] = useState(block.content ?? "");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -56,6 +58,7 @@ export function TextBlockEditor({
         version: versionRef.current,
       });
       versionRef.current = updated.version;
+      setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -145,9 +148,11 @@ export function TextBlockEditor({
         <button className="ghost" onClick={toggle}>
           {mode === "live" ? "Raw" : "Live preview"}
         </button>
-        <span>
-          {saveState === "saving" ? "saving…" : saveState === "error" ? "save failed" : "saved"}
+        <span className="meta-dates">
+          Created {fmtDateTime(block.createdAt)} · Edited {fmtDateTime(updatedAt)}
         </span>
+        {saveState === "saving" && <span>saving…</span>}
+        {saveState === "error" && <span className="error">save failed</span>}
         <span style={{ flex: 1 }} />
         <button className="ghost" onClick={() => setConfirmOpen(true)}>
           Delete

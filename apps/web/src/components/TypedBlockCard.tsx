@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { fmtDateTime } from "../lib/format.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
@@ -61,6 +62,7 @@ export function TypedBlockCard({
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -80,6 +82,7 @@ export function TypedBlockCard({
         version: versionRef.current,
       });
       versionRef.current = updated.version;
+      setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -127,7 +130,10 @@ export function TypedBlockCard({
       {rest.length > 0 && (
         <div className="typed-fields">
           {rest.map((f) => (
-            <label className="field typed-field" key={f.key}>
+            <label
+              className={`field typed-field${f.type === "text" || f.type === "url" ? " full" : ""}`}
+              key={f.key}
+            >
               <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
               <FieldInput field={f} value={props[f.key]} onChange={(v) => update(f.key, v)} />
             </label>
@@ -139,9 +145,11 @@ export function TypedBlockCard({
 
       <div className="block-meta">
         <span className="type-name">{type.name}</span>
-        <span>
-          {saveState === "saving" ? "saving…" : saveState === "error" ? "save failed" : "saved"}
+        <span className="meta-dates">
+          Created {fmtDateTime(block.createdAt)} · Edited {fmtDateTime(updatedAt)}
         </span>
+        {saveState === "saving" && <span>saving…</span>}
+        {saveState === "error" && <span className="error">save failed</span>}
         <span style={{ flex: 1 }} />
         <button className="ghost" onClick={() => setConfirmOpen(true)}>
           Delete

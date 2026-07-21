@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
@@ -16,6 +17,7 @@ import { blockRoutes } from "./blocks/routes.js";
 import { blockTypeRoutes } from "./blocks/block-types-routes.js";
 import { collectionRoutes } from "./collections/routes.js";
 import { todayRoutes } from "./today/routes.js";
+import { attachmentRoutes } from "./attachments/routes.js";
 import { setupRoutes } from "./setup/routes.js";
 
 // Built web bundle (apps/web/dist), served on the same port when present.
@@ -28,6 +30,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(cookie, { secret: getAuthSecret() });
   await app.register(cors, { origin: env.APP_ORIGIN, credentials: true });
+  await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 20 } });
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof ZodError) {
@@ -64,6 +67,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(blockTypeRoutes, { prefix: "/api" });
   await app.register(collectionRoutes, { prefix: "/api" });
   await app.register(todayRoutes, { prefix: "/api" });
+  await app.register(attachmentRoutes, { prefix: "/api" });
   await app.register(blockRoutes, { prefix: "/api" });
 
   // Serve the web bundle + SPA fallback when it's been built.

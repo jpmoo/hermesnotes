@@ -1,15 +1,18 @@
-import { ListFilter, PanelRight, Pin, PinOff } from "lucide-react";
+import { ListFilter, PanelRight, Pin, PinOff, X } from "lucide-react";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
+import { BlockInfoPane } from "./BlockInfoPane.tsx";
 
 /**
  * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
  * can portal content into its slot and flag `hasContent`.
  */
 export function RightPanel() {
-  const { setSlotEl, rightPinned, setRightPinned, title, hasContent } = usePanels();
+  const { setSlotEl, rightPinned, setRightPinned, title, hasContent, selectedBlockId, setSelectedBlockId } =
+    usePanels();
   const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const expanded = rightPinned || hovered;
+  const showInfo = selectedBlockId !== null;
 
   return (
     <aside
@@ -18,7 +21,7 @@ export function RightPanel() {
       onMouseLeave={onMouseLeave}
     >
       <div className="panel-rail-icon" title={hasContent ? title : "Note info & options"}>
-        {hasContent ? <ListFilter size={18} /> : <PanelRight size={18} />}
+        {hasContent || showInfo ? <ListFilter size={18} /> : <PanelRight size={18} />}
       </div>
       <div className="panel-body">
         <div className="panel-head">
@@ -39,7 +42,23 @@ export function RightPanel() {
           </button>
         </div>
         <div ref={setSlotEl} />
-        {!hasContent && <div className="panel-placeholder">Note info &amp; options</div>}
+        {showInfo && (
+          <div className="info-block">
+            {hasContent && <div className="panel-divider" />}
+            <div className="panel-head-sub">
+              <span className="panel-h">Block info</span>
+              <button
+                className="icon-btn"
+                title="Clear selection"
+                onClick={() => setSelectedBlockId(null)}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <BlockInfoPane blockId={selectedBlockId} onSelect={setSelectedBlockId} />
+          </div>
+        )}
+        {!hasContent && !showInfo && <div className="panel-placeholder">Note info &amp; options</div>}
       </div>
     </aside>
   );

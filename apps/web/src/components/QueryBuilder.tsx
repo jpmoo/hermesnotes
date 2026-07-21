@@ -14,6 +14,7 @@ const KIND_LABELS: Record<Kind, string> = {
   property: "Field",
   text: "Text",
   semantic: "Semantic",
+  hasAttachment: "Attachment",
 };
 
 const PROP_OPS: PropertyOp[] = ["eq", "neq", "contains", "lt", "gt", "empty", "notEmpty"];
@@ -42,6 +43,8 @@ function defaultCondition(kind: Kind, types: BlockType[], fields: FieldDef[]): C
       return { kind, value: "" };
     case "semantic":
       return { kind, value: "", floor: 0.75 };
+    case "hasAttachment":
+      return { kind, has: true };
   }
 }
 
@@ -190,6 +193,16 @@ function ConditionRow({
 
       {c.kind === "text" && (
         <input placeholder="keyword" value={c.value} onChange={(e) => onChange({ ...c, value: e.target.value })} />
+      )}
+
+      {c.kind === "hasAttachment" && (
+        <select
+          value={c.has ? "yes" : "no"}
+          onChange={(e) => onChange({ ...c, has: e.target.value === "yes" })}
+        >
+          <option value="yes">has attachment</option>
+          <option value="no">no attachment</option>
+        </select>
       )}
 
       {c.kind === "semantic" && (

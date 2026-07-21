@@ -46,6 +46,7 @@ export const conditionSchema = z.discriminatedUnion("kind", [
   }),
   z.object({ kind: z.literal("text"), value: z.string() }),
   z.object({ kind: z.literal("semantic"), value: z.string(), floor: z.number().min(0).max(1) }),
+  z.object({ kind: z.literal("hasAttachment"), has: z.boolean() }),
 ]);
 export type Condition = z.infer<typeof conditionSchema>;
 

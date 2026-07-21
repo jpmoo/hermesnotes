@@ -1,4 +1,5 @@
 import type { FieldDef } from "@hermes/shared";
+import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
 
@@ -13,14 +14,22 @@ export function FieldInput({
   field,
   value,
   onChange,
+  blockId,
 }: {
   field: FieldDef;
   value: unknown;
   onChange: (value: unknown) => void;
+  blockId?: string;
 }) {
   const str = value == null ? "" : String(value);
 
   switch (field.type) {
+    case "attachments":
+      return blockId ? (
+        <AttachmentsField blockId={blockId} />
+      ) : (
+        <span className="hint">Save the block first to attach files.</span>
+      );
     case "boolean":
       return (
         <input

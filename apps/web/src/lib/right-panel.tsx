@@ -12,6 +12,8 @@ interface PanelsApi {
   setTitle: (t: string) => void;
   hasContent: boolean;
   setHasContent: (b: boolean) => void;
+  selectedBlockId: string | null;
+  setSelectedBlockId: (id: string | null) => void;
   leftPinned: boolean;
   setLeftPinned: (b: boolean) => void;
   rightPinned: boolean;
@@ -31,6 +33,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
   const [title, setTitle] = useState("");
   const [hasContent, setHasContent] = useState(false);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [leftPinned, setLeftRaw] = useState(() => read("hn.pin.left"));
   const [rightPinned, setRightRaw] = useState(() => read("hn.pin.right"));
 
@@ -51,12 +54,14 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       setTitle,
       hasContent,
       setHasContent,
+      selectedBlockId,
+      setSelectedBlockId,
       leftPinned,
       setLeftPinned,
       rightPinned,
       setRightPinned,
     }),
-    [slotEl, title, hasContent, leftPinned, rightPinned],
+    [slotEl, title, hasContent, selectedBlockId, leftPinned, rightPinned],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

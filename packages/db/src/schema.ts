@@ -1,5 +1,6 @@
 import {
   boolean,
+  customType,
   integer,
   jsonb,
   pgTable,
@@ -10,6 +11,13 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
+
+/** Postgres bytea <-> Node Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 import type { CollectionKind, MembershipContext, PropertySchema } from "@hermes/shared";
 import { vector } from "./vector.js";
 
@@ -166,4 +174,23 @@ export const blockTags = pgTable(
       .references(() => tags.id, { onDelete: "cascade" }),
   },
   (t) => ({ pk: primaryKey({ columns: [t.blockId, t.tagId] }) }),
+);
+
+/** Files uploaded against a block, stored inline (bytea) in the database. */
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    blockId: uuid("block_id")
+      .notNull()
+      .references(() => blocks.id, { onDelete: "cascade" }),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    mime: text("mime").notNull(),
+    size: integer("size").notNull(),
+    data: bytea("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
 );

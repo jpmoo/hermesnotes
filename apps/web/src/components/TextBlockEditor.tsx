@@ -8,6 +8,8 @@ import { Markdown } from "tiptap-markdown";
 import { api, ApiError, type Block } from "../api.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { fmtDateTime } from "../lib/format.ts";
+import { usePanels } from "../lib/right-panel.tsx";
+import { AttachmentsSection } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { TagEditor } from "./TagEditor.tsx";
 
@@ -49,6 +51,7 @@ export function TextBlockEditor({
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const { setSelectedBlockId } = usePanels();
 
   const save = async (value: string) => {
     setSaveState("saving");
@@ -130,7 +133,7 @@ export function TextBlockEditor({
   };
 
   return (
-    <div className="card">
+    <div className="card" onPointerDownCapture={() => setSelectedBlockId(block.id)}>
       {mode === "live" ? (
         <EditorContent editor={editor} />
       ) : (
@@ -144,6 +147,7 @@ export function TextBlockEditor({
         />
       )}
       <TagEditor blockId={block.id} />
+      <AttachmentsSection blockId={block.id} />
       <div className="block-meta">
         <button className="ghost" onClick={toggle}>
           {mode === "live" ? "Raw" : "Live preview"}

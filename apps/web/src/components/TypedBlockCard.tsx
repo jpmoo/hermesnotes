@@ -4,6 +4,7 @@ import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { fmtDateTime } from "../lib/format.ts";
+import { usePanels } from "../lib/right-panel.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
@@ -65,6 +66,7 @@ export function TypedBlockCard({
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  const { setSelectedBlockId } = usePanels();
 
   const schema = type.propertySchema;
   const fields = [...(schema?.fields ?? [])].sort((a, b) => a.order - b.order);
@@ -106,7 +108,7 @@ export function TypedBlockCard({
   };
 
   return (
-    <div className="card typed-card">
+    <div className="card typed-card" onPointerDownCapture={() => setSelectedBlockId(block.id)}>
       <div className="typed-head">
         {statusField ? (
           <StatusControl
@@ -132,12 +134,19 @@ export function TypedBlockCard({
           {rest.map((f) => (
             <label
               className={`field typed-field${
-                f.type === "text" || f.type === "url" || f.type === "datespan" ? " full" : ""
+                f.type === "text" || f.type === "url" || f.type === "datespan" || f.type === "attachments"
+                  ? " full"
+                  : ""
               }`}
               key={f.key}
             >
               <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
-              <FieldInput field={f} value={props[f.key]} onChange={(v) => update(f.key, v)} />
+              <FieldInput
+                field={f}
+                value={props[f.key]}
+                onChange={(v) => update(f.key, v)}
+                blockId={block.id}
+              />
             </label>
           ))}
         </div>

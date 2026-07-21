@@ -20,6 +20,7 @@ export const fieldTypeSchema = z.enum([
   "status",
   "url",
   "reference", // points at another block (of ref_type_id); value is that block's id
+  "attachments", // interactive file uploads stored server-side, keyed by block id
 ]);
 export type FieldType = z.infer<typeof fieldTypeSchema>;
 
@@ -90,7 +91,7 @@ export function deriveEmbedSource(
   properties: Record<string, unknown>,
 ): string {
   return schema.fields
-    .filter((f) => f.includeEmbed && f.type !== "reference") // ref values are ids, not text
+    .filter((f) => f.includeEmbed && f.type !== "reference" && f.type !== "attachments")
     .sort((a, b) => a.order - b.order)
     .map((f) => properties[f.key])
     .filter((v): v is string | number => v !== null && v !== undefined && v !== "")

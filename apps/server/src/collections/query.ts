@@ -1,5 +1,13 @@
 import { and, eq, gt, inArray, lt, or, sql, type SQL } from "drizzle-orm";
-import { blockEmbeddings, blockTags, blocks, padEmbedding, tags, userSettings } from "@hermes/db";
+import {
+  attachments,
+  blockEmbeddings,
+  blockTags,
+  blocks,
+  padEmbedding,
+  tags,
+  userSettings,
+} from "@hermes/db";
 import { EMBEDDING_INDEX_DIM } from "@hermes/db/schema";
 import {
   normalizeFilter,
@@ -102,6 +110,10 @@ function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): S
     case "semantic": {
       const ids = sem.get(c) ?? [];
       return ids.length ? inArray(blocks.id, ids) : sql`false`;
+    }
+    case "hasAttachment": {
+      const ex = sql`EXISTS (SELECT 1 FROM ${attachments} a WHERE a.block_id = ${blocks.id})`;
+      return c.has ? ex : sql`NOT ${ex}`;
     }
   }
 }

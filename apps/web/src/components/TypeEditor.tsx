@@ -15,11 +15,13 @@ const FIELD_TYPES: FieldType[] = [
   "status",
   "url",
   "reference",
+  "attachments",
 ];
 
 const TYPE_LABELS: Partial<Record<FieldType, string>> = {
   datetime: "Date/Time",
   datespan: "Date/Time Span",
+  attachments: "File attachments",
 };
 
 interface EditField {

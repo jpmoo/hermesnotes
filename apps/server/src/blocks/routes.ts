@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { filterQuerySchema, normalizeFilter, oneLineLabel } from "@hermes/shared";
-import { blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
+import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { runQuery, semanticIds } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
@@ -256,6 +256,109 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!row) throw notFound("block");
     return row;
+  });
+
+  /** Info + connections for a block (right-panel info pane). */
+  app.get("/blocks/:id/info", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const [b] = await db
+      .select({
+        id: blocks.id,
+        blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
+        properties: blocks.properties,
+        content: blocks.content,
+        createdAt: blocks.createdAt,
+        updatedAt: blocks.updatedAt,
+      })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!b) throw notFound("block");
+    const props = b.properties as Record<string, unknown>;
+    const labelOf = (p: unknown, c: string | null) =>
+      oneLineLabel(p as Record<string, unknown>, c) || "Untitled";
+
+    // Type name + schema (to find reference fields).
+    let type = "Text";
+    let schema: import("@hermes/shared").PropertySchema | null = null;
+    if (b.collectionKind) {
+      type = `Collection · ${b.collectionKind}`;
+    } else if (b.blockTypeId) {
+      const [t] = await db
+        .select({ name: blockTypes.name, isText: blockTypes.isText, schema: blockTypes.propertySchema })
+        .from(blockTypes)
+        .where(eq(blockTypes.id, b.blockTypeId))
+        .limit(1);
+      if (t) {
+        type = t.isText ? "Text" : t.name;
+        schema = t.schema;
+      }
+    }
+
+    // Collections this block belongs to.
+    const inRows = await db
+      .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+      .from(memberships)
+      .innerJoin(blocks, eq(blocks.id, memberships.collectionId))
+      .where(eq(memberships.blockId, id));
+    const inCollections = inRows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
+
+    // References out (this block's reference-field values).
+    const outIds: string[] = [];
+    for (const f of schema?.fields ?? []) {
+      if (f.type !== "reference") continue;
+      const v = props[f.key];
+      if (Array.isArray(v)) outIds.push(...v.map(String));
+      else if (typeof v === "string" && v) outIds.push(v);
+    }
+    let linksTo: { id: string; label: string }[] = [];
+    if (outIds.length) {
+      const rows = await db
+        .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+        .from(blocks)
+        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(outIds)])));
+      linksTo = rows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
+    }
+
+    // References in (other blocks that reference this one).
+    const fromRows = await db
+      .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.id} <> ${id}`,
+          sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
+        ),
+      )
+      .limit(50);
+    const linkedFrom = fromRows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
+
+    const tagRows = await db
+      .select({ name: tags.name })
+      .from(blockTags)
+      .innerJoin(tags, eq(tags.id, blockTags.tagId))
+      .where(eq(blockTags.blockId, id))
+      .orderBy(tags.name);
+
+    const [ac] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(attachments)
+      .where(eq(attachments.blockId, id));
+
+    return {
+      id: b.id,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      type,
+      attachments: ac?.n ?? 0,
+      inCollections,
+      linksTo,
+      linkedFrom,
+      tags: tagRows.map((t) => t.name),
+    };
   });
 
   // Update a block (content for text, properties for typed) with optimistic

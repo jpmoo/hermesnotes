@@ -27,12 +27,24 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+/** Absolute API base (subpath-aware). Use for links/downloads and file uploads. */
+export const apiBase = BASE;
+
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", body: form });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : undefined;
+  if (!res.ok) throw new ApiError(res.status, (data && (data.error as string)) || res.statusText);
+  return data as T;
+}
+
 export const api = {
   get: <T>(p: string) => request<T>("GET", p),
   post: <T>(p: string, b?: unknown) => request<T>("POST", p, b ?? {}),
   put: <T>(p: string, b?: unknown) => request<T>("PUT", p, b ?? {}),
   patch: <T>(p: string, b?: unknown) => request<T>("PATCH", p, b ?? {}),
   del: <T>(p: string) => request<T>("DELETE", p),
+  upload,
 };
 
 // ── Shared response shapes ──────────────────────────────────────
@@ -88,6 +100,27 @@ export interface BlockType {
 export interface BlockRef {
   id: string;
   label: string;
+}
+
+export interface Attachment {
+  id: string;
+  blockId: string;
+  filename: string;
+  mime: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface BlockInfo {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  type: string;
+  attachments: number;
+  inCollections: { id: string; label: string }[];
+  linksTo: { id: string; label: string }[];
+  linkedFrom: { id: string; label: string }[];
+  tags: string[];
 }
 
 export interface BlockSearchResult {

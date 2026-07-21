@@ -234,7 +234,7 @@ export function QueryBuilder({
             + Add condition
           </button>
           {menuOpen && (
-            <div className="menu" style={{ left: 0, right: "auto" }}>
+            <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
               {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
                 <button key={k} className="menu-item" onClick={() => add(k)}>
                   {KIND_LABELS[k]}

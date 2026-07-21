@@ -150,7 +150,8 @@ label,
 }
 .sidebar:not(.expanded) .brand-name,
 .sidebar:not(.expanded) .label,
-.sidebar:not(.expanded) .nav-kebab {
+.sidebar:not(.expanded) .nav-kebab,
+.sidebar:not(.expanded) .panel-pin {
   display: none;
 }
 /* In the rail, stack the logo and the expand (pin) button. */

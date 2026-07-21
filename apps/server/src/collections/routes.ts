@@ -6,6 +6,7 @@ import {
   collectionKindSchema,
   filterQuerySchema,
   membershipModeSchema,
+  normalizeFilter,
   smartModeSchema,
 } from "@hermes/shared";
 import { blocks, blockTypes, memberships } from "@hermes/db";
@@ -52,8 +53,7 @@ function labelOf(b: { properties: Record<string, unknown>; content: string | nul
 }
 
 function safeFilter(value: unknown): import("@hermes/shared").FilterQuery {
-  const parsed = filterQuerySchema.safeParse(value);
-  return parsed.success ? parsed.data : { match: "all", conditions: [] };
+  return normalizeFilter(value);
 }
 
 /** Replace a snapshot collection's memberships with the query's current matches. */
@@ -117,7 +117,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     };
     if (body.membershipMode === "smart") {
       properties.smart_mode = body.smartMode;
-      properties.filter_query = body.filterQuery ?? { match: "all", conditions: [] };
+      properties.filter_query = safeFilter(body.filterQuery);
     }
     if (body.kind === "list") {
       properties.list_format = "bullet";
@@ -139,7 +139,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
     // Snapshot: materialize current matches into memberships once.
     if (body.membershipMode === "smart" && body.smartMode === "snapshot" && row) {
-      await materialize(userId, row.id, body.filterQuery ?? { match: "all", conditions: [] });
+      await materialize(userId, row.id, safeFilter(body.filterQuery));
     }
     reply.code(201);
     return row;

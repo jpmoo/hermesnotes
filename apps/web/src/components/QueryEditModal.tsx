@@ -1,6 +1,7 @@
-import type { FilterQuery } from "@hermes/shared";
+import type { FilterGroup } from "@hermes/shared";
 import { useEffect, useState } from "react";
 import { api, type BlockType } from "../api.ts";
+import { normalizeFilter } from "../lib/filter.ts";
 import { QueryBuilder } from "./QueryBuilder.tsx";
 
 export function QueryEditModal({
@@ -10,11 +11,11 @@ export function QueryEditModal({
   onSaved,
 }: {
   collectionId: string;
-  initial: FilterQuery;
+  initial: unknown;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [filter, setFilter] = useState<FilterQuery>(initial);
+  const [filter, setFilter] = useState<FilterGroup>(() => normalizeFilter(initial));
   const [types, setTypes] = useState<BlockType[]>([]);
   const [tags, setTags] = useState<string[]>([]);
 

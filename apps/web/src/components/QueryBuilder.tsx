@@ -1,7 +1,9 @@
-import type { Condition, FilterQuery, PropertyOp } from "@hermes/shared";
+import type { Condition, FieldDef, FilterGroup, PropertyOp } from "@hermes/shared";
 import { useEffect, useRef, useState } from "react";
 import { api, type BlockType } from "../api.ts";
+import { emptyGroup } from "../lib/filter.ts";
 
+type Item = Condition | FilterGroup;
 type Kind = Condition["kind"];
 
 const KIND_LABELS: Record<Kind, string> = {
@@ -25,7 +27,7 @@ const OP_LABEL: Record<PropertyOp, string> = {
   notEmpty: "is not empty",
 };
 
-function defaultCondition(kind: Kind, types: BlockType[]): Condition {
+function defaultCondition(kind: Kind, types: BlockType[], fields: FieldDef[]): Condition {
   switch (kind) {
     case "blockType":
       return { kind, typeId: types.find((t) => !t.isText)?.id ?? types[0]?.id ?? "" };
@@ -35,7 +37,7 @@ function defaultCondition(kind: Kind, types: BlockType[]): Condition {
     case "tag":
       return { kind, tag: "" };
     case "property":
-      return { kind, key: "", op: "eq", value: "" };
+      return { kind, key: fields[0]?.key ?? "", op: "eq", value: "" };
     case "text":
       return { kind, value: "" };
     case "semantic":
@@ -43,16 +45,63 @@ function defaultCondition(kind: Kind, types: BlockType[]): Condition {
   }
 }
 
+/** Collect all block-type ids referenced anywhere in the tree. */
+function collectTypeIds(g: FilterGroup, out: Set<string>): void {
+  for (const it of g.items) {
+    if (it.kind === "group") collectTypeIds(it, out);
+    else if (it.kind === "blockType" && it.typeId) out.add(it.typeId);
+  }
+}
+
+/** Value input matched to the selected field's type. */
+function ValueInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldDef | undefined;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const t = field?.type;
+  if (t === "date" || t === "datetime")
+    return <input type="date" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (t === "number")
+    return <input type="number" value={value} onChange={(e) => onChange(e.target.value)} />;
+  if (t === "boolean")
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">—</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    );
+  if ((t === "status" || t === "select") && field?.options?.length)
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">—</option>
+        {field.options.map((o) => (
+          <option key={o} value={o}>
+            {o.replace(/_/g, " ")}
+          </option>
+        ))}
+      </select>
+    );
+  return <input placeholder="value" value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
 function ConditionRow({
   c,
   types,
   tags,
+  fields,
   onChange,
   onRemove,
 }: {
   c: Condition;
   types: BlockType[];
   tags: string[];
+  fields: FieldDef[];
   onChange: (c: Condition) => void;
   onRemove: () => void;
 }) {
@@ -92,12 +141,13 @@ function ConditionRow({
 
       {c.kind === "property" && (
         <>
-          <input
-            className="cond-key"
-            placeholder="field key"
-            value={c.key}
-            onChange={(e) => onChange({ ...c, key: e.target.value })}
-          />
+          <select value={c.key} onChange={(e) => onChange({ ...c, key: e.target.value })}>
+            {fields.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label ?? f.key.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
           <select value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as PropertyOp })}>
             {PROP_OPS.map((op) => (
               <option key={op} value={op}>
@@ -106,30 +156,22 @@ function ConditionRow({
             ))}
           </select>
           {c.op !== "empty" && c.op !== "notEmpty" && (
-            <input
-              placeholder="value"
+            <ValueInput
+              field={fields.find((f) => f.key === c.key)}
               value={c.value ?? ""}
-              onChange={(e) => onChange({ ...c, value: e.target.value })}
+              onChange={(v) => onChange({ ...c, value: v })}
             />
           )}
         </>
       )}
 
       {c.kind === "text" && (
-        <input
-          placeholder="keyword"
-          value={c.value}
-          onChange={(e) => onChange({ ...c, value: e.target.value })}
-        />
+        <input placeholder="keyword" value={c.value} onChange={(e) => onChange({ ...c, value: e.target.value })} />
       )}
 
       {c.kind === "semantic" && (
         <>
-          <input
-            placeholder="meaning…"
-            value={c.value}
-            onChange={(e) => onChange({ ...c, value: e.target.value })}
-          />
+          <input placeholder="meaning…" value={c.value} onChange={(e) => onChange({ ...c, value: e.target.value })} />
           <span className="cond-floor">
             ≥ {c.floor.toFixed(2)}
             <input
@@ -147,11 +189,127 @@ function ConditionRow({
       <button className="icon-btn cond-remove" title="Remove" onClick={onRemove}>
         ✕
       </button>
-      <datalist id="hn-tags">
-        {tags.map((t) => (
-          <option key={t} value={t} />
-        ))}
-      </datalist>
+    </div>
+  );
+}
+
+function GroupEditor({
+  group,
+  onChange,
+  onRemove,
+  types,
+  tags,
+  fields,
+  isRoot,
+}: {
+  group: FilterGroup;
+  onChange: (g: FilterGroup) => void;
+  onRemove?: () => void;
+  types: BlockType[];
+  tags: string[];
+  fields: FieldDef[];
+  isRoot: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
+
+  const setItem = (i: number, it: Item) =>
+    onChange({ ...group, items: group.items.map((x, idx) => (idx === i ? it : x)) });
+  const removeItem = (i: number) =>
+    onChange({ ...group, items: group.items.filter((_, idx) => idx !== i) });
+  const addCondition = (kind: Kind) => {
+    onChange({ ...group, items: [...group.items, defaultCondition(kind, types, fields)] });
+    setMenuOpen(false);
+  };
+  const addGroup = () => {
+    onChange({ ...group, items: [...group.items, emptyGroup()] });
+    setMenuOpen(false);
+  };
+
+  return (
+    <div className={`filter-group${isRoot ? " root" : ""}`}>
+      <div className="group-head">
+        <span className="hint">Match</span>
+        <div className="segmented">
+          {(["all", "any"] as const).map((m) => (
+            <button
+              key={m}
+              className={`seg${group.match === m ? " active" : ""}`}
+              onClick={() => onChange({ ...group, match: m })}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <span className="hint">of:</span>
+        {!isRoot && onRemove && (
+          <button className="icon-btn cond-remove" title="Remove group" onClick={onRemove}>
+            ✕
+          </button>
+        )}
+      </div>
+
+      {group.items.map((it, i) =>
+        it.kind === "group" ? (
+          <GroupEditor
+            key={i}
+            group={it}
+            onChange={(g) => setItem(i, g)}
+            onRemove={() => removeItem(i)}
+            types={types}
+            tags={tags}
+            fields={fields}
+            isRoot={false}
+          />
+        ) : (
+          <ConditionRow
+            key={i}
+            c={it}
+            types={types}
+            tags={tags}
+            fields={fields}
+            onChange={(nc) => setItem(i, nc)}
+            onRemove={() => removeItem(i)}
+          />
+        ),
+      )}
+
+      <div className="nav-kebab" ref={menuRef} style={{ position: "relative", marginTop: 8 }}>
+        <button className="ghost" onClick={() => setMenuOpen((o) => !o)}>
+          + Add
+        </button>
+        {menuOpen && (
+          <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
+            {(Object.keys(KIND_LABELS) as Kind[]).map((k) => {
+              const disabled = k === "property" && fields.length === 0;
+              return (
+                <button
+                  key={k}
+                  className="menu-item"
+                  disabled={disabled}
+                  title={disabled ? "Add a Block type condition first" : undefined}
+                  onClick={() => !disabled && addCondition(k)}
+                >
+                  {KIND_LABELS[k]}
+                </button>
+              );
+            })}
+            <div className="menu-sep" />
+            <button className="menu-item" onClick={addGroup}>
+              Nested group
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -162,14 +320,23 @@ export function QueryBuilder({
   types,
   tags,
 }: {
-  value: FilterQuery;
-  onChange: (v: FilterQuery) => void;
+  value: FilterGroup;
+  onChange: (v: FilterGroup) => void;
   types: BlockType[];
   tags: string[];
 }) {
   const [count, setCount] = useState<number | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Fields available to "Field" conditions = union of the selected types' fields.
+  const typeIds = new Set<string>();
+  collectTypeIds(value, typeIds);
+  const byKey = new Map<string, FieldDef>();
+  for (const t of types) {
+    if (typeIds.has(t.id) && t.propertySchema) {
+      for (const f of t.propertySchema.fields) if (!byKey.has(f.key)) byKey.set(f.key, f);
+    }
+  }
+  const fields = [...byKey.values()];
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -181,70 +348,26 @@ export function QueryBuilder({
     return () => clearTimeout(t);
   }, [value]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen]);
-
-  const setAt = (i: number, c: Condition) =>
-    onChange({ ...value, conditions: value.conditions.map((x, idx) => (idx === i ? c : x)) });
-  const removeAt = (i: number) =>
-    onChange({ ...value, conditions: value.conditions.filter((_, idx) => idx !== i) });
-  const add = (kind: Kind) => {
-    onChange({ ...value, conditions: [...value.conditions, defaultCondition(kind, types)] });
-    setMenuOpen(false);
-  };
-
   return (
-    <div className="query-builder">
-      <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-        <span className="hint">Match</span>
-        <div className="segmented">
-          {(["all", "any"] as const).map((m) => (
-            <button
-              key={m}
-              className={`seg${value.match === m ? " active" : ""}`}
-              onClick={() => onChange({ ...value, match: m })}
-            >
-              {m}
-            </button>
-          ))}
+    <div>
+      <GroupEditor
+        group={value}
+        onChange={onChange}
+        types={types}
+        tags={tags}
+        fields={fields}
+        isRoot
+      />
+      {count !== null && (
+        <div className="hint" style={{ marginTop: 8 }}>
+          {count} block(s) match
         </div>
-        <span className="hint">of:</span>
-      </div>
-
-      {value.conditions.map((c, i) => (
-        <ConditionRow
-          key={i}
-          c={c}
-          types={types}
-          tags={tags}
-          onChange={(nc) => setAt(i, nc)}
-          onRemove={() => removeAt(i)}
-        />
-      ))}
-
-      <div className="row" style={{ marginTop: 8, gap: 12 }}>
-        <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
-          <button className="ghost" onClick={() => setMenuOpen((o) => !o)}>
-            + Add condition
-          </button>
-          {menuOpen && (
-            <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
-              {(Object.keys(KIND_LABELS) as Kind[]).map((k) => (
-                <button key={k} className="menu-item" onClick={() => add(k)}>
-                  {KIND_LABELS[k]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        {count !== null && <span className="hint">{count} block(s) match</span>}
-      </div>
+      )}
+      <datalist id="hn-tags">
+        {tags.map((t) => (
+          <option key={t} value={t} />
+        ))}
+      </datalist>
     </div>
   );
 }

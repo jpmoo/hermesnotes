@@ -556,6 +556,9 @@ select {
   height: 40px;
 }
 
+.field {
+  margin-bottom: 18px;
+}
 label.field {
   display: block;
   margin-bottom: 14px;
@@ -800,11 +803,26 @@ input.typed-title:focus {
 }
 
 /* ── Query builder ────────────────────────────────────────────── */
-.query-builder {
+.filter-group {
   border: 1px solid var(--border);
   border-radius: 11px;
-  padding: 12px;
+  padding: 10px 12px;
   background: var(--surface-2);
+}
+.filter-group.root {
+  background: var(--surface-2);
+}
+/* Nested groups sit inset with a colored edge. */
+.filter-group .filter-group {
+  margin: 8px 0;
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 .cond-row {
   display: flex;

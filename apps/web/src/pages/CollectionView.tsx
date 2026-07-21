@@ -13,7 +13,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { FilterQuery } from "@hermes/shared";
 import { ArrowLeft, ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -248,8 +247,7 @@ export function CollectionView() {
   const smartMode = (collection?.properties.smart_mode as string) ?? "dynamic";
   const isSmart = membershipMode === "smart";
   const isDynamic = isSmart && smartMode === "dynamic";
-  const filterQuery =
-    (collection?.properties.filter_query as FilterQuery) ?? { match: "all", conditions: [] };
+  const filterQuery: unknown = collection?.properties.filter_query;
 
   const refresh = async () => {
     await api.post(`/collections/${id}/materialize`);

@@ -44,11 +44,43 @@ export const conditionSchema = z.discriminatedUnion("kind", [
 ]);
 export type Condition = z.infer<typeof conditionSchema>;
 
-export const filterQuerySchema = z.object({
-  match: z.enum(["all", "any"]).default("all"),
-  conditions: z.array(conditionSchema).default([]),
-});
-export type FilterQuery = z.infer<typeof filterQuerySchema>;
+/** A group of conditions and nested groups, combined by `match` (all=AND, any=OR). */
+export type FilterGroup = {
+  kind: "group";
+  match: "all" | "any";
+  items: Array<Condition | FilterGroup>;
+};
+
+export const filterGroupSchema: z.ZodType<FilterGroup> = z.lazy(() =>
+  z.object({
+    kind: z.literal("group"),
+    match: z.enum(["all", "any"]),
+    items: z.array(z.union([conditionSchema, filterGroupSchema])),
+  }),
+);
+
+export const filterQuerySchema = filterGroupSchema;
+export type FilterQuery = FilterGroup;
+
+export const emptyGroup = (): FilterGroup => ({ kind: "group", match: "all", items: [] });
+
+/** Accept either the group shape or the legacy {match, conditions[]} shape. */
+export function normalizeFilter(value: unknown): FilterGroup {
+  if (value && typeof value === "object") {
+    const v = value as Record<string, unknown>;
+    if (v.kind === "group") {
+      const parsed = filterGroupSchema.safeParse(v);
+      if (parsed.success) return parsed.data;
+    }
+    if (Array.isArray(v.conditions)) {
+      const items = (v.conditions as unknown[]).filter(
+        (c) => conditionSchema.safeParse(c).success,
+      ) as Condition[];
+      return { kind: "group", match: v.match === "any" ? "any" : "all", items };
+    }
+  }
+  return emptyGroup();
+}
 
 /** How a smart collection resolves membership. */
 export const smartModeSchema = z.enum(["dynamic", "snapshot"]);

@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, lt, or, sql, type SQL } from "drizzle-orm";
 import { blockEmbeddings, blockTags, blocks, padEmbedding, tags, userSettings } from "@hermes/db";
 import { EMBEDDING_INDEX_DIM } from "@hermes/db/schema";
-import type { Condition, FilterQuery } from "@hermes/shared";
+import { normalizeFilter, type Condition, type FilterGroup, type FilterQuery } from "@hermes/shared";
 import { db } from "../db.js";
 import { embed } from "../ollama/client.js";
 
@@ -44,7 +44,7 @@ async function semanticIds(userId: string, value: string, floor: number): Promis
   return rows.map((r) => r.blockId);
 }
 
-function conditionSql(c: Condition, sem: Record<number, string[]>, idx: number): SQL {
+function conditionSql(c: Condition, sem: Map<Condition, string[]>): SQL {
   switch (c.kind) {
     case "blockType":
       return eq(blocks.blockTypeId, c.typeId);
@@ -85,24 +85,41 @@ function conditionSql(c: Condition, sem: Record<number, string[]>, idx: number):
       }
     }
     case "semantic": {
-      const ids = sem[idx] ?? [];
+      const ids = sem.get(c) ?? [];
       return ids.length ? inArray(blocks.id, ids) : sql`false`;
     }
   }
 }
 
-/** Run a smart-collection filter, returning matching (non-collection) blocks. */
+function groupSql(g: FilterGroup, sem: Map<Condition, string[]>): SQL {
+  const parts = g.items.map((it) =>
+    it.kind === "group" ? groupSql(it, sem) : conditionSql(it, sem),
+  );
+  if (parts.length === 0) return sql`true`;
+  return (g.match === "any" ? or(...parts) : and(...parts)) ?? sql`true`;
+}
+
+function collectSemantic(g: FilterGroup, out: Condition[]): void {
+  for (const it of g.items) {
+    if (it.kind === "group") collectSemantic(it, out);
+    else if (it.kind === "semantic") out.push(it);
+  }
+}
+
+/** Run a smart-collection filter (a group tree), returning matching blocks. */
 export async function runQuery(userId: string, filter: FilterQuery): Promise<QueriedBlock[]> {
-  const sem: Record<number, string[]> = {};
+  const root = normalizeFilter(filter);
+  const semConds: Condition[] = [];
+  collectSemantic(root, semConds);
+  const sem = new Map<Condition, string[]>();
   await Promise.all(
-    filter.conditions.map(async (c, i) => {
-      if (c.kind === "semantic") sem[i] = await semanticIds(userId, c.value, c.floor);
+    semConds.map(async (c) => {
+      if (c.kind === "semantic") sem.set(c, await semanticIds(userId, c.value, c.floor));
     }),
   );
 
   const scope = and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NULL`);
-  const parts = filter.conditions.map((c, i) => conditionSql(c, sem, i));
-  const combined = parts.length === 0 ? undefined : filter.match === "any" ? or(...parts) : and(...parts);
+  const combined = groupSql(root, sem);
 
   return db
     .select({
@@ -115,7 +132,7 @@ export async function runQuery(userId: string, filter: FilterQuery): Promise<Que
       updatedAt: blocks.updatedAt,
     })
     .from(blocks)
-    .where(combined ? and(scope, combined) : scope)
+    .where(and(scope, combined))
     .orderBy(sql`${blocks.updatedAt} DESC`)
     .limit(500);
 }

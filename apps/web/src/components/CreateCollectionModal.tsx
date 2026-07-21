@@ -1,7 +1,8 @@
-import type { FilterQuery } from "@hermes/shared";
+import type { FilterGroup } from "@hermes/shared";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type BlockType, type Collection } from "../api.ts";
+import { emptyGroup } from "../lib/filter.ts";
 import { QueryBuilder } from "./QueryBuilder.tsx";
 
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
@@ -9,7 +10,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState("Untitled list");
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
   const [smartMode, setSmartMode] = useState<"dynamic" | "snapshot">("dynamic");
-  const [filter, setFilter] = useState<FilterQuery>({ match: "all", conditions: [] });
+  const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
   const [types, setTypes] = useState<BlockType[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);

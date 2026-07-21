@@ -1,4 +1,4 @@
-import { Inbox as InboxIcon } from "lucide-react";
+import { Unlink } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Settings } from "../api.ts";
@@ -6,7 +6,7 @@ import { BlockIcon } from "../lib/icons.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 
-export function InboxPage() {
+export function UnattachedPage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [types, setTypes] = useState<BlockType[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -17,7 +17,7 @@ export function InboxPage() {
   const typeById = new Map(types.map((t) => [t.id, t]));
 
   const refresh = useCallback(async () => {
-    setBlocks(await api.get<Block[]>("/blocks/inbox"));
+    setBlocks(await api.get<Block[]>("/blocks/unattached"));
   }, []);
 
   useEffect(() => {
@@ -58,10 +58,12 @@ export function InboxPage() {
   return (
     <>
       <h1 className="page-title title-with-icon">
-        <InboxIcon size={22} color="#26282b" />
-        Inbox
+        <Unlink size={22} color="#26282b" />
+        Unattached
       </h1>
-      <p className="page-sub">Atomic blocks with no parent and no children.</p>
+      <p className="page-sub">
+        Blocks nothing hangs off of — no parent, no children, and not referenced by another block.
+      </p>
 
       {settings && !settings.connected && (
         <div className="card" style={{ borderColor: "#f0e4bf", background: "#fdf9ee" }}>
@@ -94,7 +96,7 @@ export function InboxPage() {
       {loading ? (
         <div className="hint">Loading…</div>
       ) : blocks.length === 0 ? (
-        <div className="hint">Nothing in the inbox yet.</div>
+        <div className="hint">Nothing unattached — every block has a home.</div>
       ) : (
         blocks.map((b) => {
           const type = typeById.get(b.blockTypeId);

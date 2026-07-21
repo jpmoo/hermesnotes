@@ -75,11 +75,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Inbox (design doc §9): blocks with no parent AND no children. Pure query,
-   * scoped to the owner. Collections (collection_kind set) are exempted so an
-   * empty board doesn't masquerade as an inbox item (doc §9 open item #1 → exempt).
+   * Unattached: blocks that nothing hangs off of — no parent, no children, and
+   * not referenced (via a reference property) by any other block. Outgoing
+   * references do NOT count: a block that only points at others still appears
+   * here. Scoped to the owner; collections (collection_kind set) are exempt.
    */
-  app.get("/blocks/inbox", async (req) => {
+  app.get("/blocks/unattached", async (req) => {
     const userId = requireUser(req);
     return db
       .select(blockView)
@@ -88,8 +89,16 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
+          // no parent (not a member of any collection)
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id})`,
+          // no children (not a collection with members)
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.collection_id = ${blocks.id})`,
+          // not referenced by another block: some other block's property value
+          // equals this block's id (reference fields store the target id).
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${blocks} ref, jsonb_each_text(ref.properties) kv
+            WHERE ref.owner_id = ${userId} AND ref.id <> ${blocks.id} AND kv.value = ${blocks.id}::text
+          )`,
         ),
       )
       .orderBy(desc(blocks.updatedAt));

@@ -152,7 +152,7 @@ export function CollectionsPage() {
       <ConfirmDialog
         open={deleting !== null}
         title={`Delete “${deleting ? title(deleting) : ""}”?`}
-        message="The collection is removed. Blocks that aren't in any other collection return to the Inbox. This can't be undone."
+        message="The collection is removed. Blocks that aren't in any other collection become Unattached. This can't be undone."
         confirmLabel="Delete"
         onCancel={() => setDeleting(null)}
         onConfirm={() => deleting && void remove(deleting)}

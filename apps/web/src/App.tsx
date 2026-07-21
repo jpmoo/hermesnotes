@@ -8,7 +8,7 @@ import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
-import { InboxPage } from "./pages/InboxPage.tsx";
+import { UnattachedPage } from "./pages/UnattachedPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
 import { TypesPage } from "./pages/TypesPage.tsx";
@@ -36,7 +36,7 @@ function Shell() {
       <main className="main">
         <div className="main-inner">
           <Routes>
-            <Route path="/" element={<InboxPage />} />
+            <Route path="/" element={<UnattachedPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionView />} />
             <Route path="/types" element={<TypesPage />} />

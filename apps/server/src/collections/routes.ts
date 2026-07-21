@@ -269,7 +269,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.delete("/collections/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    // Memberships cascade; members with no other parent return to the inbox.
+    // Memberships cascade; members with no other parent become unattached.
     const res = await db
       .delete(blocks)
       .where(

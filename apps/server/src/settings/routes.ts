@@ -28,7 +28,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  /** UI preferences (Inbox colors, etc.) — a free-form jsonb bag that syncs across devices. */
+  /** UI preferences (nav row colors, etc.) — a free-form jsonb bag that syncs across devices. */
   app.get("/settings/preferences", async (req) => {
     const userId = requireUser(req);
     const [row] = await db

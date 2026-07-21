@@ -22,7 +22,10 @@ import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineHtml, oneLineText } from "../lib/display.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
+import { BlockCard } from "../components/BlockCard.tsx";
+import { CollectionSection } from "../components/CollectionSection.tsx";
 import { QueryPanel } from "../components/QueryPanel.tsx";
+import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -296,6 +299,7 @@ export function CollectionView() {
   const smartMode = (collection?.properties.smart_mode as string) ?? "dynamic";
   const isSmart = membershipMode === "smart";
   const isDynamic = isSmart && smartMode === "dynamic";
+  const isDocument = collection?.collectionKind === "document";
   const filterQuery: unknown = collection?.properties.filter_query;
 
   const refresh = async () => {
@@ -303,18 +307,19 @@ export function CollectionView() {
     await load();
   };
 
-  // Offer the query editor in the right panel for smart collections.
+  // Right panel: query editor for smart collections and/or the section tool for
+  // documents.
   useEffect(() => {
-    if (!isSmart) {
+    if (!isSmart && !isDocument) {
       setHasContent(false);
       return;
     }
     setHasContent(true);
-    setTitle("Query");
+    setTitle(isDocument ? "Sections" : "Query");
     return () => {
       setHasContent(false);
     };
-  }, [isSmart, setHasContent, setTitle]);
+  }, [isSmart, isDocument, setHasContent, setTitle]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -350,6 +355,31 @@ export function CollectionView() {
     a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1,
   );
 
+  // Document sections operate directly on membership order.
+  const addMember = async (blockId: string) => {
+    await api.post(`/collections/${id}/members`, { blockId });
+    await load();
+  };
+  const onSectionMove = (activeId: string, overId: string) => {
+    if (isDynamic) return;
+    const oldI = members.findIndex((m) => m.id === activeId);
+    const newI = members.findIndex((m) => m.id === overId);
+    if (oldI < 0 || newI < 0) return;
+    const arr = arrayMove(members, oldI, newI);
+    setMembers(arr);
+    const afterId = arr[newI - 1]?.id ?? null;
+    const beforeId = arr[newI + 1]?.id ?? null;
+    void api.patch(`/collections/${id}/members/${activeId}`, { afterId, beforeId });
+  };
+  const docEntries: SectionEntry[] = members.map((m) => ({
+    id: m.id,
+    label:
+      oneLineText(m.properties, m.content) ||
+      (m.blockTypeId ? typeById.get(m.blockTypeId)?.name : undefined) ||
+      "Item",
+    removable: true,
+  }));
+
   if (loading) return <div className="hint">Loading…</div>;
   if (!collection) return <div className="hint">Collection not found.</div>;
 
@@ -367,17 +397,19 @@ export function CollectionView() {
       />
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
-        <div className="segmented">
-          {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
-            <button
-              key={f}
-              className={`seg${format === f ? " active" : ""}`}
-              onClick={() => setFormat(f)}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+        {!isDocument && (
+          <div className="segmented">
+            {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
+              <button
+                key={f}
+                className={`seg${format === f ? " active" : ""}`}
+                onClick={() => setFormat(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
         {!isDynamic && (
           <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
             <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
@@ -425,10 +457,26 @@ export function CollectionView() {
         )}
       </div>
 
-      {members.length > 0 && sortBar}
+      {!isDocument && members.length > 0 && sortBar}
 
       {members.length === 0 ? (
-        <div className="hint">Empty list. Add an item.</div>
+        <div className="hint">{isDocument ? "Empty document. Add a section." : "Empty list. Add an item."}</div>
+      ) : isDocument ? (
+        <div className="doc-sections">
+          {members.map((m) =>
+            m.collectionKind ? (
+              <CollectionSection key={m.id} collectionId={m.id} types={types} />
+            ) : (
+              <BlockCard
+                key={m.id}
+                block={m as unknown as Block}
+                type={m.blockTypeId ? typeById.get(m.blockTypeId) : undefined}
+                onConflict={() => void load()}
+                onDeleted={onRemove}
+              />
+            ),
+          )}
+        </div>
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={sorted.map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -469,15 +517,34 @@ export function CollectionView() {
           }}
         />
       )}
-      {isSmart &&
-        slotEl &&
+      {slotEl &&
+        (isDocument || isSmart) &&
         createPortal(
-          <QueryPanel
-            key={id}
-            collectionId={id}
-            initial={filterQuery}
-            onSaved={() => void load()}
-          />,
+          <>
+            {isSmart && (
+              <QueryPanel
+                key={id}
+                collectionId={id}
+                initial={filterQuery}
+                onSaved={() => void load()}
+              />
+            )}
+            {isDocument && (
+              <>
+                {isSmart && <div className="panel-divider" />}
+                {isSmart && <div className="panel-h">Sections</div>}
+                <SectionLayout
+                  entries={docEntries}
+                  canReorder={!isDynamic}
+                  canModify={!isDynamic}
+                  onMove={onSectionMove}
+                  onRemove={onRemove}
+                  onAddCollection={(cid) => void addMember(cid)}
+                  onAddNote={(bid) => void addMember(bid)}
+                />
+              </>
+            )}
+          </>,
           slotEl,
         )}
     </>

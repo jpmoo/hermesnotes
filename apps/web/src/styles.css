@@ -1722,3 +1722,91 @@ input.li-text:focus {
 .type-search {
   margin-bottom: 12px;
 }
+
+/* ── Right-panel section layout tool ──────────────────────────── */
+.panel-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0 12px;
+}
+.panel-h {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.sec-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sec-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.sec-row .drag-handle.disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+.sec-label {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sec-remove {
+  color: var(--text-muted);
+}
+.sec-add-btn {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+}
+.sec-add-menu {
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.sec-add-list {
+  max-height: 220px;
+  overflow-y: auto;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sec-note {
+  margin-top: 8px;
+}
+
+/* Document sections + embedded collection/note sections. */
+.doc-sections > * + * {
+  margin-top: 18px;
+}
+.sec-open {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.sec-sublink {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+}

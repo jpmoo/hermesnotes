@@ -1,12 +1,41 @@
 import { and, eq, gte, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { PropertySchema } from "@hermes/shared";
+import { normalizeTodayLayout, todayLayoutSchema, type PropertySchema } from "@hermes/shared";
 import { blocks, blockTypes, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
 import { zonedDayRange } from "../lib/timezone.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
+
+/** Find (or lazily create) the hidden scratchpad note for a date. */
+async function findOrCreateNote(userId: string, date: string) {
+  const [existing] = await db
+    .select(blockView)
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>'today_note' = ${date}`))
+    .limit(1);
+  if (existing) return existing;
+  const [textType] = await db
+    .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
+    .from(blockTypes)
+    .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.name, "text")))
+    .limit(1);
+  if (!textType) throw badRequest("text block type missing");
+  const [created] = await db
+    .insert(blocks)
+    .values({
+      ownerId: userId,
+      blockTypeId: textType.id,
+      content: "",
+      properties: { today_note: date },
+      embedSource: "",
+      embedSourceHash: null,
+      blockTypeSchemaVersion: textType.schemaVersion,
+    })
+    .returning(blockView);
+  return created!;
+}
 
 const blockView = {
   id: blocks.id,
@@ -82,33 +111,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
 
-    // Find-or-create the dated scratchpad note (a hidden text block).
-    let [note] = await db
-      .select(blockView)
-      .from(blocks)
-      .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>'today_note' = ${date}`))
-      .limit(1);
-    if (!note) {
-      const [textType] = await db
-        .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
-        .from(blockTypes)
-        .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.name, "text")))
-        .limit(1);
-      if (!textType) throw badRequest("text block type missing");
-      const [created] = await db
-        .insert(blocks)
-        .values({
-          ownerId: userId,
-          blockTypeId: textType.id,
-          content: "",
-          properties: { today_note: date },
-          embedSource: "",
-          embedSourceHash: null,
-          blockTypeSchemaVersion: textType.schemaVersion,
-        })
-        .returning(blockView);
-      note = created;
-    }
+    const note = await findOrCreateNote(userId, date);
 
     // Activity: blocks created or edited on this date, in the user's timezone.
     const [tzRow] = await db
@@ -159,6 +162,22 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       ),
     );
 
-    return { note, relevant, activity };
+    const layout = normalizeTodayLayout((note.properties as Record<string, unknown>).layout);
+    return { note, relevant, activity, layout };
+  });
+
+  /** Persist the ordered section layout for a date's Today sheet. */
+  app.put("/today/:date/layout", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    const { layout } = z.object({ layout: todayLayoutSchema }).parse(req.body);
+    const note = await findOrCreateNote(userId, date);
+    const normalized = normalizeTodayLayout(layout);
+    const nextProps = { ...(note.properties as Record<string, unknown>), layout: normalized };
+    await db
+      .update(blocks)
+      .set({ properties: nextProps, version: sql`${blocks.version} + 1`, updatedAt: new Date() })
+      .where(and(eq(blocks.id, note.id), eq(blocks.ownerId, userId)));
+    return { layout: normalized };
   });
 }

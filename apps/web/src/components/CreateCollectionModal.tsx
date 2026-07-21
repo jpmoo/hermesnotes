@@ -7,7 +7,8 @@ import { QueryBuilder } from "./QueryBuilder.tsx";
 
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
-  const [title, setTitle] = useState("Untitled list");
+  const [title, setTitle] = useState("Untitled");
+  const [kind, setKind] = useState<"list" | "document">("list");
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
   const [smartMode, setSmartMode] = useState<"dynamic" | "snapshot">("dynamic");
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
@@ -24,7 +25,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     try {
       const c = await api.post<Collection>("/collections", {
-        kind: "list",
+        kind,
         title,
         membershipMode: mode,
         ...(mode === "smart" ? { smartMode, filterQuery: filter } : {}),
@@ -44,6 +45,26 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
           <span>Name</span>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
         </label>
+
+        <div className="field">
+          <span className="field-label">Kind</span>
+          <div className="segmented">
+            <button className={`seg${kind === "list" ? " active" : ""}`} onClick={() => setKind("list")}>
+              List
+            </button>
+            <button
+              className={`seg${kind === "document" ? " active" : ""}`}
+              onClick={() => setKind("document")}
+            >
+              Document
+            </button>
+          </div>
+          <div className="hint" style={{ marginTop: 6 }}>
+            {kind === "list"
+              ? "A one-line-per-item list (bullet, ordered, checklist, or blocks)."
+              : "Full-card sections you arrange with the layout tool in the right panel."}
+          </div>
+        </div>
 
         <div className="field">
           <span className="field-label">Membership</span>

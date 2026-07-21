@@ -1,6 +1,7 @@
 export * from "./property-schema.js";
 export * from "./collections.js";
 export * from "./display.js";
+export * from "./today.js";
 
 /** Icon metadata (doc §10). */
 export interface IconSpec {

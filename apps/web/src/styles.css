@@ -1310,6 +1310,12 @@ input.li-text:focus {
   padding-left: 0;
   margin: 0 0 0.55em;
 }
+/* Only the outermost task list is flush-left; nested ones indent so the
+   nesting is visible (the base rule above zeroed padding at every level). */
+.note-editor li ul[data-type="taskList"] {
+  padding-left: 1.4em;
+  margin: 0.15em 0 0;
+}
 .note-editor ul[data-type="taskList"] li {
   display: flex;
   align-items: flex-start;

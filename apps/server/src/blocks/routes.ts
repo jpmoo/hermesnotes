@@ -19,6 +19,33 @@ import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "./embed-source.js";
 
+/** Apply `#` mentions (stored as `(tag:<name>)` links) found in text to the block. */
+async function mergeTextTags(userId: string, blockId: string, texts: string[]): Promise<boolean> {
+  const names = new Set<string>();
+  for (const t of texts) {
+    if (typeof t !== "string") continue;
+    const re = /\(tag:([^)]+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t)) !== null) {
+      const n = m[1]?.trim().toLowerCase();
+      if (n) names.add(n);
+    }
+  }
+  if (names.size === 0) return false;
+  await db.transaction(async (tx) => {
+    for (const name of names) {
+      await tx.insert(tags).values({ ownerId: userId, name }).onConflictDoNothing();
+      const [tag] = await tx
+        .select({ id: tags.id })
+        .from(tags)
+        .where(and(eq(tags.ownerId, userId), eq(tags.name, name)))
+        .limit(1);
+      if (tag) await tx.insert(blockTags).values({ blockId, tagId: tag.id }).onConflictDoNothing();
+    }
+  });
+  return true;
+}
+
 /**
  * When a recurring task transitions to complete, spawn the next occurrence: a
  * copy with the status reset and the schedule datespan advanced per the rule.
@@ -484,6 +511,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .returning(blockView);
 
     if (!updated) throw conflict("version conflict — reload and retry");
+
+    // Apply any #tag mentions in the content/text to the block's tags.
+    await mergeTextTags(userId, id, [
+      nextContent ?? "",
+      ...Object.values(nextProps ?? {}).filter((v): v is string => typeof v === "string"),
+    ]);
 
     // Recurring task just completed → spawn the next occurrence.
     let recurred = false;

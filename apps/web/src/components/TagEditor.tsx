@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { api } from "../api.ts";
 
 /** Inline tag chips for a block. Persists to /blocks/:id/tags. */
-export function TagEditor({ blockId }: { blockId: string }) {
+export function TagEditor({ blockId, refresh = 0 }: { blockId: string; refresh?: number }) {
   const [tags, setTags] = useState<string[]>([]);
   const [input, setInput] = useState("");
 
   useEffect(() => {
     void api.get<string[]>(`/blocks/${blockId}/tags`).then(setTags).catch(() => setTags([]));
-  }, [blockId]);
+  }, [blockId, refresh]);
 
   const save = (next: string[]) => {
     setTags(next);

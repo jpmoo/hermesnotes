@@ -2194,3 +2194,12 @@ input.li-text:focus {
 .mention-chip svg {
   flex-shrink: 0;
 }
+/* Tag mentions read as tag pills. */
+.mention-chip.tag {
+  background: var(--surface-3, rgba(0, 0, 0, 0.06));
+  color: var(--text-muted);
+  cursor: default;
+}
+.mention-chip.tag:hover {
+  background: var(--surface-3, rgba(0, 0, 0, 0.06));
+}

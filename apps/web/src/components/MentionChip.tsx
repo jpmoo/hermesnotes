@@ -62,7 +62,7 @@ export function MentionChip({ node }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className="mention-chip"
+      className={`mention-chip${isTag ? " tag" : ""}`}
       contentEditable={false}
       onClick={onClick}
       title={label}

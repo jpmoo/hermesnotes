@@ -32,6 +32,7 @@ export function TextBlockEditor({
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [tagsRefresh, setTagsRefresh] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
@@ -56,6 +57,8 @@ export function TextBlockEditor({
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
+      // A saved #tag mention may have been applied to the block — refresh chips.
+      if (JSON.stringify(body).includes("(tag:")) setTagsRefresh((k) => k + 1);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) return onConflict();
       setSaveState("error");
@@ -126,10 +129,10 @@ export function TextBlockEditor({
       {compact && hasAttachField ? (
         <div className="tags-line">
           <AttachmentsChip blockId={block.id} />
-          <TagEditor blockId={block.id} />
+          <TagEditor blockId={block.id} refresh={tagsRefresh} />
         </div>
       ) : (
-        <TagEditor blockId={block.id} />
+        <TagEditor blockId={block.id} refresh={tagsRefresh} />
       )}
       <div className="block-meta">
         <span className="meta-dates">

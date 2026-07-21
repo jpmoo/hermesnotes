@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { firstLineHtml } from "../lib/markdown-excerpt.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
 import { QueryPanel } from "../components/QueryPanel.tsx";
@@ -121,9 +122,7 @@ function ListItem({
   };
 
   const boxChecked = statusField && syncStatus ? isComplete : checked;
-  const compactText = isText ? content : String(props.title ?? "");
   const multiline = isText && content.includes("\n");
-  const firstLine = compactText.split("\n")[0] ?? "";
   const restCount = (schema?.fields ?? []).filter(
     (f) => f.key !== "title" && f.key !== statusKey,
   ).length;
@@ -156,16 +155,24 @@ function ListItem({
           </button>
         )}
 
-        {!expanded && !multiline ? (
+        {isText ? (
+          <span
+            className="li-text li-text-static li-md"
+            onClick={() => setExpanded(true)}
+            dangerouslySetInnerHTML={{
+              __html: firstLineHtml(content) || '<span class="li-empty">Empty note</span>',
+            }}
+          />
+        ) : !expanded ? (
           <input
             className="li-text"
-            value={compactText}
-            placeholder={isText ? "Item…" : type?.name}
+            value={String(props.title ?? "")}
+            placeholder={type?.name}
             onChange={(e) => debouncedText(e.target.value)}
           />
         ) : (
           <span className="li-text li-text-static" onClick={() => setExpanded(true)}>
-            {firstLine || type?.name || "Item"}
+            {String(props.title ?? "") || type?.name || "Item"}
           </span>
         )}
 

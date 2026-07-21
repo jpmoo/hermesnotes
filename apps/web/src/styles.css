@@ -1134,6 +1134,20 @@ input.li-text:focus {
   text-overflow: ellipsis;
   cursor: text;
 }
+.li-md strong {
+  font-weight: 700;
+}
+.li-md code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.li-empty {
+  color: var(--text-faint);
+}
 .list-item-expanded {
   margin: 2px 0 10px 26px;
   border-left: 2px solid var(--border);

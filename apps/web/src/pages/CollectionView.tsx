@@ -13,16 +13,18 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
-import { QueryEditModal } from "../components/QueryEditModal.tsx";
+import { QueryPanel } from "../components/QueryPanel.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
+import { useRightPanel } from "../lib/right-panel.tsx";
 
 type Format = "bullet" | "ordered" | "checklist";
 
@@ -173,7 +175,7 @@ function ListItem({
             title={expanded ? "Collapse" : "Expand"}
             onClick={() => setExpanded((x) => !x)}
           >
-            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+            {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>
         )}
         {!readonly && (
@@ -208,9 +210,9 @@ export function CollectionView() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
   const [newType, setNewType] = useState<BlockType | null>(null);
-  const [queryEditOpen, setQueryEditOpen] = useState(false);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
+  const { slotEl, setActive, setTitle, setHasContent } = useRightPanel();
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -253,6 +255,20 @@ export function CollectionView() {
     await api.post(`/collections/${id}/materialize`);
     await load();
   };
+
+  // Offer the query editor in the right panel for smart collections.
+  useEffect(() => {
+    if (!isSmart) {
+      setHasContent(false);
+      return;
+    }
+    setHasContent(true);
+    setTitle("Query");
+    return () => {
+      setHasContent(false);
+      setActive(false);
+    };
+  }, [isSmart, setHasContent, setTitle, setActive]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -354,7 +370,7 @@ export function CollectionView() {
         {isSmart && (
           <>
             <span className="pill">{isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            <button className="ghost" onClick={() => setQueryEditOpen(true)}>
+            <button className="ghost" onClick={() => setActive(true)}>
               Edit query
             </button>
             {!isDynamic && (
@@ -408,17 +424,17 @@ export function CollectionView() {
           }}
         />
       )}
-      {queryEditOpen && (
-        <QueryEditModal
-          collectionId={id}
-          initial={filterQuery}
-          onClose={() => setQueryEditOpen(false)}
-          onSaved={() => {
-            setQueryEditOpen(false);
-            void load();
-          }}
-        />
-      )}
+      {isSmart &&
+        slotEl &&
+        createPortal(
+          <QueryPanel
+            key={id}
+            collectionId={id}
+            initial={filterQuery}
+            onSaved={() => void load()}
+          />,
+          slotEl,
+        )}
     </>
   );
 }

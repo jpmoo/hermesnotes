@@ -100,6 +100,18 @@ label,
   font-size: 12px;
   color: var(--text-faint);
 }
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.panel-title {
+  font-family: var(--font-chrome);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--accent-ink);
+}
 
 /* Auto-hiding overlay sidebar: 56px rail by default, expands on hover. */
 .sidebar {

@@ -4,6 +4,7 @@ import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
+import { RightPanelProvider } from "./lib/right-panel.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
@@ -19,9 +20,10 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
   if (!user) return <AuthPage defaultMode={defaultAuthMode} />;
 
   return (
-    <div className="app-shell">
-      <Sidebar />
-      <main className="main">
+    <RightPanelProvider>
+      <div className="app-shell">
+        <Sidebar />
+        <main className="main">
           <div className="main-inner">
             <Routes>
               <Route path="/" element={<InboxPage />} />
@@ -35,6 +37,7 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
         </main>
         <RightPanel />
       </div>
+    </RightPanelProvider>
   );
 }
 

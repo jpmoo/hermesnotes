@@ -150,9 +150,20 @@ label,
 }
 .sidebar:not(.expanded) .brand-name,
 .sidebar:not(.expanded) .label,
-.sidebar:not(.expanded) .nav-kebab,
-.sidebar:not(.expanded) .panel-pin {
+.sidebar:not(.expanded) .nav-kebab {
   display: none;
+}
+/* In the rail, stack the logo and the expand (pin) button. */
+.sidebar:not(.expanded) .sidebar-head {
+  flex-direction: column;
+  align-items: flex-start;
+  height: auto;
+  gap: 8px;
+}
+.nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px 8px;
 }
 .panel-pin {
   border-color: transparent;

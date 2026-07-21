@@ -2,7 +2,6 @@ import { Inbox, Library, LogOut, MoreVertical, Pin, PinOff, Settings, Shapes } f
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext.tsx";
-import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
@@ -28,7 +27,6 @@ const LABELS: Record<Target, string> = {
  */
 export function Sidebar() {
   const { logout } = useAuth();
-  const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const { leftPinned, setLeftPinned } = usePanels();
   const [menuOpen, setMenuOpen] = useState(false);
   const [colorTarget, setColorTarget] = useState<Target | null>(null);
@@ -41,8 +39,9 @@ export function Sidebar() {
   });
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Pinned stays open; also stay expanded while a menu/modal from here is open.
-  const expanded = leftPinned || hovered || menuOpen || colorTarget !== null;
+  // The rail expands only via the pin (icons stay clickable + tooltip'd); a
+  // spawned menu/modal also holds it open.
+  const expanded = leftPinned || menuOpen || colorTarget !== null;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -64,11 +63,7 @@ export function Sidebar() {
   if (colors.text) inboxStyle.color = colors.text;
 
   return (
-    <aside
-      className={`sidebar${expanded ? " expanded" : ""}`}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+    <aside className={`sidebar${expanded ? " expanded" : ""}`}>
       <div className="sidebar-head">
         <div className="brand">
           <img
@@ -80,15 +75,8 @@ export function Sidebar() {
         </div>
         <button
           className="icon-btn panel-pin"
-          title={leftPinned ? "Unpin sidebar" : "Pin sidebar open"}
-          onClick={() => {
-            if (leftPinned) {
-              setLeftPinned(false);
-              setHovered(false); // collapse to the rail on unpin
-            } else {
-              setLeftPinned(true);
-            }
-          }}
+          title={leftPinned ? "Collapse sidebar" : "Expand sidebar"}
+          onClick={() => setLeftPinned(!leftPinned)}
         >
           {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
         </button>
@@ -134,13 +122,14 @@ export function Sidebar() {
         <Library size={18} />
         <span className="label">Collections</span>
       </NavLink>
+
+      <div className="spacer" />
+
+      <div className="nav-divider" />
       <NavLink to="/types" className="nav-link" title="Block types">
         <Shapes size={18} />
         <span className="label">Types</span>
       </NavLink>
-
-      <div className="spacer" />
-
       <NavLink to="/settings" className="nav-link" title="Settings">
         <Settings size={18} />
         <span className="label">Settings</span>
@@ -154,14 +143,10 @@ export function Sidebar() {
         open={colorTarget !== null}
         title={colorTarget ? LABELS[colorTarget] : ""}
         value={colorTarget ? colors[colorTarget] ?? "#5fa4b5" : "#5fa4b5"}
-        onCancel={() => {
-          setColorTarget(null);
-          setHovered(false);
-        }}
+        onCancel={() => setColorTarget(null)}
         onSave={(c) => {
           if (colorTarget) applyColor(colorTarget, c);
           setColorTarget(null);
-          setHovered(false);
         }}
       />
     </aside>

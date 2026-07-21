@@ -1,14 +1,44 @@
 import type { Editor } from "@tiptap/core";
-import { BubbleMenu } from "@tiptap/react";
 import { Bold, Code, Italic, Pilcrow, Strikethrough } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useReducer, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Selection toolbar for the live editor: toggle emphasis (bold/italic/strike/
- * code) and set the block's heading level (or back to paragraph). Everything
- * toggles, so it also removes formatting.
+ * code) and set the block's heading level (or paragraph). Everything toggles,
+ * so it also removes formatting. Positioned from the selection (no tippy) and
+ * driven by editor events, so it unmounts cleanly.
  */
 export function EditorBubbleMenu({ editor }: { editor: Editor }) {
+  const [, bump] = useReducer((x: number) => x + 1, 0);
+
+  useEffect(() => {
+    editor.on("transaction", bump);
+    editor.on("focus", bump);
+    editor.on("blur", bump);
+    return () => {
+      editor.off("transaction", bump);
+      editor.off("focus", bump);
+      editor.off("blur", bump);
+    };
+  }, [editor]);
+
+  const sel = editor.state.selection;
+  if (sel.empty || !editor.isEditable || !editor.isFocused || editor.isActive("codeBlock")) {
+    return null;
+  }
+
+  let top = 0;
+  let left = 0;
+  try {
+    const a = editor.view.coordsAtPos(sel.from);
+    const b = editor.view.coordsAtPos(sel.to);
+    top = Math.min(a.top, b.top);
+    left = (a.left + b.left) / 2;
+  } catch {
+    return null;
+  }
+
   const noBlur = (e: React.MouseEvent) => e.preventDefault();
   const Btn = ({
     on,
@@ -32,8 +62,16 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
     </button>
   );
 
-  return (
-    <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }} className="edit-bubble">
+  const style: CSSProperties = {
+    position: "fixed",
+    top: Math.max(6, top - 44),
+    left,
+    transform: "translateX(-50%)",
+    zIndex: 90,
+  };
+
+  return createPortal(
+    <div className="edit-bubble" style={style} onMouseDown={noBlur}>
       <Btn on={editor.isActive("bold")} title="Bold (⌘B)" onClick={() => editor.chain().focus().toggleBold().run()}>
         <Bold size={14} />
       </Btn>
@@ -57,13 +95,10 @@ export function EditorBubbleMenu({ editor }: { editor: Editor }) {
           H{level}
         </Btn>
       ))}
-      <Btn
-        on={editor.isActive("paragraph")}
-        title="Paragraph"
-        onClick={() => editor.chain().focus().setParagraph().run()}
-      >
+      <Btn on={editor.isActive("paragraph")} title="Paragraph" onClick={() => editor.chain().focus().setParagraph().run()}>
         <Pilcrow size={14} />
       </Btn>
-    </BubbleMenu>
+    </div>,
+    document.body,
   );
 }

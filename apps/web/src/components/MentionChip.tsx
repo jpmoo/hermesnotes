@@ -68,7 +68,7 @@ export function MentionChip({ node }: NodeViewProps) {
       title={label}
     >
       {isTag ? <Hash size={13} /> : <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />}
-      <span>{label}</span>
+      <span>{isTag ? label.replace(/^#/, "") : label}</span>
     </NodeViewWrapper>
   );
 }

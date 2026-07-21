@@ -170,7 +170,7 @@ export function MentionMenu({
             ) : (
               <BlockIcon iconKey={o.iconKey} color={o.iconColor} size={14} />
             )}
-            <span className="mention-label">{o.label}</span>
+            <span className="mention-label">{o.tag ? o.label.replace(/^#/, "") : o.label}</span>
           </button>
         ))
       )}

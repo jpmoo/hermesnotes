@@ -1,5 +1,15 @@
-import { Inbox, Library, LogOut, MoreVertical, Pin, PinOff, Settings, Shapes } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  Inbox,
+  Library,
+  LogOut,
+  MoreVertical,
+  Pin,
+  PinOff,
+  Settings,
+  Shapes,
+  type LucideIcon,
+} from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
 import { api } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
@@ -8,33 +18,36 @@ import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
 type Target = "bg" | "text" | "icon";
-interface InboxColors {
+interface NavColors {
   bg?: string;
   text?: string;
   icon?: string;
 }
 
-const PREF_KEY = "inbox_colors";
+const TARGETS: Target[] = ["bg", "text", "icon"];
 const LABELS: Record<Target, string> = {
   bg: "Change Background Color",
   text: "Change Text Color",
   icon: "Change Icon Color",
 };
 
+// Preference keys (server-side, synced across devices) for each colorable row.
+const INBOX_KEY = "inbox_colors";
+const COLLECTIONS_KEY = "collections_colors";
+
 /**
  * Left navigation. Auto-hides to a 56px icon rail. Hovering an empty area of the
  * rail reveals it (icons stay click-to-navigate with a tooltip); a pin keeps it
- * open. The Inbox row carries a kebab menu (when revealed) to customize its
- * background / text / icon colors, which persist server-side and sync across
- * devices.
+ * open. The Inbox and Collections rows each carry a kebab menu (when revealed)
+ * to customize their background / text / icon colors, which persist server-side
+ * and sync across devices.
  */
 export function Sidebar() {
   const { logout } = useAuth();
   const { leftPinned, setLeftPinned } = usePanels();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [colorTarget, setColorTarget] = useState<Target | null>(null);
-  const [colors, setColors] = useState<InboxColors>({});
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [prefs, setPrefs] = useState<Record<string, NavColors>>({});
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [modal, setModal] = useState<{ key: string; target: Target } | null>(null);
   const {
     active: hovered,
     setActive: setHovered,
@@ -44,16 +57,16 @@ export function Sidebar() {
   } = useHoverIntent();
 
   // The rail expands when pinned, when hovering an empty area, or while a
-  // menu/modal it spawned is open.
-  const expanded = leftPinned || hovered || menuOpen || colorTarget !== null;
+  // kebab menu / color modal it spawned is open.
+  const expanded = leftPinned || hovered || openMenu !== null || modal !== null;
 
-  // Load persisted Inbox colors from the server (synced across devices).
+  // Load persisted row colors from the server (synced across devices).
   useEffect(() => {
     let alive = true;
     void api
       .get<{ preferences: Record<string, unknown> }>("/settings/preferences")
       .then((res) => {
-        if (alive) setColors((res.preferences?.[PREF_KEY] as InboxColors) ?? {});
+        if (alive) setPrefs((res.preferences ?? {}) as Record<string, NavColors>);
       })
       .catch(() => {});
     return () => {
@@ -62,18 +75,18 @@ export function Sidebar() {
   }, []);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (openMenu === null) return;
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (!(e.target as HTMLElement).closest(".nav-kebab")) setOpenMenu(null);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen]);
+  }, [openMenu]);
 
-  const applyColor = (target: Target, value: string) => {
-    const next = { ...colors, [target]: value };
-    setColors(next);
-    void api.patch("/settings/preferences", { [PREF_KEY]: next }).catch(() => {});
+  const applyColor = (key: string, target: Target, value: string) => {
+    const next = { ...(prefs[key] ?? {}), [target]: value };
+    setPrefs((p) => ({ ...p, [key]: next }));
+    void api.patch("/settings/preferences", { [key]: next }).catch(() => {});
   };
 
   const unpin = () => {
@@ -82,9 +95,51 @@ export function Sidebar() {
     cancelOpen();
   };
 
-  const inboxStyle: CSSProperties = {};
-  if (colors.bg) inboxStyle.background = colors.bg;
-  if (colors.text) inboxStyle.color = colors.text;
+  const colorRow = (
+    key: string,
+    to: string,
+    end: boolean,
+    Icon: LucideIcon,
+    label: string,
+  ) => {
+    const c = prefs[key] ?? {};
+    const rowStyle: CSSProperties = {};
+    if (c.bg) rowStyle.background = c.bg;
+    if (c.text) rowStyle.color = c.text;
+    return (
+      <div className="nav-row" style={rowStyle}>
+        <NavLink to={to} end={end} className="nav-link" title={label}>
+          <Icon size={18} className="nav-row-icon" style={c.icon ? { color: c.icon } : undefined} />
+          <span className="label">{label}</span>
+        </NavLink>
+        <div className="nav-kebab">
+          <button
+            className="kebab-btn"
+            title={`${label} options`}
+            onClick={() => setOpenMenu((cur) => (cur === key ? null : key))}
+          >
+            <MoreVertical size={16} />
+          </button>
+          {openMenu === key && (
+            <div className="menu">
+              {TARGETS.map((t) => (
+                <button
+                  key={t}
+                  className="menu-item"
+                  onClick={() => {
+                    setModal({ key, target: t });
+                    setOpenMenu(null);
+                  }}
+                >
+                  {LABELS[t]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <aside className={`sidebar${expanded ? " expanded" : ""}`} onMouseLeave={collapse}>
@@ -106,46 +161,8 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="nav-row" style={inboxStyle}>
-        <NavLink to="/" end className="nav-link inbox-link" title="Inbox">
-          <Inbox
-            size={18}
-            className="inbox-icon"
-            style={colors.icon ? { color: colors.icon } : undefined}
-          />
-          <span className="label">Inbox</span>
-        </NavLink>
-        <div className="nav-kebab" ref={menuRef}>
-          <button
-            className="kebab-btn"
-            title="Inbox options"
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            <MoreVertical size={16} />
-          </button>
-          {menuOpen && (
-            <div className="menu">
-              {(["bg", "text", "icon"] as Target[]).map((t) => (
-                <button
-                  key={t}
-                  className="menu-item"
-                  onClick={() => {
-                    setColorTarget(t);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {LABELS[t]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <NavLink to="/collections" className="nav-link" title="Collections">
-        <Library size={18} />
-        <span className="label">Collections</span>
-      </NavLink>
+      {colorRow(INBOX_KEY, "/", true, Inbox, "Inbox")}
+      {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
 
       <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />
 
@@ -164,13 +181,13 @@ export function Sidebar() {
       </button>
 
       <ColorPickerModal
-        open={colorTarget !== null}
-        title={colorTarget ? LABELS[colorTarget] : ""}
-        value={colorTarget ? colors[colorTarget] ?? "#5fa4b5" : "#5fa4b5"}
-        onCancel={() => setColorTarget(null)}
-        onSave={(c) => {
-          if (colorTarget) applyColor(colorTarget, c);
-          setColorTarget(null);
+        open={modal !== null}
+        title={modal ? LABELS[modal.target] : ""}
+        value={(modal ? prefs[modal.key]?.[modal.target] : undefined) ?? "#5fa4b5"}
+        onCancel={() => setModal(null)}
+        onSave={(color) => {
+          if (modal) applyColor(modal.key, modal.target, color);
+          setModal(null);
         }}
       />
     </aside>

@@ -215,7 +215,7 @@ label,
   font-weight: 700;
 }
 /* Icon keeps its own color (independent of text color) unless overridden inline. */
-.inbox-icon {
+.nav-row-icon {
   color: var(--text-muted);
 }
 .nav-kebab {

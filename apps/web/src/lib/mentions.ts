@@ -54,7 +54,7 @@ export const Mentions = Extension.create<{ handlers: MentionHandlers | null }>({
             .focus()
             .deleteRange(range)
             .insertContent([
-              { type: "text", text: props.label, marks: [{ type: "link", attrs: { href: props.href } }] },
+              { type: "mention", attrs: { href: props.href, label: props.label } },
               { type: "text", text: " " },
             ])
             .run();

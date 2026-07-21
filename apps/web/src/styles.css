@@ -2174,3 +2174,23 @@ input.li-text:focus {
   text-decoration: underline;
   cursor: pointer;
 }
+/* Mention chips (icon-prefixed, clickable links to blocks/tags). */
+.mention-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px 0 3px;
+  border-radius: 6px;
+  background: rgba(95, 164, 181, 0.13);
+  color: var(--accent-ink);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+  vertical-align: baseline;
+}
+.mention-chip:hover {
+  background: rgba(95, 164, 181, 0.24);
+}
+.mention-chip svg {
+  flex-shrink: 0;
+}

@@ -370,13 +370,19 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(memberships.blockId, id));
     const inCollections = inRows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
 
-    // References out (this block's reference-field values).
+    // References out (reference-field values + markdown `block:<id>` links in
+    // this block's content).
     const outIds: string[] = [];
     for (const f of schema?.fields ?? []) {
       if (f.type !== "reference") continue;
       const v = props[f.key];
       if (Array.isArray(v)) outIds.push(...v.map(String));
       else if (typeof v === "string" && v) outIds.push(v);
+    }
+    const linkRe = /block:([0-9a-fA-F-]{36})/g;
+    for (const text of [b.content ?? "", ...Object.values(props).map((v) => (typeof v === "string" ? v : ""))]) {
+      let m: RegExpExecArray | null;
+      while ((m = linkRe.exec(text)) !== null) if (m[1] && m[1] !== id) outIds.push(m[1]);
     }
     let linksTo: { id: string; label: string }[] = [];
     if (outIds.length) {
@@ -387,7 +393,8 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       linksTo = rows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
     }
 
-    // References in (other blocks that reference this one).
+    // References in (other blocks that reference this one via a property value
+    // or a markdown `block:<id>` link in their content/text).
     const fromRows = await db
       .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
       .from(blocks)
@@ -395,7 +402,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(blocks.ownerId, userId),
           sql`${blocks.id} <> ${id}`,
-          sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
+          or(
+            sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
+            sql`${blocks.content} LIKE ${`%block:${id}%`}`,
+            sql`${blocks.properties}::text LIKE ${`%block:${id}%`}`,
+          ),
         ),
       )
       .limit(50);

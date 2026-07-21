@@ -7,6 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
+import { linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 
@@ -58,12 +59,16 @@ export function MarkdownEditor({
       CheckboxInput,
       SmartEnter,
       HeadingIndent,
+      MentionNode,
       Mentions.configure({ handlers }),
     ],
     content: value,
     autofocus: autofocus ? "end" : false,
     editorProps: { attributes: { class: "note-editor" } },
-    onUpdate: ({ editor }) => {
+    onCreate: ({ editor }) => linksToMentions(editor),
+    onUpdate: ({ editor, transaction }) => {
+      // The load-time link→mention conversion doesn't change the markdown.
+      if (transaction.getMeta("mentionConvert")) return;
       const md = normalizeMarkdown(editor.storage.markdown.getMarkdown() as string);
       setMarkdown(md);
       onChange(md);
@@ -86,6 +91,7 @@ export function MarkdownEditor({
       setMode("raw");
     } else {
       editor?.commands.setContent(markdown, false);
+      if (editor) linksToMentions(editor);
       setMode("live");
     }
   };

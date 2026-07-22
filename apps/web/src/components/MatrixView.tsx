@@ -678,8 +678,11 @@ export function MatrixView({
           .post(`/collections/${collection.id}/members`, { blockId: item.id, context: { region } })
           .then(onChanged);
       }
-    } else if (over === "drawer" && item.member && !bound) {
-      removeMember(item.id);
+    } else if (over === "drawer") {
+      // Back to the drawer: unbound → remove the membership; status-bound →
+      // clear the bound property so it becomes an unplaced match.
+      if (bound) patchBlockProps(item, bindKey, "");
+      else if (item.member && !dateMode) removeMember(item.id);
     }
   };
 
@@ -897,7 +900,7 @@ export function MatrixView({
         )}
       </div>
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={null}>
         {active && (
           <div className="matrix-chip overlay">
             <div className="chip-row">

@@ -15,6 +15,7 @@ import { authRoutes } from "./auth/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { blockRoutes } from "./blocks/routes.js";
 import { mcpRoutes } from "./mcp/routes.js";
+import { oauthRoutes } from "./auth/oauth.js";
 import { blockTypeRoutes } from "./blocks/block-types-routes.js";
 import { collectionRoutes } from "./collections/routes.js";
 import { todayRoutes } from "./today/routes.js";
@@ -71,6 +72,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(attachmentRoutes, { prefix: "/api" });
   await app.register(blockRoutes, { prefix: "/api" });
   await app.register(mcpRoutes); // /mcp — no /api prefix
+  await app.register(oauthRoutes); // /oauth/*, /.well-known/* — no /api prefix
 
   // Serve the web bundle + SPA fallback when it's been built.
   const staticEnabled = existsSync(webDist);

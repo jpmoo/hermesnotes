@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { FastifyInstance } from "fastify";
 import { env } from "../env.js";
+import { resourceMetadataUrl } from "../auth/oauth.js";
 import { Api } from "./api.js";
 import { buildTools } from "./toolkit.js";
 
@@ -17,8 +18,11 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
     const auth = req.headers.authorization ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
     if (!token) {
+      // The WWW-Authenticate header lets OAuth-only MCP clients (claude.ai
+      // connectors) discover our authorization server and start the flow.
       return reply
         .code(401)
+        .header("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl()}"`)
         .send({ error: "Missing Authorization: Bearer <hermes access key>" });
     }
     const server = new McpServer({ name: "hermes", version: "1.0.0" });

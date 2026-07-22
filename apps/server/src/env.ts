@@ -8,6 +8,9 @@ const schema = z.object({
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default("0.0.0.0"),
   APP_ORIGIN: z.string().url().default("http://localhost:5173"),
+  // Public URL of the app including any reverse-proxy subpath (used by the
+  // OAuth metadata endpoints), e.g. https://app.example.com/hermesnotes
+  PUBLIC_BASE: z.string().url().optional(),
   EMBEDDING_INDEX_DIM: z.coerce.number().default(2000),
 });
 

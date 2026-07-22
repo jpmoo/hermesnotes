@@ -1528,18 +1528,25 @@ input.region-title:focus {
   cursor: pointer;
   flex-shrink: 0;
 }
+.chip-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chip-dates {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
   font-size: 11px;
   color: var(--text-muted);
-  padding-left: 22px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
-/* Cards let the region's color show through. */
+/* Cards let the region's color show through — a shade more than the head. */
 .region-body .matrix-chip {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.6);
 }
 /* An overdue due-date: prominent, white on red. */
 .overdue-pill {
@@ -1667,16 +1674,15 @@ input.matrix-axis-y::placeholder {
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.region-actions {
+/* Matches the title row: borderless, same ink, no chrome. */
+.region-actions,
+.region-actions:hover {
   flex-shrink: 0;
-  opacity: 0.45;
-}
-.matrix-region:hover .region-actions,
-.region-actions.set {
-  opacity: 1;
-}
-.region-actions.set {
-  color: var(--accent);
+  border: none;
+  background: transparent;
+  width: auto;
+  height: auto;
+  color: var(--accent-ink);
 }
 /* Solid region colors: give the header a readable surface. */
 .matrix-region.colored .region-head {

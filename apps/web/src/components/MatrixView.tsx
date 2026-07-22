@@ -224,6 +224,19 @@ function Chip({
           />
         )}
         <span className="chip-label">{item.label}</span>
+        {dates.length > 0 && (
+          <span className="chip-dates">
+            {dates.map((d, i) =>
+              d.overdue ? (
+                <span key={i} className="overdue-pill">
+                  {d.text}
+                </span>
+              ) : (
+                <span key={i}>{d.text}</span>
+              ),
+            )}
+          </span>
+        )}
         {onRemove && (
           <button
             className="icon-btn chip-remove"
@@ -238,19 +251,6 @@ function Chip({
           </button>
         )}
       </div>
-      {dates.length > 0 && (
-        <div className="chip-dates">
-          {dates.map((d, i) =>
-            d.overdue ? (
-              <span key={i} className="overdue-pill">
-                {d.text}
-              </span>
-            ) : (
-              <span key={i}>{d.text}</span>
-            ),
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -386,7 +386,7 @@ export function MatrixView({
   typesStore = types;
   typesSubs.forEach((f) => f());
 
-  const { selectBlock } = usePanels();
+  const { selectBlock, refreshInfo } = usePanels();
   // Collection-level interactions make the collection the active block (so its
   // query tools show); card interactions make the card active instead.
   const selectCollection = () => selectBlock(collection.id, { collection: true });
@@ -747,6 +747,7 @@ export function MatrixView({
     void api.del(`/collections/${collection.id}/members/${blockId}`).then(async () => {
       if (prev != null && m) await applyRegionLeave(toItem(m), prev);
       onChanged();
+      refreshInfo();
       setQueryTick((t) => t + 1);
     });
   };
@@ -759,6 +760,7 @@ export function MatrixView({
       .catch(() => {})
       .then(() => {
         onChanged();
+        refreshInfo();
         // Optimistic move, then re-run the query so blocks it no longer
         // matches (e.g. now-completed tasks) drop out.
         setMatches((ms) =>
@@ -801,6 +803,7 @@ export function MatrixView({
             await applyRegionLeave(item, prev);
             await applyRegionEnter(item, region);
             onChanged();
+            refreshInfo();
             setQueryTick((t) => t + 1);
           });
       } else {
@@ -809,6 +812,7 @@ export function MatrixView({
           .then(async () => {
             await applyRegionEnter(item, region);
             onChanged();
+            refreshInfo();
             setQueryTick((t) => t + 1);
           });
       }

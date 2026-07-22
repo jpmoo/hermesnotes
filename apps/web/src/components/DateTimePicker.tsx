@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
  * selector — typeable + stepper hour/minute boxes and an AM/PM pulldown.
  *
  * Value is a local wall-clock string "YYYY-MM-DDTHH:mm" (no timezone), the same
- * shape an <input type="datetime-local"> uses. Empty string means unset.
+ * shape an <input type="datetime-local"> uses — or a bare "YYYY-MM-DD" when no
+ * time is set (the default; time is opt-in). Empty string means unset.
  */
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -20,16 +21,17 @@ const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
 
 interface Parts {
   date: string | null; // "YYYY-MM-DD"
+  hasTime: boolean; // false => the value is date-only
   h: number; // 1..12
   m: number; // 0..59
   pm: boolean;
 }
 
-/** Parse "YYYY-MM-DDTHH:mm" (time optional) into 12-hour parts. */
+/** Parse "YYYY-MM-DDTHH:mm" or "YYYY-MM-DD" into 12-hour parts. */
 function parse(value: string): Parts {
   const [datePart, timePart] = (value || "").split("T");
   const date = datePart && /^\d{4}-\d{2}-\d{2}$/.test(datePart) ? datePart : null;
-  let h24 = 0;
+  let h24 = 12; // noon base for the first time interaction
   let m = 0;
   if (timePart) {
     const [hh, mm] = timePart.split(":");
@@ -38,23 +40,25 @@ function parse(value: string): Parts {
   }
   const pm = h24 >= 12;
   const h = h24 % 12 === 0 ? 12 : h24 % 12;
-  return { date, h, m, pm };
+  return { date, hasTime: Boolean(timePart), h, m, pm };
 }
 
-/** Combine parts back into "YYYY-MM-DDTHH:mm", or "" if no date is set. */
+/** Combine parts back into "YYYY-MM-DD[THH:mm]", or "" if no date is set. */
 function combine(p: Parts): string {
   if (!p.date) return "";
+  if (!p.hasTime) return p.date;
   const h24 = p.pm ? (p.h === 12 ? 12 : p.h + 12) : p.h === 12 ? 0 : p.h;
   return `${p.date}T${pad(h24)}:${pad(p.m)}`;
 }
 
-/** "Jul 21, 2026, 3:42 PM" — friendly summary for the trigger button. */
+/** "Jul 21, 2026, 3:42 PM" (or date only) — summary for the trigger button. */
 function label(value: string): string {
   const p = parse(value);
   if (!p.date) return "";
   const [y, mo, d] = p.date.split("-").map(Number);
   const monthShort = MONTHS[(mo ?? 1) - 1]?.slice(0, 3) ?? "";
-  return `${monthShort} ${d}, ${y}, ${p.h}:${pad(p.m)} ${p.pm ? "PM" : "AM"}`;
+  const day = `${monthShort} ${d}, ${y}`;
+  return p.hasTime ? `${day}, ${p.h}:${pad(p.m)} ${p.pm ? "PM" : "AM"}` : day;
 }
 
 export function DateTimePicker({
@@ -88,16 +92,12 @@ export function DateTimePicker({
     };
   }, [open]);
 
-  // Merge a patch into the current parts and emit. Setting a day when no time
-  // exists yet defaults to the current time so the value is immediately valid.
+  // Merge a patch into the current parts and emit. Picking a day leaves the
+  // time blank (date-only value); touching any time control opts into a time.
   const emit = (patch: Partial<Parts>) => {
-    let base = parts;
-    if (patch.date && !parts.date) {
-      const now = new Date();
-      const h24 = now.getHours();
-      base = { ...parts, h: h24 % 12 === 0 ? 12 : h24 % 12, m: now.getMinutes(), pm: h24 >= 12 };
-    }
-    onChange(combine({ ...base, ...patch }));
+    const touchesTime = patch.h !== undefined || patch.m !== undefined || patch.pm !== undefined;
+    const hasTime = patch.hasTime !== undefined ? patch.hasTime : parts.hasTime || touchesTime;
+    onChange(combine({ ...parts, ...patch, hasTime }));
   };
 
   const today = ymd(new Date());
@@ -184,7 +184,8 @@ export function DateTimePicker({
               <input
                 className="dtp-num"
                 inputMode="numeric"
-                value={parts.h}
+                placeholder="--"
+                value={parts.hasTime ? parts.h : ""}
                 onChange={(e) => {
                   const n = Number(e.target.value.replace(/\D/g, ""));
                   if (n >= 1 && n <= 12) setHour(n);
@@ -202,7 +203,8 @@ export function DateTimePicker({
               <input
                 className="dtp-num"
                 inputMode="numeric"
-                value={pad(parts.m)}
+                placeholder="--"
+                value={parts.hasTime ? pad(parts.m) : ""}
                 onChange={(e) => {
                   const n = Number(e.target.value.replace(/\D/g, ""));
                   if (n >= 0 && n <= 59) setMin(n);
@@ -233,6 +235,7 @@ export function DateTimePicker({
                 onChange(
                   combine({
                     date: ymd(now),
+                    hasTime: true,
                     h: h24 % 12 === 0 ? 12 : h24 % 12,
                     m: now.getMinutes(),
                     pm: h24 >= 12,
@@ -242,6 +245,11 @@ export function DateTimePicker({
             >
               Now
             </button>
+            {parts.hasTime && parts.date && (
+              <button type="button" className="ghost" onClick={() => emit({ hasTime: false })}>
+                Clear time
+              </button>
+            )}
             <button type="button" className="ghost" onClick={() => setOpen(false)}>
               Done
             </button>

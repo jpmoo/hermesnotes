@@ -34,6 +34,11 @@ interface PanelsApi {
   canBack: boolean;
   canForward: boolean;
   recents: RecentEntry[];
+
+  // Bumped when the selected block changes out-of-band (e.g. matrix region
+  // actions edited its tags/status); the info pane refetches on change.
+  infoTick: number;
+  refreshInfo: () => void;
 }
 
 // A history entry. `today` marks a Today page (routes to /today/<date>); `id` is
@@ -88,6 +93,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
 
   const [nav, setNav] = useState<{ stack: NavEntry[]; pos: number }>({ stack: [], pos: -1 });
   const [recents, setRecents] = useState<RecentEntry[]>(() => readRecents("hn.recents"));
+  const [infoTick, setInfoTick] = useState(0);
+  const refreshInfo = () => setInfoTick((t) => t + 1);
 
   const navigate = useNavigate();
   const pathRef = useRef("");
@@ -190,9 +197,11 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       canBack: nav.pos > 0,
       canForward: nav.pos < nav.stack.length - 1,
       recents,
+      infoTick,
+      refreshInfo,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slotEl, bottomSlotEl, title, hasContent, leftPinned, rightPinned, nav, recents],
+    [slotEl, bottomSlotEl, title, hasContent, leftPinned, rightPinned, nav, recents, infoTick],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

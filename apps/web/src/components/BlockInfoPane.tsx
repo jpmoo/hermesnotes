@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { usePanels } from "../lib/right-panel.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
 
@@ -74,11 +75,18 @@ export function BlockInfoPane({
   const [block, setBlock] = useState<Block | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
   const { pathname } = useLocation();
+  const { infoTick } = usePanels();
 
+  // Blank out only when the shown block changes; an infoTick bump (the block
+  // was edited elsewhere, e.g. matrix region actions) refetches in place.
   useEffect(() => {
     setInfo(null);
-    void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => setInfo(null));
+    setBlock(null);
   }, [blockId]);
+
+  useEffect(() => {
+    void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => setInfo(null));
+  }, [blockId, infoTick]);
 
   const loadBlock = () =>
     api
@@ -86,11 +94,10 @@ export function BlockInfoPane({
       .then(setBlock)
       .catch(() => setBlock(null));
   useEffect(() => {
-    setBlock(null);
     void loadBlock();
     void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blockId]);
+  }, [blockId, infoTick]);
 
   if (!info) return <div className="hint">Loading…</div>;
 

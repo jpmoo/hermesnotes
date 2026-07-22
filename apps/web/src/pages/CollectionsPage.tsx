@@ -1,6 +1,5 @@
 import { Library } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
@@ -21,7 +20,7 @@ const KINDS = [
 
 export function CollectionsPage() {
   const nav = useNavigate();
-  const { bottomSlotEl, setHasContent, selectPage } = usePanels();
+  const { selectPage } = usePanels();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<Collection | null>(null);
@@ -41,14 +40,11 @@ export function CollectionsPage() {
     void load();
   }, []);
 
-  // Arriving logs the page as the current location (clears any block
-  // selection, so the panel shows the filter tools) and enables the slot.
+  // Arriving logs the page as the current location (clears any block selection).
   useEffect(() => {
-    setHasContent(true);
     selectPage("collections");
-    return () => setHasContent(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setHasContent]);
+  }, []);
 
   const remove = async (c: Collection) => {
     await api.del(`/collections/${c.id}`);
@@ -83,6 +79,44 @@ export function CollectionsPage() {
         Collections
       </h1>
       <p className="page-sub">Ordered, filterable groupings of blocks.</p>
+
+      <div className="sort-bar">
+        <input
+          type="text"
+          placeholder="Name contains…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ width: 200 }}
+        />
+        <div className="segmented">
+          {KINDS.map((k) => (
+            <button
+              key={k.key}
+              className={`seg${kinds.has(k.key) ? " active" : ""}`}
+              onClick={() => toggleKind(k.key)}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+        <div className="segmented">
+          {(
+            [
+              ["", "All"],
+              ["smart", "Smart"],
+              ["manual", "Manual"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              className={`seg${membership === key ? " active" : ""}`}
+              onClick={() => setMembership(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {(q.trim() || kinds.size > 0 || membership) && (
         <div className="hint" style={{ marginBottom: 14 }}>
@@ -151,49 +185,6 @@ export function CollectionsPage() {
         onConfirm={() => deleting && void remove(deleting)}
       />
 
-      {bottomSlotEl &&
-        createPortal(
-          <>
-            <div className="panel-divider" />
-            <div className="panel-h">Filter</div>
-            <input
-              type="text"
-              placeholder="Name contains…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              style={{ marginBottom: 10 }}
-            />
-            <div className="segmented wrap" style={{ marginBottom: 10 }}>
-              {KINDS.map((k) => (
-                <button
-                  key={k.key}
-                  className={`seg${kinds.has(k.key) ? " active" : ""}`}
-                  onClick={() => toggleKind(k.key)}
-                >
-                  {k.label}
-                </button>
-              ))}
-            </div>
-            <div className="segmented">
-              {(
-                [
-                  ["", "All"],
-                  ["smart", "Smart"],
-                  ["manual", "Manual"],
-                ] as const
-              ).map(([key, label]) => (
-                <button
-                  key={key}
-                  className={`seg${membership === key ? " active" : ""}`}
-                  onClick={() => setMembership(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </>,
-          bottomSlotEl,
-        )}
     </>
   );
 }

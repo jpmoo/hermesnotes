@@ -386,7 +386,8 @@ export function MatrixView({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [q, setQ] = useState("");
   const [candidates, setCandidates] = useState<Item[]>([]);
-  const [matches, setMatches] = useState<Block[]>([]); // bound mode: full query matches
+  const [matches, setMatches] = useState<Block[]>([]); // smart: full query matches
+  const [queryTick, setQueryTick] = useState(0); // bump to re-run the query
   const [active, setActive] = useState<Item | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -419,9 +420,11 @@ export function MatrixView({
   }, [bound, bindKey, types]);
   const boundOptions = (boundField?.options ?? []).slice(0, REGION_MAX);
 
-  // Bound/date modes: fetch full query matches (with properties) to auto-place.
+  // Smart matrices fetch the live match set: bound/date modes place from it,
+  // and unbound ones use it to hide placed members the query no longer matches
+  // (e.g. tasks completed from a chip).
   useEffect(() => {
-    if (!bound && !dateMode) return;
+    if (!isSmart) return;
     let alive = true;
     void api
       .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query) })
@@ -433,9 +436,10 @@ export function MatrixView({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bound, dateMode, JSON.stringify(props.filter_query), collection.updatedAt]);
+  }, [isSmart, JSON.stringify(props.filter_query), collection.updatedAt, queryTick]);
 
   const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
+  const matchIds = useMemo(() => new Set(matches.map((b) => b.id)), [matches]);
 
   const toItem = (m: Member): Item => ({
     id: m.id,
@@ -467,6 +471,9 @@ export function MatrixView({
       }
     } else {
       for (const m of members) {
+        // Smart: a placed member the query no longer matches is hidden (its
+        // membership stays, so it reappears in place if it matches again).
+        if (isSmart && !matchIds.has(m.id)) continue;
         const item = toItem(m);
         const r = Number((m.context as Record<string, unknown>)?.region);
         if (Number.isInteger(r) && r >= 0 && r < count) map.set(r, [...(map.get(r) ?? []), item]);
@@ -475,7 +482,7 @@ export function MatrixView({
     }
     return { map, loose };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bound, matches, members, count, bindKey, boundOptions.join("|")]);
+  }, [bound, isSmart, matches, matchIds, members, count, bindKey, boundOptions.join("|")]);
 
   // Drawer candidates (unbound only): smart → query matches (fetched eagerly so
   // the closed drawer can show its count); manual → search once opened.
@@ -627,11 +634,12 @@ export function MatrixView({
       .catch(() => {})
       .then(() => {
         onChanged();
-        if (bound) {
-          setMatches((ms) =>
-            ms.map((b) => (b.id === item.id ? { ...b, properties: nextProps, version: (b.version ?? 0) + 1 } : b)),
-          );
-        }
+        // Optimistic move, then re-run the query so blocks it no longer
+        // matches (e.g. now-completed tasks) drop out.
+        setMatches((ms) =>
+          ms.map((b) => (b.id === item.id ? { ...b, properties: nextProps, version: (b.version ?? 0) + 1 } : b)),
+        );
+        setQueryTick((t) => t + 1);
       });
   };
 

@@ -1450,8 +1450,14 @@ input.li-text:focus {
   background: var(--surface);
   padding: 10px 12px;
   min-height: 150px;
+  /* Grow with content up to a cap, then scroll inside. */
+  max-height: 520px;
   display: flex;
   flex-direction: column;
+}
+.matrix-region .region-body {
+  min-height: 0;
+  overflow-y: auto;
 }
 .matrix-region.over {
   border-color: var(--accent);

@@ -147,35 +147,35 @@ export function FavoritesPage() {
       <p className="page-sub">Starred blocks and collections (star them in the info panel).</p>
 
       {collections.length > 0 && (
-        <div className="sort-bar" style={{ marginBottom: 8 }}>
+        <div className="row" style={{ marginBottom: 10, gap: 12 }}>
           <span className="sort-label">Collections</span>
           {collections.length > 1 && (
-          <div className="segmented">
-            {(
-              [
-                ["manual", "Manual"],
-                ["alpha", "Alphabetical"],
-                ["created", "Created"],
-                ["edited", "Edited"],
-              ] as [StripSort, string][]
-            ).map(([k, label]) => (
-              <button key={k} className={`seg${stripSort === k ? " active" : ""}`} onClick={() => pickStripSort(k)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          )}
-          {collections.length > 1 && stripSort !== "manual" && (
-            <button
-              className="icon-btn sort-dir"
-              title={stripDir === "asc" ? "Ascending" : "Descending"}
-              onClick={() => setStripDir(stripDir === "asc" ? "desc" : "asc")}
-            >
-              {stripDir === "asc" ? "↑" : "↓"}
-            </button>
-          )}
-          {collections.length > 1 && stripSort === "manual" && (
-            <span className="hint">Drag chips to arrange</span>
+            <div className="sort-bar" style={{ marginBottom: 0 }}>
+              <div className="segmented">
+                {(
+                  [
+                    ["manual", "Manual"],
+                    ["alpha", "Alphabetical"],
+                    ["created", "Created"],
+                    ["edited", "Edited"],
+                  ] as [StripSort, string][]
+                ).map(([k, label]) => (
+                  <button key={k} className={`seg${stripSort === k ? " active" : ""}`} onClick={() => pickStripSort(k)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {stripSort !== "manual" && (
+                <button
+                  className="icon-btn sort-dir"
+                  title={stripDir === "asc" ? "Ascending" : "Descending"}
+                  onClick={() => setStripDir(stripDir === "asc" ? "desc" : "asc")}
+                >
+                  {stripDir === "asc" ? "↑" : "↓"}
+                </button>
+              )}
+              {stripSort === "manual" && <span className="hint">Drag chips to arrange</span>}
+            </div>
           )}
         </div>
       )}

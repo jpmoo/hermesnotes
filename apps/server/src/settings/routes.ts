@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { blockEmbeddings, blocks, userSettings } from "@hermes/db";
+import { blockEmbeddings, blocks, userSettings, users } from "@hermes/db";
 import { EMBEDDING_INDEX_DIM } from "@hermes/db/schema";
 import { db } from "../db.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { listModels, probeDimension } from "../ollama/client.js";
 
@@ -81,9 +81,11 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Save settings. Changing the embed model re-probes its dimension and triggers
-   * a full re-embed for this user (clear vectors + mark blocks stale). The
-   * embedding worker refills them under the new model.
+   * Save settings. Ollama config (URL + models) is instance-wide: only the
+   * admin can change it, and a change propagates to every user's row (the
+   * worker and semantic search read per-row, so they pick it up unchanged).
+   * Changing the embed model re-probes its dimension and triggers a full
+   * re-embed for ALL users. Similarity/timezone stay per-user.
    */
   app.put("/settings", async (req) => {
     const userId = requireUser(req);
@@ -104,6 +106,17 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!current) throw notFound("settings");
 
+    const touchesOllama =
+      body.ollamaUrl !== undefined || body.embedModel !== undefined || body.inferenceModel !== undefined;
+    if (touchesOllama) {
+      const [me] = await db
+        .select({ isAdmin: users.isAdmin })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!me?.isAdmin) throw forbidden("Ollama settings are managed by the admin");
+    }
+
     const nextUrl = body.ollamaUrl !== undefined ? body.ollamaUrl : current.ollamaUrl;
     const nextEmbed = body.embedModel !== undefined ? body.embedModel : current.embedModel;
     const embedChanged = nextEmbed !== current.embedModel;
@@ -123,14 +136,21 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await db.transaction(async (tx) => {
-      await tx
-        .update(userSettings)
-        .set({
+      // Instance-wide: every user's row gets the admin's Ollama config.
+      if (touchesOllama) {
+        await tx.update(userSettings).set({
           ollamaUrl: nextUrl,
           embedModel: nextEmbed,
           embedDim,
           inferenceModel:
             body.inferenceModel !== undefined ? body.inferenceModel : current.inferenceModel,
+          updatedAt: new Date(),
+        });
+      }
+      // Per-user preferences stay scoped to the requester.
+      await tx
+        .update(userSettings)
+        .set({
           defaultSimilarity:
             body.defaultSimilarity !== undefined ? body.defaultSimilarity : current.defaultSimilarity,
           timezone: body.timezone !== undefined ? body.timezone : current.timezone,
@@ -139,12 +159,10 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(userSettings.userId, userId));
 
       if (embedChanged) {
-        // Old vectors were produced by a different model — discard and re-embed.
-        await tx.delete(blockEmbeddings).where(eq(blockEmbeddings.ownerId, userId));
-        await tx
-          .update(blocks)
-          .set({ embedSourceHash: null, embeddedAt: null })
-          .where(eq(blocks.ownerId, userId));
+        // Old vectors were produced by a different model — discard and
+        // re-embed for everyone, since the model is instance-wide.
+        await tx.delete(blockEmbeddings);
+        await tx.update(blocks).set({ embedSourceHash: null, embeddedAt: null });
       }
     });
 

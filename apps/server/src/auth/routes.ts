@@ -49,7 +49,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         .values({ email, passwordHash, displayName: displayName ?? null, isAdmin: admin })
         .returning({ id: users.id });
       const id = row!.id;
-      await tx.insert(userSettings).values({ userId: id });
+      // Inherit the instance-wide Ollama config from the admin's row (absent
+      // for the very first signup — the admin configures it in Settings).
+      const [adminRow] = await tx
+        .select({
+          ollamaUrl: userSettings.ollamaUrl,
+          embedModel: userSettings.embedModel,
+          embedDim: userSettings.embedDim,
+          inferenceModel: userSettings.inferenceModel,
+        })
+        .from(userSettings)
+        .innerJoin(users, eq(users.id, userSettings.userId))
+        .where(eq(users.isAdmin, true))
+        .limit(1);
+      await tx.insert(userSettings).values({ userId: id, ...(adminRow ?? {}) });
       await seedBlockTypes(tx, id);
       return { userId: id, isAdmin: admin };
     });

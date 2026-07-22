@@ -54,11 +54,19 @@ export function MentionChip({ node }: NodeViewProps) {
     };
   }, [id, isTag]);
 
-  const onClick = (e: React.MouseEvent) => {
+  // Navigate on MOUSEDOWN, not click: the plain mousedown would move the
+  // editor selection into this line, and the active-line extension then swaps
+  // the paragraph to raw source — destroying the chip before its click event
+  // can ever fire. preventDefault keeps the selection (and the chip) intact.
+  const onActivate = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (isTag || !id) return;
     openBlock(id, { collection });
+  };
+  const swallow = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   return (
@@ -66,7 +74,8 @@ export function MentionChip({ node }: NodeViewProps) {
       as="span"
       className={`mention-chip${isTag ? " tag" : ""}`}
       contentEditable={false}
-      onClick={onClick}
+      onMouseDown={onActivate}
+      onClick={swallow}
       title={label}
     >
       {isTag ? (

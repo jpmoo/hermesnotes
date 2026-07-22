@@ -144,28 +144,36 @@ export function TypedBlockCard({
 
       {bodyFields.length > 0 && (
         <div className="typed-fields">
-          {bodyFields.map((f) => (
-            <label
-              className={`field typed-field${
-                f.type === "text" ||
-                f.type === "longtext" ||
-                f.type === "url" ||
-                f.type === "datespan" ||
-                f.type === "attachments"
-                  ? " full"
-                  : ""
-              }`}
-              key={f.key}
-            >
-              <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
-              <FieldInput
-                field={f}
-                value={props[f.key]}
-                onChange={(v) => update(f.key, v)}
-                blockId={block.id}
-              />
-            </label>
-          ))}
+          {bodyFields.map((f) => {
+            const full =
+              f.type === "text" ||
+              f.type === "longtext" ||
+              f.type === "url" ||
+              f.type === "datespan" ||
+              f.type === "attachments";
+            // A native <label> forwards clicks to its first form control, which
+            // hijacks clicks inside rich fields (e.g. a longtext checklist's
+            // first checkbox, a date picker's trigger) — use a div for those.
+            const simple =
+              f.type === "text" ||
+              f.type === "number" ||
+              f.type === "url" ||
+              f.type === "boolean" ||
+              f.type === "select" ||
+              f.type === "status";
+            const Tag = simple ? "label" : "div";
+            return (
+              <Tag className={`field typed-field${full ? " full" : ""}`} key={f.key}>
+                <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
+                <FieldInput
+                  field={f}
+                  value={props[f.key]}
+                  onChange={(v) => update(f.key, v)}
+                  blockId={block.id}
+                />
+              </Tag>
+            );
+          })}
         </div>
       )}
 

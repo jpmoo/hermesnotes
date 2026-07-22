@@ -3,14 +3,11 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
 
+// Only the kinds that actually exist today (matrix defaults to a 2×2 grid).
 const KINDS: { key: CollectionKind; label: string }[] = [
   { key: "list", label: "List" },
   { key: "document", label: "Document" },
-  { key: "table", label: "Table" },
-  { key: "kanban", label: "Kanban" },
   { key: "matrix", label: "Matrix" },
-  { key: "masonry", label: "Masonry" },
-  { key: "canvas", label: "Canvas" },
 ];
 
 const FORMATS: { key: ListFormat; label: string }[] = [

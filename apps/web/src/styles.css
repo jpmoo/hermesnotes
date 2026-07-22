@@ -632,11 +632,13 @@ select {
 .field {
   margin-bottom: 18px;
 }
-label.field {
+label.field,
+div.field {
   display: block;
   margin-bottom: 14px;
 }
-label.field > span {
+label.field > span,
+div.field > span {
   display: block;
   font-size: 12px;
   color: var(--text-muted);

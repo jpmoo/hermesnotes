@@ -1,8 +1,9 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { api, type Block, type BlockRef } from "../api.ts";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
 import { firstLineHtml } from "../lib/markdown-excerpt.ts";
 import { oneLineText } from "../lib/display.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 
 /**
  * Reference picker with a dynamic search box. Holds one or more selections as
@@ -25,8 +26,44 @@ export function ReferenceInput({
   const [results, setResults] = useState<BlockRef[]>([]);
   const [open, setOpen] = useState(false);
   const [labels, setLabels] = useState<Record<string, string>>({});
+  const [refType, setRefType] = useState<BlockType | null>(null);
+  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
   const fetched = useRef<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
+
+  // The target type's icon labels every result (all hits share the type).
+  useEffect(() => {
+    if (!refTypeId) return;
+    void api
+      .get<BlockType[]>("/block-types")
+      .then((ts) => setRefType(ts.find((t) => t.id === refTypeId) ?? null))
+      .catch(() => {});
+  }, [refTypeId]);
+
+  // The dropdown is position:fixed so overflow ancestors (table scroll box,
+  // right panel) can't clip it — measure the combo and track scroll/resize.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (r) {
+        const below = window.innerHeight - r.bottom;
+        setRect({
+          left: r.left,
+          // Flip above when the viewport bottom is too close for the list.
+          top: below < 240 && r.top > 240 ? Math.max(8, r.top - 228) : r.bottom + 4,
+          width: r.width,
+        });
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    document.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("scroll", measure, true);
+    };
+  }, [open, idsKey, query]);
 
   // Resolve labels for any selected ids we don't have yet.
   useEffect(() => {
@@ -119,15 +156,22 @@ export function ReferenceInput({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      {open && (
-        <div className="menu ref-results">
+      {open && rect && (
+        <div
+          className="menu ref-results"
+          style={{
+            position: "fixed",
+            left: rect.left,
+            top: rect.top,
+            width: Math.max(rect.width, 220),
+            right: "auto",
+          }}
+        >
           {available.map((o) => (
-            <button
-              key={o.id}
-              className="menu-item li-md"
-              onClick={() => add(o)}
-              dangerouslySetInnerHTML={{ __html: firstLineHtml(o.label) }}
-            />
+            <button key={o.id} className="menu-item type-item" onClick={() => add(o)}>
+              <BlockIcon iconKey={refType?.iconKey} color={refType?.iconColor} size={15} />
+              <span className="li-md" dangerouslySetInnerHTML={{ __html: firstLineHtml(o.label) }} />
+            </button>
           ))}
           {available.length === 0 &&
             (query.trim() ? (

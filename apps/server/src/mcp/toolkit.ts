@@ -118,7 +118,7 @@ export function buildTools(server: McpServer, api: Api): void {
 
   server.tool(
     "task_find",
-    "List/search tasks. All params optional. status: open|done|... (or comma list); when: overdue|today|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id (ignores other filters).",
+    "List/search tasks. All params optional and composable. status: open|done|... (or comma list); when: overdue|today|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id; region: a matrix region/row/column title within that list (e.g. \"Do\").",
     {
       status: z.string().optional(),
       when: z.string().optional(),
@@ -127,10 +127,16 @@ export function buildTools(server: McpServer, api: Api): void {
       tags: z.array(z.string()).optional(),
       project: z.string().optional(),
       list: z.string().optional(),
+      region: z.string().optional(),
       limit: z.number().int().min(1).max(200).optional(),
     },
     run(async (a) => {
       const ctx = await loadContext(api);
+
+      const otherFilters = Boolean(a.status || a.when || a.term || a.tag || a.tags?.length || a.project);
+      // Ids restricted by collection membership (and matrix region), when asked.
+      let scopeIds: Set<string> | null = null;
+      let scopeLabel = "";
       if (a.list) {
         const cols = await api.get<{ id: string; properties: Record<string, unknown> }[]>("/collections");
         const needle = a.list.trim().toLowerCase();
@@ -139,10 +145,73 @@ export function buildTools(server: McpServer, api: Api): void {
           cols.find((c) => String(c.properties.title ?? "").toLowerCase() === needle) ??
           cols.find((c) => String(c.properties.title ?? "").toLowerCase().includes(needle));
         if (!col) throw new Error(`No collection matching "${a.list}".`);
-        const d = await api.get<{ members: HermesBlock[] }>(`/collections/${col.id}`);
-        const tasks = d.members.filter((m) => m.blockTypeId === ctx.taskTypeId);
-        if (!tasks.length) return `No tasks in "${String(col.properties.title ?? "collection")}".`;
-        return tasks.map((b) => fmtTaskLine(ctx, b)).join("\n");
+        scopeLabel = String(col.properties.title ?? "collection");
+        const d = await api.get<{
+          collection: { collectionKind: string | null; properties: Record<string, unknown> };
+          members: (HermesBlock & { context?: Record<string, unknown> })[];
+        }>(`/collections/${col.id}`);
+        const cprops = d.collection.properties;
+        const isMatrix = d.collection.collectionKind === "matrix";
+        const isSmart = cprops.membership_mode === "smart";
+        const bindKey = typeof cprops.matrix_bind_property === "string" ? cprops.matrix_bind_property : "";
+
+        // Matrix in a bound/date mode places live query MATCHES, not members.
+        const matches =
+          isMatrix && isSmart && bindKey
+            ? await api.post<HermesBlock[]>("/blocks/query", { filterQuery: cprops.filter_query })
+            : null;
+        let pool: (HermesBlock & { context?: Record<string, unknown> })[];
+        if (matches) pool = matches;
+        else if (isMatrix && isSmart) {
+          // Custom-grid smart matrix: visible cards are members the query still matches.
+          const live = await api.post<HermesBlock[]>("/blocks/query", { filterQuery: cprops.filter_query });
+          const liveIds = new Set(live.map((b) => b.id));
+          pool = d.members.filter((m) => liveIds.has(m.id));
+        } else pool = d.members;
+
+        if (a.region) {
+          if (!isMatrix) throw new Error(`"${scopeLabel}" is not a matrix — region only applies to matrices.`);
+          const rl = a.region.trim().toLowerCase();
+          const titled = (defs: unknown): number[] =>
+            (Array.isArray(defs) ? (defs as { title?: string }[]) : [])
+              .map((r, i) => ({ i, t: String(r?.title ?? "").trim().toLowerCase() }))
+              .filter((x) => x.t === rl)
+              .map((x) => x.i);
+          if (bindKey && bindKey.startsWith("@")) {
+            // Date mode: regions are row bands (matrix_date_rows + matrix_lanes).
+            const rows = titled(cprops.matrix_date_rows);
+            if (!rows.length) throw new Error(`No row titled "${a.region}" in "${scopeLabel}".`);
+            const lanes = (cprops.matrix_lanes && typeof cprops.matrix_lanes === "object"
+              ? cprops.matrix_lanes
+              : {}) as Record<string, number>;
+            const rowOf = (id: string) => (Number.isInteger(lanes[id]) && lanes[id]! >= 0 ? lanes[id]! : 0);
+            pool = pool.filter((b) => rows.includes(rowOf(b.id)));
+          } else if (bindKey) {
+            // Status-bound: the region IS a status option.
+            pool = pool.filter(
+              (b) => String((b.properties as Record<string, unknown>)?.[bindKey] ?? "").toLowerCase() === rl,
+            );
+          } else {
+            // Custom grid: placement lives in membership context.region.
+            const idxs = titled(cprops.matrix_regions);
+            if (!idxs.length) throw new Error(`No region titled "${a.region}" in "${scopeLabel}".`);
+            pool = pool.filter((m) => {
+              const member = d.members.find((x) => x.id === m.id);
+              const r = Number(member?.context?.region);
+              return Number.isInteger(r) && idxs.includes(r);
+            });
+          }
+          scopeLabel += ` › ${a.region}`;
+        }
+        scopeIds = new Set(pool.filter((m) => m.blockTypeId === ctx.taskTypeId).map((m) => m.id));
+        if (!scopeIds.size) return `No tasks in "${scopeLabel}".`;
+        if (!otherFilters) {
+          const tasks = pool.filter((m) => scopeIds!.has(m.id));
+          const limit = a.limit ?? 50;
+          return tasks.slice(0, limit).map((b) => fmtTaskLine(ctx, b)).join("\n");
+        }
+      } else if (a.region) {
+        throw new Error("region requires list (the matrix collection to look in).");
       }
 
       const items: (Condition | FilterGroup)[] = [
@@ -172,9 +241,10 @@ export function buildTools(server: McpServer, api: Api): void {
         const p = await resolveProject(api, ctx, a.project);
         items.push(prop(ctx.projectRefKey, "contains", p.id));
       }
-      const blocks = await api.post<HermesBlock[]>("/blocks/query", { filterQuery: group(items) });
+      let blocks = await api.post<HermesBlock[]>("/blocks/query", { filterQuery: group(items) });
+      if (scopeIds) blocks = blocks.filter((b) => scopeIds!.has(b.id));
       const limit = a.limit ?? 50;
-      if (!blocks.length) return "No matching tasks.";
+      if (!blocks.length) return scopeLabel ? `No matching tasks in "${scopeLabel}".` : "No matching tasks.";
       const lines = blocks.slice(0, limit).map((b) => fmtTaskLine(ctx, b));
       const more = blocks.length > limit ? `\n…and ${blocks.length - limit} more (raise limit to see them).` : "";
       return lines.join("\n") + more;

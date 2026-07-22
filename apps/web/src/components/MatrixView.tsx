@@ -9,11 +9,11 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { FieldDef } from "@hermes/shared";
+import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
-import { oneLineText } from "../lib/display.ts";
+import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -51,18 +51,34 @@ const fmtShort = (v: string) => {
     : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
 
-/** Short display strings for any dated fields on the block. */
-function dateBits(schema: { fields: FieldDef[] } | null | undefined, props: Record<string, unknown>): string[] {
-  const out: string[] = [];
+interface DateBit {
+  text: string;
+  overdue: boolean;
+}
+
+/** Short display strings for any dated fields on the block. A datespan's due
+ * (end) date in the past marks the bit overdue — unless the block is complete. */
+function dateBits(schema: PropertySchema | null | undefined, props: Record<string, unknown>): DateBit[] {
+  const statusKey = schema?.status_field;
+  const done = statusKey
+    ? (schema?.complete_values ?? []).includes(String(props[statusKey] ?? ""))
+    : false;
+  const out: DateBit[] = [];
   for (const f of schema?.fields ?? []) {
     const v = props[f.key];
     if (v == null || v === "") continue;
-    if (f.type === "datetime" || f.type === "date") out.push(fmtShort(String(v)));
-    else if (f.type === "datespan" && typeof v === "object") {
+    if (f.type === "datetime" || f.type === "date") {
+      out.push({ text: fmtShort(String(v)), overdue: false });
+    } else if (f.type === "datespan" && typeof v === "object") {
       const span = v as { start?: string; end?: string };
       const s = span.start ? fmtShort(span.start) : "";
       const e = span.end ? fmtShort(span.end) : "";
-      if (s || e) out.push(s && e ? `${s} – ${e}` : s || e);
+      if (s || e) {
+        out.push({
+          text: s && e ? `${s} – ${e}` : s || e,
+          overdue: !done && isOverdue(span.end),
+        });
+      }
     }
   }
   return out;
@@ -167,7 +183,19 @@ function Chip({
           </button>
         )}
       </div>
-      {dates.length > 0 && <div className="chip-dates">{dates.join(" · ")}</div>}
+      {dates.length > 0 && (
+        <div className="chip-dates">
+          {dates.map((d, i) =>
+            d.overdue ? (
+              <span key={i} className="overdue-pill">
+                {d.text}
+              </span>
+            ) : (
+              <span key={i}>{d.text}</span>
+            ),
+          )}
+        </div>
+      )}
     </div>
   );
 }

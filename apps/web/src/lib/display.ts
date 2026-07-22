@@ -46,3 +46,17 @@ export function oneLineHtml(
 ): string {
   return inlineMarkdown(oneLineText(properties, content));
 }
+
+/** True when a stored date/datetime string is in the past (date-only values
+ * only become overdue after their day ends). */
+export function isOverdue(v: string | null | undefined): boolean {
+  if (!v) return false;
+  const now = new Date();
+  if (v.includes("T")) {
+    const d = new Date(v);
+    return !Number.isNaN(d.getTime()) && d.getTime() < now.getTime();
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  return v < today;
+}

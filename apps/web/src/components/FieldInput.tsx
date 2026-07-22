@@ -2,6 +2,7 @@ import type { FieldDef } from "@hermes/shared";
 import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 import { LongTextField } from "./LongTextField.tsx";
+import { isOverdue } from "../lib/display.ts";
 import { RecurrenceField } from "./RecurrenceField.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
 
@@ -68,7 +69,10 @@ export function FieldInput({
             />
           </div>
           <div className="span-leg">
-            <span className="span-label">{field.endLabel?.trim() || "End"}</span>
+            <span className="span-label">
+              {field.endLabel?.trim() || "End"}
+              {isOverdue(span.end) && <span className="overdue-pill">Overdue</span>}
+            </span>
             <DateTimePicker
               value={span.end ?? ""}
               onChange={(v) => setSpan({ end: v })}

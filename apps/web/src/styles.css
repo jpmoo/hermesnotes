@@ -1523,9 +1523,31 @@ input.region-title:focus {
   flex-shrink: 0;
 }
 .chip-dates {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-size: 11px;
   color: var(--text-muted);
   padding-left: 22px;
+}
+/* Cards let the region's color show through. */
+.region-body .matrix-chip {
+  background: rgba(255, 255, 255, 0.75);
+}
+/* An overdue due-date: prominent, white on red. */
+.overdue-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+.chip-dates .overdue-pill {
+  margin-left: 0;
 }
 .matrix-bind {
   display: inline-flex;

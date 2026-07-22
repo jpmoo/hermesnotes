@@ -14,7 +14,7 @@ Everything here is a **block** — notes, tasks, events, people, even collection
 - **Today** is your daily note — a scratchpad that keeps one sheet per day.
 - In any text, type **@** to mention a person, **#** to tag, and **|** to link any block or collection. Links become chips that open in the info panel.
 - The **+ button** in the left rail creates notes, blocks, and collections from anywhere.
-- **Search** (top bar) matches titles, bodies, and properties — and once Ollama is connected in Settings, it also finds things by *meaning*.
+- **Search** (top bar) matches titles, bodies, and properties — and also finds things by *meaning*, so describing what you want works too.
 
 Delete this note whenever you're done with it.`;
 
@@ -35,7 +35,7 @@ const CHECKLIST_ITEMS = [
   "Save that filter as a smart collection",
   "Star a block with the ★ in the info panel — it appears in Favorites",
   "Make a table collection and right-click a column header to sort",
-  "Connect Ollama in Settings to unlock semantic search",
+  "Try a semantic search — describe what you're looking for in the top bar",
 ];
 
 /** Title/description embed source, mirroring the collections routes. */

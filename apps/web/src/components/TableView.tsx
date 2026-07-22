@@ -220,9 +220,14 @@ export function TableView({
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
   // ── Persisted view settings (local state, patched to the collection) ──
-  const [columns, setColumns] = useState<string[]>(() =>
-    Array.isArray(props.table_columns) ? (props.table_columns as string[]) : [],
-  );
+  // "title" is an ordinary entry in the order (it just renders specially).
+  // Legacy shapes stored it implicitly-first with a separate hide flag — fold
+  // that into the array on load.
+  const [columns, setColumns] = useState<string[]>(() => {
+    const stored = Array.isArray(props.table_columns) ? (props.table_columns as string[]) : [];
+    if (!stored.includes("title") && props.table_hide_title !== true) return ["title", ...stored];
+    return stored;
+  });
   const [sort, setSort] = useState<SortLevel[]>(() =>
     Array.isArray(props.table_sort) ? (props.table_sort as SortLevel[]) : [],
   );
@@ -234,7 +239,6 @@ export function TableView({
   const [headerColor, setHeaderColor] = useState<string | null>(
     typeof props.table_header_color === "string" ? props.table_header_color : null,
   );
-  const [hideTitle, setHideTitle] = useState(props.table_hide_title === true);
   const persist = (patch: Record<string, unknown>) => void api.patch(`/collections/${cid}`, patch);
 
   const isDynamic = props.membership_mode === "smart" && (props.smart_mode ?? "dynamic") === "dynamic";
@@ -260,34 +264,24 @@ export function TableView({
     return f?.label?.trim() || pretty(key.slice(5));
   };
 
-  const shown = hideTitle ? [...columns] : ["title", ...columns];
+  const shown = columns;
+  // Persist the order plus the legacy flag, so the load-time normalization
+  // above can't resurrect a deliberately removed title column.
+  const saveColumns = (next: string[]) => {
+    setColumns(next);
+    persist({ table_columns: next, table_hide_title: !next.includes("title") });
+  };
   const available = [
-    ...(hideTitle ? [{ key: "title", label: "Title" }] : []),
+    ...(columns.includes("title") ? [] : [{ key: "title", label: "Title" }]),
     ...[...fieldByKey.entries()]
       .filter(([k, f]) => f.type !== "attachments" && !columns.includes(`prop:${k}`))
       .map(([k, f]) => ({ key: `prop:${k}`, label: f.label?.trim() || pretty(k) })),
     ...BUILTINS.filter((b) => !columns.includes(b.key)),
   ];
 
-  const addColumn = (key: string) => {
-    if (key === "title") {
-      setHideTitle(false);
-      persist({ table_hide_title: false });
-      return;
-    }
-    const next = [...columns, key];
-    setColumns(next);
-    persist({ table_columns: next });
-  };
+  const addColumn = (key: string) => saveColumns([...columns, key]);
   const removeColumn = (key: string) => {
-    if (key === "title") {
-      setHideTitle(true);
-      persist({ table_hide_title: true });
-    } else {
-      const next = columns.filter((k) => k !== key);
-      setColumns(next);
-      persist({ table_columns: next });
-    }
+    saveColumns(columns.filter((k) => k !== key));
     if (sort.some((s) => s.key === key)) {
       const ns = sort.filter((s) => s.key !== key);
       setSort(ns);
@@ -300,8 +294,7 @@ export function TableView({
     if (i < 0 || j < 0 || j >= columns.length) return;
     const next = [...columns];
     [next[i], next[j]] = [next[j]!, next[i]!];
-    setColumns(next);
-    persist({ table_columns: next });
+    saveColumns(next);
   };
 
   // ── Excel-style sorting: each newly sorted column appends a level ──
@@ -484,7 +477,7 @@ export function TableView({
 
             <div className="field">
               <span className="field-label">Columns</span>
-              {columns.length === 0 && <div className="hint">Only the title column so far.</div>}
+              {columns.length === 0 && <div className="hint">No columns yet — add some below.</div>}
               {columns.map((key, i) => (
                 <div className="tv-col-row" key={key}>
                   <span className="tv-col-name">{labelOf(key)}</span>

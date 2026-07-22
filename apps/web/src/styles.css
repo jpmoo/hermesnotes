@@ -2012,6 +2012,10 @@ input.matrix-axis-y::placeholder {
   border-radius: 11px;
   background: var(--surface-2);
 }
+/* A sort-bar nested in a labeled row (Favorites sections) aligns flush. */
+.row > .sort-bar {
+  margin-bottom: 0;
+}
 .sort-label {
   font-size: 12px;
   font-weight: 600;
@@ -2989,8 +2993,7 @@ input.matrix-axis-y::placeholder {
   color: #d9a514;
 }
 .fav-collections {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
   margin-bottom: 16px;
 }
@@ -2999,6 +3002,19 @@ input.matrix-axis-y::placeholder {
   align-items: center;
   gap: 7px;
   cursor: pointer;
+  width: 100%;
+  min-width: 0;
+}
+.fav-collection svg {
+  flex: none;
+}
+.fav-collection-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 /* A mention whose target was deleted: shaded, not clickable. */

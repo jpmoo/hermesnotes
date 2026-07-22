@@ -25,11 +25,18 @@ import { useBlockView } from "../lib/useBlockView.tsx";
  */
 type StripSort = "manual" | "alpha" | "created" | "edited";
 const STRIP_SORT_KEY = "hn.fav.collections.sort";
+const STRIP_COLS_KEY = "hn.fav.collections.cols";
+const clampStripCols = (n: number) => Math.min(10, Math.max(1, n || 4));
 
 /** A starred-collection chip; draggable in manual order. */
 function FavChip({ id, draggable, children }: { id: string; draggable: boolean; children: ReactNode }) {
   const s = useSortable({ id, disabled: !draggable });
-  const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
+  const style = {
+    transform: CSS.Translate.toString(s.transform),
+    transition: s.transition,
+    display: "flex",
+    minWidth: 0,
+  };
   return (
     <div ref={s.setNodeRef} style={style} {...s.attributes} {...s.listeners}>
       {children}
@@ -82,6 +89,22 @@ export function FavoritesPage() {
     }
   });
   const [stripDir, setStripDir] = useState<"asc" | "desc">("asc");
+  const [stripCols, setStripColsState] = useState<number>(() => {
+    try {
+      return clampStripCols(Number(localStorage.getItem(STRIP_COLS_KEY)));
+    } catch {
+      return 4;
+    }
+  });
+  const setStripCols = (n: number) => {
+    const c = clampStripCols(n);
+    setStripColsState(c);
+    try {
+      localStorage.setItem(STRIP_COLS_KEY, String(c));
+    } catch {
+      /* ignore */
+    }
+  };
   const pickStripSort = (v: StripSort) => {
     setStripSort(v);
     try {
@@ -175,6 +198,16 @@ export function FavoritesPage() {
                 </button>
               )}
               {stripSort === "manual" && <span className="hint">Drag chips to arrange</span>}
+              <span className="cols-ctl">
+                <span className="hint">Cols</span>
+                <button className="icon-btn" onClick={() => setStripCols(stripCols - 1)} title="Fewer columns">
+                  −
+                </button>
+                <span className="cols-n">{stripCols}</span>
+                <button className="icon-btn" onClick={() => setStripCols(stripCols + 1)} title="More columns">
+                  +
+                </button>
+              </span>
             </div>
           )}
         </div>
@@ -182,7 +215,10 @@ export function FavoritesPage() {
       {collections.length > 0 && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onChipDrag}>
           <SortableContext items={sortedCollections.map((c) => c.id)} strategy={rectSortingStrategy}>
-            <div className="fav-collections">
+            <div
+              className="fav-collections"
+              style={{ gridTemplateColumns: `repeat(${stripCols}, minmax(0, 1fr))` }}
+            >
               {sortedCollections.map((c) => (
                 <FavChip key={c.id} id={c.id} draggable={stripSort === "manual"}>
                   <button
@@ -196,7 +232,9 @@ export function FavoritesPage() {
                       smart={(c.properties as Record<string, unknown>)?.membership_mode === "smart"}
                       size={15}
                     />
-                    {oneLineText(c.properties) || "Untitled collection"}
+                    <span className="fav-collection-label">
+                      {oneLineText(c.properties) || "Untitled collection"}
+                    </span>
                   </button>
                 </FavChip>
               ))}

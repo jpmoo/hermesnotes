@@ -2,6 +2,7 @@ import type { FieldDef } from "@hermes/shared";
 import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 import { LongTextField } from "./LongTextField.tsx";
+import { MentionTextInput } from "./MentionTextInput.tsx";
 import { isOverdue } from "../lib/display.ts";
 import { RecurrenceField } from "./RecurrenceField.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
@@ -107,6 +108,7 @@ export function FieldInput({
         </select>
       );
     default:
-      return <input type="text" value={str} onChange={(e) => onChange(e.target.value)} />;
+      // Plain text fields: mention-aware (@ / # / | search dropdown, chips).
+      return <MentionTextInput className="field-text" value={str} onChange={(v) => onChange(v)} />;
   }
 }

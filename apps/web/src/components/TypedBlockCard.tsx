@@ -8,6 +8,7 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
+import { MentionTextInput } from "./MentionTextInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
 
 type SaveState = "idle" | "saving" | "error";
@@ -134,11 +135,11 @@ export function TypedBlockCard({
         ) : (
           type.showIcon && <BlockIcon iconKey={type.iconKey} color={type.iconColor} size={20} />
         )}
-        <input
+        <MentionTextInput
           className="typed-title"
           placeholder={titleField?.label ?? "Title"}
           value={props.title == null ? "" : String(props.title)}
-          onChange={(e) => update("title", e.target.value)}
+          onChange={(v) => update("title", v)}
         />
       </div>
 

@@ -22,6 +22,7 @@ import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineHtml, oneLineText } from "../lib/display.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { MatrixView } from "../components/MatrixView.tsx";
+import { MentionTextInput } from "../components/MentionTextInput.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollectionSection } from "../components/CollectionSection.tsx";
@@ -311,12 +312,12 @@ function ListItem({
             }}
           />
         ) : !expanded ? (
-          <input
-            className="li-text"
+          <MentionTextInput
+            className="li-text li-text-mention"
             value={String(props.title ?? "")}
             placeholder={type?.name}
             onFocus={() => selectBlock(member.id)}
-            onChange={(e) => debouncedText(e.target.value)}
+            onChange={debouncedText}
           />
         ) : (
           <span className="li-text li-text-static" onClick={openItem}>

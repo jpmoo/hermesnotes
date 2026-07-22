@@ -2914,3 +2914,49 @@ input.matrix-axis-y::placeholder {
   background: transparent;
   color: var(--accent-ink);
 }
+
+/* Mention-aware single-line inputs (titles, text fields). */
+.mention-input {
+  min-width: 0;
+  cursor: text;
+}
+.mention-input .mention-line {
+  outline: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.mention-input .mention-line p {
+  margin: 0;
+}
+.mention-input .mention-line p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+/* Variant: the typed-card title (mirrors input.typed-title). */
+.mention-input.typed-title {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 2px 0;
+}
+/* Variant: a body text field (mirrors the default input look). */
+.mention-input.field-text {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
+  font-size: 13.5px;
+}
+.mention-input.field-text:focus-within {
+  border-color: var(--accent);
+}
+/* Variant: a list-row title. */
+.mention-input.li-text-mention {
+  flex: 1;
+  min-width: 0;
+}

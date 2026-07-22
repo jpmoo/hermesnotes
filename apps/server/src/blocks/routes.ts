@@ -19,8 +19,10 @@ import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "./embed-source.js";
 
-/** Tag names from `#` mentions (stored as `(tag:<name>)` links) in some text. */
-function extractTags(texts: string[]): Set<string> {
+/** Tag names from `#` mentions: `(tag:<name>)` links anywhere, and — in
+ * `rawTexts` (title/plain-text fields, where raw mention syntax is stored) —
+ * bare `#tag` tokens at a word start. */
+function extractTags(texts: string[], rawTexts: string[] = []): Set<string> {
   const names = new Set<string>();
   for (const t of texts) {
     if (typeof t !== "string") continue;
@@ -28,6 +30,15 @@ function extractTags(texts: string[]): Set<string> {
     let m: RegExpExecArray | null;
     while ((m = re.exec(t)) !== null) {
       const n = m[1]?.trim().toLowerCase();
+      if (n) names.add(n);
+    }
+  }
+  for (const t of rawTexts) {
+    if (typeof t !== "string") continue;
+    const re = /(^|\s)#([A-Za-z0-9][\w-]*)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t)) !== null) {
+      const n = m[2]?.trim().toLowerCase();
       if (n) names.add(n);
     }
   }
@@ -39,8 +50,13 @@ function extractTags(texts: string[]): Set<string> {
  * mention from the text does NOT remove the tag (that stays a manual action),
  * which avoids provenance edge cases. Returns whether anything was added.
  */
-async function syncTextTags(userId: string, blockId: string, texts: string[]): Promise<boolean> {
-  const names = extractTags(texts);
+async function syncTextTags(
+  userId: string,
+  blockId: string,
+  texts: string[],
+  rawTexts: string[] = [],
+): Promise<boolean> {
+  const names = extractTags(texts, rawTexts);
   if (names.size === 0) return false;
   let changed = false;
   await db.transaction(async (tx) => {
@@ -532,10 +548,37 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       if (Array.isArray(v)) outIds.push(...v.map(String));
       else if (typeof v === "string" && v) outIds.push(v);
     }
-    const linkRe = /block:([0-9a-fA-F-]{36})/g;
+    const linkRe = /block:([0-9a-fA-F-]{36})|\|([0-9a-fA-F-]{36})/g;
     for (const text of [b.content ?? "", ...Object.values(props).map((v) => (typeof v === "string" ? v : ""))]) {
       let m: RegExpExecArray | null;
-      while ((m = linkRe.exec(text)) !== null) if (m[1] && m[1] !== id) outIds.push(m[1]);
+      while ((m = linkRe.exec(text)) !== null) {
+        const target = m[1] ?? m[2];
+        if (target && target !== id) outIds.push(target);
+      }
+    }
+    // Raw `@Name_With_Underscores` mentions resolve by exact title match.
+    const atNames = new Set<string>();
+    for (const text of Object.values(props).map((v) => (typeof v === "string" ? v : ""))) {
+      const re = /(^|\s)@([A-Za-z0-9][\w-]*)/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(text)) !== null) if (m[2]) atNames.add(m[2].replace(/_/g, " ").toLowerCase());
+    }
+    if (atNames.size) {
+      const named = await db
+        .select({ id: blocks.id })
+        .from(blocks)
+        .where(
+          and(
+            eq(blocks.ownerId, userId),
+            sql`${blocks.id} <> ${id}`,
+            sql`lower(${blocks.properties}->>'title') IN (${sql.join(
+              [...atNames].map((n) => sql`${n}`),
+              sql`, `,
+            )})`,
+          ),
+        )
+        .limit(20);
+      outIds.push(...named.map((r) => r.id));
     }
     let linkRows: {
       id: string;
@@ -559,6 +602,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     // References in (other blocks that reference this one via a property value
     // or a markdown `block:<id>` link in their content/text).
+    const myTitle = typeof props.title === "string" ? props.title.trim() : "";
     const fromRows = await db
       .select({
         id: blocks.id,
@@ -581,6 +625,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
             ),
             sql`${blocks.content} LIKE ${`%block:${id}%`}`,
             sql`${blocks.properties}::text LIKE ${`%block:${id}%`}`,
+            // Raw `|<id>` mention in a title/text field.
+            sql`${blocks.properties}::text LIKE ${`%|${id}%`}`,
+            // Raw `@Name` mention of this block's title (underscores = spaces).
+            ...(myTitle
+              ? [sql`${blocks.properties}::text ILIKE ${`%@${myTitle.replace(/[%_]/g, "_").replace(/ /g, "_")}%`}`]
+              : []),
           ),
         ),
       )
@@ -703,11 +753,22 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     if (!updated) throw conflict("version conflict — reload and retry");
 
-    // Add tags for any #tag mentions in the content/text (add-only).
-    const tagsChanged = await syncTextTags(userId, id, [
-      nextContent ?? "",
-      ...Object.values(nextProps ?? {}).filter((v): v is string => typeof v === "string"),
+    // Add tags for any #tag mentions (add-only): `(tag:)` links anywhere, and
+    // raw `#tag` tokens in the title/plain-text fields (mention-input syntax).
+    const rawKeys = new Set([
+      "title",
+      ...(type.propertySchema?.fields ?? []).filter((f) => f.type === "text").map((f) => f.key),
     ]);
+    const props = (nextProps ?? {}) as Record<string, unknown>;
+    const tagsChanged = await syncTextTags(
+      userId,
+      id,
+      [
+        nextContent ?? "",
+        ...Object.values(props).filter((v): v is string => typeof v === "string"),
+      ],
+      [...rawKeys].map((k) => props[k]).filter((v): v is string => typeof v === "string"),
+    );
 
     // Recurring task just completed → spawn the next occurrence.
     let recurred = false;

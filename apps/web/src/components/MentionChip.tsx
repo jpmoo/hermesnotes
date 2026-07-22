@@ -2,17 +2,40 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { Hash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
+import { oneLineText } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
 // Small module caches so repeated chips don't refetch.
 let typesPromise: Promise<BlockType[]> | null = null;
 const blockCache = new Map<string, Promise<Block | null>>();
+const personCache = new Map<string, Promise<Block | null>>();
 
 const getTypes = () => (typesPromise ??= api.get<BlockType[]>("/block-types").catch(() => []));
 const getBlock = (id: string) =>
   blockCache.get(id) ??
   blockCache.set(id, api.get<Block>(`/blocks/${id}`).catch(() => null)).get(id)!;
+/** Resolve an `@name` mention: exact-title match (underscores = spaces). */
+const getByName = (name: string) => {
+  const key = name.toLowerCase();
+  const hit = personCache.get(key);
+  if (hit) return hit;
+  const promise = (async (): Promise<Block | null> => {
+    const title = name.replace(/_/g, " ");
+    const found = await api
+      .post<Block[]>("/blocks/query", {
+        filterQuery: {
+          kind: "group",
+          match: "all",
+          items: [{ kind: "property", key: "title", op: "eq", value: title }],
+        },
+      })
+      .catch(() => [] as Block[]);
+    return found[0] ?? null;
+  })();
+  personCache.set(key, promise);
+  return promise;
+};
 
 interface Icon {
   key?: string | null;
@@ -24,18 +47,25 @@ export function MentionChip({ node }: NodeViewProps) {
   const href = String(node.attrs.href ?? "");
   const label = String(node.attrs.label ?? "");
   const isTag = href.startsWith("tag:");
-  const id = href.startsWith("block:") ? href.slice(6) : "";
+  const personName = href.startsWith("person:") ? href.slice(7) : "";
+  const staticId = href.startsWith("block:") ? href.slice(6) : "";
   const [icon, setIcon] = useState<Icon | null>(null);
   const [collection, setCollection] = useState(false);
   const [collectionMeta, setCollectionMeta] = useState<{ document: boolean; matrix: boolean; smart: boolean }>();
+  // person: mentions resolve to an id by title; bare |id chips fetch a label.
+  const [resolvedId, setResolvedId] = useState("");
+  const [fetchedLabel, setFetchedLabel] = useState("");
+  const id = staticId || resolvedId;
   const { openBlock } = usePanels();
 
   useEffect(() => {
-    if (isTag || !id) return;
+    if (isTag || (!staticId && !personName)) return;
     let alive = true;
     void (async () => {
-      const b = await getBlock(id);
+      const b = staticId ? await getBlock(staticId) : await getByName(personName);
       if (!alive || !b) return;
+      if (!staticId) setResolvedId(b.id);
+      if (!label) setFetchedLabel(oneLineText(b.properties as Record<string, unknown>, b.content) || "Untitled");
       if (b.collectionKind) {
         setCollection(true);
         setCollectionMeta({
@@ -52,7 +82,8 @@ export function MentionChip({ node }: NodeViewProps) {
     return () => {
       alive = false;
     };
-  }, [id, isTag]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staticId, personName, isTag]);
 
   // Navigate on MOUSEDOWN, not click: the plain mousedown would move the
   // editor selection into this line, and the active-line extension then swaps
@@ -76,7 +107,7 @@ export function MentionChip({ node }: NodeViewProps) {
       contentEditable={false}
       onMouseDown={onActivate}
       onClick={swallow}
-      title={label}
+      title={label || fetchedLabel}
     >
       {isTag ? (
         <Hash size={13} />
@@ -85,7 +116,7 @@ export function MentionChip({ node }: NodeViewProps) {
       ) : (
         <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
       )}
-      <span>{isTag ? label.replace(/^#/, "") : label}</span>
+      <span>{isTag ? label.replace(/^#/, "") : label || fetchedLabel || "…"}</span>
     </NodeViewWrapper>
   );
 }

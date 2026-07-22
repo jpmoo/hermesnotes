@@ -26,17 +26,26 @@ export function firstSentence(text: string): string {
   return (m?.[1] ?? stripped).trim();
 }
 
+/** Flatten stored mention syntax for display: markdown links → label,
+ * `@Name_X` → "@Name X", bare `|<id>` → a placeholder. `#tag` reads fine raw. */
+export function flattenMentions(s: string): string {
+  return s
+    .replace(/\[([^\]]*)\]\((?:block|tag|person):[^)]+\)/g, "$1")
+    .replace(/@([A-Za-z0-9][\w-]*)/g, (_m, n: string) => `@${n.replace(/_/g, " ")}`)
+    .replace(/\|[0-9a-fA-F-]{36}/g, "|…");
+}
+
 /** The raw one-line source string (title, else first sentence of description/body). */
 export function oneLineText(
   properties: Record<string, unknown> | null | undefined,
   content?: string | null,
 ): string {
   const title = properties?.title;
-  if (typeof title === "string" && title.trim()) return title.trim();
+  if (typeof title === "string" && title.trim()) return flattenMentions(title.trim());
   const desc = properties?.description;
   const source =
     typeof desc === "string" && desc.trim() ? desc : typeof content === "string" ? content : "";
-  return firstSentence(source);
+  return flattenMentions(firstSentence(source));
 }
 
 /** The one-line label rendered to safe inline HTML (bold/italic/code kept). */

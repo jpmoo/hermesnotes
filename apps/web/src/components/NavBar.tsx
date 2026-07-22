@@ -13,6 +13,7 @@ interface RecentInfo {
   label: string;
   blockTypeId: string | null;
   document?: boolean;
+  matrix?: boolean;
   smart?: boolean;
 }
 
@@ -29,6 +30,7 @@ const getInfo = (id: string) =>
           label: oneLineText(b.properties, b.content) || "Untitled",
           blockTypeId: b.blockTypeId,
           document: b.collectionKind === "document",
+          matrix: b.collectionKind === "matrix",
           smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
         }))
         .catch(() => ({ label: "(unknown)", blockTypeId: null })),
@@ -98,7 +100,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    <CollectionIcon document={it?.document} smart={it?.smart} size={14} />
+                    <CollectionIcon document={it?.document} matrix={it?.matrix} smart={it?.smart} size={14} />
                     <span className="recent-label">{it?.label ?? "…"}</span>
                   </button>
                 );
@@ -232,7 +234,7 @@ function GlobalSearch() {
                     {h.kind === "today" ? (
                       <CalendarDays size={14} />
                     ) : h.kind === "collection" ? (
-                      <CollectionIcon document={h.document} smart={h.smart} size={14} />
+                      <CollectionIcon document={h.document} matrix={h.matrix} smart={h.smart} size={14} />
                     ) : (
                       <BlockIcon
                         iconKey={!t || t.isText ? "type" : t.iconKey}

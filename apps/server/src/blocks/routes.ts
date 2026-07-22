@@ -343,6 +343,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         blockTypeId: r.blockTypeId,
         label: oneLineLabel(props, r.content) || "Untitled",
         document: r.collectionKind === "document",
+        matrix: r.collectionKind === "matrix",
         smart: props?.membership_mode === "smart",
         semantic,
       };

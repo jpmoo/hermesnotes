@@ -1438,6 +1438,146 @@ input.li-text:focus {
   margin: 1em 0;
 }
 
+/* ── Matrix collection ────────────────────────────────────────── */
+.matrix-grid {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.matrix-region {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: 10px 12px;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+}
+.matrix-region.over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
+}
+.region-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.region-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+input.region-title {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  font-family: var(--font-chrome);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+input.region-title:focus {
+  box-shadow: none;
+  background: transparent;
+  outline: none;
+}
+.region-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+.matrix-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  cursor: grab;
+  user-select: none;
+}
+.matrix-chip.dragging {
+  opacity: 0.35;
+}
+.matrix-chip.overlay {
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  cursor: grabbing;
+  max-width: 260px;
+}
+.matrix-chip svg {
+  flex: 0 0 auto;
+}
+.chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip-remove {
+  margin-left: auto;
+  opacity: 0;
+  flex-shrink: 0;
+}
+.matrix-chip:hover .chip-remove {
+  opacity: 0.8;
+}
+/* Bottom drawer: candidates to drag into regions. */
+.matrix-drawer {
+  position: sticky;
+  bottom: 0;
+  margin: 0 -4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
+  z-index: 20;
+}
+.matrix-drawer.over {
+  border-color: var(--accent);
+}
+.drawer-handle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 8px 14px;
+  font-family: var(--font-chrome);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.drawer-body {
+  padding: 0 14px 12px;
+}
+.drawer-search {
+  margin-bottom: 10px;
+}
+.drawer-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.drawer-items .matrix-chip {
+  max-width: 240px;
+}
+
 /* ── Date/Time picker ─────────────────────────────────────────── */
 .dtp {
   position: relative;

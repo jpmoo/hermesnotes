@@ -70,6 +70,7 @@ export function CollectionsPage() {
               <span className="icon-preview" title={meta}>
                 <CollectionIcon
                   document={c.collectionKind === "document"}
+                  matrix={c.collectionKind === "matrix"}
                   smart={isSmart}
                   size={20}
                   color={iconColor}

@@ -148,6 +148,7 @@ export interface SearchHit {
   blockTypeId: string | null;
   label: string;
   document: boolean;
+  matrix: boolean;
   smart: boolean;
   semantic: boolean;
 }

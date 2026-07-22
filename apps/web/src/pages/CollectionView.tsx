@@ -21,6 +21,7 @@ import { api, type Block, type BlockType, type Collection, type Member } from ".
 import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineHtml, oneLineText } from "../lib/display.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
+import { MatrixView } from "../components/MatrixView.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollectionSection } from "../components/CollectionSection.tsx";
@@ -417,6 +418,7 @@ export function CollectionView() {
   const isSmart = membershipMode === "smart";
   const isDynamic = isSmart && smartMode === "dynamic";
   const isDocument = collection?.collectionKind === "document";
+  const isMatrix = collection?.collectionKind === "matrix";
   const filterQuery: unknown = collection?.properties.filter_query;
 
   // Reorder a member (manual list order), persisted as membership order.
@@ -530,7 +532,7 @@ export function CollectionView() {
       />
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
-        {!isDocument && (
+        {!isDocument && !isMatrix && (
           <div className="segmented">
             {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
               <button
@@ -543,7 +545,7 @@ export function CollectionView() {
             ))}
           </div>
         )}
-        {!isDynamic && (
+        {!isDynamic && !isMatrix && (
           <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
             <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
               + Add
@@ -580,8 +582,8 @@ export function CollectionView() {
 
         {isSmart && (
           <>
-            <span className="pill">{isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            {!isDynamic && (
+            <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
+            {!isDynamic && !isMatrix && (
               <button className="ghost" onClick={() => void refresh()}>
                 Refresh from query
               </button>
@@ -589,7 +591,7 @@ export function CollectionView() {
           </>
         )}
 
-        {!isDocument && format !== "blocks" && members.length > 0 && (
+        {!isDocument && !isMatrix && format !== "blocks" && members.length > 0 && (
           <button
             className="ghost"
             style={{ marginLeft: "auto" }}
@@ -604,9 +606,11 @@ export function CollectionView() {
         )}
       </div>
 
-      {!isDocument && members.length > 0 && sortBar}
+      {!isDocument && !isMatrix && members.length > 0 && sortBar}
 
-      {members.length === 0 ? (
+      {isMatrix ? (
+        <MatrixView collection={collection} members={members} types={types} onChanged={() => void load()} />
+      ) : members.length === 0 ? (
         <div className="hint">{isDocument ? "Empty document. Add a section." : "Empty list. Add an item."}</div>
       ) : isDocument ? (
         <DndContext

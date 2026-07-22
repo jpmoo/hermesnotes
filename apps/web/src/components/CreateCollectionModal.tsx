@@ -8,7 +8,9 @@ import { QueryBuilder } from "./QueryBuilder.tsx";
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [title, setTitle] = useState("Untitled");
-  const [kind, setKind] = useState<"list" | "document">("list");
+  const [kind, setKind] = useState<"list" | "document" | "matrix">("list");
+  const [cols, setCols] = useState(2);
+  const [rows, setRows] = useState(2);
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
   const [smartMode, setSmartMode] = useState<"dynamic" | "snapshot">("dynamic");
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
@@ -29,6 +31,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
         title,
         membershipMode: mode,
         ...(mode === "smart" ? { smartMode, filterQuery: filter } : {}),
+        ...(kind === "matrix" ? { matrixCols: cols, matrixRows: rows } : {}),
       });
       nav(`/collections/${c.id}`);
     } finally {
@@ -58,13 +61,51 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             >
               Document
             </button>
+            <button
+              className={`seg${kind === "matrix" ? " active" : ""}`}
+              onClick={() => setKind("matrix")}
+            >
+              Matrix
+            </button>
           </div>
           <div className="hint" style={{ marginTop: 6 }}>
             {kind === "list"
               ? "A one-line-per-item list (bullet, ordered, checklist, or blocks)."
-              : "Full-card sections you arrange with the layout tool in the right panel."}
+              : kind === "document"
+                ? "Full-card sections you arrange with the layout tool in the right panel."
+                : "An x/y grid of regions (Eisenhower 2×2, Kanban 3×1…) — drag blocks in from a drawer."}
           </div>
         </div>
+
+        {kind === "matrix" && (
+          <div className="field">
+            <span className="field-label">Grid</span>
+            <div className="row" style={{ gap: 16 }}>
+              <label className="row" style={{ gap: 6 }}>
+                <span className="hint">Columns</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={cols}
+                  style={{ width: 72 }}
+                  onChange={(e) => setCols(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
+                />
+              </label>
+              <label className="row" style={{ gap: 6 }}>
+                <span className="hint">Rows</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={6}
+                  value={rows}
+                  style={{ width: 72 }}
+                  onChange={(e) => setRows(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
+                />
+              </label>
+            </div>
+          </div>
+        )}
 
         <div className="field">
           <span className="field-label">Membership</span>

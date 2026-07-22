@@ -107,6 +107,8 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         smartMode: smartModeSchema.default("dynamic"),
         filterQuery: filterQuerySchema.optional(),
         listFormat: listFormatSchema.optional(),
+        matrixCols: z.number().int().min(1).max(6).optional(),
+        matrixRows: z.number().int().min(1).max(6).optional(),
       })
       .parse(req.body);
 
@@ -126,6 +128,18 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       properties.sort_mode = "manual";
       properties.sync_checkbox_with_status = true;
     }
+    if (body.kind === "matrix") {
+      // An x/y grid of regions; members are placed via context.region (index,
+      // row-major). A smart matrix uses its query only to feed the drawer.
+      const cols = body.matrixCols ?? 2;
+      const rows = body.matrixRows ?? 2;
+      properties.matrix_cols = cols;
+      properties.matrix_rows = rows;
+      properties.matrix_regions = Array.from({ length: cols * rows }, () => ({
+        title: "",
+        color: null,
+      }));
+    }
 
     const [row] = await db
       .insert(blocks)
@@ -139,8 +153,9 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       })
       .returning(collectionView);
 
-    // Snapshot: materialize current matches into memberships once.
-    if (body.membershipMode === "smart" && body.smartMode === "snapshot" && row) {
+    // Snapshot: materialize current matches into memberships once. Matrices
+    // never auto-materialize — placement is always an explicit drag.
+    if (body.membershipMode === "smart" && body.smartMode === "snapshot" && body.kind !== "matrix" && row) {
       await materialize(userId, row.id, safeFilter(body.filterQuery));
     }
     reply.code(201);
@@ -159,8 +174,14 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     if (!collection || !collection.collectionKind) throw notFound("collection");
 
     const props = collection.properties as Record<string, unknown>;
-    // Smart + dynamic: membership is the live query result (synthesized members).
-    if (props.membership_mode === "smart" && props.smart_mode === "dynamic") {
+    // Smart + dynamic: membership is the live query result (synthesized
+    // members). Matrices are exempt — their placements are always explicit
+    // memberships; the query only feeds the drawer.
+    if (
+      props.membership_mode === "smart" &&
+      props.smart_mode === "dynamic" &&
+      collection.collectionKind !== "matrix"
+    ) {
       const matched = await runQuery(userId, safeFilter(props.filter_query));
       const members = matched.map((b, i) => ({
         membershipId: `q:${b.id}`,
@@ -316,6 +337,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         blockId: z.string().uuid().optional(),
+        context: z.record(z.unknown()).optional(),
         create: z
           .object({
             blockTypeId: z.string().uuid().optional(),
@@ -328,11 +350,12 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
     let blockId = body.blockId;
     if (!blockId) {
-      // Create a new block (defaults to the text type).
+      // Create a new block (defaults to the text type — found by the isText
+      // flag, not the user-renameable name).
       const c = body.create ?? {};
       const where = c.blockTypeId
         ? and(eq(blockTypes.id, c.blockTypeId), eq(blockTypes.ownerId, userId))
-        : and(eq(blockTypes.ownerId, userId), eq(blockTypes.name, "text"));
+        : and(eq(blockTypes.ownerId, userId), eq(blockTypes.isText, true));
       const [type] = await db.select().from(blockTypes).where(where).limit(1);
       if (!type) throw badRequest("unknown block type");
       const defaults: Record<string, unknown> = {};
@@ -368,7 +391,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const position = generateKeyBetween(await lastPosition(id), null);
     const [membership] = await db
       .insert(memberships)
-      .values({ collectionId: id, blockId, position })
+      .values({ collectionId: id, blockId, position, context: body.context ?? {} })
       .onConflictDoNothing()
       .returning({ id: memberships.id });
     if (!membership) throw conflict("block is already in this collection");

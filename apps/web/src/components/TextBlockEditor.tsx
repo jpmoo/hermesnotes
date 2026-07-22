@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
+import { oneLineText } from "../lib/display.ts";
 import { fmtDateTime } from "../lib/format.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -100,12 +102,23 @@ export function TextBlockEditor({
 
   return (
     <div className="card" onPointerDownCapture={() => selectBlock(block.id)}>
-      <MarkdownEditor
-        value={block.content ?? ""}
-        onChange={scheduleSave}
-        placeholder="Write a note…"
-        autofocus={!block.content}
-      />
+      {compact ? (
+        // Masonry preview: text-note icon + the first line as a (truncated)
+        // title. Expand the card to edit the body.
+        <div className="typed-head">
+          <BlockIcon iconKey="type" size={20} />
+          <span className="text-head-title">
+            {oneLineText(block.properties, block.content) || "Empty note"}
+          </span>
+        </div>
+      ) : (
+        <MarkdownEditor
+          value={block.content ?? ""}
+          onChange={scheduleSave}
+          placeholder="Write a note…"
+          autofocus={!block.content}
+        />
+      )}
 
       {bodyFields.length > 0 && (
         <div className="typed-fields">

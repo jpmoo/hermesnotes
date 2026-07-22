@@ -745,6 +745,18 @@ input.typed-title:focus {
   box-shadow: none;
   background: transparent;
 }
+/* Compact (masonry) text-note header: icon + truncated first line. */
+.text-head-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
 .typed-fields {
   display: grid;
   /* auto-fit collapses empty tracks, so a lone field fills the whole width. */

@@ -1636,14 +1636,24 @@ input.li-text:focus {
   margin-left: auto;
 }
 
-/* "blocks" list format: slim drag/remove header above each full card. */
+/* "blocks" list format: full card with the drag handle to its left. */
 .block-item + .block-item {
   margin-top: 6px;
 }
-.list-item.card-head {
-  padding: 2px 4px;
-  border: 0;
-  background: transparent;
+.block-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.block-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.block-row-remove {
+  margin-top: 8px;
+}
+.block-row:hover .li-remove {
+  opacity: 1;
 }
 
 /* ── Today page ───────────────────────────────────────────────── */

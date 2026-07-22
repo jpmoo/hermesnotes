@@ -158,29 +158,22 @@ function ListItem({
   ).length;
   const hasMore = isText ? multiline || content.length > 80 : restCount > 0;
 
-  // "blocks" format: every item is a full editable card with a slim header.
+  // "blocks" format: every item is a full editable card with the drag handle to
+  // its left (no header row) and a hover remove button.
   if (asCard) {
     return (
-      <div ref={sortable.setNodeRef} style={style} className="list-item-wrap block-item">
-        <div className="list-item card-head">
-          {!readonly && (
-            <button
-              className="drag-handle"
-              {...sortable.attributes}
-              {...sortable.listeners}
-              title="Drag to reorder"
-            >
-              <GripVertical size={15} />
-            </button>
-          )}
-          <span style={{ flex: 1 }} />
-          {!readonly && (
-            <button className="icon-btn li-remove" title="Remove" onClick={() => onRemove(member.id)}>
-              <X size={14} />
-            </button>
-          )}
-        </div>
-        <div className="list-item-expanded">
+      <div ref={sortable.setNodeRef} style={style} className="list-item-wrap block-item block-row">
+        {!readonly && (
+          <button
+            className="drag-handle bv-grip"
+            {...sortable.attributes}
+            {...sortable.listeners}
+            title="Drag to reorder"
+          >
+            <GripVertical size={15} />
+          </button>
+        )}
+        <div className="block-row-body">
           {!fullBlock ? (
             <div className="hint">Loading…</div>
           ) : isText ? (
@@ -189,6 +182,15 @@ function ListItem({
             <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
           )}
         </div>
+        {!readonly && (
+          <button
+            className="icon-btn li-remove block-row-remove"
+            title="Remove"
+            onClick={() => onRemove(member.id)}
+          >
+            <X size={14} />
+          </button>
+        )}
       </div>
     );
   }

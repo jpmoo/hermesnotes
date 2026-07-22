@@ -1,4 +1,4 @@
-import { Copy } from "lucide-react";
+import { CalendarDays, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type BlockInfo, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
@@ -38,10 +38,12 @@ export function BlockInfoPane({
   blockId,
   onSelect,
   onSelectCollection,
+  titleOverride,
 }: {
   blockId: string;
   onSelect: (id: string) => void;
   onSelectCollection: (id: string) => void;
+  titleOverride?: string;
 }) {
   const [info, setInfo] = useState<BlockInfo | null>(null);
 
@@ -60,10 +62,14 @@ export function BlockInfoPane({
 
   return (
     <div className="info-pane">
-      {info.title && (
+      {(titleOverride || info.title) && (
         <div className="info-title">
-          <BlockIcon iconKey={info.iconKey} color={info.iconColor} size={18} />
-          <span className="info-title-text">{info.title}</span>
+          {titleOverride ? (
+            <CalendarDays size={18} />
+          ) : (
+            <BlockIcon iconKey={info.iconKey} color={info.iconColor} size={18} />
+          )}
+          <span className="info-title-text">{titleOverride ?? info.title}</span>
         </div>
       )}
       <dl className="info-grid">

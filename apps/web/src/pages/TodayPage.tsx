@@ -76,7 +76,7 @@ export function TodayPage() {
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const { slotEl, setTitle, setHasContent, selectToday, selectedToday } = usePanels();
+  const { slotEl, bottomSlotEl, setTitle, setHasContent, selectToday, selectedToday } = usePanels();
   const typeById = new Map(types.map((t) => [t.id, t]));
 
   const load = useCallback(async () => {
@@ -273,10 +273,10 @@ export function TodayPage() {
         layout.map(renderSection)
       )}
 
-      {slotEl &&
+      {slotEl && createPortal(<TodayCalendar selected={date} />, slotEl)}
+      {bottomSlotEl &&
         createPortal(
           <>
-            <TodayCalendar selected={date} />
             <div className="panel-divider" />
             <div className="panel-h">Layout</div>
             <SectionLayout
@@ -289,7 +289,7 @@ export function TodayPage() {
               onAddNote={onAddNote}
             />
           </>,
-          slotEl,
+          bottomSlotEl,
         )}
     </>
   );

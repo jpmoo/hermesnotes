@@ -10,6 +10,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 interface PanelsApi {
   slotEl: HTMLElement | null;
   setSlotEl: (el: HTMLElement | null) => void;
+  bottomSlotEl: HTMLElement | null; // renders below the info pane
+  setBottomSlotEl: (el: HTMLElement | null) => void;
   title: string;
   setTitle: (t: string) => void;
   hasContent: boolean;
@@ -78,6 +80,7 @@ const readRecents = (k: string): RecentEntry[] => {
 
 export function PanelsProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
+  const [bottomSlotEl, setBottomSlotEl] = useState<HTMLElement | null>(null);
   const [title, setTitle] = useState("");
   const [hasContent, setHasContent] = useState(false);
   const [leftPinned, setLeftRaw] = useState(() => readBool("hn.pin.left"));
@@ -165,6 +168,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     () => ({
       slotEl,
       setSlotEl,
+      bottomSlotEl,
+      setBottomSlotEl,
       title,
       setTitle,
       hasContent,
@@ -187,7 +192,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       recents,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slotEl, title, hasContent, leftPinned, rightPinned, nav, recents],
+    [slotEl, bottomSlotEl, title, hasContent, leftPinned, rightPinned, nav, recents],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

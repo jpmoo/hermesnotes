@@ -7,9 +7,25 @@ import { BlockInfoPane } from "./BlockInfoPane.tsx";
  * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
  * can portal content into its slot and flag `hasContent`.
  */
+const fmtLongDate = (date: string) =>
+  new Date(`${date}T00:00`).toLocaleDateString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
 export function RightPanel() {
-  const { setSlotEl, rightPinned, setRightPinned, title, hasContent, selectedBlockId, openBlock } =
-    usePanels();
+  const {
+    setSlotEl,
+    setBottomSlotEl,
+    rightPinned,
+    setRightPinned,
+    title,
+    hasContent,
+    selectedBlockId,
+    selectedToday,
+    openBlock,
+  } = usePanels();
   const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const expanded = rightPinned || hovered;
   const showInfo = selectedBlockId !== null;
@@ -47,11 +63,13 @@ export function RightPanel() {
             {hasContent && <div className="panel-divider" />}
             <BlockInfoPane
               blockId={selectedBlockId}
+              titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
               onSelect={(id) => openBlock(id)}
               onSelectCollection={(id) => openBlock(id, { collection: true })}
             />
           </>
         )}
+        <div ref={setBottomSlotEl} />
         {!hasContent && !showInfo && <div className="panel-placeholder">Note info &amp; options</div>}
       </div>
     </aside>

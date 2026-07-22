@@ -132,6 +132,7 @@ function RecentsMenu() {
 /** Dynamic whole-database search: notes and collections, as you type. */
 function GlobalSearch() {
   const { openBlock } = usePanels();
+  const nav = useNavigate();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchHit[]>([]);
   const [open, setOpen] = useState(false);
@@ -172,7 +173,9 @@ function GlobalSearch() {
   }, [open]);
 
   const pick = (h: SearchHit) => {
-    openBlock(h.id, { collection: h.kind === "collection" });
+    // Daily notes open their day; arriving there logs the entry.
+    if (h.kind === "today" && h.date) nav(`/today/${h.date}`);
+    else openBlock(h.id, { collection: h.kind === "collection" });
     setOpen(false);
     setQ("");
   };
@@ -226,7 +229,9 @@ function GlobalSearch() {
                       pick(h);
                     }}
                   >
-                    {h.kind === "collection" ? (
+                    {h.kind === "today" ? (
+                      <CalendarDays size={14} />
+                    ) : h.kind === "collection" ? (
                       <CollectionIcon document={h.document} smart={h.smart} size={14} />
                     ) : (
                       <BlockIcon
@@ -235,7 +240,11 @@ function GlobalSearch() {
                         size={14}
                       />
                     )}
-                    <span className="recent-label">{h.label}</span>
+                    <span className="recent-label">
+                      {h.kind === "today" && h.date
+                        ? `Today · ${fmtDay(h.date)} — ${h.label}`
+                        : h.label}
+                    </span>
                   </button>
                 </div>
               );

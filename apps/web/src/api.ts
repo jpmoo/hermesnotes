@@ -143,7 +143,8 @@ export interface BlockSearchResult {
 
 export interface SearchHit {
   id: string;
-  kind: "block" | "collection";
+  kind: "block" | "collection" | "today";
+  date?: string; // for kind "today"
   blockTypeId: string | null;
   label: string;
   document: boolean;

@@ -309,10 +309,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
   // Search existing (non-collection) blocks to add to a collection.
   /**
-   * Global dynamic search (top-bar): blocks AND collections, matching the
-   * title, body content, or any property value — followed by semantic matches
-   * (embedding similarity at the account's default floor) that the literal
-   * search missed. Today notes are excluded (they're reached via Today).
+   * Global dynamic search (top-bar): blocks, collections, AND daily notes,
+   * matching the title, body content, or any property value — followed by
+   * semantic matches (embedding similarity at the account's default floor)
+   * that the literal search missed.
    */
   app.get("/search", async (req) => {
     const userId = requireUser(req);
@@ -333,15 +333,20 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       collectionKind: string | null;
       properties: unknown;
       content: string | null;
-    }, semantic: boolean) => ({
-      id: r.id,
-      kind: r.collectionKind ? ("collection" as const) : ("block" as const),
-      blockTypeId: r.blockTypeId,
-      label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
-      document: r.collectionKind === "document",
-      smart: (r.properties as Record<string, unknown>)?.membership_mode === "smart",
-      semantic,
-    });
+    }, semantic: boolean) => {
+      const props = r.properties as Record<string, unknown>;
+      const today = typeof props?.today_note === "string" ? (props.today_note as string) : null;
+      return {
+        id: r.id,
+        kind: today ? ("today" as const) : r.collectionKind ? ("collection" as const) : ("block" as const),
+        date: today ?? undefined,
+        blockTypeId: r.blockTypeId,
+        label: oneLineLabel(props, r.content) || "Untitled",
+        document: r.collectionKind === "document",
+        smart: props?.membership_mode === "smart",
+        semantic,
+      };
+    };
 
     const rows = await db
       .select(cols)
@@ -349,7 +354,6 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(
         and(
           eq(blocks.ownerId, userId),
-          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
           sql`(${blocks.properties}::text ILIKE ${like} OR ${blocks.content} ILIKE ${like})`,
         ),
       )
@@ -371,13 +375,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       const srows = await db
         .select(cols)
         .from(blocks)
-        .where(
-          and(
-            eq(blocks.ownerId, userId),
-            inArray(blocks.id, fresh),
-            sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
-          ),
-        )
+        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, fresh)))
         .orderBy(desc(blocks.updatedAt))
         .limit(10);
       semantic = srows.map((r) => toHit(r, true));

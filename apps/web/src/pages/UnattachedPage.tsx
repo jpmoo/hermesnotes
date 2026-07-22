@@ -64,7 +64,7 @@ export function UnattachedPage() {
         Unattached
       </h1>
       <p className="page-sub">
-        Blocks nothing hangs off of — no parent, no children, and not referenced by another block.
+        Blocks on their own — not in any collection and not linked from another block.
       </p>
 
       {settings && !settings.connected && (
@@ -100,7 +100,7 @@ export function UnattachedPage() {
       {loading ? (
         <div className="hint">Loading…</div>
       ) : blocks.length === 0 ? (
-        <div className="hint">Nothing unattached — every block has a home.</div>
+        <div className="hint">Nothing unattached — every block is in a collection or linked somewhere.</div>
       ) : (
         renderList((b, compact) => (
           <BlockCard

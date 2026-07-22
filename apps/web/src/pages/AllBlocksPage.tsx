@@ -20,7 +20,7 @@ export function AllBlocksPage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { bottomSlotEl, setHasContent } = usePanels();
+  const { bottomSlotEl, setHasContent, selectPage } = usePanels();
 
   const typeById = new Map(types.map((t) => [t.id, t]));
 
@@ -40,10 +40,13 @@ export function AllBlocksPage() {
     return () => clearTimeout(t);
   }, [filter]);
 
-  // Offer the query builder in the right panel.
+  // Offer the query builder in the right panel; arriving logs the page as the
+  // current location (clearing any block selection, so the panel shows tools).
   useEffect(() => {
     setHasContent(true);
+    selectPage("blocks");
     return () => setHasContent(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setHasContent]);
 
   useEffect(() => {

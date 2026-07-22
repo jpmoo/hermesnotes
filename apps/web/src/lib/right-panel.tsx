@@ -23,8 +23,10 @@ interface PanelsApi {
   selectedBlockId: string | null;
   selectedIsCollection: boolean;
   selectedToday: string | null; // the Today-page date this selection represents, if any
+  selectedPage: RailPage | null; // a rail page (All blocks / Collections / Favorites), if current
   selectBlock: (id: string, opts?: { collection?: boolean }) => void; // log an interaction (no route change)
   selectToday: (date: string, noteId: string) => void; // log the Today page for a date
+  selectPage: (page: RailPage) => void; // log a rail page as the current location
   openBlock: (id: string, opts?: { collection?: boolean }) => void; // log + open as a full page
   clearSelection: () => void;
   back: () => void;
@@ -39,20 +41,28 @@ interface PanelsApi {
   refreshInfo: () => void;
 }
 
-// A history entry. `today` marks a Today page (routes to /today/<date>); `id` is
-// then the day's note, used for the info pane.
+export type RailPage = "blocks" | "collections" | "favorites";
+
+// A history entry. `today` marks a Today page (routes to /today/<date>; `id` is
+// then the day's note, used for the info pane). `page` marks a rail page.
 interface NavEntry {
   id: string;
   collection: boolean;
   today?: string;
+  page?: RailPage;
 }
 
 export type RecentEntry =
   | { kind: "block"; id: string }
   | { kind: "collection"; id: string }
-  | { kind: "today"; date: string };
+  | { kind: "today"; date: string }
+  | { kind: "page"; page: RailPage };
 const recentKey = (e: RecentEntry) =>
-  e.kind === "today" ? `t:${e.date}` : `${e.kind === "collection" ? "c" : "b"}:${e.id}`;
+  e.kind === "today"
+    ? `t:${e.date}`
+    : e.kind === "page"
+      ? `p:${e.page}`
+      : `${e.kind === "collection" ? "c" : "b"}:${e.id}`;
 
 const Ctx = createContext<PanelsApi | null>(null);
 const readBool = (k: string) => {
@@ -99,10 +109,20 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
 
   /** The full page an entity lives at. History nav always opens entries here. */
   const pageOf = (entry: NavEntry) =>
-    entry.today ? `/today/${entry.today}` : entry.collection ? `/collections/${entry.id}` : `/block/${entry.id}`;
+    entry.page
+      ? `/${entry.page}`
+      : entry.today
+        ? `/today/${entry.today}`
+        : entry.collection
+          ? `/collections/${entry.id}`
+          : `/block/${entry.id}`;
 
   const sameEntity = (a: NavEntry, b: NavEntry) =>
-    a.today || b.today ? a.today === b.today : a.id === b.id && a.collection === b.collection;
+    a.page || b.page
+      ? a.page === b.page
+      : a.today || b.today
+        ? a.today === b.today
+        : a.id === b.id && a.collection === b.collection;
 
   const setLeftPinned = (b: boolean) => {
     setLeftRaw(b);
@@ -114,9 +134,10 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   };
 
   const cur = nav.pos >= 0 && nav.pos < nav.stack.length ? nav.stack[nav.pos]! : null;
-  const selectedBlockId = cur?.id ?? null;
+  const selectedBlockId = cur && !cur.page ? cur.id : null;
   const selectedIsCollection = cur?.collection ?? false;
   const selectedToday = cur?.today ?? null;
+  const selectedPage = cur?.page ?? null;
 
   const addRecent = (e: RecentEntry) =>
     setRecents((prev) => {
@@ -139,7 +160,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       const base = n.stack.slice(0, n.pos + 1);
       return { stack: [...base, entry], pos: base.length };
     });
-    if (entry.today) addRecent({ kind: "today", date: entry.today });
+    if (entry.page) addRecent({ kind: "page", page: entry.page });
+    else if (entry.today) addRecent({ kind: "today", date: entry.today });
     else addRecent({ kind: entry.collection ? "collection" : "block", id: entry.id });
   };
 
@@ -147,6 +169,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     append({ id, collection: opts?.collection ?? false });
   const selectToday = (date: string, noteId: string) =>
     append({ id: noteId, collection: false, today: date });
+  const selectPage = (page: RailPage) => append({ id: `page:${page}`, collection: false, page });
   const openBlock = (id: string, opts?: { collection?: boolean }) => {
     const entry: NavEntry = { id, collection: opts?.collection ?? false };
     append(entry);
@@ -183,8 +206,10 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       selectedBlockId,
       selectedIsCollection,
       selectedToday,
+      selectedPage,
       selectBlock,
       selectToday,
+      selectPage,
       openBlock,
       clearSelection,
       back,

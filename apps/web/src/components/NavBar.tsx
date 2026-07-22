@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Search } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Layers, Library, Search, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Block, type BlockType, type SearchHit } from "../api.ts";
@@ -49,7 +49,7 @@ function RecentsMenu() {
     if (!open) return;
     void api.get<BlockType[]>("/block-types").then(setTypes);
     recents.forEach((e) => {
-      if (e.kind === "today" || info[e.id]) return;
+      if (e.kind === "today" || e.kind === "page" || info[e.id]) return;
       void getInfo(e.id).then((v) => setInfo((m) => ({ ...m, [e.id]: v })));
     });
     const onDown = (e: MouseEvent) => {
@@ -73,6 +73,26 @@ function RecentsMenu() {
             </div>
           ) : (
             recents.map((e) => {
+              if (e.kind === "page") {
+                const meta = {
+                  blocks: { icon: <Layers size={14} />, label: "All blocks" },
+                  collections: { icon: <Library size={14} />, label: "Collections" },
+                  favorites: { icon: <Star size={14} />, label: "Favorites" },
+                }[e.page];
+                return (
+                  <button
+                    key={`p:${e.page}`}
+                    className="menu-item recent-item"
+                    onClick={() => {
+                      nav(`/${e.page}`);
+                      setOpen(false);
+                    }}
+                  >
+                    {meta.icon}
+                    <span className="recent-label">{meta.label}</span>
+                  </button>
+                );
+              }
               if (e.kind === "today") {
                 return (
                   <button

@@ -15,7 +15,7 @@ import { useBlockView } from "../lib/useBlockView.tsx";
  */
 export function FavoritesPage() {
   const { favorites } = usePreferences();
-  const { openBlock } = usePanels();
+  const { openBlock, selectPage } = usePanels();
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [types, setTypes] = useState<BlockType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,6 +23,8 @@ export function FavoritesPage() {
 
   useEffect(() => {
     void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});
+    selectPage("favorites");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const favKey = favorites.join(",");

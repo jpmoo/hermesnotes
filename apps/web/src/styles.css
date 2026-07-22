@@ -3134,6 +3134,17 @@ input.matrix-axis-y::placeholder {
 .tv-truncate td {
   overflow: hidden;
 }
+/* Mention editors and longtext hard-code wrapping; truncate mode overrides. */
+.tv-truncate .tv-cell .mention-input .mention-line,
+.tv-truncate .tv-cell .mention-input .mention-line p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tv-truncate .tv-cell .longtext {
+  max-height: 40px;
+  overflow: hidden;
+}
 .tv-wrap td .tv-note,
 .tv-wrap td .tv-static {
   white-space: normal;

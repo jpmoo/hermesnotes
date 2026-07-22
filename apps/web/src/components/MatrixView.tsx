@@ -34,7 +34,53 @@ interface Item {
 }
 
 const REGION_MAX = 6;
+const DAYS_MAX = 7;
 const pretty = (v: string) => v.replace(/_/g, " ");
+
+// Date-bound region modes: columns are consecutive days.
+const DATE_KEYS = ["@days_before", "@days_after", "@days_around"] as const;
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
+/** The visible day columns (YYYY-MM-DD) for a date mode. All include today. */
+function dayList(mode: string, count: number): string[] {
+  const n = Math.min(DAYS_MAX, Math.max(1, count));
+  let startOffset = 0;
+  if (mode === "@days_before") startOffset = -(n - 1);
+  else if (mode === "@days_around") startOffset = -Math.floor((n - 1) / 2);
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + startOffset + i);
+    return ymd(d);
+  });
+}
+
+const fmtDayHead = (date: string) =>
+  new Date(`${date}T00:00`).toLocaleDateString(undefined, { weekday: "short", month: "numeric", day: "numeric" });
+
+/** Column indexes a block occupies: any date/datetime lands on its day; a
+ * datespan covers every visible day it overlaps. */
+function dayIndexes(schema: PropertySchema | null | undefined, props: Record<string, unknown>, days: string[]): Set<number> {
+  const out = new Set<number>();
+  const hit = (day: string) => {
+    const i = days.indexOf(day);
+    if (i >= 0) out.add(i);
+  };
+  for (const f of schema?.fields ?? []) {
+    const v = props[f.key];
+    if (v == null || v === "") continue;
+    if (f.type === "datetime" || f.type === "date") hit(String(v).slice(0, 10));
+    else if (f.type === "datespan" && typeof v === "object") {
+      const span = v as { start?: string; end?: string };
+      const s = span.start?.slice(0, 10) || "";
+      const e = span.end?.slice(0, 10) || "";
+      if (s && e) {
+        for (let i = 0; i < days.length; i++) if (days[i]! >= s && days[i]! <= e) out.add(i);
+      } else if (s || e) hit(s || e);
+    }
+  }
+  return out;
+}
 
 function readRegions(props: Record<string, unknown>, count: number): RegionDef[] {
   const raw = Array.isArray(props.matrix_regions) ? (props.matrix_regions as RegionDef[]) : [];
@@ -281,6 +327,18 @@ function RegionCell({
   );
 }
 
+/** A full-width drop strip for one lane in date mode. */
+function LaneDrop({ lane }: { lane: number }) {
+  const drop = useDroppable({ id: `lane:${lane}` });
+  return (
+    <div
+      ref={drop.setNodeRef}
+      className={`lane-drop${drop.isOver ? " over" : ""}`}
+      style={{ gridColumn: "1 / -1", gridRow: lane + 2 }}
+    />
+  );
+}
+
 /**
  * Matrix collection: an x/y grid of titled, colored regions. Members are placed
  * by dragging from the bottom drawer into a region (context.region). A smart
@@ -310,7 +368,14 @@ export function MatrixView({
   const props = collection.properties;
   const isSmart = props.membership_mode === "smart";
   const bindKey = typeof props.matrix_bind_property === "string" ? props.matrix_bind_property : "";
-  const bound = isSmart && !!bindKey;
+  const dateMode = isSmart && (DATE_KEYS as readonly string[]).includes(bindKey);
+  const bound = isSmart && !!bindKey && !dateMode; // status-bound
+  const dayCount = Math.min(DAYS_MAX, Math.max(1, Number(props.matrix_bind_count) || 3));
+  const days = useMemo(() => (dateMode ? dayList(bindKey, dayCount) : []), [dateMode, bindKey, dayCount]);
+  const lanesMap = useMemo(
+    () => (props.matrix_lanes && typeof props.matrix_lanes === "object" ? (props.matrix_lanes as Record<string, number>) : {}),
+    [props.matrix_lanes],
+  );
 
   const cols = Math.min(REGION_MAX, Math.max(1, Number(props.matrix_cols) || 2));
   const rows = Math.min(REGION_MAX, Math.max(1, Number(props.matrix_rows) || 2));
@@ -354,9 +419,9 @@ export function MatrixView({
   }, [bound, bindKey, types]);
   const boundOptions = (boundField?.options ?? []).slice(0, REGION_MAX);
 
-  // Bound mode: fetch full query matches (with properties) to auto-place.
+  // Bound/date modes: fetch full query matches (with properties) to auto-place.
   useEffect(() => {
-    if (!bound) return;
+    if (!bound && !dateMode) return;
     let alive = true;
     void api
       .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query) })
@@ -368,7 +433,7 @@ export function MatrixView({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bound, JSON.stringify(props.filter_query), collection.updatedAt]);
+  }, [bound, dateMode, JSON.stringify(props.filter_query), collection.updatedAt]);
 
   const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
 
@@ -415,7 +480,7 @@ export function MatrixView({
   // Drawer candidates (unbound only): smart → query matches (fetched eagerly so
   // the closed drawer can show its count); manual → search once opened.
   useEffect(() => {
-    if (bound) return;
+    if (bound || dateMode) return;
     if (!isSmart && !drawerOpen) return;
     let alive = true;
     const t = setTimeout(async () => {
@@ -443,6 +508,79 @@ export function MatrixView({
       clearTimeout(t);
     };
   }, [drawerOpen, q, isSmart, bound, memberIds, props.filter_query]);
+
+  // Date mode: contiguous day-runs per block ("bars"), stacked in lanes. A
+  // block keeps ONE lane so its bars align across columns; explicit lanes come
+  // from matrix_lanes, the rest pack into the first non-overlapping lane.
+  const dateData = useMemo(() => {
+    const empty = { bars: [] as { item: Item; start: number; end: number; lane: number }[], loose: [] as Item[], laneCount: 0 };
+    if (!dateMode) return empty;
+    const typeById = new Map(types.map((t) => [t.id, t]));
+    const withRuns: { item: Item; runs: [number, number][]; firstDay: number }[] = [];
+    const loose: Item[] = [];
+    for (const b of matches) {
+      const t = b.blockTypeId ? typeById.get(b.blockTypeId) : undefined;
+      const idxs = [...dayIndexes(t?.propertySchema ?? null, b.properties as Record<string, unknown>, days)].sort((a, z) => a - z);
+      if (!idxs.length) {
+        loose.push(blockToItem(b));
+        continue;
+      }
+      const runs: [number, number][] = [];
+      let start = idxs[0]!;
+      let prev = idxs[0]!;
+      for (const i of idxs.slice(1)) {
+        if (i === prev + 1) prev = i;
+        else {
+          runs.push([start, prev]);
+          start = i;
+          prev = i;
+        }
+      }
+      runs.push([start, prev]);
+      withRuns.push({ item: blockToItem(b), runs, firstDay: idxs[0]! });
+    }
+    withRuns.sort((a, z) => a.firstDay - z.firstDay || a.item.label.localeCompare(z.item.label));
+    const laneSpans: [number, number][][] = [];
+    const overlaps = (lane: number, runs: [number, number][]) =>
+      (laneSpans[lane] ?? []).some(([s1, e1]) => runs.some(([s2, e2]) => s1 <= e2 && s2 <= e1));
+    const bars: { item: Item; start: number; end: number; lane: number }[] = [];
+    for (const bw of withRuns) {
+      let lane = lanesMap[bw.item.id];
+      if (!Number.isInteger(lane) || lane! < 0 || overlaps(lane!, bw.runs)) {
+        lane = 0;
+        while (overlaps(lane, bw.runs)) lane++;
+      }
+      laneSpans[lane!] = [...(laneSpans[lane!] ?? []), ...bw.runs];
+      for (const [rs, re] of bw.runs) bars.push({ item: bw.item, start: rs, end: re, lane: lane! });
+    }
+    return { bars, loose, laneCount: laneSpans.length };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateMode, matches, days, types, lanesMap]);
+
+  const setLane = (blockId: string, lane: number) => {
+    void api
+      .patch(`/collections/${collection.id}`, { matrix_lanes: { ...lanesMap, [blockId]: lane } })
+      .then(onChanged);
+  };
+
+  // Editable axis labels (custom/status grids).
+  const [axisX, setAxisX] = useState(String(props.matrix_x_label ?? ""));
+  const [axisY, setAxisY] = useState(String(props.matrix_y_label ?? ""));
+  useEffect(() => {
+    setAxisX(String(collection.properties.matrix_x_label ?? ""));
+    setAxisY(String(collection.properties.matrix_y_label ?? ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collection]);
+  const axisTimers = useRef<{ x?: ReturnType<typeof setTimeout>; y?: ReturnType<typeof setTimeout> }>({});
+  const saveAxis = (axis: "x" | "y", v: string) => {
+    (axis === "x" ? setAxisX : setAxisY)(v);
+    const key = axis === "x" ? "matrix_x_label" : "matrix_y_label";
+    if (axisTimers.current[axis]) clearTimeout(axisTimers.current[axis]);
+    axisTimers.current[axis] = setTimeout(
+      () => void api.patch(`/collections/${collection.id}`, { [key]: v }),
+      600,
+    );
+  };
 
   const saveRegions = (next: RegionDef[]) => {
     setRegions(next);
@@ -508,6 +646,11 @@ export function MatrixView({
     const overId = e.over?.id;
     if (!item || overId == null) return;
     const over = String(overId);
+    if (dateMode) {
+      // Vertical moves only: dates own the columns, drops set the lane.
+      if (over.startsWith("lane:")) setLane(item.id, Number(over.slice(5)));
+      return;
+    }
     if (over.startsWith("r:")) {
       const region = Number(over.slice(2));
       if (bound) {
@@ -533,7 +676,11 @@ export function MatrixView({
   };
 
   const drawerDrop = useDroppable({ id: "drawer" });
-  const drawerItems = bound ? placement.loose : [...placement.loose, ...candidates];
+  const drawerItems = dateMode
+    ? dateData.loose
+    : bound
+      ? placement.loose
+      : [...placement.loose, ...candidates];
   // Manual drawers are always expandable (they hold the search); smart drawers
   // only expand when there's something to place.
   const canExpand = !isSmart || drawerItems.length > 0;
@@ -551,7 +698,7 @@ export function MatrixView({
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="row" style={{ margin: "0 0 12px", gap: 14, flexWrap: "wrap" }}>
-        {!bound && (
+        {!bound && !dateMode && (
           <>
             <span className="cols-ctl">
               <span className="hint">Columns</span>
@@ -567,7 +714,7 @@ export function MatrixView({
             </span>
           </>
         )}
-        {isSmart && bindable.length > 0 && (
+        {isSmart && (
           <label className="matrix-bind">
             <span className="hint">Regions</span>
             <select value={bindKey} onChange={(e) => setBind(e.target.value)}>
@@ -577,28 +724,105 @@ export function MatrixView({
                   By {b.label}
                 </option>
               ))}
+              <option value="@days_before">Days · ending today</option>
+              <option value="@days_after">Days · starting today</option>
+              <option value="@days_around">Days · around today</option>
             </select>
           </label>
         )}
+        {dateMode && (
+          <span className="cols-ctl">
+            <span className="hint">Days</span>
+            <button
+              className="icon-btn"
+              onClick={() =>
+                void api
+                  .patch(`/collections/${collection.id}`, { matrix_bind_count: Math.max(1, dayCount - 1) })
+                  .then(onChanged)
+              }
+            >
+              −
+            </button>
+            <span className="cols-n">{dayCount}</span>
+            <button
+              className="icon-btn"
+              onClick={() =>
+                void api
+                  .patch(`/collections/${collection.id}`, { matrix_bind_count: Math.min(DAYS_MAX, dayCount + 1) })
+                  .then(onChanged)
+              }
+            >
+              +
+            </button>
+          </span>
+        )}
       </div>
 
-      <div className="matrix-grid" style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}>
-        {regionList.map((def, i) => (
-          <RegionCell
-            key={i}
-            index={i}
-            title={def.title}
-            color={def.color}
-            editable={!bound}
-            items={placement.map.get(i) ?? []}
-            onTitle={onTitle}
-            onColor={setColorEdit}
-            onRemove={bound ? undefined : removeMember}
-            onStatus={onStatus}
-            onInteract={selectCollection}
+      {dateMode ? (
+        <div
+          className="matrix-date-grid"
+          style={{ gridTemplateColumns: `repeat(${days.length || 1}, 1fr)` }}
+          onClick={selectCollection}
+        >
+          {days.map((d, i) => (
+            <div
+              key={d}
+              className={`date-head${d === ymd(new Date()) ? " today" : ""}`}
+              style={{ gridColumn: i + 1, gridRow: 1 }}
+            >
+              {fmtDayHead(d)}
+            </div>
+          ))}
+          {Array.from({ length: dateData.laneCount + 1 }, (_, L) => (
+            <LaneDrop key={L} lane={L} />
+          ))}
+          {dateData.bars.map((b, i) => (
+            <div
+              key={`${b.item.id}:${i}`}
+              className="date-bar"
+              style={{ gridColumn: `${b.start + 1} / ${b.end + 2}`, gridRow: b.lane + 2 }}
+            >
+              <Chip item={b.item} onStatus={onStatus} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="matrix-wrap">
+          <input
+            className="matrix-axis-y"
+            placeholder="Y axis"
+            value={axisY}
+            onFocus={selectCollection}
+            onChange={(e) => saveAxis("y", e.target.value)}
           />
-        ))}
-      </div>
+          <div className="matrix-main">
+            <input
+              className="matrix-axis-x"
+              placeholder="X axis"
+              value={axisX}
+              onFocus={selectCollection}
+              onChange={(e) => saveAxis("x", e.target.value)}
+            />
+            <div className="matrix-grid" style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}>
+              {regionList.map((def, i) => (
+                <RegionCell
+                  key={i}
+                  index={i}
+                  title={def.title}
+                  color={def.color}
+                  editable={!bound}
+                  items={placement.map.get(i) ?? []}
+                  onTitle={onTitle}
+                  onColor={setColorEdit}
+                  onRemove={bound ? undefined : removeMember}
+                  onStatus={onStatus}
+                  onInteract={selectCollection}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div
         ref={drawerDrop.setNodeRef}
@@ -628,11 +852,13 @@ export function MatrixView({
           <span className="hint" style={{ marginLeft: "auto" }}>
             {!canExpand
               ? "everything placed"
-              : bound
-                ? "matches without a value — drag into a region"
-                : isSmart
-                  ? "query matches — drag into a region"
-                  : "drag blocks into a region"}
+              : dateMode
+                ? "matches without a date in range"
+                : bound
+                  ? "matches without a value — drag into a region"
+                  : isSmart
+                    ? "query matches — drag into a region"
+                    : "drag blocks into a region"}
           </span>
         </button>
         {drawerOpen && (

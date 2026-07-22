@@ -1554,6 +1554,89 @@ input.region-title:focus {
   align-items: center;
   gap: 6px;
 }
+/* Editable axis labels around the grid. */
+.matrix-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.matrix-main {
+  flex: 1;
+  min-width: 0;
+}
+.matrix-main .matrix-grid {
+  margin-bottom: 0;
+}
+input.matrix-axis-x,
+input.matrix-axis-y {
+  border: none;
+  background: transparent;
+  font-family: var(--font-chrome);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  text-align: center;
+  height: auto;
+  padding: 4px 8px;
+}
+input.matrix-axis-x {
+  width: 100%;
+  margin-bottom: 4px;
+}
+input.matrix-axis-y {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  width: 34px;
+  padding: 8px 4px;
+  align-self: center;
+}
+input.matrix-axis-x:focus,
+input.matrix-axis-y:focus {
+  outline: none;
+  box-shadow: none;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+input.matrix-axis-x::placeholder,
+input.matrix-axis-y::placeholder {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+/* Date-bound matrix: day columns, lane rows, spanning bars. */
+.matrix-date-grid {
+  display: grid;
+  gap: 8px 12px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+.date-head {
+  text-align: center;
+  font-family: var(--font-chrome);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+.date-head.today {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.lane-drop {
+  min-height: 46px;
+  border-radius: 9px;
+  align-self: stretch;
+}
+.lane-drop.over {
+  background: rgba(95, 164, 181, 0.08);
+  outline: 1px dashed var(--accent);
+}
+.date-bar {
+  position: relative;
+  z-index: 1;
+  padding: 2px 0;
+}
 .matrix-bind select {
   width: auto;
   height: 32px;

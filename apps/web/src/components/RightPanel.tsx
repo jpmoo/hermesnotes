@@ -1,4 +1,4 @@
-import { ListFilter, PanelRight, Pin, PinOff } from "lucide-react";
+import { Info, PanelRight, Pin, PinOff } from "lucide-react";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
@@ -21,7 +21,7 @@ export function RightPanel() {
       onMouseLeave={onMouseLeave}
     >
       <div className="panel-rail-icon" title={hasContent ? title : "Note info & options"}>
-        {hasContent || showInfo ? <ListFilter size={18} /> : <PanelRight size={18} />}
+        {hasContent || showInfo ? <Info size={18} /> : <PanelRight size={18} />}
       </div>
       <div className="panel-body">
         <div className="panel-head">

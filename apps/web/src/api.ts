@@ -141,6 +141,13 @@ export interface BlockSearchResult {
   label: string;
 }
 
+export interface SearchHit {
+  id: string;
+  kind: "block" | "collection";
+  blockTypeId: string | null;
+  label: string;
+}
+
 export interface Collection {
   id: string;
   collectionKind: string;

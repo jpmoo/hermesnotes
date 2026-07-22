@@ -308,6 +308,43 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Search existing (non-collection) blocks to add to a collection.
+  /**
+   * Global dynamic search (top-bar): blocks AND collections, matching the
+   * title, body content, or any property value. Today notes are excluded
+   * (they're reached via the Today page).
+   */
+  app.get("/search", async (req) => {
+    const userId = requireUser(req);
+    const { q } = z.object({ q: z.string() }).parse(req.query);
+    const term = q.trim();
+    if (!term) return [];
+    const like = `%${term}%`;
+    const rows = await db
+      .select({
+        id: blocks.id,
+        blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
+        properties: blocks.properties,
+        content: blocks.content,
+      })
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          sql`(${blocks.properties}::text ILIKE ${like} OR ${blocks.content} ILIKE ${like})`,
+        ),
+      )
+      .orderBy(desc(blocks.updatedAt))
+      .limit(20);
+    return rows.map((r) => ({
+      id: r.id,
+      kind: r.collectionKind ? "collection" : "block",
+      blockTypeId: r.blockTypeId,
+      label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
+    }));
+  });
+
   app.get("/blocks/search", async (req) => {
     const userId = requireUser(req);
     const { q, typeId, excludeCollectionId } = z

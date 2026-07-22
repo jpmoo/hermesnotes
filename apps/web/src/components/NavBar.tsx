@@ -1,7 +1,7 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, List } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, List, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Block, type BlockType } from "../api.ts";
+import { api, type Block, type BlockType, type SearchHit } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -125,7 +125,122 @@ function RecentsMenu() {
   );
 }
 
-/** Global navigation cluster: back / forward / history, top-left of the window. */
+/** Dynamic whole-database search: notes and collections, as you type. */
+function GlobalSearch() {
+  const { openBlock } = usePanels();
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<SearchHit[]>([]);
+  const [open, setOpen] = useState(false);
+  const [idx, setIdx] = useState(0);
+  const [types, setTypes] = useState<BlockType[]>([]);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!q.trim()) {
+      setResults([]);
+      setOpen(false);
+      return;
+    }
+    const t = setTimeout(() => {
+      void api
+        .get<SearchHit[]>(`/search?q=${encodeURIComponent(q)}`)
+        .then((r) => {
+          setResults(r);
+          setOpen(true);
+          setIdx(0);
+        })
+        .catch(() => setResults([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const pick = (h: SearchHit) => {
+    openBlock(h.id, { collection: h.kind === "collection" });
+    setOpen(false);
+    setQ("");
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (!open) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setIdx((i) => Math.min(results.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setIdx((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      const h = results[idx];
+      if (h) pick(h);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="global-search" ref={boxRef}>
+      <Search size={14} className="gs-icon" />
+      <input
+        className="gs-input"
+        placeholder="Search everything…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={onKeyDown}
+        onFocus={() => {
+          if (results.length) setOpen(true);
+        }}
+      />
+      {open && (
+        <div className="menu gs-menu">
+          {results.length === 0 ? (
+            <div className="hint" style={{ padding: "6px 10px" }}>
+              No matches
+            </div>
+          ) : (
+            results.map((h, i) => {
+              const t = h.blockTypeId ? types.find((x) => x.id === h.blockTypeId) : undefined;
+              return (
+                <button
+                  key={h.id}
+                  className={`menu-item recent-item${i === idx ? " active" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pick(h);
+                  }}
+                >
+                  {h.kind === "collection" ? (
+                    <List size={14} />
+                  ) : (
+                    <BlockIcon
+                      iconKey={!t || t.isText ? "type" : t.iconKey}
+                      color={t && !t.isText ? t.iconColor : null}
+                      size={14}
+                    />
+                  )}
+                  <span className="recent-label">{h.label}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Global navigation cluster: back / forward / history + search, top of the window. */
 export function NavBar() {
   const { back, forward, canBack, canForward } = usePanels();
   return (
@@ -137,6 +252,7 @@ export function NavBar() {
         <ChevronRight size={16} />
       </button>
       <RecentsMenu />
+      <GlobalSearch />
     </div>
   );
 }

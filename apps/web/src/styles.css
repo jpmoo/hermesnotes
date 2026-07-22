@@ -2100,6 +2100,37 @@ input.li-text:focus {
   left: 0;
   right: auto;
 }
+.menu-item.active {
+  background: var(--surface-2);
+}
+/* Whole-database search filling the rest of the top row. */
+.global-search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+.gs-icon {
+  position: absolute;
+  left: 11px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.global-search .gs-input {
+  width: 100%;
+  height: 30px;
+  padding: 4px 12px 4px 32px;
+  font-size: 13px;
+  border-radius: 999px;
+}
+.global-search .menu {
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 320px;
+  overflow-y: auto;
+}
 .recent-item {
   display: flex;
   align-items: center;

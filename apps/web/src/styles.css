@@ -2386,7 +2386,7 @@ input.matrix-axis-y::placeholder {
   display: inline-block;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: var(--surface-2);
   font-size: 13px;
 }
@@ -3218,9 +3218,9 @@ input.matrix-axis-y::placeholder {
   width: 100%;
   height: 34px;
   padding: 0 12px;
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   text-align: left;
   color: var(--text);

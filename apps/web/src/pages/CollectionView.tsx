@@ -120,7 +120,10 @@ function ListItem({
   });
 
   useEffect(() => {
-    if (!expanded || fullBlock) return;
+    // Blocks format always shows the card, so fetch when asCard even if
+    // `expanded` is a stale false (e.g. after switching format bullet→blocks
+    // on a reused row) — otherwise the card hangs on "Loading…".
+    if ((!expanded && !asCard) || fullBlock) return;
     let done = false;
     const fallback = () => {
       if (!done) {
@@ -147,7 +150,7 @@ function ListItem({
       clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expanded, fullBlock, member.id]);
+  }, [expanded, asCard, fullBlock, member.id]);
   const reloadFull = () => void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock).catch(() => {});
 
   // Expanding an item makes it the active block in the info panel.

@@ -2,7 +2,6 @@ import { Library, List, ListFilter, MoreVertical } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
-import { BlockIcon } from "../lib/icons.tsx";
 import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { CreateCollectionModal } from "../components/CreateCollectionModal.tsx";
@@ -94,14 +93,15 @@ export function CollectionsPage() {
           const isSmart = c.properties.membership_mode === "smart";
           const smartMode = (c.properties.smart_mode as string) ?? "dynamic";
           const meta = isSmart ? `Smart · ${smartMode}` : "Manual";
+          const iconColor = (c.properties.icon_color as string) ?? undefined;
           return (
             <div className="card type-row" key={c.id} style={style}>
-              <span className="icon-preview">
-                <BlockIcon
-                  iconKey={(c.properties.icon_key as string) ?? "folder"}
-                  color={(c.properties.icon_color as string) ?? null}
-                  size={20}
-                />
+              <span className="icon-preview" title={meta}>
+                {isSmart ? (
+                  <ListFilter size={20} color={iconColor} />
+                ) : (
+                  <List size={20} color={iconColor} />
+                )}
               </span>
               <button
                 className="ghost collection-open"
@@ -112,7 +112,6 @@ export function CollectionsPage() {
                   {title(c)}
                 </span>
                 <span className="hint collection-meta" style={{ color: text ?? undefined }}>
-                  {isSmart ? <ListFilter size={13} /> : <List size={13} />}
                   {meta} · {c.collectionKind}
                 </span>
               </button>

@@ -1728,10 +1728,18 @@ input.li-text:focus {
 }
 .masonry {
   column-gap: 14px;
-  /* A floor on column width: the selected count is a MAX, but a narrow main
-     (e.g. panels open) uses fewer columns rather than crushing cards so their
-     fields no longer bleed off the edge. */
-  column-width: 240px;
+}
+/* Keep the exact selected column count; contain narrow cards so their fields
+   don't bleed into neighbouring columns (they may clip in very tight columns —
+   expand a card to edit comfortably). */
+.masonry-item .card {
+  overflow: hidden;
+}
+.masonry-item .card input,
+.masonry-item .card select,
+.masonry-item .card textarea {
+  min-width: 0;
+  max-width: 100%;
 }
 .masonry-item {
   position: relative;

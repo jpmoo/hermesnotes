@@ -50,7 +50,7 @@ export function AllBlocksPage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: filter }).then(setBlocks);
 
-  const { toolbar, renderList } = useBlockView(blocks, types, { scope: "allblocks" });
+  const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "allblocks" });
 
   // Per-card collapse (block view only; masonry cards are already compact).
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -78,12 +78,14 @@ export function AllBlocksPage() {
           <FolderPlus size={15} />
           Save as collection
         </button>
-        <button
-          className="ghost"
-          onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(blocks.map((b) => b.id)))}
-        >
-          {allCollapsed ? "Expand all" : "Collapse all"}
-        </button>
+        {viewMode === "block" && (
+          <button
+            className="ghost"
+            onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(blocks.map((b) => b.id)))}
+          >
+            {allCollapsed ? "Expand all" : "Collapse all"}
+          </button>
+        )}
         <span className="hint">{blocks.length} block(s)</span>
       </div>
 

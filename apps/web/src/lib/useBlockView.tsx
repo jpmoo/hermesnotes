@@ -184,6 +184,7 @@ export function useBlockView<T extends Viewable>(
 ): {
   sorted: T[];
   active: boolean;
+  viewMode: ViewMode;
   toolbar: ReactNode;
   renderList: (renderCard: (item: T, compact: boolean) => ReactNode) => ReactNode;
 } {
@@ -497,5 +498,5 @@ export function useBlockView<T extends Viewable>(
     );
   };
 
-  return { sorted, active: sortActive, toolbar, renderList };
+  return { sorted, active: sortActive, viewMode: enableView ? viewMode : "block", toolbar, renderList };
 }

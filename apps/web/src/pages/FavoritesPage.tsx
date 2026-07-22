@@ -126,7 +126,7 @@ export function FavoritesPage() {
     );
   };
 
-  const { toolbar, renderList } = useBlockView(plain, types, { scope: "favorites" });
+  const { toolbar, renderList, viewMode } = useBlockView(plain, types, { scope: "favorites" });
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const allCollapsed = plain.length > 0 && plain.every((b) => collapsed.has(b.id));
@@ -146,9 +146,10 @@ export function FavoritesPage() {
       </h1>
       <p className="page-sub">Starred blocks and collections (star them in the info panel).</p>
 
-      {collections.length > 1 && (
+      {collections.length > 0 && (
         <div className="sort-bar" style={{ marginBottom: 8 }}>
           <span className="sort-label">Collections</span>
+          {collections.length > 1 && (
           <div className="segmented">
             {(
               [
@@ -163,7 +164,8 @@ export function FavoritesPage() {
               </button>
             ))}
           </div>
-          {stripSort !== "manual" && (
+          )}
+          {collections.length > 1 && stripSort !== "manual" && (
             <button
               className="icon-btn sort-dir"
               title={stripDir === "asc" ? "Ascending" : "Descending"}
@@ -172,7 +174,9 @@ export function FavoritesPage() {
               {stripDir === "asc" ? "↑" : "↓"}
             </button>
           )}
-          {stripSort === "manual" && <span className="hint">Drag chips to arrange</span>}
+          {collections.length > 1 && stripSort === "manual" && (
+            <span className="hint">Drag chips to arrange</span>
+          )}
         </div>
       )}
       {collections.length > 0 && (
@@ -203,13 +207,16 @@ export function FavoritesPage() {
 
       {plain.length > 0 && (
         <div className="row" style={{ marginBottom: 10, gap: 12 }}>
+          <span className="sort-label">Blocks</span>
           {toolbar}
-          <button
-            className="ghost"
-            onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(plain.map((b) => b.id)))}
-          >
-            {allCollapsed ? "Expand all" : "Collapse all"}
-          </button>
+          {viewMode === "block" && (
+            <button
+              className="ghost"
+              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(plain.map((b) => b.id)))}
+            >
+              {allCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          )}
         </div>
       )}
 

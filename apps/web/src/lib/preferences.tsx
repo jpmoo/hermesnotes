@@ -11,6 +11,10 @@ interface PreferencesApi {
   prefs: Record<string, unknown>;
   setPref: (key: string, value: unknown) => void;
   colors: (key: string) => NavColors;
+  /** Starred blocks/collections (ordered by when they were starred). */
+  favorites: string[];
+  isFavorite: (id: string) => boolean;
+  toggleFavorite: (id: string) => void;
 }
 
 const Ctx = createContext<PreferencesApi | null>(null);
@@ -32,7 +36,16 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   };
   const colors = (key: string): NavColors => (prefs[key] as NavColors) ?? {};
 
-  return <Ctx.Provider value={{ prefs, setPref, colors }}>{children}</Ctx.Provider>;
+  const favorites = Array.isArray(prefs.favorites) ? (prefs.favorites as string[]) : [];
+  const isFavorite = (id: string) => favorites.includes(id);
+  const toggleFavorite = (id: string) =>
+    setPref("favorites", isFavorite(id) ? favorites.filter((x) => x !== id) : [...favorites, id]);
+
+  return (
+    <Ctx.Provider value={{ prefs, setPref, colors, favorites, isFavorite, toggleFavorite }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function usePreferences(): PreferencesApi {

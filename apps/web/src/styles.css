@@ -2960,3 +2960,38 @@ input.matrix-axis-y::placeholder {
   flex: 1;
   min-width: 0;
 }
+
+/* Favorites: info-panel star + page bits. */
+.info-pane {
+  position: relative;
+}
+.fav-star {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+.fav-star:hover {
+  background: transparent;
+  color: var(--accent-ink);
+}
+.fav-star.on {
+  color: #d9a514;
+}
+.fav-collections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.fav-collection {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}

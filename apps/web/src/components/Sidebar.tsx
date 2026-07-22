@@ -7,6 +7,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Star,
   Settings,
   Shapes,
   type LucideIcon,
@@ -34,6 +35,7 @@ const LABELS: Record<Target, string> = {
 // Preference keys (server-side, synced across devices) for each colorable row.
 // The Unattached row keeps the legacy "inbox_colors" key so saved colors carry over.
 const TODAY_KEY = "today_colors";
+const FAVORITES_KEY = "favorites_colors";
 const ALLBLOCKS_KEY = "allblocks_colors";
 const COLLECTIONS_KEY = "collections_colors";
 
@@ -202,6 +204,9 @@ export function Sidebar() {
       </div>
 
       {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
+      <div className="nav-divider" />
+      {colorRow(FAVORITES_KEY, "/favorites", false, Star, "Favorites")}
+      <div className="nav-divider" />
       {colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks")}
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
 

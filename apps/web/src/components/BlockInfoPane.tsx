@@ -1,10 +1,11 @@
-import { CalendarDays, Copy } from "lucide-react";
+import { CalendarDays, Copy, Star } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
 
@@ -76,6 +77,7 @@ export function BlockInfoPane({
   const [types, setTypes] = useState<BlockType[]>([]);
   const { pathname } = useLocation();
   const { infoTick } = usePanels();
+  const { isFavorite, toggleFavorite } = usePreferences();
 
   // Blank out only when the shown block changes; an infoTick bump (the block
   // was edited elsewhere, e.g. matrix region actions) refetches in place.
@@ -114,8 +116,16 @@ export function BlockInfoPane({
     info.linkedFrom.length === 0 &&
     (editable || info.tags.length === 0);
 
+  const fav = isFavorite(blockId);
   return (
     <div className="info-pane">
+      <button
+        className={`icon-btn fav-star${fav ? " on" : ""}`}
+        title={fav ? "Remove from favorites" : "Add to favorites"}
+        onClick={() => toggleFavorite(blockId)}
+      >
+        <Star size={15} fill={fav ? "currentColor" : "none"} />
+      </button>
       {editable && block ? (
         <div className="panel-editor">
           {editorType && !editorType.isText ? (

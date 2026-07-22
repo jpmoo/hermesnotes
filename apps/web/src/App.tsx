@@ -11,6 +11,7 @@ import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
 import { AllBlocksPage } from "./pages/AllBlocksPage.tsx";
+import { FavoritesPage } from "./pages/FavoritesPage.tsx";
 import { BlockPage } from "./pages/BlockPage.tsx";
 import { TodayPage } from "./pages/TodayPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
@@ -68,6 +69,7 @@ function Shell() {
             <Route path="/today" element={<TodayPage />} />
             <Route path="/today/:date" element={<TodayPage />} />
             <Route path="/blocks" element={<AllBlocksPage />} />
+            <Route path="/favorites" element={<FavoritesPage />} />
             <Route path="/block/:id" element={<BlockPage />} />
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionView />} />

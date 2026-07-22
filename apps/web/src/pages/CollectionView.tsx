@@ -13,7 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, RefreshCw, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -446,9 +446,17 @@ export function CollectionView() {
     manual: isDynamic ? null : { onMove: moveMember },
   });
 
+  // One refresh affordance for every smart collection: snapshots re-materialize
+  // from the query; dynamic (and matrix) just re-run it via a reload.
+  const [refreshing, setRefreshing] = useState(false);
   const refresh = async () => {
-    await api.post(`/collections/${id}/materialize`);
-    await load();
+    setRefreshing(true);
+    try {
+      if (isSmart && !isDynamic && !isMatrix) await api.post(`/collections/${id}/materialize`);
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // Right panel: query editor for smart collections, the section tool for
@@ -588,11 +596,14 @@ export function CollectionView() {
         {isSmart && (
           <>
             <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            {!isDynamic && !isMatrix && (
-              <button className="ghost" onClick={() => void refresh()}>
-                Refresh from query
-              </button>
-            )}
+            <button
+              className="icon-btn"
+              title={!isDynamic && !isMatrix ? "Refresh from query" : "Re-run the query"}
+              disabled={refreshing}
+              onClick={() => void refresh()}
+            >
+              <RefreshCw size={15} className={refreshing ? "hn-spin" : undefined} />
+            </button>
           </>
         )}
 

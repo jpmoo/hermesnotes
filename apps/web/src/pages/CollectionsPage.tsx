@@ -1,4 +1,4 @@
-import { Library, MoreVertical } from "lucide-react";
+import { Library, List, ListFilter, MoreVertical } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
@@ -91,6 +91,9 @@ export function CollectionsPage() {
           const style: CSSProperties = {};
           if (bg) style.background = bg;
           if (text) style.color = text;
+          const isSmart = c.properties.membership_mode === "smart";
+          const smartMode = (c.properties.smart_mode as string) ?? "dynamic";
+          const meta = isSmart ? `Smart · ${smartMode}` : "Manual";
           return (
             <div className="card type-row" key={c.id} style={style}>
               <span className="icon-preview">
@@ -108,8 +111,9 @@ export function CollectionsPage() {
                 <span className="chrome" style={{ fontSize: 14 }}>
                   {title(c)}
                 </span>
-                <span className="hint" style={{ display: "block", color: text ?? undefined }}>
-                  {c.collectionKind}
+                <span className="hint collection-meta" style={{ color: text ?? undefined }}>
+                  {isSmart ? <ListFilter size={13} /> : <List size={13} />}
+                  {meta} · {c.collectionKind}
                 </span>
               </button>
 

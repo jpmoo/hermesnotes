@@ -103,10 +103,52 @@ function ListItem({
     if (expandSignal) setExpanded(expandSignal.open);
   }, [expandSignal]);
 
+  // The member already carries the block's content/properties/version, so if the
+  // full fetch fails or hangs we fall back to it rather than getting stuck on
+  // "Loading…". (The card components don't read blockTypeId/embed fields.)
+  const asBlock = (): Block => ({
+    id: member.id,
+    blockTypeId: member.blockTypeId ?? "",
+    collectionKind: member.collectionKind,
+    content: member.content,
+    properties: member.properties,
+    embeddedAt: null,
+    embedPending: false,
+    version: member.version,
+    createdAt: member.createdAt,
+    updatedAt: member.updatedAt,
+  });
+
   useEffect(() => {
-    if (expanded && !fullBlock) void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock);
+    if (!expanded || fullBlock) return;
+    let done = false;
+    const fallback = () => {
+      if (!done) {
+        done = true;
+        setFullBlock(asBlock());
+      }
+    };
+    const timer = setTimeout(fallback, 5000);
+    api
+      .get<Block>(`/blocks/${member.id}`)
+      .then((b) => {
+        if (!done) {
+          done = true;
+          clearTimeout(timer);
+          setFullBlock(b);
+        }
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        fallback();
+      });
+    return () => {
+      done = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded, fullBlock, member.id]);
-  const reloadFull = () => void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock);
+  const reloadFull = () => void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock).catch(() => {});
 
   // Expanding an item makes it the active block in the info panel.
   const openItem = () => {

@@ -1045,6 +1045,12 @@ input.typed-title:focus {
 .collection-open {
   display: block;
 }
+.collection-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-transform: capitalize;
+}
 input.collection-title {
   font-family: var(--font-chrome);
   font-size: 22px;

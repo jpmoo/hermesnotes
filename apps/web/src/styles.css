@@ -2995,3 +2995,11 @@ input.matrix-axis-y::placeholder {
   gap: 7px;
   cursor: pointer;
 }
+
+/* A mention whose target was deleted: shaded, not clickable. */
+.mention-chip.dead {
+  opacity: 0.55;
+  filter: grayscale(1);
+  cursor: default;
+  border-style: dashed;
+}

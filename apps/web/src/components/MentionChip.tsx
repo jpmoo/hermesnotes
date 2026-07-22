@@ -55,6 +55,7 @@ export function MentionChip({ node }: NodeViewProps) {
   // person: mentions resolve to an id by title; bare |id chips fetch a label.
   const [resolvedId, setResolvedId] = useState("");
   const [fetchedLabel, setFetchedLabel] = useState("");
+  const [dead, setDead] = useState(false); // target no longer exists
   const id = staticId || resolvedId;
   const { openBlock } = usePanels();
 
@@ -63,7 +64,12 @@ export function MentionChip({ node }: NodeViewProps) {
     let alive = true;
     void (async () => {
       const b = staticId ? await getBlock(staticId) : await getByName(personName);
-      if (!alive || !b) return;
+      if (!alive) return;
+      if (!b) {
+        setDead(true);
+        return;
+      }
+      setDead(false);
       if (!staticId) setResolvedId(b.id);
       if (!label) setFetchedLabel(oneLineText(b.properties as Record<string, unknown>, b.content) || "Untitled");
       if (b.collectionKind) {
@@ -92,7 +98,7 @@ export function MentionChip({ node }: NodeViewProps) {
   const onActivate = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isTag || !id) return;
+    if (isTag || dead || !id) return;
     openBlock(id, { collection });
   };
   const swallow = (e: React.MouseEvent) => {
@@ -103,11 +109,11 @@ export function MentionChip({ node }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`mention-chip${isTag ? " tag" : ""}`}
+      className={`mention-chip${isTag ? " tag" : ""}${dead ? " dead" : ""}`}
       contentEditable={false}
       onMouseDown={onActivate}
       onClick={swallow}
-      title={label || fetchedLabel}
+      title={dead ? `${label || "reference"} — no longer exists` : label || fetchedLabel}
     >
       {isTag ? (
         <Hash size={13} />
@@ -116,7 +122,7 @@ export function MentionChip({ node }: NodeViewProps) {
       ) : (
         <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
       )}
-      <span>{isTag ? label.replace(/^#/, "") : label || fetchedLabel || "…"}</span>
+      <span>{isTag ? label.replace(/^#/, "") : label || fetchedLabel || (dead ? "missing" : "…")}</span>
     </NodeViewWrapper>
   );
 }

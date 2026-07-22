@@ -485,8 +485,8 @@ export function buildTools(server: McpServer, api: Api): void {
       const from = a.old_tag.trim().toLowerCase().replace(/^#+/, "");
       const to = a.new_tag.trim().toLowerCase().replace(/^#+/, "");
       if (!a.confirm) return `This will rename #${from} → #${to} everywhere. Call again with confirm=true.`;
-      const n = await retagAll(from, to);
-      return `Renamed #${from} → #${to} on ${n} block${n === 1 ? "" : "s"}.`;
+      const r = await api.post<{ rewritten: number }>("/tags/rename", { from, to });
+      return `Renamed #${from} → #${to} (tag associations moved; text mentions rewritten in ${r.rewritten} block${r.rewritten === 1 ? "" : "s"}).`;
     }),
   );
 

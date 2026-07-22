@@ -45,6 +45,104 @@ function extractTags(texts: string[], rawTexts: string[] = []): Set<string> {
   return names;
 }
 
+const escapeRe = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Apply a string rewriter to every string value in a JSON tree. */
+function rewriteStrings(value: unknown, fn: (s: string) => string): unknown {
+  if (typeof value === "string") return fn(value);
+  if (Array.isArray(value)) return value.map((v) => rewriteStrings(v, fn));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = rewriteStrings(v, fn);
+    return out;
+  }
+  return value;
+}
+
+/** Rewrite mention text in every block matching any LIKE pattern: used when a
+ * title or tag is renamed so raw `@Name`/`#tag` tokens and markdown mention
+ * labels stay in sync. Bumps versions and re-queues embeddings. */
+async function rewriteReferences(
+  userId: string,
+  excludeId: string | null,
+  likePatterns: string[],
+  fn: (s: string) => string,
+): Promise<number> {
+  if (!likePatterns.length) return 0;
+  const arms = likePatterns.flatMap((pat) => [
+    sql`${blocks.properties}::text LIKE ${`%${pat}%`}`,
+    sql`${blocks.content} LIKE ${`%${pat}%`}`,
+  ]);
+  const rows = await db
+    .select({
+      id: blocks.id,
+      blockTypeId: blocks.blockTypeId,
+      properties: blocks.properties,
+      content: blocks.content,
+    })
+    .from(blocks)
+    .where(
+      and(
+        eq(blocks.ownerId, userId),
+        excludeId ? sql`${blocks.id} <> ${excludeId}` : sql`true`,
+        or(...arms),
+      ),
+    )
+    .limit(500);
+  let changed = 0;
+  const typeCache = new Map<string, Awaited<ReturnType<typeof resolveType>>>();
+  for (const row of rows) {
+    const nextProps = rewriteStrings(row.properties, fn) as Record<string, unknown>;
+    const nextContent = typeof row.content === "string" ? fn(row.content) : row.content;
+    if (JSON.stringify(nextProps) === JSON.stringify(row.properties) && nextContent === row.content) continue;
+    let type;
+    try {
+      if (row.blockTypeId) {
+        type = typeCache.get(row.blockTypeId) ?? (await resolveType(userId, row.blockTypeId));
+        typeCache.set(row.blockTypeId, type);
+      } else {
+        type = await resolveType(userId, undefined);
+      }
+    } catch {
+      continue;
+    }
+    const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
+    await db
+      .update(blocks)
+      .set({
+        properties: nextProps,
+        content: nextContent,
+        embedSource,
+        embedSourceHash: null, // re-embed with the corrected text
+        version: sql`${blocks.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(blocks.id, row.id), eq(blocks.ownerId, userId)));
+    changed++;
+  }
+  return changed;
+}
+
+/** A block's title changed: update raw `@Old_Title` tokens and the labels of
+ * markdown `[label](block:<id>)` links that point at it. */
+async function propagateTitleRename(
+  userId: string,
+  blockId: string,
+  oldTitle: string,
+  newTitle: string,
+): Promise<number> {
+  const from = oldTitle.trim();
+  const to = newTitle.trim();
+  if (!from || !to || from === to) return 0;
+  const oldTok = `@${from.replace(/ /g, "_")}`;
+  const newTok = `@${to.replace(/ /g, "_")}`;
+  const tokRe = new RegExp(`${escapeRe(oldTok)}(?![\\w-])`, "g");
+  const labelRe = new RegExp(`\\[[^\\]]*\\]\\(block:${escapeRe(blockId)}\\)`, "g");
+  return rewriteReferences(userId, blockId, [oldTok, `](block:${blockId})`], (s) =>
+    s.replace(tokRe, newTok).replace(labelRe, `[${to}](block:${blockId})`),
+  );
+}
+
 /**
  * Add tags for `#` mentions present in a block's text. Add-only: removing a
  * mention from the text does NOT remove the tag (that stays a manual action),
@@ -753,6 +851,19 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     if (!updated) throw conflict("version conflict — reload and retry");
 
+    // Title rename → fix raw @mentions and link labels in referencing blocks.
+    const oldTitle = ((current.properties ?? {}) as Record<string, unknown>).title;
+    const newTitle = ((nextProps ?? {}) as Record<string, unknown>).title;
+    if (
+      typeof oldTitle === "string" &&
+      typeof newTitle === "string" &&
+      oldTitle.trim() &&
+      newTitle.trim() &&
+      oldTitle.trim() !== newTitle.trim()
+    ) {
+      await propagateTitleRename(userId, id, oldTitle, newTitle);
+    }
+
     // Add tags for any #tag mentions (add-only): `(tag:)` links anywhere, and
     // raw `#tag` tokens in the title/plain-text fields (mention-input syntax).
     const rawKeys = new Set([
@@ -791,6 +902,51 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .from(tags)
       .where(eq(tags.ownerId, userId))
       .orderBy(tags.name);
+  });
+
+  /** Rename a tag everywhere: the tag row itself (merging into an existing
+   * target), plus raw `#old` tokens and `(tag:old)` mention links in text. */
+  app.post("/tags/rename", async (req) => {
+    const userId = requireUser(req);
+    const body = z
+      .object({ from: z.string().trim().min(1), to: z.string().trim().min(1) })
+      .parse(req.body);
+    const from = body.from.toLowerCase().replace(/^#+/, "");
+    const to = body.to.toLowerCase().replace(/^#+/, "");
+    if (!from || !to || from === to) return { rewritten: 0 };
+
+    const [src] = await db
+      .select({ id: tags.id })
+      .from(tags)
+      .where(and(eq(tags.ownerId, userId), eq(tags.name, from)))
+      .limit(1);
+    if (!src) throw notFound("tag");
+    const [dst] = await db
+      .select({ id: tags.id })
+      .from(tags)
+      .where(and(eq(tags.ownerId, userId), eq(tags.name, to)))
+      .limit(1);
+    if (!dst) {
+      await db.update(tags).set({ name: to }).where(eq(tags.id, src.id));
+    } else {
+      // Merge: repoint associations (skipping dupes), drop the old row.
+      const rows = await db
+        .select({ blockId: blockTags.blockId })
+        .from(blockTags)
+        .where(eq(blockTags.tagId, src.id));
+      for (const r of rows)
+        await db.insert(blockTags).values({ blockId: r.blockId, tagId: dst.id }).onConflictDoNothing();
+      await db.delete(blockTags).where(eq(blockTags.tagId, src.id));
+      await db.delete(tags).where(eq(tags.id, src.id));
+    }
+
+    // `#old` tokens (covers `[#old]` labels too) and `(tag:old)` link targets.
+    const tokRe = new RegExp(`#${escapeRe(from)}(?![\\w-])`, "gi");
+    const linkRe = new RegExp(`\\(tag:${escapeRe(from)}\\)`, "gi");
+    const rewritten = await rewriteReferences(userId, null, [`#${from}`, `tag:${from}`], (s) =>
+      s.replace(tokRe, `#${to}`).replace(linkRe, `(tag:${to})`),
+    );
+    return { rewritten };
   });
 
   /** Create a standalone tag (used by the "#" mention "create" option). */

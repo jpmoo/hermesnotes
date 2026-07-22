@@ -7,6 +7,7 @@ import { fmtDateTime } from "../lib/format.ts";
 import { oneLineHtml } from "../lib/display.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
+import { DateTimePicker } from "./DateTimePicker.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { MentionTextInput } from "./MentionTextInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
@@ -45,6 +46,20 @@ function darkText(color: string): boolean {
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.55;
 }
 
+/** Parse a "prop:" column key; datespans split into ".start"/".end" columns. */
+function propParts(key: string): { fkey: string; part?: "start" | "end" } | null {
+  if (!key.startsWith("prop:")) return null;
+  const k = key.slice(5);
+  if (k.endsWith(".start")) return { fkey: k.slice(0, -6), part: "start" };
+  if (k.endsWith(".end")) return { fkey: k.slice(0, -4), part: "end" };
+  return { fkey: k };
+}
+
+interface Span {
+  start?: string;
+  end?: string;
+}
+
 /** Sortable value of a member under a column. Empties sort last. */
 function valueFor(m: Member, key: string, field: FieldDef | undefined): string {
   if (key === "title") {
@@ -53,19 +68,20 @@ function valueFor(m: Member, key: string, field: FieldDef | undefined): string {
   }
   if (key === "created") return m.createdAt;
   if (key === "edited") return m.updatedAt;
-  if (!key.startsWith("prop:")) return "";
-  const v = m.properties?.[key.slice(5)];
+  const p = propParts(key);
+  if (!p) return "";
+  const v = m.properties?.[p.fkey];
   if (v == null) return "";
-  // datespan: order by start.
+  // datespan: split columns order by their leg; the combined column by start.
   if (field?.type === "datespan" && typeof v === "object")
-    return String((v as { start?: string }).start ?? "");
+    return String((v as Span)[p.part ?? "start"] ?? "");
   return typeof v === "object" ? JSON.stringify(v) : String(v);
 }
 
 function compareBy(levels: SortLevel[], fieldByKey: Map<string, FieldDef>) {
   return (a: Member, b: Member): number => {
     for (const lv of levels) {
-      const f = lv.key.startsWith("prop:") ? fieldByKey.get(lv.key.slice(5)) : undefined;
+      const f = propParts(lv.key) ? fieldByKey.get(propParts(lv.key)!.fkey) : undefined;
       const va = valueFor(a, lv.key, f).toLowerCase();
       const vb = valueFor(b, lv.key, f).toLowerCase();
       if (va === "" || vb === "") {
@@ -163,11 +179,24 @@ function TableRow({
     if (key === "tags") return <TagEditor blockId={member.id} />;
     if (key === "created") return <span className="tv-static">{fmtDateTime(member.createdAt)}</span>;
     if (key === "edited") return <span className="tv-static">{fmtDateTime(member.updatedAt)}</span>;
-    const fkey = key.slice(5);
+    const { fkey, part } = propParts(key)!;
     const field = fieldByKey.get(fkey);
     // Blank cell when this block's type doesn't carry the field — editing it
     // would invent properties the type never defined.
     if (!field || !ownKeys.has(fkey)) return null;
+    // A datespan leg column edits just that end of the span.
+    if (field.type === "datespan" && part) {
+      const span = (props[fkey] ?? {}) as Span;
+      return (
+        <DateTimePicker
+          value={span[part] ?? ""}
+          onChange={(v) => update(fkey, { ...span, [part]: v })}
+          placeholder={
+            part === "start" ? field.startLabel?.trim() || "Start" : field.endLabel?.trim() || "End"
+          }
+        />
+      );
+    }
     // Status matches the rest of the app: the icon cycles on click, no menu.
     if (field.type === "status") {
       return (
@@ -263,8 +292,13 @@ export function TableView({
     if (key === "title") return "Title";
     const b = BUILTINS.find((x) => x.key === key);
     if (b) return b.label;
-    const f = fieldByKey.get(key.slice(5));
-    return f?.label?.trim() || pretty(key.slice(5));
+    const p = propParts(key);
+    if (!p) return key;
+    const f = fieldByKey.get(p.fkey);
+    const base = f?.label?.trim() || pretty(p.fkey);
+    if (p.part === "start") return `${base} · ${f?.startLabel?.trim() || "Start"}`;
+    if (p.part === "end") return `${base} · ${f?.endLabel?.trim() || "End"}`;
+    return base;
   };
 
   const shown = columns;
@@ -276,9 +310,21 @@ export function TableView({
   };
   const available = [
     ...(columns.includes("title") ? [] : [{ key: "title", label: "Title" }]),
-    ...[...fieldByKey.entries()]
-      .filter(([k, f]) => f.type !== "attachments" && !columns.includes(`prop:${k}`))
-      .map(([k, f]) => ({ key: `prop:${k}`, label: f.label?.trim() || pretty(k) })),
+    ...[...fieldByKey.entries()].flatMap(([k, f]) => {
+      if (f.type === "attachments") return [];
+      const base = f.label?.trim() || pretty(k);
+      const out: { key: string; label: string }[] = [];
+      if (!columns.includes(`prop:${k}`)) out.push({ key: `prop:${k}`, label: base });
+      // Datespans also split into one column per leg, labeled with the
+      // field's own start/end labels.
+      if (f.type === "datespan") {
+        if (!columns.includes(`prop:${k}.start`))
+          out.push({ key: `prop:${k}.start`, label: `${base} · ${f.startLabel?.trim() || "Start"}` });
+        if (!columns.includes(`prop:${k}.end`))
+          out.push({ key: `prop:${k}.end`, label: `${base} · ${f.endLabel?.trim() || "End"}` });
+      }
+      return out;
+    }),
     ...BUILTINS.filter((b) => !columns.includes(b.key)),
   ];
 

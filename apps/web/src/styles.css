@@ -3037,8 +3037,9 @@ input.matrix-axis-y::placeholder {
 .tv-table {
   border-collapse: collapse;
   table-layout: fixed;
-  width: max-content;
-  min-width: 100%;
+  /* Fixed layout uses max(this, sum of col widths): fills the box when
+     columns are narrow, overflows into h-scroll when they're wide. */
+  width: 100%;
   font-size: 13px;
 }
 .tv-table th {
@@ -3073,7 +3074,6 @@ input.matrix-axis-y::placeholder {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-transform: capitalize;
 }
 .tv-sort-badge {
   display: inline-flex;
@@ -3175,7 +3175,6 @@ input.matrix-axis-y::placeholder {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-transform: capitalize;
   font-size: 13px;
 }
 .tv-color-btn {

@@ -32,7 +32,10 @@ const BUILTINS: { key: string; label: string }[] = [
 const DEFAULT_WIDTH: Record<string, number> = { title: 260, tags: 200, created: 160, edited: 160 };
 const MIN_WIDTH = 60;
 
-const pretty = (k: string) => k.replace(/_/g, " ");
+const pretty = (k: string) => {
+  const t = k.replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+};
 
 /** Perceived-luminance check so the header text stays readable on any color. */
 function darkText(color: string): boolean {

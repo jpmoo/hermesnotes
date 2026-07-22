@@ -68,6 +68,7 @@ function ListItem({
   collectionId,
   onRemove,
   readonly = false,
+  expandSignal,
 }: {
   member: Member;
   type: BlockType | undefined;
@@ -77,9 +78,11 @@ function ListItem({
   collectionId: string;
   onRemove: (blockId: string) => void;
   readonly?: boolean;
+  expandSignal?: { open: boolean; nonce: number };
 }) {
   const sortable = useSortable({ id: member.id });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
+  const { selectBlock } = usePanels();
 
   const isText = !type || type.isText;
   const schema = type?.propertySchema ?? null;
@@ -95,10 +98,27 @@ function ListItem({
   const versionRef = useRef(member.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
+  // Expand/collapse-all broadcast from the toolbar.
+  useEffect(() => {
+    if (expandSignal) setExpanded(expandSignal.open);
+  }, [expandSignal]);
+
   useEffect(() => {
     if (expanded && !fullBlock) void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock);
   }, [expanded, fullBlock, member.id]);
   const reloadFull = () => void api.get<Block>(`/blocks/${member.id}`).then(setFullBlock);
+
+  // Expanding an item makes it the active block in the info panel.
+  const openItem = () => {
+    setExpanded(true);
+    selectBlock(member.id);
+  };
+  const toggleItem = () => {
+    setExpanded((x) => {
+      if (!x) selectBlock(member.id);
+      return !x;
+    });
+  };
 
   const patchBlock = async (body: Record<string, unknown>) => {
     try {
@@ -227,7 +247,7 @@ function ListItem({
         {isText ? (
           <span
             className="li-text li-text-static li-md"
-            onClick={() => setExpanded(true)}
+            onClick={openItem}
             dangerouslySetInnerHTML={{
               __html: oneLineHtml(props, content) || '<span class="li-empty">Empty note</span>',
             }}
@@ -237,10 +257,11 @@ function ListItem({
             className="li-text"
             value={String(props.title ?? "")}
             placeholder={type?.name}
+            onFocus={() => selectBlock(member.id)}
             onChange={(e) => debouncedText(e.target.value)}
           />
         ) : (
-          <span className="li-text li-text-static" onClick={() => setExpanded(true)}>
+          <span className="li-text li-text-static" onClick={openItem}>
             {oneLineText(props) || type?.name || "Item"}
           </span>
         )}
@@ -249,7 +270,7 @@ function ListItem({
           <button
             className="icon-btn li-expand"
             title={expanded ? "Collapse" : "Expand"}
-            onClick={() => setExpanded((x) => !x)}
+            onClick={toggleItem}
           >
             {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>
@@ -286,6 +307,8 @@ export function CollectionView() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
   const [newType, setNewType] = useState<BlockType | null>(null);
+  const [expandSignal, setExpandSignal] = useState<{ open: boolean; nonce: number }>();
+  const [allExpanded, setAllExpanded] = useState(false);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
   const { slotEl, setTitle, setHasContent } = usePanels();
@@ -494,6 +517,19 @@ export function CollectionView() {
             )}
           </>
         )}
+
+        {!isDocument && format !== "blocks" && members.length > 0 && (
+          <button
+            className="ghost"
+            onClick={() => {
+              const open = !allExpanded;
+              setAllExpanded(open);
+              setExpandSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
+            }}
+          >
+            {allExpanded ? "Collapse all" : "Expand all"}
+          </button>
+        )}
       </div>
 
       {!isDocument && members.length > 0 && sortBar}
@@ -543,6 +579,7 @@ export function CollectionView() {
                   collectionId={id}
                   onRemove={onRemove}
                   readonly={isDynamic || sortActive}
+                  expandSignal={expandSignal}
                 />
               ))}
             </div>

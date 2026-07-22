@@ -9,6 +9,7 @@ import {
 import {
   SortableContext,
   arrayMove,
+  rectSortingStrategy,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -114,6 +115,20 @@ function ManualRow({ id, children }: { id: string; children: ReactNode }) {
         <GripVertical size={15} />
       </button>
       <div className="bv-manual-body">{children}</div>
+    </div>
+  );
+}
+
+/** A draggable masonry cell in manual mode: the card with a corner grip. */
+function ManualMasonryItem({ id, children }: { id: string; children: ReactNode }) {
+  const s = useSortable({ id });
+  const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
+  return (
+    <div ref={s.setNodeRef} style={style} className="masonry-item">
+      <button className="drag-handle masonry-grip" {...s.attributes} {...s.listeners} title="Drag to arrange">
+        <GripVertical size={15} />
+      </button>
+      {children}
     </div>
   );
 }
@@ -334,7 +349,7 @@ export function useBlockView<T extends Viewable>(
         </>
       )}
 
-      {enableView && !manualMode && (
+      {enableView && (
         <span className="view-controls">
           <div className="segmented">
             {VIEWS.map((v) => (
@@ -365,17 +380,31 @@ export function useBlockView<T extends Viewable>(
   );
 
   const renderList = (renderCard: (item: T, compact: boolean) => ReactNode): ReactNode => {
+    const masonry = enableView && viewMode === "masonry";
     if (manualMode) {
       return (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={sorted.map((it) => it.id)} strategy={verticalListSortingStrategy}>
-            <div className="bv-manual-list">
-              {sorted.map((it) => (
-                <ManualRow key={it.id} id={it.id}>
-                  {renderCard(it, false)}
-                </ManualRow>
-              ))}
-            </div>
+          <SortableContext
+            items={sorted.map((it) => it.id)}
+            strategy={masonry ? rectSortingStrategy : verticalListSortingStrategy}
+          >
+            {masonry ? (
+              <div className="masonry" style={{ columnCount: columns }}>
+                {sorted.map((it) => (
+                  <ManualMasonryItem key={it.id} id={it.id}>
+                    {renderCard(it, true)}
+                  </ManualMasonryItem>
+                ))}
+              </div>
+            ) : (
+              <div className="bv-manual-list">
+                {sorted.map((it) => (
+                  <ManualRow key={it.id} id={it.id}>
+                    {renderCard(it, false)}
+                  </ManualRow>
+                ))}
+              </div>
+            )}
           </SortableContext>
         </DndContext>
       );

@@ -1753,6 +1753,30 @@ input.li-text:focus {
 .masonry-item:hover .masonry-expand {
   opacity: 1;
 }
+.masonry-grip {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-faint);
+  cursor: grab;
+  opacity: 0;
+}
+.masonry-grip:active {
+  cursor: grabbing;
+}
+.masonry-item:hover .masonry-grip {
+  opacity: 0.9;
+}
 
 /* Compact attachments chip (paperclip) shown in front of the tags. */
 .tags-line {

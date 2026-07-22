@@ -14,14 +14,26 @@ import { initDb } from "./db.js";
 interface PersistedConfig {
   databaseUrl?: string;
   authSecret?: string;
+  backup?: BackupConfig;
 }
+
+/** Nightly pg_dump settings (admin-editable; instance-wide). */
+export interface BackupConfig {
+  enabled: boolean;
+  /** Local server time, "HH:MM". */
+  time: string;
+  /** How many dump files to retain. */
+  keep: number;
+}
+
+const DEFAULT_BACKUP: BackupConfig = { enabled: false, time: "03:30", keep: 14 };
 
 // Repo-root-relative so it's stable regardless of launch cwd (see load-env.ts).
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const configPath =
   process.env.HERMES_CONFIG_PATH ?? join(repoRoot, "data", "hermes.config.json");
 
-let state: { databaseUrl?: string; authSecret: string } | null = null;
+let state: { databaseUrl?: string; authSecret: string; backup: BackupConfig } | null = null;
 
 async function readFileConfig(): Promise<PersistedConfig> {
   try {
@@ -34,7 +46,7 @@ async function readFileConfig(): Promise<PersistedConfig> {
 async function persist(): Promise<void> {
   if (!state) return;
   await mkdir(dirname(configPath), { recursive: true });
-  const out: PersistedConfig = { authSecret: state.authSecret };
+  const out: PersistedConfig = { authSecret: state.authSecret, backup: state.backup };
   if (state.databaseUrl) out.databaseUrl = state.databaseUrl;
   await writeFile(configPath, JSON.stringify(out, null, 2), { mode: 0o600 });
 }
@@ -44,7 +56,7 @@ export async function initConfig(): Promise<void> {
   const file = await readFileConfig();
   const authSecret = env.AUTH_SECRET ?? file.authSecret ?? randomBytes(48).toString("base64");
   const databaseUrl = env.DATABASE_URL ?? file.databaseUrl;
-  state = { databaseUrl, authSecret };
+  state = { databaseUrl, authSecret, backup: { ...DEFAULT_BACKUP, ...file.backup } };
 
   // Persist a freshly generated secret (or newly-adopted file state).
   if (!env.AUTH_SECRET && file.authSecret !== authSecret) await persist();
@@ -59,6 +71,17 @@ export function getAuthSecret(): string {
 
 export function getDatabaseUrl(): string | undefined {
   return state?.databaseUrl;
+}
+
+export function getBackupConfig(): BackupConfig {
+  if (!state) throw new Error("config not initialized");
+  return state.backup;
+}
+
+export async function saveBackupConfig(next: BackupConfig): Promise<void> {
+  if (!state) throw new Error("config not initialized");
+  state.backup = next;
+  await persist();
 }
 
 /** Record a newly provisioned app connection and connect the live pool to it. */

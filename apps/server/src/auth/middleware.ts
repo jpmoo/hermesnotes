@@ -1,9 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { apiTokens } from "@hermes/db";
+import { apiTokens, users } from "@hermes/db";
 import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
-import { unauthorized } from "../lib/errors.js";
+import { forbidden, unauthorized } from "../lib/errors.js";
 import { readSession, SESSION_COOKIE } from "./session.js";
 
 declare module "fastify" {
@@ -55,4 +55,16 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
 export function requireUser(req: FastifyRequest): string {
   if (!req.userId) throw unauthorized();
   return req.userId;
+}
+
+/** Asserts the requester is an admin user; returns the user id. */
+export async function requireAdmin(req: FastifyRequest): Promise<string> {
+  const userId = requireUser(req);
+  const [row] = await db
+    .select({ isAdmin: users.isAdmin })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!row?.isAdmin) throw forbidden("admin only");
+  return userId;
 }

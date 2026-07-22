@@ -3,6 +3,28 @@ import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
 
+interface BackupSettings {
+  enabled: boolean;
+  time: string;
+  keep: number;
+}
+interface BackupFileInfo {
+  file: string;
+  bytes: number;
+  createdAt: string;
+}
+interface BackupResult {
+  at: string;
+  ok: boolean;
+  file?: string;
+  bytes?: number;
+  ms?: number;
+  error?: string;
+}
+
+const fmtBytes = (n: number): string =>
+  n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+
 const TIMEZONES: string[] = (() => {
   try {
     const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] })
@@ -26,7 +48,64 @@ export function SettingsPage() {
   const [timezone, setTimezone] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "connect" | "save" | "prefs">(null);
+  const [busy, setBusy] = useState<null | "connect" | "save" | "prefs" | "backup" | "backup-run">(null);
+
+  const [backup, setBackup] = useState<BackupSettings | null>(null);
+  const [backupFiles, setBackupFiles] = useState<BackupFileInfo[]>([]);
+  const [lastBackup, setLastBackup] = useState<BackupResult | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    void api
+      .get<{ settings: BackupSettings; last: BackupResult | null; backups: BackupFileInfo[] }>(
+        "/admin/backup",
+      )
+      .then((r) => {
+        setBackup(r.settings);
+        setLastBackup(r.last);
+        setBackupFiles(r.backups);
+      })
+      .catch(() => {});
+  }, [isAdmin]);
+
+  const saveBackup = async () => {
+    if (!backup) return;
+    setBusy("backup");
+    setError(null);
+    setStatus(null);
+    try {
+      await api.put("/admin/backup", backup);
+      setStatus("Backup schedule saved.");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "could not save backup settings");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runBackupNow = async () => {
+    setBusy("backup-run");
+    setError(null);
+    setStatus(null);
+    try {
+      const r = await api.post<{ result: BackupResult; backups: BackupFileInfo[] }>(
+        "/admin/backup/run",
+        {},
+      );
+      setLastBackup(r.result);
+      setBackupFiles(r.backups);
+      setStatus(
+        r.result.ok
+          ? `Backed up to ${r.result.file} (${fmtBytes(r.result.bytes ?? 0)}).`
+          : null,
+      );
+      if (!r.result.ok) setError(r.result.error ?? "backup failed");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "backup failed");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     api.get<Settings>("/settings").then((s) => {
@@ -162,6 +241,77 @@ export function SettingsPage() {
           <p className="hint" style={{ marginTop: 8 }}>
             Changing the embedding model re-embeds every note under the new model.
           </p>
+
+          <div className="card" style={{ marginTop: 24 }}>
+            <div className="panel-h" style={{ marginTop: 0 }}>Database backups</div>
+            {!backup ? (
+              <div className="hint">Loading…</div>
+            ) : (
+              <>
+                <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={backup.enabled}
+                    style={{ width: "auto" }}
+                    onChange={(e) => setBackup({ ...backup, enabled: e.target.checked })}
+                  />
+                  <span>Run a nightly backup</span>
+                </label>
+                <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
+                  <label className="field">
+                    <span>At (server time)</span>
+                    <input
+                      type="time"
+                      value={backup.time}
+                      onChange={(e) => setBackup({ ...backup, time: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Keep last</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={backup.keep}
+                      style={{ width: 90 }}
+                      onChange={(e) =>
+                        setBackup({ ...backup, keep: Math.min(365, Math.max(1, Number(e.target.value) || 1)) })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="row" style={{ marginTop: 12, gap: 12 }}>
+                  <button className="primary" onClick={() => void saveBackup()} disabled={busy !== null}>
+                    {busy === "backup" ? "Saving…" : "Save backup settings"}
+                  </button>
+                  <button onClick={() => void runBackupNow()} disabled={busy !== null}>
+                    {busy === "backup-run" ? "Backing up…" : "Back up now"}
+                  </button>
+                </div>
+                {lastBackup && (
+                  <div className={lastBackup.ok ? "hint" : "error"} style={{ marginTop: 10 }}>
+                    Last run {new Date(lastBackup.at).toLocaleString()} —{" "}
+                    {lastBackup.ok ? `ok (${lastBackup.file})` : lastBackup.error}
+                  </div>
+                )}
+                {backupFiles.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    {backupFiles.map((f) => (
+                      <div className="row hint" key={f.file} style={{ gap: 10 }}>
+                        <code>{f.file}</code>
+                        <span>{fmtBytes(f.bytes)}</span>
+                        <span>{new Date(f.createdAt).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="hint" style={{ marginTop: 10 }}>
+                  pg_dump (custom format) into <code>backups/</code> in the project root — restore
+                  with pg_restore. Requires postgresql-client on the server.
+                </p>
+              </>
+            )}
+          </div>
         </>
       )}
 

@@ -25,6 +25,14 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
         .header("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl()}"`)
         .send({ error: "Missing Authorization: Bearer <hermes access key>" });
     }
+    // The SDK 406s any POST whose Accept doesn't list BOTH application/json
+    // and text/event-stream — but with enableJsonResponse we answer plain JSON
+    // regardless, so that strictness only breaks simple clients (curl, custom
+    // agents sending "Accept: application/json" or "*/*"). Normalize it away.
+    const accept = String(req.raw.headers.accept ?? "");
+    if (!accept.includes("application/json") || !accept.includes("text/event-stream")) {
+      req.raw.headers.accept = "application/json, text/event-stream";
+    }
     const server = new McpServer({ name: "hermes", version: "1.0.0" });
     buildTools(server, new Api(`http://127.0.0.1:${env.PORT}/api`, token));
     const transport = new StreamableHTTPServerTransport({
@@ -40,9 +48,16 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
     await transport.handleRequest(req.raw, reply.raw, req.body);
   });
 
-  // Stateless server: only POST is meaningful.
+  // Stateless server: only POST is meaningful. A GET here is usually a client
+  // configured for the legacy HTTP+SSE transport — say so, so the failure is
+  // self-diagnosing.
   const reject = async (_req: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) =>
-    reply.code(405).send({ error: "POST only (stateless MCP endpoint)" });
+    reply.code(405).send({
+      error:
+        "This is a streamable-HTTP MCP endpoint: POST JSON-RPC to this URL with " +
+        "Authorization: Bearer <hermes access key>. The legacy SSE transport (GET) is not supported — " +
+        "configure your client for 'streamable http'.",
+    });
   app.get("/mcp", reject);
   app.delete("/mcp", reject);
 }

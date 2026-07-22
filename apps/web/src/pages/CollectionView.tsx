@@ -439,8 +439,10 @@ export function CollectionView() {
 
   // Same sort/manual toolbar as All blocks. Manual order = membership order
   // (drag), so it's offered on every list except dynamic smart ones.
-  const { sorted, toolbar: sortBar, active: sortActive } = useBlockView(members, types, {
-    enableView: false,
+  // Blocks format gets the full Block/Masonry/Chips view toggle; the one-line
+  // formats keep their row rendering (a view toggle makes no sense there).
+  const { sorted, toolbar: sortBar, active: sortActive, renderList } = useBlockView(members, types, {
+    enableView: format === "blocks",
     manual: isDynamic ? null : { onMove: moveMember },
   });
 
@@ -651,6 +653,27 @@ export function CollectionView() {
             </div>
           </SortableContext>
         </DndContext>
+      ) : format === "blocks" ? (
+        renderList((m, compact) => (
+          <div className={compact ? undefined : "bv-card-wrap"}>
+            {!compact && !isDynamic && (
+              <button
+                className="icon-btn card-collapse"
+                title="Remove from list"
+                onClick={() => onRemove(m.id)}
+              >
+                <X size={14} />
+              </button>
+            )}
+            <BlockCard
+              block={m as unknown as Block}
+              type={m.blockTypeId ? typeById.get(m.blockTypeId) : undefined}
+              onConflict={() => void load()}
+              onDeleted={onRemove}
+              compact={compact}
+            />
+          </div>
+        ))
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={sorted.map((m) => m.id)} strategy={verticalListSortingStrategy}>

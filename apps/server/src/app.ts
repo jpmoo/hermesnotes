@@ -21,6 +21,7 @@ import { collectionRoutes } from "./collections/routes.js";
 import { todayRoutes } from "./today/routes.js";
 import { attachmentRoutes } from "./attachments/routes.js";
 import { setupRoutes } from "./setup/routes.js";
+import { backupRoutes } from "./backup/routes.js";
 
 // Built web bundle (apps/web/dist), served on the same port when present.
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist");
@@ -66,6 +67,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(setupRoutes, { prefix: "/api" });
   await app.register(authRoutes, { prefix: "/api" });
   await app.register(settingsRoutes, { prefix: "/api" });
+  await app.register(backupRoutes, { prefix: "/api" });
   await app.register(blockTypeRoutes, { prefix: "/api" });
   await app.register(collectionRoutes, { prefix: "/api" });
   await app.register(todayRoutes, { prefix: "/api" });

@@ -1145,6 +1145,12 @@ input.collection-title:focus {
 .li-status:hover {
   background: transparent;
 }
+.li-type {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  flex-shrink: 0;
+}
 input.li-text {
   flex: 1;
   border: none;

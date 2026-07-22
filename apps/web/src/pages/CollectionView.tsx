@@ -206,11 +206,9 @@ function ListItem({
           <input type="checkbox" checked={boxChecked} onChange={toggleCheck} className="li-check" />
         ) : format === "ordered" ? (
           <span className="li-marker">{index + 1}.</span>
-        ) : (
-          <span className="li-marker">•</span>
-        )}
+        ) : null}
 
-        {statusField && format !== "checklist" && (
+        {statusField && format !== "checklist" ? (
           <button className="li-status" onClick={cycleStatus} title={`Status: ${status.replace(/_/g, " ")}`}>
             <BlockIcon
               iconKey={statusField.optionIcons?.[status] ?? type?.iconKey}
@@ -218,6 +216,10 @@ function ListItem({
               size={17}
             />
           </button>
+        ) : (
+          <span className="li-type" title={isText ? "Note" : type?.name}>
+            <BlockIcon iconKey={isText ? "type" : type?.iconKey} color={isText ? null : type?.iconColor} size={17} />
+          </span>
         )}
 
         {isText ? (

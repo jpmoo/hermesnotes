@@ -534,6 +534,7 @@ export function CollectionView() {
         {!isDocument && format !== "blocks" && members.length > 0 && (
           <button
             className="ghost"
+            style={{ marginLeft: "auto" }}
             onClick={() => {
               const open = !allExpanded;
               setAllExpanded(open);

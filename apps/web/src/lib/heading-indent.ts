@@ -31,9 +31,23 @@ export const CheckboxInput = Extension.create({
 const STEP_EM = 1.5;
 
 /**
- * Live-preview outline indentation: each block is indented under the most recent
- * heading (deeper headings nest further). A new paragraph — i.e. a double line
- * break (see SmartEnter) — resets back to the left margin. Purely visual
+ * The heading level a top-level block contributes, or null if it isn't a
+ * heading. Handles both a rendered heading node and a heading being edited as a
+ * raw source line (`### …`), so indentation stays stable across the swap.
+ */
+function headingLevelOf(node: { type: { name: string }; attrs: Record<string, unknown>; textContent: string }): number | null {
+  if (node.type.name === "heading") return node.attrs.level as number;
+  if (node.type.name === "sourceBlock") {
+    const m = /^(#{1,6})\s/.exec(node.textContent);
+    if (m) return m[1]!.length;
+  }
+  return null;
+}
+
+/**
+ * Live-preview outline indentation: every block is indented under the most
+ * recent heading (deeper headings nest further) and stays indented until the
+ * next heading — a blank line clears it back to the margin. Purely visual
  * (decorations); the stored markdown is untouched.
  */
 export const HeadingIndent = Extension.create({
@@ -49,28 +63,31 @@ export const HeadingIndent = Extension.create({
             // Normalize so the shallowest heading present sits at indent 0.
             let minLevel = 6;
             doc.forEach((node) => {
-              if (node.type.name === "heading") {
-                minLevel = Math.min(minLevel, node.attrs.level as number);
-              }
+              const lvl = headingLevelOf(node);
+              if (lvl != null) minLevel = Math.min(minLevel, lvl);
             });
 
             const decos: Decoration[] = [];
             let contentIndent = 0;
             doc.forEach((node, offset) => {
+              const lvl = headingLevelOf(node);
+              const isEmpty =
+                (node.type.name === "paragraph" && node.content.size === 0) ||
+                (node.type.name === "sourceBlock" && node.textContent.length === 0);
+
               let indent = 0;
-              if (node.type.name === "heading") {
-                indent = Math.max(0, (node.attrs.level as number) - minLevel);
+              if (lvl != null) {
+                indent = Math.max(0, lvl - minLevel);
+                // Content under this heading sits one level deeper.
                 contentIndent = indent + 1;
-              } else if (node.type.name === "paragraph" && node.content.size === 0) {
+              } else if (isEmpty) {
                 // An empty line (blank paragraph) clears the indent.
                 indent = 0;
                 contentIndent = 0;
               } else {
-                // The first block right after a heading takes its indent; a
-                // paragraph break (double line break) drops back to the margin
-                // and stays there — even after you type — until the next heading.
+                // Sticky: every block under the heading keeps its indent until
+                // the next heading or a blank line.
                 indent = contentIndent;
-                contentIndent = 0;
               }
               if (indent > 0) {
                 // margin-left (not padding) so lists keep their bullet/checkbox

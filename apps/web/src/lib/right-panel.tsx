@@ -2,9 +2,10 @@ import { createContext, useContext, useMemo, useRef, useState, type ReactNode } 
 import { useLocation, useNavigate } from "react-router-dom";
 
 /**
- * Shared panel state: the right panel's content slot, pin state, and the block
- * info-pane navigation model — a history stack (back/forward), an origin (the
- * on-screen block you started from), and a system-wide recents list.
+ * Shared panel state: the right panel's content slot, pin state, and the global
+ * navigation model — one linear history of entities (notes, collections, Today
+ * pages). Interacting with an entity logs it as current; the top-left nav
+ * cluster walks the history, always opening entries as full pages.
  */
 interface PanelsApi {
   slotEl: HTMLElement | null;
@@ -18,20 +19,18 @@ interface PanelsApi {
   rightPinned: boolean;
   setRightPinned: (b: boolean) => void;
 
-  // Block info navigation.
+  // Global entity navigation.
   selectedBlockId: string | null;
   selectedIsCollection: boolean;
   selectedToday: string | null; // the Today-page date this selection represents, if any
-  selectBlock: (id: string, opts?: { collection?: boolean }) => void; // new train (a card/on-screen block)
-  pushBlock: (id: string, opts?: { collection?: boolean }) => void; // drill into a connection/mention
-  selectToday: (date: string, noteId: string) => void; // the Today page for a date
+  selectBlock: (id: string, opts?: { collection?: boolean }) => void; // log an interaction (no route change)
+  selectToday: (date: string, noteId: string) => void; // log the Today page for a date
+  openBlock: (id: string, opts?: { collection?: boolean }) => void; // log + open as a full page
   clearSelection: () => void;
   back: () => void;
   forward: () => void;
-  goOrigin: () => void;
   canBack: boolean;
   canForward: boolean;
-  atOrigin: boolean;
   recents: RecentEntry[];
 }
 
@@ -43,8 +42,12 @@ interface NavEntry {
   today?: string;
 }
 
-export type RecentEntry = { kind: "block"; id: string } | { kind: "today"; date: string };
-const recentKey = (e: RecentEntry) => (e.kind === "today" ? `t:${e.date}` : `b:${e.id}`);
+export type RecentEntry =
+  | { kind: "block"; id: string }
+  | { kind: "collection"; id: string }
+  | { kind: "today"; date: string };
+const recentKey = (e: RecentEntry) =>
+  e.kind === "today" ? `t:${e.date}` : `${e.kind === "collection" ? "c" : "b"}:${e.id}`;
 
 const Ctx = createContext<PanelsApi | null>(null);
 const readBool = (k: string) => {
@@ -87,20 +90,12 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const pathRef = useRef("");
   pathRef.current = useLocation().pathname;
 
-  // Sync the main view to a history entry. Collections open their page; a block
-  // takes over the main view only when we're already on a detail page — so a
-  // block drilled from a list stays in the pane, but going back from a
-  // collection lands on the note's full page.
-  const routeTo = (entry: NavEntry | undefined) => {
-    if (!entry) return;
-    if (entry.today) {
-      navigate(`/today/${entry.today}`);
-    } else if (entry.collection) {
-      navigate(`/collections/${entry.id}`);
-    } else if (pathRef.current.startsWith("/collections/") || pathRef.current.startsWith("/block/")) {
-      navigate(`/block/${entry.id}`);
-    }
-  };
+  /** The full page an entity lives at. History nav always opens entries here. */
+  const pageOf = (entry: NavEntry) =>
+    entry.today ? `/today/${entry.today}` : entry.collection ? `/collections/${entry.id}` : `/block/${entry.id}`;
+
+  const sameEntity = (a: NavEntry, b: NavEntry) =>
+    a.today || b.today ? a.today === b.today : a.id === b.id && a.collection === b.collection;
 
   const setLeftPinned = (b: boolean) => {
     setLeftRaw(b);
@@ -128,49 +123,41 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       return next;
     });
 
-  const selectBlock = (id: string, opts?: { collection?: boolean }) => {
-    const collection = opts?.collection ?? false;
-    setNav((n) => (n.pos === 0 && n.stack[0]?.id === id ? n : { stack: [{ id, collection }], pos: 0 }));
-    // Recents are recently-viewed blocks; collections have their own nav.
-    if (!collection) addRecent({ kind: "block", id });
-  };
-  const pushBlock = (id: string, opts?: { collection?: boolean }) => {
-    const entry: NavEntry = { id, collection: opts?.collection ?? false };
+  // Log an entity as current: append to the history (dropping any forward
+  // entries), unless it already is current.
+  const append = (entry: NavEntry) => {
     setNav((n) => {
-      if (n.pos < 0) return { stack: [entry], pos: 0 };
-      if (n.stack[n.pos]?.id === id) return n;
+      const curEntry = n.pos >= 0 ? n.stack[n.pos] : undefined;
+      if (curEntry && sameEntity(curEntry, entry)) return n;
       const base = n.stack.slice(0, n.pos + 1);
       return { stack: [...base, entry], pos: base.length };
     });
-    // Recents are recently-viewed blocks; collections have their own nav.
-    if (!entry.collection) addRecent({ kind: "block", id });
-    routeTo(entry);
+    if (entry.today) addRecent({ kind: "today", date: entry.today });
+    else addRecent({ kind: entry.collection ? "collection" : "block", id: entry.id });
   };
-  // The Today page: a new train whose entry routes to /today/<date>; the info
-  // pane shows the day's note (noteId). Recorded in recents by date.
-  const selectToday = (date: string, noteId: string) => {
-    setNav((n) =>
-      n.pos === 0 && n.stack[0]?.today === date ? n : { stack: [{ id: noteId, collection: false, today: date }], pos: 0 },
-    );
-    addRecent({ kind: "today", date });
+
+  const selectBlock = (id: string, opts?: { collection?: boolean }) =>
+    append({ id, collection: opts?.collection ?? false });
+  const selectToday = (date: string, noteId: string) =>
+    append({ id: noteId, collection: false, today: date });
+  const openBlock = (id: string, opts?: { collection?: boolean }) => {
+    const entry: NavEntry = { id, collection: opts?.collection ?? false };
+    append(entry);
+    navigate(pageOf(entry));
   };
   const clearSelection = () => setNav({ stack: [], pos: -1 });
   const back = () => {
     if (nav.pos > 0) {
-      routeTo(nav.stack[nav.pos - 1]);
+      const target = nav.stack[nav.pos - 1]!;
       setNav((n) => (n.pos > 0 ? { ...n, pos: n.pos - 1 } : n));
+      navigate(pageOf(target));
     }
   };
   const forward = () => {
     if (nav.pos < nav.stack.length - 1) {
-      routeTo(nav.stack[nav.pos + 1]);
+      const target = nav.stack[nav.pos + 1]!;
       setNav((n) => (n.pos < n.stack.length - 1 ? { ...n, pos: n.pos + 1 } : n));
-    }
-  };
-  const goOrigin = () => {
-    if (nav.pos > 0) {
-      routeTo(nav.stack[0]);
-      setNav((n) => (n.pos > 0 ? { ...n, pos: 0 } : n));
+      navigate(pageOf(target));
     }
   };
 
@@ -190,15 +177,13 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       selectedIsCollection,
       selectedToday,
       selectBlock,
-      pushBlock,
       selectToday,
+      openBlock,
       clearSelection,
       back,
       forward,
-      goOrigin,
       canBack: nav.pos > 0,
       canForward: nav.pos < nav.stack.length - 1,
-      atOrigin: nav.pos <= 0,
       recents,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps

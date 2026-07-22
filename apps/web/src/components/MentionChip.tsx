@@ -1,7 +1,6 @@
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { Hash } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -28,8 +27,7 @@ export function MentionChip({ node }: NodeViewProps) {
   const id = href.startsWith("block:") ? href.slice(6) : "";
   const [icon, setIcon] = useState<Icon | null>(null);
   const [collection, setCollection] = useState(false);
-  const { pushBlock } = usePanels();
-  const nav = useNavigate();
+  const { openBlock } = usePanels();
 
   useEffect(() => {
     if (isTag || !id) return;
@@ -55,8 +53,7 @@ export function MentionChip({ node }: NodeViewProps) {
     e.preventDefault();
     e.stopPropagation();
     if (isTag || !id) return;
-    if (collection) nav(`/collections/${id}`);
-    else pushBlock(id);
+    openBlock(id, { collection });
   };
 
   return (

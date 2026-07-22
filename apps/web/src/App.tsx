@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
+import { NavBar } from "./components/NavBar.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
@@ -62,6 +63,7 @@ function Shell() {
       <main className={`main${themed ? " themed" : ""}`} style={style}>
         {themed && <div className="section-shade" aria-hidden />}
         <div className="main-inner">
+          <NavBar />
           <Routes>
             <Route path="/" element={<UnattachedPage />} />
             <Route path="/today" element={<TodayPage />} />

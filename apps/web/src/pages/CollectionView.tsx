@@ -13,7 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowLeft, ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -522,10 +522,6 @@ export function CollectionView() {
 
   return (
     <>
-      <button className="ghost back-link" onClick={() => nav("/collections")}>
-        <ArrowLeft size={16} />
-        Collections
-      </button>
       <input
         className="collection-title"
         value={titleVal}

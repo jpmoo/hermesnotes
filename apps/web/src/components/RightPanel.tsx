@@ -1,14 +1,15 @@
 import { ListFilter, PanelRight, Pin, PinOff } from "lucide-react";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
-import { InfoBlock } from "./InfoBlock.tsx";
+import { BlockInfoPane } from "./BlockInfoPane.tsx";
 
 /**
  * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
  * can portal content into its slot and flag `hasContent`.
  */
 export function RightPanel() {
-  const { setSlotEl, rightPinned, setRightPinned, title, hasContent, selectedBlockId } = usePanels();
+  const { setSlotEl, rightPinned, setRightPinned, title, hasContent, selectedBlockId, openBlock } =
+    usePanels();
   const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const expanded = rightPinned || hovered;
   const showInfo = selectedBlockId !== null;
@@ -44,7 +45,11 @@ export function RightPanel() {
         {showInfo && (
           <>
             {hasContent && <div className="panel-divider" />}
-            <InfoBlock blockId={selectedBlockId} />
+            <BlockInfoPane
+              blockId={selectedBlockId}
+              onSelect={(id) => openBlock(id)}
+              onSelectCollection={(id) => openBlock(id, { collection: true })}
+            />
           </>
         )}
         {!hasContent && !showInfo && <div className="panel-placeholder">Note info &amp; options</div>}

@@ -2089,6 +2089,17 @@ input.li-text:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Global navigation cluster (top-left of the window). */
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.top-nav .menu {
+  left: 0;
+  right: auto;
+}
 .recent-item {
   display: flex;
   align-items: center;

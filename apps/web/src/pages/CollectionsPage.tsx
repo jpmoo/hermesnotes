@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
-import { CreateCollectionModal } from "../components/CreateCollectionModal.tsx";
 import { oneLineText } from "../lib/display.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 
@@ -25,7 +24,6 @@ export function CollectionsPage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<Collection | null>(null);
-  const [creating, setCreating] = useState(false);
 
   // Right-panel filter facets.
   const [q, setQ] = useState("");
@@ -85,17 +83,11 @@ export function CollectionsPage() {
       </h1>
       <p className="page-sub">Ordered, filterable groupings of blocks.</p>
 
-      <div className="row" style={{ marginBottom: 18 }}>
-        <button className="primary" onClick={() => setCreating(true)}>
-          + New collection
-        </button>
-        {(q.trim() || kinds.size > 0 || membership) && (
-          <span className="hint">
-            {shown.length} of {collections.length} shown
-          </span>
-        )}
-      </div>
-      {creating && <CreateCollectionModal onClose={() => setCreating(false)} />}
+      {(q.trim() || kinds.size > 0 || membership) && (
+        <div className="hint" style={{ marginBottom: 14 }}>
+          {shown.length} of {collections.length} shown
+        </div>
+      )}
 
       {loading ? (
         <div className="hint">Loading…</div>

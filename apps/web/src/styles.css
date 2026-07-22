@@ -3003,3 +3003,21 @@ input.matrix-axis-y::placeholder {
   cursor: default;
   border-style: dashed;
 }
+
+/* All blocks: the save-query action, styled as the page's main affordance. */
+.save-as-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: 999px;
+}
+.save-as-btn:hover {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+  color: #fff;
+}

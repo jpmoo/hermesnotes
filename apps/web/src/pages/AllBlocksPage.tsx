@@ -1,9 +1,8 @@
 import type { FilterGroup } from "@hermes/shared";
-import { ChevronDown, ChevronUp, Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, FolderPlus, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
-import { BlockIcon } from "../lib/icons.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
@@ -18,8 +17,6 @@ export function AllBlocksPage() {
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
   const [loading, setLoading] = useState(true);
   const [saveOpen, setSaveOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const { bottomSlotEl, setHasContent, selectPage } = usePanels();
 
   const typeById = new Map(types.map((t) => [t.id, t]));
@@ -49,26 +46,6 @@ export function AllBlocksPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setHasContent]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [menuOpen]);
-
-  const create = async (t: BlockType) => {
-    setMenuOpen(false);
-    const block = await api.post<Block>("/blocks", { blockTypeId: t.id });
-    setBlocks((prev) => [block, ...prev]);
-  };
-
-  // Text type first, then the rest alphabetically.
-  const ordered = [...types].sort((a, b) =>
-    a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1,
-  );
-
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: filter }).then(setBlocks);
@@ -97,23 +74,9 @@ export function AllBlocksPage() {
       </p>
 
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
-        <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
-          <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
-            + New
-          </button>
-          {menuOpen && (
-            <div className="menu" style={{ left: 0, right: "auto" }}>
-              {ordered.map((t) => (
-                <button key={t.id} className="menu-item type-item" onClick={() => void create(t)}>
-                  <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
-                  <span style={{ textTransform: "capitalize" }}>{t.name}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        <button className="ghost" onClick={() => setSaveOpen(true)}>
-          Save as collection…
+        <button className="save-as-btn" onClick={() => setSaveOpen(true)}>
+          <FolderPlus size={15} />
+          Save as collection
         </button>
         <button
           className="ghost"

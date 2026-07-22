@@ -59,15 +59,12 @@ export function RightPanel() {
         </div>
         <div ref={setSlotEl} />
         {showInfo && (
-          <>
-            {hasContent && <div className="panel-divider" />}
-            <BlockInfoPane
-              blockId={selectedBlockId}
-              titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
-              onSelect={(id) => openBlock(id)}
-              onSelectCollection={(id) => openBlock(id, { collection: true })}
-            />
-          </>
+          <BlockInfoPane
+            blockId={selectedBlockId}
+            titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
+            onSelect={(id) => openBlock(id)}
+            onSelectCollection={(id) => openBlock(id, { collection: true })}
+          />
         )}
         <div ref={setBottomSlotEl} />
         {!hasContent && !showInfo && <div className="panel-placeholder">Note info &amp; options</div>}

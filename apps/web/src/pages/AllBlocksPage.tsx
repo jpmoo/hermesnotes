@@ -17,7 +17,7 @@ export function AllBlocksPage() {
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
   const [loading, setLoading] = useState(true);
   const [saveOpen, setSaveOpen] = useState(false);
-  const { slotEl, setTitle, setHasContent } = usePanels();
+  const { bottomSlotEl, setTitle, setHasContent } = usePanels();
 
   const typeById = new Map(types.map((t) => [t.id, t]));
 
@@ -87,10 +87,14 @@ export function AllBlocksPage() {
 
       {saveOpen && <SaveAsCollectionModal filter={filter} onClose={() => setSaveOpen(false)} />}
 
-      {slotEl &&
+      {bottomSlotEl &&
         createPortal(
-          <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />,
-          slotEl,
+          <>
+            <div className="panel-divider" />
+            <div className="panel-h">Filter</div>
+            <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />
+          </>,
+          bottomSlotEl,
         )}
     </>
   );

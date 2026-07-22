@@ -273,7 +273,14 @@ export function TodayPage() {
         layout.map(renderSection)
       )}
 
-      {slotEl && createPortal(<TodayCalendar selected={date} />, slotEl)}
+      {slotEl &&
+        createPortal(
+          <>
+            <TodayCalendar selected={date} />
+            <div className="panel-divider" />
+          </>,
+          slotEl,
+        )}
       {bottomSlotEl &&
         createPortal(
           <>

@@ -368,7 +368,7 @@ export function CollectionView() {
   const [allExpanded, setAllExpanded] = useState(false);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const { slotEl, setTitle, setHasContent, selectBlock, selectedBlockId } = usePanels();
+  const { bottomSlotEl, setTitle, setHasContent, selectBlock, selectedBlockId } = usePanels();
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -678,22 +678,26 @@ export function CollectionView() {
           }}
         />
       )}
-      {slotEl &&
+      {bottomSlotEl &&
         (isDocument || isSmart) &&
         createPortal(
           <>
+            <div className="panel-divider" />
             {isSmart && (
-              <QueryPanel
-                key={id}
-                collectionId={id}
-                initial={filterQuery}
-                onSaved={() => void load()}
-              />
+              <>
+                <div className="panel-h">Query</div>
+                <QueryPanel
+                  key={id}
+                  collectionId={id}
+                  initial={filterQuery}
+                  onSaved={() => void load()}
+                />
+              </>
             )}
             {isDocument && (
               <>
                 {isSmart && <div className="panel-divider" />}
-                {isSmart && <div className="panel-h">Sections</div>}
+                <div className="panel-h">Sections</div>
                 <SectionLayout
                   entries={docEntries}
                   canReorder={!isDynamic}
@@ -706,7 +710,7 @@ export function CollectionView() {
               </>
             )}
           </>,
-          slotEl,
+          bottomSlotEl,
         )}
     </>
   );

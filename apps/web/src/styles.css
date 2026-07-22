@@ -1885,6 +1885,16 @@ input.matrix-axis-y::placeholder {
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
 }
+.dtp-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.dtp-quick .ghost {
+  padding: 4px 9px;
+  font-size: 12px;
+}
 .dtp-cal-head {
   display: flex;
   align-items: center;

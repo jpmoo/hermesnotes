@@ -1,5 +1,5 @@
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * Date/Time picker: a month calendar (today highlighted) plus a 12-hour time
@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
  */
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+const DOW_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -71,8 +72,34 @@ export function DateTimePicker({
   placeholder?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [dowOpen, setDowOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const parts = parse(value);
+
+  // The popup is position:fixed so scroll containers (table view, right
+  // panel) can't clip it — measured from the trigger, flipped when the
+  // viewport bottom is too close, tracking scroll/resize.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const r = wrapRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const H = 440; // approximate popup height
+      const below = window.innerHeight - r.bottom;
+      setPos({
+        left: Math.max(8, Math.min(r.left, window.innerWidth - 284)),
+        top: below < H && r.top > below ? Math.max(8, r.top - H - 4) : r.bottom + 4,
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    document.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
 
   // The month shown in the calendar; seeded from the value or today.
   const seed = parts.date ? new Date(`${parts.date}T00:00`) : new Date();
@@ -115,6 +142,25 @@ export function DateTimePicker({
   const setHour = (h: number) => emit({ h: ((((h - 1) % 12) + 12) % 12) + 1 });
   const setMin = (m: number) => emit({ m: (((m % 60) + 60) % 60) });
 
+  /** Jump to a day, keeping any time already set, and show its month. */
+  const goTo = (d: Date) => {
+    setView({ y: d.getFullYear(), m: d.getMonth() });
+    emit({ date: ymd(d) });
+  };
+  // +1 day / +1 week: relative to the entered date, or today when unset.
+  const addDays = (days: number) => {
+    const d = parts.date ? new Date(`${parts.date}T00:00`) : new Date();
+    d.setDate(d.getDate() + days);
+    goTo(d);
+  };
+  // Next occurrence of a weekday, strictly after today (Tue → next Tuesday).
+  const nextDow = (target: number) => {
+    const now = new Date();
+    const ahead = ((target - now.getDay() + 6) % 7) + 1;
+    goTo(new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead));
+    setDowOpen(false);
+  };
+
   return (
     <div className="dtp" ref={wrapRef}>
       <button type="button" className="dtp-trigger" onClick={() => setOpen((o) => !o)}>
@@ -135,8 +181,8 @@ export function DateTimePicker({
         )}
       </button>
 
-      {open && (
-        <div className="dtp-pop">
+      {open && pos && (
+        <div className="dtp-pop" style={{ position: "fixed", left: pos.left, top: pos.top }}>
           <div className="dtp-cal-head">
             <button type="button" className="icon-btn" onClick={() => stepMonth(-1)} title="Previous month">
               <ChevronLeft size={16} />
@@ -222,6 +268,29 @@ export function DateTimePicker({
               <option value="AM">AM</option>
               <option value="PM">PM</option>
             </select>
+          </div>
+
+          <div className="dtp-quick">
+            <button type="button" className="ghost" onClick={() => addDays(1)}>
+              +1 day
+            </button>
+            <button type="button" className="ghost" onClick={() => addDays(7)}>
+              +1 week
+            </button>
+            <span className="nav-kebab" style={{ position: "relative" }}>
+              <button type="button" className="ghost" onClick={() => setDowOpen((o) => !o)}>
+                Weekday <ChevronDown size={12} />
+              </button>
+              {dowOpen && (
+                <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
+                  {DOW_FULL.map((name, i) => (
+                    <button type="button" key={name} className="menu-item" onClick={() => nextDow(i)}>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
           </div>
 
           <div className="dtp-actions">

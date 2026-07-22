@@ -127,6 +127,7 @@ export function FavoritesPage() {
               onConflict={reload}
               onDeleted={reload}
               compact={compact || collapsed.has(b.id)}
+              textCollapsed={collapsed.has(b.id)}
             />
           </div>
         ))

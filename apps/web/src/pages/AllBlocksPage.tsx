@@ -111,6 +111,7 @@ export function AllBlocksPage() {
               onConflict={reload}
               onDeleted={onDeleted}
               compact={compact || collapsed.has(b.id)}
+              textCollapsed={collapsed.has(b.id)}
             />
           </div>
         ))

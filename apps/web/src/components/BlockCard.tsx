@@ -9,12 +9,16 @@ export function BlockCard({
   onConflict,
   onDeleted,
   compact = false,
+  textCollapsed,
 }: {
   block: Block;
   type: BlockType | undefined;
   onConflict: () => void;
   onDeleted: (id: string) => void;
   compact?: boolean;
+  /** Text notes: show the one-line preview only when actually collapsed —
+   * masonry's compact flag alone keeps the full body visible. */
+  textCollapsed?: boolean;
 }) {
   if (type && !type.isText) {
     return (
@@ -33,7 +37,7 @@ export function BlockCard({
       type={type}
       onConflict={onConflict}
       onDeleted={onDeleted}
-      compact={compact}
+      compact={textCollapsed ?? compact}
     />
   );
 }

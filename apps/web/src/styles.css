@@ -2582,6 +2582,8 @@ input.matrix-axis-y::placeholder {
 .info-grid {
   display: grid;
   grid-template-columns: auto 1fr;
+  /* Center rows: the ID row's copy button is taller than its label. */
+  align-items: center;
   gap: 4px 12px;
   margin: 0 0 14px;
   font-size: 12.5px;

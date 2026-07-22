@@ -14,6 +14,7 @@ export interface Ctx {
   statusOptions: string[];
   completeValues: string[];
   projectTypeId: string;
+  personTypeId: string | null; // type named "person", for @-mention auto-create
   projectRefKey: string | null; // reference field on task pointing at project
   projectStatusKey: string | null;
   projectArchivedValue: string | null;
@@ -67,6 +68,7 @@ export async function loadContext(api: Api): Promise<Ctx> {
 
   const project = types.find((t) => lower(t.name) === "project");
   if (!project) throw new Error("No type named 'project' exists. Create one in the app first.");
+  const person = types.find((t) => lower(t.name) === "person");
 
   const refField = schema.fields.find((f) => f.type === "reference" && f.refTypeId === project.id);
 
@@ -82,6 +84,7 @@ export async function loadContext(api: Api): Promise<Ctx> {
     statusOptions: statusField?.options ?? [],
     completeValues: schema.complete_values ?? [],
     projectTypeId: project.id,
+    personTypeId: person?.id ?? null,
     projectRefKey: refField?.key ?? null,
     projectStatusKey: archivedOpt ? projStatusKey : null,
     projectArchivedValue: archivedOpt,
@@ -93,12 +96,14 @@ export async function loadContext(api: Api): Promise<Ctx> {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Resolve an id-or-title to one block of the given type; error when ambiguous. */
+/** Resolve an id-or-title to one block of the given type; error when ambiguous.
+ * With `orCreate`, a name that matches nothing creates the block instead. */
 async function resolveByTitle(
   api: Api,
   typeId: string,
   ident: string,
   what: string,
+  orCreate = false,
 ): Promise<HermesBlock> {
   if (UUID_RE.test(ident.trim())) return api.get<HermesBlock>(`/blocks/${ident.trim()}`);
   const filterQuery: FilterGroup = {
@@ -114,7 +119,14 @@ async function resolveByTitle(
   const exact = matches.filter((b) => titleOf(b).toLowerCase() === ident.trim().toLowerCase());
   const pool = exact.length ? exact : matches;
   if (pool.length === 1) return pool[0]!;
-  if (pool.length === 0) throw new Error(`No ${what} matching "${ident}".`);
+  if (pool.length === 0) {
+    if (orCreate)
+      return api.post<HermesBlock>("/blocks", {
+        blockTypeId: typeId,
+        properties: { title: ident.trim() },
+      });
+    throw new Error(`No ${what} matching "${ident}".`);
+  }
   throw new Error(
     `"${ident}" matches ${pool.length} ${what}s: ${pool
       .slice(0, 6)
@@ -125,8 +137,45 @@ async function resolveByTitle(
 
 export const resolveTask = (api: Api, ctx: Ctx, ident: string): Promise<HermesBlock> =>
   resolveByTitle(api, ctx.taskTypeId, ident, "task");
-export const resolveProject = (api: Api, ctx: Ctx, ident: string): Promise<HermesBlock> =>
-  resolveByTitle(api, ctx.projectTypeId, ident, "project");
+/** Resolve a project; with `orCreate` an unknown name creates the project. */
+export const resolveProject = (
+  api: Api,
+  ctx: Ctx,
+  ident: string,
+  orCreate = false,
+): Promise<HermesBlock> => resolveByTitle(api, ctx.projectTypeId, ident, "project", orCreate);
+
+/** Auto-create Person blocks for raw `@Name` mentions with no matching block.
+ * Returns the names created (underscores restored to spaces). */
+export async function ensurePersons(api: Api, ctx: Ctx, texts: (string | undefined)[]): Promise<string[]> {
+  if (!ctx.personTypeId) return [];
+  const names = new Set<string>();
+  for (const t of texts) {
+    if (typeof t !== "string") continue;
+    const re = /(^|\s)@([A-Za-z0-9][\w-]*)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t)) !== null) if (m[2]) names.add(m[2].replace(/_/g, " "));
+  }
+  const created: string[] = [];
+  for (const name of names) {
+    // Any block with this exact title counts as the mention's target.
+    const found = await api.post<HermesBlock[]>("/blocks/query", {
+      filterQuery: {
+        kind: "group",
+        match: "all",
+        items: [{ kind: "property", key: "title", op: "contains", value: name } as Condition],
+      },
+    });
+    const exact = found.some(
+      (b) => String((b.properties as Record<string, unknown>).title ?? "").toLowerCase() === name.toLowerCase(),
+    );
+    if (!exact) {
+      await api.post("/blocks", { blockTypeId: ctx.personTypeId, properties: { title: name } });
+      created.push(name);
+    }
+  }
+  return created;
+}
 
 export function fmtDate(v: string): string {
   return v.includes("T") ? v.replace("T", " ") : v;

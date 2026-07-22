@@ -3,6 +3,7 @@ import type { Condition, FilterGroup } from "@hermes/shared";
 import { z } from "zod";
 import { Api, ApiError } from "./api.js";
 import {
+  ensurePersons,
   fmtTaskLine,
   fmtDate,
   loadContext,
@@ -74,7 +75,7 @@ export function buildTools(server: McpServer, api: Api): void {
 
   server.tool(
     "task_create",
-    "Create a task. Dates are YYYY-MM-DD (optionally with THH:mm). project/projects accept a project title or id.",
+    "Create a task. Dates are YYYY-MM-DD (optionally with THH:mm). project/projects accept a project title or id — unknown names create the project. Tags are created as needed, and raw @Name mentions in the title/notes create Person blocks if missing.",
     {
       title: z.string().min(1),
       notes: z.string().optional(),
@@ -104,13 +105,14 @@ export function buildTools(server: McpServer, api: Api): void {
         if (!ctx.projectRefKey)
           throw new Error("The task type has no project reference field, so tasks can't be linked to projects yet.");
         const ids: string[] = [];
-        for (const p of wanted) ids.push((await resolveProject(api, ctx, p)).id);
+        for (const p of wanted) ids.push((await resolveProject(api, ctx, p, true)).id);
         properties[ctx.projectRefKey] = ids;
       }
       const b = await api.post<{ id: string }>("/blocks", { blockTypeId: ctx.taskTypeId, properties });
       if (a.tags?.length)
         await api.put(`/blocks/${b.id}/tags`, { tags: a.tags.map((t) => t.trim().toLowerCase().replace(/^#+/, "")) });
-      return `Created task "${a.title}" (${b.id}).`;
+      const people = await ensurePersons(api, ctx, [a.title, a.notes]);
+      return `Created task "${a.title}" (${b.id}).${people.length ? ` Created person${people.length === 1 ? "" : "s"}: ${people.join(", ")}.` : ""}`;
     }),
   );
 
@@ -219,7 +221,7 @@ export function buildTools(server: McpServer, api: Api): void {
 
   server.tool(
     "task_update",
-    "Update a task by id or title. Only supplied fields change. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing.",
+    "Update a task by id or title. Only supplied fields change. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing; unknown project names and new tags are created, and raw @Name mentions create Person blocks if missing.",
     {
       task: z.string().min(1),
       title: z.string().optional(),
@@ -262,7 +264,7 @@ export function buildTools(server: McpServer, api: Api): void {
         if (!ctx.projectRefKey) throw new Error("The task type has no project reference field.");
         let refs = Array.isArray(p[ctx.projectRefKey]) ? [...(p[ctx.projectRefKey] as string[])] : [];
         for (const name of a.add_projects ?? []) {
-          const proj = await resolveProject(api, ctx, name);
+          const proj = await resolveProject(api, ctx, name, true);
           if (!refs.includes(proj.id)) refs.push(proj.id);
         }
         for (const name of a.remove_projects ?? []) {
@@ -283,8 +285,12 @@ export function buildTools(server: McpServer, api: Api): void {
         await api.put(`/blocks/${b.id}/tags`, { tags: next });
         changed.push("tags");
       }
+      const people =
+        a.title !== undefined || a.notes !== undefined
+          ? await ensurePersons(api, ctx, [a.title, a.notes])
+          : [];
       return changed.length
-        ? `Updated ${String((b.properties as Record<string, unknown>).title ?? b.id)}: ${changed.join(", ")}.`
+        ? `Updated ${String((b.properties as Record<string, unknown>).title ?? b.id)}: ${changed.join(", ")}.${people.length ? ` Created: ${people.join(", ")}.` : ""}`
         : "Nothing to change.";
     }),
   );

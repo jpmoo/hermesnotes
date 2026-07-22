@@ -41,6 +41,7 @@ type ViewMode = "block" | "masonry" | "chips";
 
 const VIEW_KEY = "hn.blockview.mode";
 const COLS_KEY = "hn.blockview.cols";
+const CHIP_COLS_KEY = "hn.blockview.chipcols";
 const pretty = (k: string) => k.replace(/_/g, " ");
 
 const readLS = (k: string) => {
@@ -214,6 +215,17 @@ export function useBlockView<T extends Viewable>(
   });
   const clampCols = (n: number) => Math.min(4, Math.max(2, n || 3));
   const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(COLS_KEY))));
+  // Chips are compact, so they take a wider range; the grid stretches them to
+  // fill the content width whatever the panels leave available.
+  const clampChipCols = (n: number) => Math.min(10, Math.max(1, n || 4));
+  const [chipCols, setChipColsState] = useState<number>(() =>
+    clampChipCols(Number(readLS(CHIP_COLS_KEY))),
+  );
+  const setChipCols = (n: number) => {
+    const c = clampChipCols(n);
+    setChipColsState(c);
+    writeLS(CHIP_COLS_KEY, String(c));
+  };
 
   const setViewMode = (v: ViewMode) => {
     setViewModeState(v);
@@ -396,14 +408,22 @@ export function useBlockView<T extends Viewable>(
               </button>
             ))}
           </div>
-          {viewMode === "masonry" && (
+          {viewMode !== "block" && (
             <span className="cols-ctl">
               <span className="hint">Cols</span>
-              <button className="icon-btn" onClick={() => setColumns(columns - 1)} title="Fewer columns">
+              <button
+                className="icon-btn"
+                onClick={() => (viewMode === "chips" ? setChipCols(chipCols - 1) : setColumns(columns - 1))}
+                title="Fewer columns"
+              >
                 −
               </button>
-              <span className="cols-n">{columns}</span>
-              <button className="icon-btn" onClick={() => setColumns(columns + 1)} title="More columns">
+              <span className="cols-n">{viewMode === "chips" ? chipCols : columns}</span>
+              <button
+                className="icon-btn"
+                onClick={() => (viewMode === "chips" ? setChipCols(chipCols + 1) : setColumns(columns + 1))}
+                title="More columns"
+              >
                 +
               </button>
             </span>
@@ -424,7 +444,7 @@ export function useBlockView<T extends Viewable>(
             strategy={masonry || chips ? rectSortingStrategy : verticalListSortingStrategy}
           >
             {chips ? (
-              <div className="bv-chips">
+              <div className="bv-chips" style={{ gridTemplateColumns: `repeat(${chipCols}, minmax(0, 1fr))` }}>
                 {sorted.map((it) => (
                   <ManualChip key={it.id} item={it} type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined} />
                 ))}
@@ -452,7 +472,7 @@ export function useBlockView<T extends Viewable>(
     }
     if (chips) {
       return (
-        <div className="bv-chips">
+        <div className="bv-chips" style={{ gridTemplateColumns: `repeat(${chipCols}, minmax(0, 1fr))` }}>
           {sorted.map((it) => (
             <BlockChip key={it.id} item={it} type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined} />
           ))}

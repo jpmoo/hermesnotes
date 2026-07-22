@@ -1,5 +1,15 @@
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { oneLineText } from "../lib/display.ts";
@@ -13,8 +23,22 @@ import { useBlockView } from "../lib/useBlockView.tsx";
  * (block list / masonry, per-card collapse); collections are listed on top
  * as open-able rows.
  */
+type StripSort = "manual" | "alpha" | "created" | "edited";
+const STRIP_SORT_KEY = "hn.fav.collections.sort";
+
+/** A starred-collection chip; draggable in manual order. */
+function FavChip({ id, draggable, children }: { id: string; draggable: boolean; children: ReactNode }) {
+  const s = useSortable({ id, disabled: !draggable });
+  const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
+  return (
+    <div ref={s.setNodeRef} style={style} {...s.attributes} {...s.listeners}>
+      {children}
+    </div>
+  );
+}
+
 export function FavoritesPage() {
-  const { favorites } = usePreferences();
+  const { favorites, setPref } = usePreferences();
   const { openBlock, selectPage } = usePanels();
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [types, setTypes] = useState<BlockType[]>([]);
@@ -47,6 +71,55 @@ export function FavoritesPage() {
   const collections = blocks.filter((b) => b.collectionKind);
   const plain = blocks.filter((b) => !b.collectionKind);
 
+  // Strip sort: same options as everywhere (manual = the favorites order,
+  // synced via preferences; drag chips to arrange).
+  const [stripSort, setStripSort] = useState<StripSort>(() => {
+    try {
+      const v = localStorage.getItem(STRIP_SORT_KEY);
+      return v === "alpha" || v === "created" || v === "edited" ? v : "manual";
+    } catch {
+      return "manual";
+    }
+  });
+  const [stripDir, setStripDir] = useState<"asc" | "desc">("asc");
+  const pickStripSort = (v: StripSort) => {
+    setStripSort(v);
+    try {
+      localStorage.setItem(STRIP_SORT_KEY, v);
+    } catch {
+      /* ignore */
+    }
+  };
+  const sortedCollections = useMemo(() => {
+    if (stripSort === "manual") {
+      const order = new Map(favorites.map((id, i) => [id, i]));
+      return [...collections].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    }
+    const val = (b: Block) =>
+      stripSort === "alpha"
+        ? (oneLineText(b.properties) || "").toLowerCase()
+        : stripSort === "created"
+          ? b.createdAt
+          : b.updatedAt;
+    const r = [...collections].sort((a, b) => val(a).localeCompare(val(b)));
+    return stripDir === "desc" ? r.reverse() : r;
+  }, [collections, stripSort, stripDir, favorites]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const onChipDrag = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const ids = sortedCollections.map((c) => c.id);
+    const next = arrayMove(ids, ids.indexOf(String(active.id)), ids.indexOf(String(over.id)));
+    // Rewrite the collection ids within the favorites array, blocks untouched.
+    const isCol = new Set(ids);
+    let i = 0;
+    setPref(
+      "favorites",
+      favorites.map((id) => (isCol.has(id) ? next[i++]! : id)),
+    );
+  };
+
   const reload = () => {
     void Promise.all(favorites.map((id) => api.get<Block>(`/blocks/${id}`).catch(() => null))).then(
       (rs) => setBlocks(rs.filter((b): b is Block => b !== null)),
@@ -73,25 +146,59 @@ export function FavoritesPage() {
       </h1>
       <p className="page-sub">Starred blocks and collections (star them in the info panel).</p>
 
-      {collections.length > 0 && (
-        <div className="fav-collections">
-          {collections.map((c) => (
+      {collections.length > 1 && (
+        <div className="sort-bar" style={{ marginBottom: 8 }}>
+          <span className="sort-label">Collections</span>
+          <div className="segmented">
+            {(
+              [
+                ["manual", "Manual"],
+                ["alpha", "Alphabetical"],
+                ["created", "Created"],
+                ["edited", "Edited"],
+              ] as [StripSort, string][]
+            ).map(([k, label]) => (
+              <button key={k} className={`seg${stripSort === k ? " active" : ""}`} onClick={() => pickStripSort(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {stripSort !== "manual" && (
             <button
-              key={c.id}
-              className="sec-sublink fav-collection"
-              onClick={() => openBlock(c.id, { collection: true })}
+              className="icon-btn sort-dir"
+              title={stripDir === "asc" ? "Ascending" : "Descending"}
+              onClick={() => setStripDir(stripDir === "asc" ? "desc" : "asc")}
             >
-              <CollectionIcon
-                document={c.collectionKind === "document"}
-                matrix={c.collectionKind === "matrix"}
-                table={c.collectionKind === "table"}
-                smart={(c.properties as Record<string, unknown>)?.membership_mode === "smart"}
-                size={15}
-              />
-              {oneLineText(c.properties) || "Untitled collection"}
+              {stripDir === "asc" ? "↑" : "↓"}
             </button>
-          ))}
+          )}
+          {stripSort === "manual" && <span className="hint">Drag chips to arrange</span>}
         </div>
+      )}
+      {collections.length > 0 && (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onChipDrag}>
+          <SortableContext items={sortedCollections.map((c) => c.id)} strategy={rectSortingStrategy}>
+            <div className="fav-collections">
+              {sortedCollections.map((c) => (
+                <FavChip key={c.id} id={c.id} draggable={stripSort === "manual"}>
+                  <button
+                    className="sec-sublink fav-collection"
+                    onClick={() => openBlock(c.id, { collection: true })}
+                  >
+                    <CollectionIcon
+                      document={c.collectionKind === "document"}
+                      matrix={c.collectionKind === "matrix"}
+                      table={c.collectionKind === "table"}
+                      smart={(c.properties as Record<string, unknown>)?.membership_mode === "smart"}
+                      size={15}
+                    />
+                    {oneLineText(c.properties) || "Untitled collection"}
+                  </button>
+                </FavChip>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {plain.length > 0 && (

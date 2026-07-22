@@ -3192,15 +3192,14 @@ input.matrix-axis-y::placeholder {
 
 /* ── Chips view (block lists) ──────────────────────────────────── */
 .bv-chips {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
 }
 .bv-chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  width: 210px;
+  width: 100%;
   height: 34px;
   padding: 0 12px;
   background: var(--surface);
@@ -3226,7 +3225,8 @@ input.matrix-axis-y::placeholder {
   white-space: nowrap;
 }
 .bv-chip-wrap {
-  display: inline-flex;
+  display: flex;
+  min-width: 0;
 }
 .bv-chip-grip {
   display: inline-flex;

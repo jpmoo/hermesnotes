@@ -4,8 +4,10 @@ import {
   Calendar,
   CheckSquare,
   Clock,
+  FileSearch,
   FileText,
   Flag,
+  ListFilter,
   Folder,
   Heart,
   Inbox,
@@ -119,5 +121,24 @@ export function BlockIcon({
   // Only pull the full set if this icon isn't in the curated fast-path.
   useAllIcons(!(iconKey && CURATED[iconKey]));
   const Icon = resolveIcon(iconKey);
+  return <Icon size={size} color={color ?? undefined} />;
+}
+
+/**
+ * Collection icons come in two visual families: lists (List / ListFilter for
+ * smart) and documents (FileText / FileSearch for smart).
+ */
+export function CollectionIcon({
+  document = false,
+  smart = false,
+  size = 16,
+  color,
+}: {
+  document?: boolean;
+  smart?: boolean;
+  size?: number;
+  color?: string | null;
+}) {
+  const Icon = document ? (smart ? FileSearch : FileText) : smart ? ListFilter : List;
   return <Icon size={size} color={color ?? undefined} />;
 }

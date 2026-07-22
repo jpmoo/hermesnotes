@@ -1,8 +1,9 @@
-import { Library, List, ListFilter } from "lucide-react";
+import { Library } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
+import { CollectionIcon } from "../lib/icons.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { CreateCollectionModal } from "../components/CreateCollectionModal.tsx";
 import { oneLineText } from "../lib/display.ts";
@@ -67,11 +68,12 @@ export function CollectionsPage() {
           return (
             <div className="card type-row" key={c.id} style={style}>
               <span className="icon-preview" title={meta}>
-                {isSmart ? (
-                  <ListFilter size={20} color={iconColor} />
-                ) : (
-                  <List size={20} color={iconColor} />
-                )}
+                <CollectionIcon
+                  document={c.collectionKind === "document"}
+                  smart={isSmart}
+                  size={20}
+                  color={iconColor}
+                />
               </span>
               <button
                 className="ghost collection-open"

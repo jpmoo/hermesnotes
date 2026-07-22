@@ -146,6 +146,9 @@ export interface SearchHit {
   kind: "block" | "collection";
   blockTypeId: string | null;
   label: string;
+  document: boolean;
+  smart: boolean;
+  semantic: boolean;
 }
 
 export interface Collection {

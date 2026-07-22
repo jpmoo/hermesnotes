@@ -1,9 +1,9 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, List, Search } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Block, type BlockType, type SearchHit } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
-import { BlockIcon } from "../lib/icons.tsx";
+import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
 const fmtDay = (date: string) =>
@@ -12,6 +12,8 @@ const fmtDay = (date: string) =>
 interface RecentInfo {
   label: string;
   blockTypeId: string | null;
+  document?: boolean;
+  smart?: boolean;
 }
 
 // Cache recent-entry labels so the dropdown doesn't refetch each open.
@@ -26,6 +28,8 @@ const getInfo = (id: string) =>
         .then((b) => ({
           label: oneLineText(b.properties, b.content) || "Untitled",
           blockTypeId: b.blockTypeId,
+          document: b.collectionKind === "document",
+          smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
         }))
         .catch(() => ({ label: "(unknown)", blockTypeId: null })),
     )
@@ -94,7 +98,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    <List size={14} />
+                    <CollectionIcon document={it?.document} smart={it?.smart} size={14} />
                     <span className="recent-label">{it?.label ?? "…"}</span>
                   </button>
                 );
@@ -211,26 +215,29 @@ function GlobalSearch() {
           ) : (
             results.map((h, i) => {
               const t = h.blockTypeId ? types.find((x) => x.id === h.blockTypeId) : undefined;
+              const firstSemantic = h.semantic && (i === 0 || !results[i - 1]!.semantic);
               return (
-                <button
-                  key={h.id}
-                  className={`menu-item recent-item${i === idx ? " active" : ""}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    pick(h);
-                  }}
-                >
-                  {h.kind === "collection" ? (
-                    <List size={14} />
-                  ) : (
-                    <BlockIcon
-                      iconKey={!t || t.isText ? "type" : t.iconKey}
-                      color={t && !t.isText ? t.iconColor : null}
-                      size={14}
-                    />
-                  )}
-                  <span className="recent-label">{h.label}</span>
-                </button>
+                <div key={h.id}>
+                  {firstSemantic && <div className="gs-sep">Similar</div>}
+                  <button
+                    className={`menu-item recent-item${i === idx ? " active" : ""}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pick(h);
+                    }}
+                  >
+                    {h.kind === "collection" ? (
+                      <CollectionIcon document={h.document} smart={h.smart} size={14} />
+                    ) : (
+                      <BlockIcon
+                        iconKey={!t || t.isText ? "type" : t.iconKey}
+                        color={t && !t.isText ? t.iconColor : null}
+                        size={14}
+                      />
+                    )}
+                    <span className="recent-label">{h.label}</span>
+                  </button>
+                </div>
               );
             })
           )}

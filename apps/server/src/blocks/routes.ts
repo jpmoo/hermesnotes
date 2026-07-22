@@ -310,8 +310,9 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   // Search existing (non-collection) blocks to add to a collection.
   /**
    * Global dynamic search (top-bar): blocks AND collections, matching the
-   * title, body content, or any property value. Today notes are excluded
-   * (they're reached via the Today page).
+   * title, body content, or any property value — followed by semantic matches
+   * (embedding similarity at the account's default floor) that the literal
+   * search missed. Today notes are excluded (they're reached via Today).
    */
   app.get("/search", async (req) => {
     const userId = requireUser(req);
@@ -319,14 +320,31 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const term = q.trim();
     if (!term) return [];
     const like = `%${term}%`;
+    const cols = {
+      id: blocks.id,
+      blockTypeId: blocks.blockTypeId,
+      collectionKind: blocks.collectionKind,
+      properties: blocks.properties,
+      content: blocks.content,
+    };
+    const toHit = (r: {
+      id: string;
+      blockTypeId: string | null;
+      collectionKind: string | null;
+      properties: unknown;
+      content: string | null;
+    }, semantic: boolean) => ({
+      id: r.id,
+      kind: r.collectionKind ? ("collection" as const) : ("block" as const),
+      blockTypeId: r.blockTypeId,
+      label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
+      document: r.collectionKind === "document",
+      smart: (r.properties as Record<string, unknown>)?.membership_mode === "smart",
+      semantic,
+    });
+
     const rows = await db
-      .select({
-        id: blocks.id,
-        blockTypeId: blocks.blockTypeId,
-        collectionKind: blocks.collectionKind,
-        properties: blocks.properties,
-        content: blocks.content,
-      })
+      .select(cols)
       .from(blocks)
       .where(
         and(
@@ -337,12 +355,34 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       )
       .orderBy(desc(blocks.updatedAt))
       .limit(20);
-    return rows.map((r) => ({
-      id: r.id,
-      kind: r.collectionKind ? "collection" : "block",
-      blockTypeId: r.blockTypeId,
-      label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
-    }));
+    const literal = rows.map((r) => toHit(r, false));
+
+    // Semantic follow-ups the literal search missed.
+    const [s] = await db
+      .select({ sim: userSettings.defaultSimilarity })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    const semIds = await semanticIds(userId, term, s?.sim ?? 0.75);
+    const seen = new Set(literal.map((h) => h.id));
+    const fresh = [...new Set(semIds)].filter((id) => !seen.has(id)).slice(0, 50);
+    let semantic: ReturnType<typeof toHit>[] = [];
+    if (fresh.length) {
+      const srows = await db
+        .select(cols)
+        .from(blocks)
+        .where(
+          and(
+            eq(blocks.ownerId, userId),
+            inArray(blocks.id, fresh),
+            sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          ),
+        )
+        .orderBy(desc(blocks.updatedAt))
+        .limit(10);
+      semantic = srows.map((r) => toHit(r, true));
+    }
+    return [...literal, ...semantic];
   });
 
   app.get("/blocks/search", async (req) => {

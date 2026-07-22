@@ -12,7 +12,7 @@ import { GripVertical, Lock, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type BlockSearchResult, type BlockType, type Collection } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
-import { BlockIcon } from "../lib/icons.tsx";
+import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 
 export interface SectionEntry {
   id: string;
@@ -119,8 +119,9 @@ function AddMenu({
                 onClose();
               }}
             >
-              <BlockIcon
-                iconKey={(c.properties.icon_key as string) ?? "folder"}
+              <CollectionIcon
+                document={c.collectionKind === "document"}
+                smart={c.properties.membership_mode === "smart"}
                 color={(c.properties.icon_color as string) ?? null}
                 size={15}
               />

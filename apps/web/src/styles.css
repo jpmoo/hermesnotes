@@ -2143,6 +2143,13 @@ input.li-text:focus {
   max-height: 320px;
   overflow-y: auto;
 }
+.gs-sep {
+  font-size: 11px;
+  color: var(--text-faint);
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+}
 .recent-item {
   display: flex;
   align-items: center;

@@ -2,7 +2,7 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { Hash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
-import { BlockIcon } from "../lib/icons.tsx";
+import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
 // Small module caches so repeated chips don't refetch.
@@ -27,6 +27,7 @@ export function MentionChip({ node }: NodeViewProps) {
   const id = href.startsWith("block:") ? href.slice(6) : "";
   const [icon, setIcon] = useState<Icon | null>(null);
   const [collection, setCollection] = useState(false);
+  const [collectionMeta, setCollectionMeta] = useState<{ document: boolean; smart: boolean }>();
   const { openBlock } = usePanels();
 
   useEffect(() => {
@@ -37,7 +38,10 @@ export function MentionChip({ node }: NodeViewProps) {
       if (!alive || !b) return;
       if (b.collectionKind) {
         setCollection(true);
-        setIcon({ key: "folder" });
+        setCollectionMeta({
+          document: b.collectionKind === "document",
+          smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
+        });
         return;
       }
       const types = await getTypes();
@@ -64,7 +68,13 @@ export function MentionChip({ node }: NodeViewProps) {
       onClick={onClick}
       title={label}
     >
-      {isTag ? <Hash size={13} /> : <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />}
+      {isTag ? (
+        <Hash size={13} />
+      ) : collection ? (
+        <CollectionIcon document={collectionMeta?.document} smart={collectionMeta?.smart} size={13} />
+      ) : (
+        <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
+      )}
       <span>{isTag ? label.replace(/^#/, "") : label}</span>
     </NodeViewWrapper>
   );

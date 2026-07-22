@@ -592,6 +592,7 @@ input[type="url"],
 input[type="number"],
 input[type="date"],
 input[type="datetime-local"],
+input[type="time"],
 select,
 textarea {
   width: 100%;
@@ -625,6 +626,7 @@ input[type="url"],
 input[type="number"],
 input[type="date"],
 input[type="datetime-local"],
+input[type="time"],
 select {
   height: 40px;
 }

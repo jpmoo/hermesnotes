@@ -248,7 +248,7 @@ export function SettingsPage() {
               <div className="hint">Loading…</div>
             ) : (
               <>
-                <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <label className="row" style={{ gap: 10, alignItems: "center", marginBottom: 14, cursor: "pointer" }}>
                   <input
                     type="checkbox"
                     checked={backup.enabled}

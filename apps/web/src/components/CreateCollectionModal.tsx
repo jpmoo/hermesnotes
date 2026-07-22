@@ -33,6 +33,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
         ...(mode === "smart" ? { smartMode, filterQuery: filter } : {}),
         ...(kind === "matrix" ? { matrixCols: cols, matrixRows: rows } : {}),
       });
+      // The modal is mounted in the sidebar, which outlives route changes —
+      // navigation alone doesn't unmount it.
+      onClose();
       nav(`/collections/${c.id}`);
     } finally {
       setBusy(false);

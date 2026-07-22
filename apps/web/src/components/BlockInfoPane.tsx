@@ -1,11 +1,12 @@
 import { CalendarDays, Copy, Star } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
+import { LongTextField } from "./LongTextField.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
 
@@ -75,6 +76,8 @@ export function BlockInfoPane({
   const [info, setInfo] = useState<BlockInfo | null>(null);
   const [block, setBlock] = useState<Block | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
+  const [desc, setDesc] = useState("");
+  const descTimer = useRef<ReturnType<typeof setTimeout>>();
   const { pathname } = useLocation();
   const { infoTick } = usePanels();
   const { isFavorite, toggleFavorite } = usePreferences();
@@ -85,6 +88,21 @@ export function BlockInfoPane({
     setInfo(null);
     setBlock(null);
   }, [blockId]);
+
+  // Collection description lives here (not on the page) and is embedded with
+  // the title, so semantic search finds the collection by purpose.
+  const isCollection = Boolean(block?.collectionKind);
+  useEffect(() => {
+    if (block?.collectionKind) setDesc(String(block.properties?.description ?? ""));
+  }, [block]);
+  const saveDesc = (v: string) => {
+    setDesc(v);
+    if (descTimer.current) clearTimeout(descTimer.current);
+    descTimer.current = setTimeout(
+      () => void api.patch(`/collections/${blockId}`, { description: v }),
+      800,
+    );
+  };
 
   useEffect(() => {
     void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => setInfo(null));
@@ -162,6 +180,12 @@ export function BlockInfoPane({
             <span className="info-title-text">{titleOverride ?? info.title}</span>
           </div>
         )
+      )}
+      {isCollection && (
+        <div className="collection-desc" key={`desc-${blockId}`}>
+          <div className="panel-h">Description</div>
+          <LongTextField value={desc} onChange={saveDesc} placeholder="Describe this collection…" />
+        </div>
       )}
       <dl className="info-grid">
         {!editable && (

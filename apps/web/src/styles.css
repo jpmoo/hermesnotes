@@ -3271,3 +3271,8 @@ input.matrix-axis-y::placeholder {
 .hn-spin {
   animation: hn-spin 0.9s linear infinite;
 }
+
+/* Collection description: a quiet longtext in the info panel. */
+.collection-desc {
+  margin: 0 0 14px;
+}

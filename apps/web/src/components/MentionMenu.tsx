@@ -58,7 +58,19 @@ export function MentionMenu({
           if (q.trim() && personType)
             opts.push({ key: "create", label: `Create person “${q.replace(/_/g, " ")}”`, create: "person", raw: q });
         } else if (state.char === "|") {
-          const rows = await api.get<BlockSearchResult[]>(`/blocks/search?q=${encodeURIComponent(q)}`);
+          const rows = await api.get<BlockSearchResult[]>(
+            `/blocks/search?includeCollections=1&q=${encodeURIComponent(q)}`,
+          );
+          // Collections link too; their icon comes from the kind.
+          const KIND_ICON: Record<string, string> = {
+            document: "file-text",
+            list: "list",
+            matrix: "grid-3x3",
+            table: "table",
+            kanban: "kanban",
+            masonry: "layout-grid",
+            canvas: "layout-dashboard",
+          };
           opts = rows
             .filter((r) => r.blockTypeId !== personType?.id)
             .map((r) => {
@@ -67,8 +79,12 @@ export function MentionMenu({
                 key: r.id,
                 label: r.label,
                 href: `block:${r.id}`,
-                iconKey: t?.isText ? "type" : t?.iconKey,
-                iconColor: t?.iconColor,
+                iconKey: r.collectionKind
+                  ? KIND_ICON[r.collectionKind] ?? "folder"
+                  : t?.isText
+                    ? "type"
+                    : t?.iconKey,
+                iconColor: r.collectionKind ? null : t?.iconColor,
               };
             });
         } else {

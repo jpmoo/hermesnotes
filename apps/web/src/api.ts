@@ -139,6 +139,7 @@ export interface BlockInfo {
 export interface BlockSearchResult {
   id: string;
   blockTypeId: string | null;
+  collectionKind: string | null;
   label: string;
 }
 

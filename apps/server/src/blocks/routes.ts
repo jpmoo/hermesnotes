@@ -501,19 +501,20 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/blocks/search", async (req) => {
     const userId = requireUser(req);
-    const { q, typeId, excludeCollectionId } = z
+    const { q, typeId, excludeCollectionId, includeCollections } = z
       .object({
         q: z.string().optional(),
         typeId: z.string().uuid().optional(),
         excludeCollectionId: z.string().uuid().optional(),
+        includeCollections: z.coerce.boolean().optional(),
       })
       .parse(req.query);
 
     const filters = [
       eq(blocks.ownerId, userId),
-      sql`${blocks.collectionKind} IS NULL`,
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
     ];
+    if (!includeCollections) filters.push(sql`${blocks.collectionKind} IS NULL`);
     if (typeId) filters.push(eq(blocks.blockTypeId, typeId));
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;
@@ -531,6 +532,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .select({
         id: blocks.id,
         blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
         properties: blocks.properties,
         content: blocks.content,
       })
@@ -542,6 +544,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     return rows.map((r) => ({
       id: r.id,
       blockTypeId: r.blockTypeId,
+      collectionKind: r.collectionKind,
       label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
     }));
   });

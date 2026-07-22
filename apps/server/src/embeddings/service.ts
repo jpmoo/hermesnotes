@@ -29,6 +29,9 @@ export async function fetchStaleBatch(limit: number): Promise<StaleRow[]> {
       and(
         isNull(blocks.embedSourceHash),
         isNotNull(blocks.embedSource),
+        // An empty source (untitled collection, blank note) would embed into
+        // a meaningless vector — wait until there's text.
+        sql`${blocks.embedSource} <> ''`,
         isNotNull(userSettings.ollamaUrl),
         isNotNull(userSettings.embedModel),
       ),

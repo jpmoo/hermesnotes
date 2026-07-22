@@ -1,36 +1,47 @@
 import { ChevronLeft, ChevronRight, Clock, Locate, Maximize2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Block } from "../api.ts";
+import { api, type Block, type BlockType } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
 
-// Cache recent-block labels so the dropdown doesn't refetch each open.
-const labelCache = new Map<string, Promise<string>>();
-const getLabel = (id: string) =>
-  labelCache.get(id) ??
-  labelCache
+interface RecentInfo {
+  label: string;
+  blockTypeId: string | null;
+}
+
+// Cache recent-block info so the dropdown doesn't refetch each open.
+const infoCache = new Map<string, Promise<RecentInfo>>();
+const getInfo = (id: string) =>
+  infoCache.get(id) ??
+  infoCache
     .set(
       id,
       api
         .get<Block>(`/blocks/${id}`)
-        .then((b) => oneLineText(b.properties, b.content) || "Untitled")
-        .catch(() => "(unknown)"),
+        .then((b) => ({
+          label: oneLineText(b.properties, b.content) || "Untitled",
+          blockTypeId: b.blockTypeId,
+        }))
+        .catch(() => ({ label: "(unknown)", blockTypeId: null })),
     )
     .get(id)!;
 
 function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
   const { recents, selectedBlockId } = usePanels();
   const [open, setOpen] = useState(false);
-  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [info, setInfo] = useState<Record<string, RecentInfo>>({});
+  const [types, setTypes] = useState<BlockType[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    void api.get<BlockType[]>("/block-types").then(setTypes);
     recents.forEach((id) => {
-      if (labels[id]) return;
-      void getLabel(id).then((l) => setLabels((m) => ({ ...m, [id]: l })));
+      if (info[id]) return;
+      void getInfo(id).then((v) => setInfo((m) => ({ ...m, [id]: v })));
     });
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -52,18 +63,27 @@ function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
               No recent blocks
             </div>
           ) : (
-            recents.map((id) => (
-              <button
-                key={id}
-                className={`menu-item${id === selectedBlockId ? " active" : ""}`}
-                onClick={() => {
-                  onPick(id);
-                  setOpen(false);
-                }}
-              >
-                {labels[id] ?? "…"}
-              </button>
-            ))
+            recents.map((id) => {
+              const it = info[id];
+              const t = it?.blockTypeId ? types.find((x) => x.id === it.blockTypeId) : undefined;
+              return (
+                <button
+                  key={id}
+                  className={`menu-item recent-item${id === selectedBlockId ? " active" : ""}`}
+                  onClick={() => {
+                    onPick(id);
+                    setOpen(false);
+                  }}
+                >
+                  <BlockIcon
+                    iconKey={!t || t.isText ? "type" : t.iconKey}
+                    color={t && !t.isText ? t.iconColor : null}
+                    size={14}
+                  />
+                  <span className="recent-label">{it?.label ?? "…"}</span>
+                </button>
+              );
+            })
           )}
         </div>
       )}

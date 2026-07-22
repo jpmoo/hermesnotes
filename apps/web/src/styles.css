@@ -2022,6 +2022,20 @@ input.li-text:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recent-item svg {
+  flex: 0 0 auto;
+}
+.recent-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .info-title {
   display: flex;
   align-items: center;

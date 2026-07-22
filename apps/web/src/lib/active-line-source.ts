@@ -92,6 +92,10 @@ function mapOffset(renderedOffset: number, renderedSize: number, sourceLen: numb
  */
 export const ActiveLineSource = Extension.create({
   name: "activeLineSource",
+  // Beat TipTap's core keymap (priority 100): its Enter runs `newlineInCode`
+  // first, which fires in any code node — so without this our source-line Enter
+  // handler never runs and Enter just inserts a raw newline.
+  priority: 1000,
 
   addKeyboardShortcuts() {
     return {

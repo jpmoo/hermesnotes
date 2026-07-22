@@ -1785,6 +1785,10 @@ input.li-text:focus {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* The standalone tag row's top margin would offset it below the files chip. */
+.tags-line .tag-editor {
+  margin-top: 0;
+}
 .attach-chip {
   display: inline-flex;
   align-items: center;

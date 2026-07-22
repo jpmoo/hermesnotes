@@ -239,17 +239,13 @@ export function TodayPage() {
     <>
       <h1 className="page-title title-with-icon">
         <CalendarDays size={22} color="#26282b" />
-        {isToday ? "Today" : "Day"}
+        {isToday ? `Today · ${label}` : label}
       </h1>
-      <p className="page-sub">
-        {label}
-        {!isToday && (
-          <>
-            {" · "}
-            <Link to="/today">back to today</Link>
-          </>
-        )}
-      </p>
+      {!isToday && (
+        <p className="page-sub">
+          <Link to="/today">back to today</Link>
+        </p>
+      )}
 
       {loading ? (
         <div className="hint">Loading…</div>

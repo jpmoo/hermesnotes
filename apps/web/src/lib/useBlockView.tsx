@@ -165,14 +165,15 @@ export function useBlockView<T extends Viewable>(
   const [viewMode, setViewModeState] = useState<ViewMode>(() =>
     readLS(VIEW_KEY) === "masonry" ? "masonry" : "block",
   );
-  const [columns, setColumnsState] = useState<number>(() => Number(readLS(COLS_KEY)) || 3);
+  const clampCols = (n: number) => Math.min(4, Math.max(2, n || 3));
+  const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(COLS_KEY))));
 
   const setViewMode = (v: ViewMode) => {
     setViewModeState(v);
     writeLS(VIEW_KEY, v);
   };
   const setColumns = (n: number) => {
-    const c = Math.min(6, Math.max(1, n));
+    const c = clampCols(n);
     setColumnsState(c);
     writeLS(COLS_KEY, String(c));
   };

@@ -1725,6 +1725,10 @@ input.li-text:focus {
 }
 .masonry {
   column-gap: 14px;
+  /* A floor on column width: the selected count is a MAX, but a narrow main
+     (e.g. panels open) uses fewer columns rather than crushing cards so their
+     fields no longer bleed off the edge. */
+  column-width: 240px;
 }
 .masonry-item {
   position: relative;

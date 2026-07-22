@@ -25,6 +25,7 @@ export function RightPanel() {
     selectedBlockId,
     selectedToday,
     openBlock,
+    clearSelection,
   } = usePanels();
   const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
   const expanded = rightPinned || hovered;
@@ -64,6 +65,7 @@ export function RightPanel() {
             titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
             onSelect={(id) => openBlock(id)}
             onSelectCollection={(id) => openBlock(id, { collection: true })}
+            onDeleted={clearSelection}
           />
         )}
         <div ref={setBottomSlotEl} />

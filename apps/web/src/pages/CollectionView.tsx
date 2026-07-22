@@ -528,6 +528,7 @@ export function CollectionView() {
         className="collection-title"
         value={titleVal}
         placeholder="Untitled list"
+        onFocus={() => selectBlock(id, { collection: true })}
         onChange={(e) => saveTitle(e.target.value)}
       />
 
@@ -684,6 +685,7 @@ export function CollectionView() {
       )}
       {bottomSlotEl &&
         (isDocument || isSmart) &&
+        selectedBlockId === id &&
         createPortal(
           <>
             <div className="panel-divider" />

@@ -573,7 +573,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           eq(blocks.ownerId, userId),
           sql`${blocks.id} <> ${id}`,
           or(
-            sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
+            // Bare-id property references — but not a daily note's layout list
+            // (adding a block as a Today section isn't a "link").
+            and(
+              sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
+              sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+            ),
             sql`${blocks.content} LIKE ${`%block:${id}%`}`,
             sql`${blocks.properties}::text LIKE ${`%block:${id}%`}`,
           ),
@@ -608,7 +613,16 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       content: string | null;
       blockTypeId: string | null;
       collectionKind: string | null;
-    }) => ({ id: r.id, label: labelOf(r.properties, r.content), ...typeIconOf(r, typeMap) });
+    }) => {
+      const p = r.properties as Record<string, unknown>;
+      const today = typeof p?.today_note === "string" ? (p.today_note as string) : undefined;
+      return {
+        id: r.id,
+        label: labelOf(r.properties, r.content),
+        today,
+        ...typeIconOf(r, typeMap),
+      };
+    };
 
     const inCollections = inRows.map(withIcon);
     const linksTo = linkRows.map(withIcon);

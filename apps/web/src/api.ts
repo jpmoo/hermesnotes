@@ -116,6 +116,7 @@ export interface Attachment {
 export interface ConnRef {
   id: string;
   label: string;
+  today?: string; // set when the connection is a daily note (its date)
   iconKey: string | null;
   iconColor: string | null;
 }

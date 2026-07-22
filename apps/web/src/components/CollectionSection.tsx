@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { BlockCard } from "./BlockCard.tsx";
+import { MatrixView } from "./MatrixView.tsx";
 
 /**
  * Renders a collection's members as a titled section of full cards. Used to
@@ -20,7 +21,7 @@ export function CollectionSection({
 }) {
   const [state, setState] = useState<{ collection: Collection; members: Member[] } | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     void api
       .get<{ collection: Collection; members: Member[] }>(`/collections/${collectionId}`)
       .then((d) => {
@@ -30,6 +31,7 @@ export function CollectionSection({
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collectionId]);
+  useEffect(load, [load]);
 
   if (!state) return null;
   const typeById = new Map(types.map((t) => [t.id, t]));
@@ -42,7 +44,9 @@ export function CollectionSection({
           open ↗
         </Link>
       </h2>
-      {state.members.length === 0 ? (
+      {state.collection.collectionKind === "matrix" ? (
+        <MatrixView collection={state.collection} members={state.members} types={types} onChanged={load} />
+      ) : state.members.length === 0 ? (
         <div className="hint">Empty.</div>
       ) : (
         state.members.map((m) =>

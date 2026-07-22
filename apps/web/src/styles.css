@@ -1497,15 +1497,96 @@ input.region-title:focus {
 }
 .matrix-chip {
   display: flex;
-  align-items: center;
-  gap: 7px;
+  flex-direction: column;
+  gap: 2px;
   padding: 5px 9px;
   border: 1px solid var(--border);
   border-radius: 9px;
-  background: var(--surface-2);
+  background: var(--surface);
   font-size: 12.5px;
   cursor: grab;
   user-select: none;
+}
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.chip-status {
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.chip-dates {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 22px;
+}
+.region-title-static {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-chrome);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-transform: capitalize;
+}
+.region-count {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+/* Solid region colors: give the header a readable surface. */
+.matrix-region.colored .region-head {
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 7px;
+  padding: 3px 7px;
+  margin: -2px -4px 8px;
+}
+.drawer-count {
+  min-width: 22px;
+  text-align: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.drawer-count.empty {
+  background: var(--border-strong);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.drawer-handle:disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+/* Edit-in-panel: the block's editor card embedded in the info pane. */
+.panel-editor {
+  margin-bottom: 12px;
+}
+.panel-editor .card {
+  padding: 12px;
+  margin-bottom: 0;
+}
+.panel-editor .typed-fields {
+  grid-template-columns: 1fr;
+}
+.panel-editor input,
+.panel-editor select,
+.panel-editor textarea {
+  min-width: 0;
+  max-width: 100%;
 }
 .matrix-chip.dragging {
   opacity: 0.35;

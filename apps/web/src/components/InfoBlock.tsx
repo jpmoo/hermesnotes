@@ -73,7 +73,8 @@ function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
 
 /** The right-panel block info: navigation controls (back/origin/forward/recents/expand) + the info pane. */
 export function InfoBlock({ blockId }: { blockId: string }) {
-  const { pushBlock, back, forward, goOrigin, canBack, canForward, atOrigin } = usePanels();
+  const { pushBlock, back, forward, goOrigin, canBack, canForward, atOrigin, selectedIsCollection } =
+    usePanels();
   const nav = useNavigate();
 
   return (
@@ -98,12 +99,18 @@ export function InfoBlock({ blockId }: { blockId: string }) {
         <button
           className="icon-btn"
           title="Open as full page"
-          onClick={() => nav(`/block/${blockId}`)}
+          onClick={() =>
+            nav(selectedIsCollection ? `/collections/${blockId}` : `/block/${blockId}`)
+          }
         >
           <Maximize2 size={14} />
         </button>
       </div>
-      <BlockInfoPane blockId={blockId} onSelect={pushBlock} />
+      <BlockInfoPane
+        blockId={blockId}
+        onSelect={pushBlock}
+        onSelectCollection={(id) => pushBlock(id, { collection: true })}
+      />
     </div>
   );
 }

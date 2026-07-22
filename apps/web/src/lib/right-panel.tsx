@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 /**
  * Shared panel state: the right panel's content slot, pin state, and the block
@@ -19,8 +20,9 @@ interface PanelsApi {
 
   // Block info navigation.
   selectedBlockId: string | null;
+  selectedIsCollection: boolean;
   selectBlock: (id: string) => void; // new train (a card/on-screen block)
-  pushBlock: (id: string) => void; // drill into a connection/mention
+  pushBlock: (id: string, opts?: { collection?: boolean }) => void; // drill into a connection/mention
   clearSelection: () => void;
   back: () => void;
   forward: () => void;
@@ -29,6 +31,11 @@ interface PanelsApi {
   canForward: boolean;
   atOrigin: boolean;
   recents: string[];
+}
+
+interface NavEntry {
+  id: string;
+  collection: boolean;
 }
 
 const Ctx = createContext<PanelsApi | null>(null);
@@ -54,8 +61,25 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [leftPinned, setLeftRaw] = useState(() => readBool("hn.pin.left"));
   const [rightPinned, setRightRaw] = useState(() => readBool("hn.pin.right"));
 
-  const [nav, setNav] = useState<{ stack: string[]; pos: number }>({ stack: [], pos: -1 });
+  const [nav, setNav] = useState<{ stack: NavEntry[]; pos: number }>({ stack: [], pos: -1 });
   const [recents, setRecents] = useState<string[]>(() => readList("hn.recents"));
+
+  const navigate = useNavigate();
+  const pathRef = useRef("");
+  pathRef.current = useLocation().pathname;
+
+  // Sync the main view to a history entry. Collections open their page; a block
+  // takes over the main view only when we're already on a detail page — so a
+  // block drilled from a list stays in the pane, but going back from a
+  // collection lands on the note's full page.
+  const routeTo = (entry: NavEntry | undefined) => {
+    if (!entry) return;
+    if (entry.collection) {
+      navigate(`/collections/${entry.id}`);
+    } else if (pathRef.current.startsWith("/collections/") || pathRef.current.startsWith("/block/")) {
+      navigate(`/block/${entry.id}`);
+    }
+  };
 
   const setLeftPinned = (b: boolean) => {
     setLeftRaw(b);
@@ -66,7 +90,9 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("hn.pin.right", b ? "1" : "0");
   };
 
-  const selectedBlockId = nav.pos >= 0 && nav.pos < nav.stack.length ? nav.stack[nav.pos]! : null;
+  const cur = nav.pos >= 0 && nav.pos < nav.stack.length ? nav.stack[nav.pos]! : null;
+  const selectedBlockId = cur?.id ?? null;
+  const selectedIsCollection = cur?.collection ?? false;
 
   const addRecent = (id: string) =>
     setRecents((prev) => {
@@ -80,22 +106,40 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     });
 
   const selectBlock = (id: string) => {
-    setNav((n) => (n.pos === 0 && n.stack[0] === id ? n : { stack: [id], pos: 0 }));
+    setNav((n) => (n.pos === 0 && n.stack[0]?.id === id ? n : { stack: [{ id, collection: false }], pos: 0 }));
     addRecent(id);
   };
-  const pushBlock = (id: string) => {
+  const pushBlock = (id: string, opts?: { collection?: boolean }) => {
+    const entry: NavEntry = { id, collection: opts?.collection ?? false };
     setNav((n) => {
-      if (n.pos < 0) return { stack: [id], pos: 0 };
-      if (n.stack[n.pos] === id) return n;
+      if (n.pos < 0) return { stack: [entry], pos: 0 };
+      if (n.stack[n.pos]?.id === id) return n;
       const base = n.stack.slice(0, n.pos + 1);
-      return { stack: [...base, id], pos: base.length };
+      return { stack: [...base, entry], pos: base.length };
     });
-    addRecent(id);
+    // Recents are recently-viewed blocks; collections have their own nav.
+    if (!entry.collection) addRecent(id);
+    routeTo(entry);
   };
   const clearSelection = () => setNav({ stack: [], pos: -1 });
-  const back = () => setNav((n) => (n.pos > 0 ? { ...n, pos: n.pos - 1 } : n));
-  const forward = () => setNav((n) => (n.pos < n.stack.length - 1 ? { ...n, pos: n.pos + 1 } : n));
-  const goOrigin = () => setNav((n) => (n.pos > 0 ? { ...n, pos: 0 } : n));
+  const back = () => {
+    if (nav.pos > 0) {
+      routeTo(nav.stack[nav.pos - 1]);
+      setNav((n) => (n.pos > 0 ? { ...n, pos: n.pos - 1 } : n));
+    }
+  };
+  const forward = () => {
+    if (nav.pos < nav.stack.length - 1) {
+      routeTo(nav.stack[nav.pos + 1]);
+      setNav((n) => (n.pos < n.stack.length - 1 ? { ...n, pos: n.pos + 1 } : n));
+    }
+  };
+  const goOrigin = () => {
+    if (nav.pos > 0) {
+      routeTo(nav.stack[0]);
+      setNav((n) => (n.pos > 0 ? { ...n, pos: 0 } : n));
+    }
+  };
 
   const value = useMemo<PanelsApi>(
     () => ({
@@ -110,6 +154,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       rightPinned,
       setRightPinned,
       selectedBlockId,
+      selectedIsCollection,
       selectBlock,
       pushBlock,
       clearSelection,

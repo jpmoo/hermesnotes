@@ -1,21 +1,18 @@
 import { Copy } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { api, type BlockInfo, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 
-/** Block connections drill through the info pane; collection connections navigate. */
+/** Every connection drills through the info-box history (blocks and collections). */
 function ConnGroup({
   label,
   items,
   onSelect,
-  onOpen,
 }: {
   label: string;
   items: ConnRef[];
-  onSelect?: (id: string) => void;
-  onOpen?: (id: string) => void;
+  onSelect: (id: string) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -26,7 +23,7 @@ function ConnGroup({
           key={it.id}
           className="info-conn-item"
           title={it.label}
-          onClick={() => (onSelect ? onSelect(it.id) : onOpen?.(it.id))}
+          onClick={() => onSelect(it.id)}
         >
           <BlockIcon iconKey={it.iconKey} color={it.iconColor} size={14} />
           <span className="info-conn-text">{it.label}</span>
@@ -40,12 +37,13 @@ function ConnGroup({
 export function BlockInfoPane({
   blockId,
   onSelect,
+  onSelectCollection,
 }: {
   blockId: string;
   onSelect: (id: string) => void;
+  onSelectCollection: (id: string) => void;
 }) {
   const [info, setInfo] = useState<BlockInfo | null>(null);
-  const nav = useNavigate();
 
   useEffect(() => {
     setInfo(null);
@@ -101,7 +99,7 @@ export function BlockInfoPane({
             <ConnGroup
               label="In collection"
               items={info.inCollections}
-              onOpen={(id) => nav(`/collections/${id}`)}
+              onSelect={onSelectCollection}
             />
             <ConnGroup label="Links to" items={info.linksTo} onSelect={onSelect} />
             <ConnGroup label="Linked from" items={info.linkedFrom} onSelect={onSelect} />

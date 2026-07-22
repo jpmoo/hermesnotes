@@ -1,8 +1,9 @@
 import { Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type BlockInfo } from "../api.ts";
+import { api, type BlockInfo, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 
 /** Block connections drill through the info pane; collection connections navigate. */
 function ConnGroup({
@@ -12,7 +13,7 @@ function ConnGroup({
   onOpen,
 }: {
   label: string;
-  items: { id: string; label: string }[];
+  items: ConnRef[];
   onSelect?: (id: string) => void;
   onOpen?: (id: string) => void;
 }) {
@@ -27,7 +28,8 @@ function ConnGroup({
           title={it.label}
           onClick={() => (onSelect ? onSelect(it.id) : onOpen?.(it.id))}
         >
-          {it.label}
+          <BlockIcon iconKey={it.iconKey} color={it.iconColor} size={14} />
+          <span className="info-conn-text">{it.label}</span>
         </button>
       ))}
     </div>
@@ -60,10 +62,13 @@ export function BlockInfoPane({
 
   return (
     <div className="info-pane">
-      {info.title && <div className="info-title">{info.title}</div>}
+      {info.title && (
+        <div className="info-title">
+          <BlockIcon iconKey={info.iconKey} color={info.iconColor} size={18} />
+          <span className="info-title-text">{info.title}</span>
+        </div>
+      )}
       <dl className="info-grid">
-        <dt>Type</dt>
-        <dd>{info.type}</dd>
         <dt>Created</dt>
         <dd>{fmtDateTime(info.createdAt)}</dd>
         <dt>Edited</dt>

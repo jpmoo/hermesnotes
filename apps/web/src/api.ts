@@ -113,16 +113,25 @@ export interface Attachment {
   createdAt: string;
 }
 
+export interface ConnRef {
+  id: string;
+  label: string;
+  iconKey: string | null;
+  iconColor: string | null;
+}
+
 export interface BlockInfo {
   id: string;
   title: string;
   createdAt: string;
   updatedAt: string;
   type: string;
+  iconKey: string | null;
+  iconColor: string | null;
   attachments: number;
-  inCollections: { id: string; label: string }[];
-  linksTo: { id: string; label: string }[];
-  linkedFrom: { id: string; label: string }[];
+  inCollections: ConnRef[];
+  linksTo: ConnRef[];
+  linkedFrom: ConnRef[];
   tags: string[];
 }
 

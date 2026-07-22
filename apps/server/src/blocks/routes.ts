@@ -389,30 +389,63 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const labelOf = (p: unknown, c: string | null) =>
       oneLineLabel(p as Record<string, unknown>, c) || "Untitled";
 
-    // Type name + schema (to find reference fields).
+    // A block's type icon (colored): collections carry their own icon in
+    // properties; typed blocks use their type's icon; text blocks use "type".
+    type IconInfo = { iconKey: string | null; iconColor: string | null };
+    const typeIconOf = (
+      row: { blockTypeId: string | null; collectionKind: string | null; properties: unknown },
+      map: Map<string, { iconKey: string | null; iconColor: string | null; isText: boolean }>,
+    ): IconInfo => {
+      if (row.collectionKind) {
+        const p = (row.properties ?? {}) as Record<string, unknown>;
+        return {
+          iconKey: (p.icon_key as string) ?? "folder",
+          iconColor: (p.icon_color as string) ?? null,
+        };
+      }
+      const t = row.blockTypeId ? map.get(row.blockTypeId) : undefined;
+      if (!t) return { iconKey: "type", iconColor: null };
+      return { iconKey: t.isText ? "type" : t.iconKey, iconColor: t.iconColor };
+    };
+
+    // Type name + schema (to find reference fields) + this block's own icon.
     let type = "Text";
     let schema: import("@hermes/shared").PropertySchema | null = null;
+    let selfIcon: IconInfo = { iconKey: "type", iconColor: null };
     if (b.collectionKind) {
       type = `Collection · ${b.collectionKind}`;
+      selfIcon = typeIconOf(b, new Map());
     } else if (b.blockTypeId) {
       const [t] = await db
-        .select({ name: blockTypes.name, isText: blockTypes.isText, schema: blockTypes.propertySchema })
+        .select({
+          name: blockTypes.name,
+          isText: blockTypes.isText,
+          schema: blockTypes.propertySchema,
+          iconKey: blockTypes.iconKey,
+          iconColor: blockTypes.iconColor,
+        })
         .from(blockTypes)
         .where(eq(blockTypes.id, b.blockTypeId))
         .limit(1);
       if (t) {
         type = t.isText ? "Text" : t.name;
         schema = t.schema;
+        selfIcon = t.isText ? { iconKey: "type", iconColor: null } : { iconKey: t.iconKey, iconColor: t.iconColor };
       }
     }
 
     // Collections this block belongs to.
     const inRows = await db
-      .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+      .select({
+        id: blocks.id,
+        properties: blocks.properties,
+        content: blocks.content,
+        blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
+      })
       .from(memberships)
       .innerJoin(blocks, eq(blocks.id, memberships.collectionId))
       .where(eq(memberships.blockId, id));
-    const inCollections = inRows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
 
     // References out (reference-field values + markdown `block:<id>` links in
     // this block's content).
@@ -428,19 +461,36 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       let m: RegExpExecArray | null;
       while ((m = linkRe.exec(text)) !== null) if (m[1] && m[1] !== id) outIds.push(m[1]);
     }
-    let linksTo: { id: string; label: string }[] = [];
+    let linkRows: {
+      id: string;
+      properties: unknown;
+      content: string | null;
+      blockTypeId: string | null;
+      collectionKind: string | null;
+    }[] = [];
     if (outIds.length) {
-      const rows = await db
-        .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+      linkRows = await db
+        .select({
+          id: blocks.id,
+          properties: blocks.properties,
+          content: blocks.content,
+          blockTypeId: blocks.blockTypeId,
+          collectionKind: blocks.collectionKind,
+        })
         .from(blocks)
         .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(outIds)])));
-      linksTo = rows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
     }
 
     // References in (other blocks that reference this one via a property value
     // or a markdown `block:<id>` link in their content/text).
     const fromRows = await db
-      .select({ id: blocks.id, properties: blocks.properties, content: blocks.content })
+      .select({
+        id: blocks.id,
+        properties: blocks.properties,
+        content: blocks.content,
+        blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
+      })
       .from(blocks)
       .where(
         and(
@@ -454,7 +504,39 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         ),
       )
       .limit(50);
-    const linkedFrom = fromRows.map((r) => ({ id: r.id, label: labelOf(r.properties, r.content) }));
+
+    // Resolve type icons for every connected block in one query.
+    const connTypeIds = [
+      ...new Set(
+        [...inRows, ...linkRows, ...fromRows]
+          .map((r) => r.blockTypeId)
+          .filter((v): v is string => Boolean(v)),
+      ),
+    ];
+    const typeMap = new Map<string, { iconKey: string | null; iconColor: string | null; isText: boolean }>();
+    if (connTypeIds.length) {
+      const trows = await db
+        .select({
+          id: blockTypes.id,
+          iconKey: blockTypes.iconKey,
+          iconColor: blockTypes.iconColor,
+          isText: blockTypes.isText,
+        })
+        .from(blockTypes)
+        .where(inArray(blockTypes.id, connTypeIds));
+      for (const t of trows) typeMap.set(t.id, { iconKey: t.iconKey, iconColor: t.iconColor, isText: t.isText });
+    }
+    const withIcon = (r: {
+      id: string;
+      properties: unknown;
+      content: string | null;
+      blockTypeId: string | null;
+      collectionKind: string | null;
+    }) => ({ id: r.id, label: labelOf(r.properties, r.content), ...typeIconOf(r, typeMap) });
+
+    const inCollections = inRows.map(withIcon);
+    const linksTo = linkRows.map(withIcon);
+    const linkedFrom = fromRows.map(withIcon);
 
     const tagRows = await db
       .select({ name: tags.name })
@@ -474,6 +556,8 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
       type,
+      iconKey: selfIcon.iconKey,
+      iconColor: selfIcon.iconColor,
       attachments: ac?.n ?? 0,
       inCollections,
       linksTo,

@@ -311,7 +311,7 @@ export function CollectionView() {
   const [allExpanded, setAllExpanded] = useState(false);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const { slotEl, setTitle, setHasContent } = usePanels();
+  const { slotEl, setTitle, setHasContent, selectBlock, selectedBlockId } = usePanels();
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -331,6 +331,17 @@ export function CollectionView() {
   useEffect(() => {
     setLoading(true);
     load().finally(() => setLoading(false));
+  }, [id]);
+
+  // Populate the info block with this collection on arrival (e.g. from the
+  // collections menu). Skip if it's already selected — arriving via the info
+  // block already set it, and we don't want to clobber that history. Runs on id
+  // change only, so opening a member's info doesn't snap back to the collection.
+  const selRef = useRef(selectedBlockId);
+  selRef.current = selectedBlockId;
+  useEffect(() => {
+    if (id && selRef.current !== id) selectBlock(id, { collection: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {

@@ -21,7 +21,7 @@ interface PanelsApi {
   // Block info navigation.
   selectedBlockId: string | null;
   selectedIsCollection: boolean;
-  selectBlock: (id: string) => void; // new train (a card/on-screen block)
+  selectBlock: (id: string, opts?: { collection?: boolean }) => void; // new train (a card/on-screen block)
   pushBlock: (id: string, opts?: { collection?: boolean }) => void; // drill into a connection/mention
   clearSelection: () => void;
   back: () => void;
@@ -105,9 +105,11 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       return next;
     });
 
-  const selectBlock = (id: string) => {
-    setNav((n) => (n.pos === 0 && n.stack[0]?.id === id ? n : { stack: [{ id, collection: false }], pos: 0 }));
-    addRecent(id);
+  const selectBlock = (id: string, opts?: { collection?: boolean }) => {
+    const collection = opts?.collection ?? false;
+    setNav((n) => (n.pos === 0 && n.stack[0]?.id === id ? n : { stack: [{ id, collection }], pos: 0 }));
+    // Recents are recently-viewed blocks; collections have their own nav.
+    if (!collection) addRecent(id);
   };
   const pushBlock = (id: string, opts?: { collection?: boolean }) => {
     const entry: NavEntry = { id, collection: opts?.collection ?? false };

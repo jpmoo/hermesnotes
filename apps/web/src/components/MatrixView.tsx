@@ -10,7 +10,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Settings2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
@@ -22,6 +22,12 @@ import { ColorPickerModal } from "./ColorPickerModal.tsx";
 interface RegionDef {
   title: string;
   color: string | null;
+  // Region actions (custom grids): tag added on enter / removed on leave, and
+  // a status applied to the card's own status field on enter.
+  tag?: string;
+  tagOnEnter?: boolean;
+  tagOffLeave?: boolean;
+  enterStatus?: string;
 }
 
 interface Item {
@@ -85,10 +91,13 @@ function dayIndexes(schema: PropertySchema | null | undefined, props: Record<str
 function readRegions(props: Record<string, unknown>, count: number): RegionDef[] {
   const raw = Array.isArray(props.matrix_regions) ? (props.matrix_regions as RegionDef[]) : [];
   return Array.from({ length: count }, (_, i) => ({
+    ...raw[i],
     title: String(raw[i]?.title ?? ""),
     color: (raw[i]?.color as string | null) ?? null,
   }));
 }
+
+const hasActions = (def: RegionDef | undefined) => Boolean(def && (def.tag || def.enterStatus));
 
 const fmtShort = (v: string) => {
   const d = new Date(v.includes("T") ? v : `${v}T00:00`);
@@ -269,6 +278,8 @@ function RegionCell({
   items,
   onTitle,
   onColor,
+  onActions,
+  actionsSet = false,
   onRemove,
   onStatus,
   onInteract,
@@ -280,6 +291,8 @@ function RegionCell({
   items: Item[];
   onTitle?: (index: number, title: string) => void;
   onColor?: (index: number) => void;
+  onActions?: (index: number) => void;
+  actionsSet?: boolean;
   onRemove?: (id: string) => void;
   onStatus?: (item: Item, field: FieldDef, next: string) => void;
   onInteract?: () => void;
@@ -315,6 +328,19 @@ function RegionCell({
           />
         ) : (
           <span className="region-title-static">{pretty(title) || "—"}</span>
+        )}
+        {editable && (
+          <button
+            className={`icon-btn region-actions${actionsSet ? " set" : ""}`}
+            title={actionsSet ? "Region actions (configured)" : "Region actions"}
+            onClick={(e) => {
+              e.stopPropagation();
+              onInteract?.();
+              onActions?.(index);
+            }}
+          >
+            <Settings2 size={13} />
+          </button>
         )}
         <span className="region-count">{items.length || ""}</span>
       </div>
@@ -622,8 +648,107 @@ export function MatrixView({
     void api.patch(`/collections/${collection.id}`, { matrix_bind_property: key || null }).then(onChanged);
   };
 
+  // Region actions (custom grids): tag on enter / tag off on leave / status on
+  // enter, applied to the card's own block.
+  const [actionsEdit, setActionsEdit] = useState<number | null>(null);
+  const [actionsDraft, setActionsDraft] = useState<{
+    tag: string;
+    tagOnEnter: boolean;
+    tagOffLeave: boolean;
+    enterStatus: string;
+  }>({ tag: "", tagOnEnter: true, tagOffLeave: false, enterStatus: "" });
+  const openActions = (i: number) => {
+    const def = regions[i];
+    setActionsDraft({
+      tag: def?.tag ?? "",
+      tagOnEnter: def?.tagOnEnter ?? true,
+      tagOffLeave: def?.tagOffLeave ?? false,
+      enterStatus: def?.enterStatus ?? "",
+    });
+    setActionsEdit(i);
+  };
+  const saveActions = () => {
+    if (actionsEdit == null) return;
+    const tag = actionsDraft.tag.trim().toLowerCase();
+    const next = regions.map((r, idx) =>
+      idx === actionsEdit
+        ? {
+            ...r,
+            tag: tag || undefined,
+            tagOnEnter: tag ? actionsDraft.tagOnEnter : undefined,
+            tagOffLeave: tag ? actionsDraft.tagOffLeave : undefined,
+            enterStatus: actionsDraft.enterStatus || undefined,
+          }
+        : r,
+    );
+    setActionsEdit(null);
+    setRegions(next);
+    void api.patch(`/collections/${collection.id}`, { matrix_regions: next });
+  };
+  const statusOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const t of types)
+      for (const f of t.propertySchema?.fields ?? [])
+        if (f.type === "status") for (const o of f.options ?? []) seen.add(o);
+    return [...seen];
+  }, [types]);
+
+  const addTagTo = async (id: string, tag: string) => {
+    try {
+      const cur = await api.get<string[]>(`/blocks/${id}/tags`);
+      if (!cur.includes(tag)) await api.put(`/blocks/${id}/tags`, { tags: [...cur, tag] });
+    } catch {
+      /* ignore */
+    }
+  };
+  const removeTagFrom = async (id: string, tag: string) => {
+    try {
+      const cur = await api.get<string[]>(`/blocks/${id}/tags`);
+      if (cur.includes(tag)) await api.put(`/blocks/${id}/tags`, { tags: cur.filter((t) => t !== tag) });
+    } catch {
+      /* ignore */
+    }
+  };
+  /** Set the card's own status field — only if that value is one of its options. */
+  const setOwnStatus = async (item: Item, value: string) => {
+    const t = item.blockTypeId ? types.find((x) => x.id === item.blockTypeId) : undefined;
+    const f = statusFieldOf(t);
+    if (!f || !(f.options ?? []).includes(value)) return;
+    try {
+      const b = await api.get<Block>(`/blocks/${item.id}`);
+      await api.patch(`/blocks/${item.id}`, {
+        properties: { ...(b.properties ?? {}), [f.key]: value },
+        version: b.version,
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+  const applyRegionEnter = async (item: Item, region: number) => {
+    const def = regions[region];
+    if (!def) return;
+    if (def.tag && (def.tagOnEnter ?? true)) await addTagTo(item.id, def.tag);
+    if (def.enterStatus) await setOwnStatus(item, def.enterStatus);
+  };
+  const applyRegionLeave = async (item: Item, region: number | null) => {
+    if (region == null) return;
+    const def = regions[region];
+    if (def?.tag && def.tagOffLeave) await removeTagFrom(item.id, def.tag);
+  };
+  const regionOf = (blockId: string): number | null => {
+    const m = members.find((x) => x.id === blockId);
+    const r = Number((m?.context as Record<string, unknown>)?.region);
+    return Number.isInteger(r) && r >= 0 && r < count ? r : null;
+  };
+
   const removeMember = (blockId: string) => {
-    void api.del(`/collections/${collection.id}/members/${blockId}`).then(onChanged);
+    const prev = regionOf(blockId);
+    const m = members.find((x) => x.id === blockId);
+    void api.del(`/collections/${collection.id}/members/${blockId}`).then(async () => {
+      if (prev != null && m) await applyRegionLeave(toItem(m), prev);
+      onChanged();
+      setQueryTick((t) => t + 1);
+    });
   };
 
   /** Set a property on the block itself (bound placement / status cycling). */
@@ -666,17 +791,26 @@ export function MatrixView({
         if (opt != null) patchBlockProps(item, bindKey, opt);
       } else if (item.member) {
         const m = members.find((x) => x.id === item.id);
-        const cur = Number((m?.context as Record<string, unknown>)?.region);
-        if (cur === region) return;
+        const prev = regionOf(item.id);
+        if (prev === region) return;
         void api
           .patch(`/collections/${collection.id}/members/${item.id}`, {
             context: { ...(m?.context ?? {}), region },
           })
-          .then(onChanged);
+          .then(async () => {
+            await applyRegionLeave(item, prev);
+            await applyRegionEnter(item, region);
+            onChanged();
+            setQueryTick((t) => t + 1);
+          });
       } else {
         void api
           .post(`/collections/${collection.id}/members`, { blockId: item.id, context: { region } })
-          .then(onChanged);
+          .then(async () => {
+            await applyRegionEnter(item, region);
+            onChanged();
+            setQueryTick((t) => t + 1);
+          });
       }
     } else if (over === "drawer") {
       // Back to the drawer: unbound → remove the membership; status-bound →
@@ -825,6 +959,8 @@ export function MatrixView({
                   items={placement.map.get(i) ?? []}
                   onTitle={onTitle}
                   onColor={setColorEdit}
+                  onActions={openActions}
+                  actionsSet={!bound && hasActions(regions[i])}
                   onRemove={bound ? undefined : removeMember}
                   onStatus={onStatus}
                   onInteract={selectCollection}
@@ -917,6 +1053,67 @@ export function MatrixView({
         onCancel={() => setColorEdit(null)}
         onSave={onColorSave}
       />
+
+      {actionsEdit != null && (
+        <div className="modal-backdrop" onClick={() => setActionsEdit(null)}>
+          <div className="modal-card" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <h2 className="modal-title">
+              Region actions{regions[actionsEdit]?.title ? ` — ${regions[actionsEdit]!.title}` : ""}
+            </h2>
+            <label className="field">
+              <span>Tag</span>
+              <input
+                type="text"
+                placeholder="tag name"
+                value={actionsDraft.tag}
+                onChange={(e) => setActionsDraft((d) => ({ ...d, tag: e.target.value }))}
+              />
+            </label>
+            <label className="row" style={{ gap: 8, marginBottom: 8 }}>
+              <input
+                type="checkbox"
+                checked={actionsDraft.tagOnEnter}
+                onChange={(e) => setActionsDraft((d) => ({ ...d, tagOnEnter: e.target.checked }))}
+              />
+              <span>Add tag when a card enters</span>
+            </label>
+            <label className="row" style={{ gap: 8, marginBottom: 14 }}>
+              <input
+                type="checkbox"
+                checked={actionsDraft.tagOffLeave}
+                onChange={(e) => setActionsDraft((d) => ({ ...d, tagOffLeave: e.target.checked }))}
+              />
+              <span>Remove tag when a card leaves</span>
+            </label>
+            <label className="field">
+              <span>Set status when a card enters</span>
+              <select
+                value={actionsDraft.enterStatus}
+                onChange={(e) => setActionsDraft((d) => ({ ...d, enterStatus: e.target.value }))}
+              >
+                <option value="">— none —</option>
+                {statusOptions.map((o) => (
+                  <option key={o} value={o}>
+                    {pretty(o)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="hint" style={{ marginTop: 6 }}>
+              Applied when cards are dragged in or out of this region. Status applies only to cards
+              whose type has that option.
+            </div>
+            <div className="modal-actions">
+              <button className="ghost" onClick={() => setActionsEdit(null)}>
+                Cancel
+              </button>
+              <button className="primary" onClick={saveActions}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DndContext>
   );
 }

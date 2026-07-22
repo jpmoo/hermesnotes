@@ -1667,6 +1667,17 @@ input.matrix-axis-y::placeholder {
   color: var(--text-muted);
   flex-shrink: 0;
 }
+.region-actions {
+  flex-shrink: 0;
+  opacity: 0.45;
+}
+.matrix-region:hover .region-actions,
+.region-actions.set {
+  opacity: 1;
+}
+.region-actions.set {
+  color: var(--accent);
+}
 /* Solid region colors: give the header a readable surface. */
 .matrix-region.colored .region-head {
   background: rgba(255, 255, 255, 0.72);

@@ -109,7 +109,7 @@ export function buildTools(server: McpServer, api: Api): void {
       }
       const b = await api.post<{ id: string }>("/blocks", { blockTypeId: ctx.taskTypeId, properties });
       if (a.tags?.length)
-        await api.put(`/blocks/${b.id}/tags`, { tags: a.tags.map((t) => t.trim().toLowerCase()) });
+        await api.put(`/blocks/${b.id}/tags`, { tags: a.tags.map((t) => t.trim().toLowerCase().replace(/^#+/, "")) });
       return `Created task "${a.title}" (${b.id}).`;
     }),
   );
@@ -164,7 +164,7 @@ export function buildTools(server: McpServer, api: Api): void {
       if (a.when) items.push(...whenConds(ctx, a.when));
       if (a.term) items.push({ kind: "text", value: a.term } as Condition);
       for (const t of [...(a.tags ?? []), ...(a.tag ? [a.tag] : [])])
-        items.push({ kind: "tag", tag: t.trim().toLowerCase() } as Condition);
+        items.push({ kind: "tag", tag: t.trim().toLowerCase().replace(/^#+/, "") } as Condition);
       if (a.project) {
         if (!ctx.projectRefKey) throw new Error("The task type has no project reference field.");
         const p = await resolveProject(api, ctx, a.project);
@@ -275,7 +275,7 @@ export function buildTools(server: McpServer, api: Api): void {
       if (changed.length) await api.patch(`/blocks/${b.id}`, { properties: p, version: b.version });
       if (a.add_tags?.length || a.remove_tags?.length) {
         const cur = await api.get<string[]>(`/blocks/${b.id}/tags`);
-        const norm = (t: string) => t.trim().toLowerCase();
+        const norm = (t: string) => t.trim().toLowerCase().replace(/^#+/, "");
         let next = [...cur];
         for (const t of a.add_tags ?? []) if (!next.includes(norm(t))) next.push(norm(t));
         const drop = new Set((a.remove_tags ?? []).map(norm));
@@ -476,8 +476,8 @@ export function buildTools(server: McpServer, api: Api): void {
     "Rename a tag on every block that has it. Two-step confirm.",
     { old_tag: z.string().min(1), new_tag: z.string().min(1), confirm: z.boolean().optional() },
     run(async (a) => {
-      const from = a.old_tag.trim().toLowerCase();
-      const to = a.new_tag.trim().toLowerCase();
+      const from = a.old_tag.trim().toLowerCase().replace(/^#+/, "");
+      const to = a.new_tag.trim().toLowerCase().replace(/^#+/, "");
       if (!a.confirm) return `This will rename #${from} → #${to} everywhere. Call again with confirm=true.`;
       const n = await retagAll(from, to);
       return `Renamed #${from} → #${to} on ${n} block${n === 1 ? "" : "s"}.`;
@@ -489,7 +489,7 @@ export function buildTools(server: McpServer, api: Api): void {
     "Remove a tag from every block that has it. Two-step confirm.",
     { tag: z.string().min(1), confirm: z.boolean().optional() },
     run(async (a) => {
-      const t = a.tag.trim().toLowerCase();
+      const t = a.tag.trim().toLowerCase().replace(/^#+/, "");
       if (!a.confirm) return `This will remove #${t} from every block. Call again with confirm=true.`;
       const n = await retagAll(t, null);
       return `Removed #${t} from ${n} block${n === 1 ? "" : "s"}.`;

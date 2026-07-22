@@ -750,7 +750,8 @@ export function MatrixView({
   };
   const saveActions = () => {
     if (actionsEdit == null) return;
-    const tag = actionsDraft.tag.trim().toLowerCase();
+    // Tag names never include the "#" — strip one if it was typed.
+    const tag = actionsDraft.tag.trim().toLowerCase().replace(/^#+/, "");
     const next = regions.map((r, idx) =>
       idx === actionsEdit
         ? {

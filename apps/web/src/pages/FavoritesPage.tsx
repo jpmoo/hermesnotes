@@ -84,6 +84,7 @@ export function FavoritesPage() {
               <CollectionIcon
                 document={c.collectionKind === "document"}
                 matrix={c.collectionKind === "matrix"}
+                table={c.collectionKind === "table"}
                 smart={(c.properties as Record<string, unknown>)?.membership_mode === "smart"}
                 size={15}
               />

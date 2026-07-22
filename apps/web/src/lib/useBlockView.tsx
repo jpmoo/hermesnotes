@@ -19,6 +19,7 @@ import { GripVertical } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
+import { BlockIcon } from "./icons.tsx";
 import { usePanels } from "./right-panel.tsx";
 
 /** Minimal shape a viewable block must expose. Both Block and Member satisfy it. */
@@ -36,7 +37,7 @@ interface SortLevel {
   key: SortKey;
   dir: "asc" | "desc";
 }
-type ViewMode = "block" | "masonry";
+type ViewMode = "block" | "masonry" | "chips";
 
 const VIEW_KEY = "hn.blockview.mode";
 const COLS_KEY = "hn.blockview.cols";
@@ -89,6 +90,46 @@ function MasonryCard({ blockId, render }: { blockId: string; render: (compact: b
   return (
     <div className="masonry-item" onClick={() => selectBlock(blockId)}>
       {render(true)}
+    </div>
+  );
+}
+
+/** Constant-size chip: type icon + a slice of the title (or first sentence).
+ * Clicking selects the block into the info panel — no navigation. */
+function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | undefined; grip?: ReactNode }) {
+  const { selectBlock } = usePanels();
+  const isText = !type || type.isText;
+  const text = oneLineText(item.properties, item.content);
+  return (
+    <button className="bv-chip" title={text} onClick={() => selectBlock(item.id)}>
+      {grip}
+      <BlockIcon iconKey={isText ? "type" : type?.iconKey} color={isText ? null : type?.iconColor} size={15} />
+      <span className="bv-chip-text">{text || <span className="li-empty">Empty</span>}</span>
+    </button>
+  );
+}
+
+/** A draggable chip in manual mode: grip first, then the chip body. */
+function ManualChip({ item, type }: { item: Viewable; type: BlockType | undefined }) {
+  const s = useSortable({ id: item.id });
+  const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
+  return (
+    <div ref={s.setNodeRef} style={style} className="bv-chip-wrap">
+      <BlockChip
+        item={item}
+        type={type}
+        grip={
+          <span
+            className="drag-handle bv-chip-grip"
+            {...s.attributes}
+            {...s.listeners}
+            onClick={(e) => e.stopPropagation()}
+            title="Drag to arrange"
+          >
+            <GripVertical size={13} />
+          </span>
+        }
+      />
     </div>
   );
 }
@@ -167,9 +208,10 @@ export function useBlockView<T extends Viewable>(
       return [];
     }
   });
-  const [viewMode, setViewModeState] = useState<ViewMode>(() =>
-    readLS(VIEW_KEY) === "masonry" ? "masonry" : "block",
-  );
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    const v = readLS(VIEW_KEY);
+    return v === "masonry" || v === "chips" ? v : "block";
+  });
   const clampCols = (n: number) => Math.min(4, Math.max(2, n || 3));
   const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(COLS_KEY))));
 
@@ -188,6 +230,7 @@ export function useBlockView<T extends Viewable>(
   };
 
   const fields = useMemo(() => commonFields(items, types), [items, types]);
+  const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const options = useMemo(
     () => [
       { key: "alpha" as SortKey, label: "Alphabetical" },
@@ -276,6 +319,7 @@ export function useBlockView<T extends Viewable>(
   const VIEWS: { key: ViewMode; label: string }[] = [
     { key: "block", label: "Block" },
     { key: "masonry", label: "Masonry" },
+    { key: "chips", label: "Chips" },
   ];
 
   const toolbar = (
@@ -352,7 +396,7 @@ export function useBlockView<T extends Viewable>(
               </button>
             ))}
           </div>
-          {viewMode !== "block" && (
+          {viewMode === "masonry" && (
             <span className="cols-ctl">
               <span className="hint">Cols</span>
               <button className="icon-btn" onClick={() => setColumns(columns - 1)} title="Fewer columns">
@@ -371,14 +415,21 @@ export function useBlockView<T extends Viewable>(
 
   const renderList = (renderCard: (item: T, compact: boolean) => ReactNode): ReactNode => {
     const masonry = enableView && viewMode === "masonry";
+    const chips = enableView && viewMode === "chips";
     if (manualMode) {
       return (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext
             items={sorted.map((it) => it.id)}
-            strategy={masonry ? rectSortingStrategy : verticalListSortingStrategy}
+            strategy={masonry || chips ? rectSortingStrategy : verticalListSortingStrategy}
           >
-            {masonry ? (
+            {chips ? (
+              <div className="bv-chips">
+                {sorted.map((it) => (
+                  <ManualChip key={it.id} item={it} type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined} />
+                ))}
+              </div>
+            ) : masonry ? (
               <div className="masonry" style={{ columnCount: columns }}>
                 {sorted.map((it) => (
                   <ManualMasonryItem key={it.id} id={it.id}>
@@ -397,6 +448,15 @@ export function useBlockView<T extends Viewable>(
             )}
           </SortableContext>
         </DndContext>
+      );
+    }
+    if (chips) {
+      return (
+        <div className="bv-chips">
+          {sorted.map((it) => (
+            <BlockChip key={it.id} item={it} type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined} />
+          ))}
+        </div>
       );
     }
     if (!enableView || viewMode === "block") {

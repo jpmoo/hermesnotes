@@ -458,6 +458,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         label: oneLineLabel(props, r.content) || "Untitled",
         document: r.collectionKind === "document",
         matrix: r.collectionKind === "matrix",
+        table: r.collectionKind === "table",
         smart: props?.membership_mode === "smart",
         semantic,
       };

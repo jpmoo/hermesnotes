@@ -128,6 +128,17 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       properties.sort_mode = "manual";
       properties.sync_checkbox_with_status = true;
     }
+    if (body.kind === "table") {
+      // Column keys ("prop:<key>", "tags", "created", "edited"), view toggles,
+      // sort levels, and per-column widths all live in properties; the client
+      // patches them as the user shapes the table.
+      properties.table_columns = [];
+      properties.table_row_numbers = true;
+      properties.table_wrap = false;
+      properties.table_header_color = null;
+      properties.table_sort = [];
+      properties.table_col_widths = {};
+    }
     if (body.kind === "matrix") {
       // An x/y grid of regions; members are placed via context.region (index,
       // row-major). A smart matrix uses its query only to feed the drawer.

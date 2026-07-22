@@ -28,6 +28,7 @@ import { BlockCard } from "../components/BlockCard.tsx";
 import { CollectionSection } from "../components/CollectionSection.tsx";
 import { QueryPanel } from "../components/QueryPanel.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
+import { TableView } from "../components/TableView.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TypedBlockCard } from "../components/TypedBlockCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -420,6 +421,7 @@ export function CollectionView() {
   const isDynamic = isSmart && smartMode === "dynamic";
   const isDocument = collection?.collectionKind === "document";
   const isMatrix = collection?.collectionKind === "matrix";
+  const isTable = collection?.collectionKind === "table";
   const filterQuery: unknown = collection?.properties.filter_query;
 
   // Reorder a member (manual list order), persisted as membership order.
@@ -447,10 +449,10 @@ export function CollectionView() {
     await load();
   };
 
-  // Right panel: query editor for smart collections and/or the section tool for
-  // documents.
+  // Right panel: query editor for smart collections, the section tool for
+  // documents, and the table tools (columns/header/toggles) for tables.
   useEffect(() => {
-    if (!isSmart && !isDocument) {
+    if (!isSmart && !isDocument && !isTable) {
       setHasContent(false);
       return;
     }
@@ -458,7 +460,7 @@ export function CollectionView() {
     return () => {
       setHasContent(false);
     };
-  }, [isSmart, isDocument, setHasContent]);
+  }, [isSmart, isDocument, isTable, setHasContent]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -533,7 +535,7 @@ export function CollectionView() {
       />
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
-        {!isDocument && !isMatrix && (
+        {!isDocument && !isMatrix && !isTable && (
           <div className="segmented">
             {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
               <button
@@ -592,7 +594,7 @@ export function CollectionView() {
           </>
         )}
 
-        {!isDocument && !isMatrix && format !== "blocks" && members.length > 0 && (
+        {!isDocument && !isMatrix && !isTable && format !== "blocks" && members.length > 0 && (
           <button
             className="ghost"
             style={{ marginLeft: "auto" }}
@@ -607,10 +609,18 @@ export function CollectionView() {
         )}
       </div>
 
-      {!isDocument && !isMatrix && members.length > 0 && sortBar}
+      {!isDocument && !isMatrix && !isTable && members.length > 0 && sortBar}
 
       {isMatrix ? (
         <MatrixView collection={collection} members={members} types={types} onChanged={() => void load()} />
+      ) : isTable ? (
+        <TableView
+          collection={collection}
+          members={members}
+          types={types}
+          onChanged={() => void load()}
+          onMemberChange={onMemberChange}
+        />
       ) : members.length === 0 ? (
         <div className="hint">{isDocument ? "Empty document. Add a section." : "Empty list. Add an item."}</div>
       ) : isDocument ? (

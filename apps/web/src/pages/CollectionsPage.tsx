@@ -16,6 +16,7 @@ const KINDS = [
   { key: "list", label: "Lists" },
   { key: "document", label: "Documents" },
   { key: "matrix", label: "Matrices" },
+  { key: "table", label: "Tables" },
 ] as const;
 
 export function CollectionsPage() {
@@ -112,6 +113,7 @@ export function CollectionsPage() {
                 <CollectionIcon
                   document={c.collectionKind === "document"}
                   matrix={c.collectionKind === "matrix"}
+                  table={c.collectionKind === "table"}
                   smart={isSmart}
                   size={20}
                   color={iconColor}

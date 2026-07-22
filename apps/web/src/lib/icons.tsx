@@ -126,30 +126,34 @@ export function BlockIcon({
 
 /**
  * Collection icons come in visual families: lists (List / ListFilter for
- * smart), documents (FileText / FileSearch for smart), and matrices
- * (LayoutGrid).
+ * smart), documents (FileText / FileSearch for smart), matrices (LayoutGrid),
+ * and tables (Table).
  */
 export function CollectionIcon({
   document = false,
   matrix = false,
+  table = false,
   smart = false,
   size = 16,
   color,
 }: {
   document?: boolean;
   matrix?: boolean;
+  table?: boolean;
   smart?: boolean;
   size?: number;
   color?: string | null;
 }) {
   const Icon = matrix
     ? LayoutGrid
-    : document
-      ? smart
-        ? FileSearch
-        : FileText
-      : smart
-        ? ListFilter
-        : List;
+    : table
+      ? Table
+      : document
+        ? smart
+          ? FileSearch
+          : FileText
+        : smart
+          ? ListFilter
+          : List;
   return <Icon size={size} color={color ?? undefined} />;
 }

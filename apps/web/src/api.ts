@@ -150,6 +150,7 @@ export interface SearchHit {
   label: string;
   document: boolean;
   matrix: boolean;
+  table: boolean;
   smart: boolean;
   semantic: boolean;
 }

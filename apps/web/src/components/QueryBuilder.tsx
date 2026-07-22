@@ -247,6 +247,10 @@ function GroupEditor({
   isRoot: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Open upward by default (fits the modal); flip downward when the button sits
+  // near the viewport top (e.g. the right panel), where an upward menu would be
+  // clipped by the panel's scroll container.
+  const [openUp, setOpenUp] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -320,11 +324,27 @@ function GroupEditor({
       )}
 
       <div className="nav-kebab" ref={menuRef} style={{ position: "relative", marginTop: 8 }}>
-        <button className="ghost" onClick={() => setMenuOpen((o) => !o)}>
+        <button
+          className="ghost"
+          onClick={() => {
+            if (!menuOpen && menuRef.current) {
+              // ~9 items ≈ 340px; flip down when there isn't room above.
+              setOpenUp(menuRef.current.getBoundingClientRect().top > 360);
+            }
+            setMenuOpen((o) => !o);
+          }}
+        >
           + Add
         </button>
         {menuOpen && (
-          <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
+          <div
+            className="menu"
+            style={
+              openUp
+                ? { left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }
+                : { left: 0, right: "auto", top: "calc(100% + 4px)", bottom: "auto" }
+            }
+          >
             {(Object.keys(KIND_LABELS) as Kind[]).map((k) => {
               const disabled = k === "property" && fields.length === 0;
               return (

@@ -2140,12 +2140,15 @@ input.matrix-axis-y::placeholder {
   min-width: 0;
   max-width: 100%;
 }
+/* Gap lives in padding, not margin: multicol slices margins at column breaks
+   (a trailing margin spills into the next column's top, misaligning the first
+   row of cards), while padding inside the break-inside:avoid box moves as one. */
 .masonry-item {
   position: relative;
   break-inside: avoid;
-  margin-bottom: 14px;
+  padding-bottom: 14px;
 }
-.masonry-item > .card {
+.masonry-item .card {
   margin: 0;
 }
 .masonry-grip {
@@ -3020,4 +3023,203 @@ input.matrix-axis-y::placeholder {
   background: var(--accent-ink);
   border-color: var(--accent-ink);
   color: #fff;
+}
+
+/* ── Table collection view ─────────────────────────────────────── */
+.tv-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.tv-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+}
+.tv-table th {
+  position: relative;
+  text-align: left;
+  font-family: var(--font-chrome);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-strong);
+  user-select: none;
+}
+.tv-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+/* Alternate row shading. */
+.tv-table tbody tr:nth-child(even) {
+  background: var(--surface-2);
+}
+.tv-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.tv-th {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+.tv-th-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: capitalize;
+}
+.tv-sort-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 10px;
+  opacity: 0.8;
+}
+/* Drag the column's right border to resize. */
+.tv-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.tv-resizer:hover {
+  background: linear-gradient(to right, transparent 3px, var(--border-strong) 3px, var(--border-strong) 5px, transparent 5px);
+}
+.tv-num {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 12px;
+}
+.tv-cell input,
+.tv-cell select,
+.tv-cell textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+.tv-cell .field-text,
+.tv-title {
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  width: 100%;
+}
+.tv-static {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tv-note {
+  cursor: pointer;
+  display: block;
+}
+/* Truncate vs wrap. Truncation applies to static text; controls keep their size. */
+.tv-truncate td .tv-note,
+.tv-truncate td .tv-static,
+.tv-truncate .tv-th-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tv-truncate td {
+  overflow: hidden;
+}
+.tv-wrap td .tv-note,
+.tv-wrap td .tv-static {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tv-remove-cell {
+  text-align: center;
+}
+.tv-remove {
+  opacity: 0;
+  color: var(--text-muted);
+}
+.tv-table tbody tr:hover .tv-remove {
+  opacity: 0.8;
+}
+.tv-menu {
+  position: fixed;
+}
+.tv-col-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 0;
+}
+.tv-col-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: capitalize;
+  font-size: 13px;
+}
+.tv-color-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.tv-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+}
+
+/* ── Chips view (block lists) ──────────────────────────────────── */
+.bv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 210px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 13px;
+}
+.bv-chip:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-soft);
+}
+.bv-chip > svg {
+  flex: none;
+}
+.bv-chip-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bv-chip-wrap {
+  display: inline-flex;
+}
+.bv-chip-grip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: -6px;
+  color: var(--text-faint);
+  cursor: grab;
 }

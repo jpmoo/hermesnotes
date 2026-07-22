@@ -8,7 +8,7 @@ import { QueryBuilder } from "./QueryBuilder.tsx";
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [title, setTitle] = useState("Untitled");
-  const [kind, setKind] = useState<"list" | "document" | "matrix">("list");
+  const [kind, setKind] = useState<"list" | "document" | "matrix" | "table">("list");
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(2);
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
@@ -67,13 +67,21 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             >
               Matrix
             </button>
+            <button
+              className={`seg${kind === "table" ? " active" : ""}`}
+              onClick={() => setKind("table")}
+            >
+              Table
+            </button>
           </div>
           <div className="hint" style={{ marginTop: 6 }}>
             {kind === "list"
               ? "A one-line-per-item list (bullet, ordered, checklist, or blocks)."
               : kind === "document"
                 ? "Full-card sections you arrange with the layout tool in the right panel."
-                : "An x/y grid of regions (Eisenhower 2×2, Kanban 3×1…) — drag blocks in from a drawer."}
+                : kind === "matrix"
+                  ? "An x/y grid of regions (Eisenhower 2×2, Kanban 3×1…) — drag blocks in from a drawer."
+                  : "A spreadsheet-style grid: one row per block, property columns you pick, inline editing."}
           </div>
         </div>
 

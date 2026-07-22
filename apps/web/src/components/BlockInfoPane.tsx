@@ -129,11 +129,13 @@ export function BlockInfoPane({
       {editable && block ? (
         <div className="panel-editor">
           {editorType && !editorType.isText ? (
+            // Not compact: compact swaps the attachments field for a count chip
+            // (invisible at 0 files) — the panel is an editing surface and
+            // needs the real controls.
             <TypedBlockCard
               key={`${block.id}:${block.version}`}
               block={block}
               type={editorType}
-              compact
               onConflict={() => void loadBlock()}
               onDeleted={() => onDeleted?.()}
             />

@@ -12,28 +12,6 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
-  apps/mcp:
-    dependencies:
-      '@hermes/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.12.0
-        version: 1.29.0(zod@3.25.76)
-      tsx:
-        specifier: ^4.19.2
-        version: 4.23.1
-      zod:
-        specifier: ^3.23.8
-        version: 3.25.76
-    devDependencies:
-      '@types/node':
-        specifier: ^22.9.0
-        version: 22.20.1
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
-
   apps/server:
     dependencies:
       '@fastify/cookie':
@@ -54,6 +32,9 @@ importers:
       '@hermes/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.12.0
+        version: 1.29.0(zod@3.25.76)
       '@node-rs/argon2':
         specifier: ^2.0.2
         version: 2.0.2

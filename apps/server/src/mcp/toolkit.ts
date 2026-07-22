@@ -1,6 +1,4 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Condition, FilterGroup } from "@hermes/shared";
 import { z } from "zod";
 import { Api, ApiError } from "./api.js";
@@ -14,16 +12,11 @@ import {
 } from "./hermes.js";
 
 /**
- * Hermes MCP server: exposes task/project/tag tools (mirroring the Spaztick MCP
- * surface) over streamable HTTP. Every request must carry a Hermes API key
- * created in the app (Settings → API tokens) as `Authorization: Bearer <key>`;
- * the same key is forwarded to the Hermes API, so revoking it in the app cuts
- * off MCP access too.
+ * Hermes MCP toolkit: task/project/tag tools (mirroring the Spaztick MCP
+ * surface), registered onto an McpServer bound to one caller's API key. The
+ * key is forwarded on every internal API call, so in-app revocation cuts off
+ * MCP access too.
  */
-
-const API_BASE = process.env.HERMES_API ?? "http://127.0.0.1:3000/api";
-const PORT = Number(process.env.MCP_PORT ?? 8082);
-const HOST = process.env.MCP_HOST ?? "0.0.0.0";
 
 const group = (items: (Condition | FilterGroup)[], match: "all" | "any" = "all"): FilterGroup => ({
   kind: "group",
@@ -64,7 +57,7 @@ function whenConds(ctx: Ctx, when: string): (Condition | FilterGroup)[] {
   }
 }
 
-function buildTools(server: McpServer, api: Api): void {
+export function buildTools(server: McpServer, api: Api): void {
   const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
   const run = <A>(fn: (args: A) => Promise<string>) => {
     return async (args: A) => {
@@ -517,59 +510,3 @@ function isArchivedProject(ctx: Ctx, proj: HermesBlock): boolean {
   }
   return false; // tag-based archive state is looked up separately (taggedArchivedIds)
 }
-
-// ---------- HTTP plumbing ----------
-
-const readBody = (req: IncomingMessage): Promise<unknown> =>
-  new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (c: Buffer) => (data += c.toString()));
-    req.on("end", () => {
-      try {
-        resolve(data ? JSON.parse(data) : undefined);
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
-
-const http = createServer((req: IncomingMessage, res: ServerResponse) => {
-  void (async () => {
-    if (!req.url || !req.url.startsWith("/mcp")) {
-      res.writeHead(404).end("Not found. MCP endpoint is /mcp");
-      return;
-    }
-    const auth = req.headers.authorization ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-    if (!token) {
-      res
-        .writeHead(401, { "Content-Type": "application/json" })
-        .end(JSON.stringify({ error: "Missing Authorization: Bearer <hermes api key>" }));
-      return;
-    }
-    if (req.method !== "POST") {
-      res.writeHead(405).end("Stateless server: POST only");
-      return;
-    }
-    // Stateless: one server+transport per request, bound to this request's key.
-    const server = new McpServer({ name: "hermes", version: "1.0.0" });
-    buildTools(server, new Api(API_BASE, token));
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-    res.on("close", () => {
-      void transport.close();
-      void server.close();
-    });
-    await server.connect(transport);
-    await transport.handleRequest(req, res, await readBody(req));
-  })().catch((e) => {
-    if (!res.headersSent) res.writeHead(500).end(String(e));
-  });
-});
-
-http.listen(PORT, HOST, () => {
-  console.log(`Hermes MCP server on http://${HOST}:${PORT}/mcp → ${API_BASE}`);
-});

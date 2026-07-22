@@ -1,14 +1,11 @@
 import { execFile } from "node:child_process";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { promisify } from "node:util";
-import { getBackupConfig, getDatabaseUrl } from "../config.js";
+import { getBackupConfig, getDatabaseUrl, repoRoot } from "../config.js";
 
 const execFileP = promisify(execFile);
 
-// Repo-root-relative like data/ (see config.ts) so restart cwd doesn't matter.
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 export const backupsDir = process.env.HERMES_BACKUP_DIR ?? join(repoRoot, "backups");
 
 export interface BackupResult {

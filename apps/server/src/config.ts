@@ -29,7 +29,9 @@ export interface BackupConfig {
 const DEFAULT_BACKUP: BackupConfig = { enabled: false, time: "03:30", keep: 14 };
 
 // Repo-root-relative so it's stable regardless of launch cwd (see load-env.ts).
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+// Exported as the single source of truth — path math from import.meta.url is
+// depth-sensitive, and duplicating it in deeper files gets the count wrong.
+export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const configPath =
   process.env.HERMES_CONFIG_PATH ?? join(repoRoot, "data", "hermes.config.json");
 

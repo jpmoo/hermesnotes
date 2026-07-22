@@ -6,13 +6,17 @@ import {
   MoreVertical,
   Pin,
   PinOff,
+  Plus,
   Settings,
   Shapes,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { NavLink } from "react-router-dom";
+import { api, type Block, type BlockType } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
+import { BlockIcon } from "../lib/icons.tsx";
+import { CreateCollectionModal } from "./CreateCollectionModal.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
@@ -46,6 +50,10 @@ export function Sidebar() {
   const { colors, setPref } = usePreferences();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [modal, setModal] = useState<{ key: string; target: Target } | null>(null);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [newCollection, setNewCollection] = useState(false);
+  const [types, setTypes] = useState<BlockType[]>([]);
+  const { openBlock } = usePanels();
   const {
     active: hovered,
     setActive: setHovered,
@@ -55,8 +63,32 @@ export function Sidebar() {
   } = useHoverIntent();
 
   // The rail expands when pinned, when hovering an empty area, or while a
-  // kebab menu / color modal it spawned is open.
-  const expanded = leftPinned || hovered || openMenu !== null || modal !== null;
+  // kebab menu / color modal / create menu it spawned is open.
+  const expanded =
+    leftPinned || hovered || openMenu !== null || modal !== null || plusOpen || newCollection;
+
+  // Block types for the + menu, fetched on first open.
+  useEffect(() => {
+    if (!plusOpen || types.length) return;
+    void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});
+  }, [plusOpen, types.length]);
+  useEffect(() => {
+    if (!plusOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".sidebar-plus")) setPlusOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [plusOpen]);
+
+  const createBlock = async (t: BlockType) => {
+    setPlusOpen(false);
+    const b = await api.post<Block>("/blocks", { blockTypeId: t.id });
+    openBlock(b.id);
+  };
+  const orderedTypes = [...types].sort((a, b) =>
+    a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1,
+  );
 
   useEffect(() => {
     if (openMenu === null) return;
@@ -143,6 +175,32 @@ export function Sidebar() {
         </button>
       </div>
 
+      <div className="nav-row sidebar-plus" style={{ position: "relative" }}>
+        <button className="nav-link" title="New block or collection" onClick={() => setPlusOpen((o) => !o)}>
+          <Plus size={18} className="nav-row-icon" />
+          <span className="label">New…</span>
+        </button>
+        {plusOpen && (
+          <div className="menu" style={{ left: 8, right: "auto", top: "100%" }}>
+            {orderedTypes.map((t) => (
+              <button key={t.id} className="menu-item type-item" onClick={() => void createBlock(t)}>
+                <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
+                <span style={{ textTransform: "capitalize" }}>{t.name}</span>
+              </button>
+            ))}
+            <button
+              className="menu-item"
+              onClick={() => {
+                setPlusOpen(false);
+                setNewCollection(true);
+              }}
+            >
+              Collection…
+            </button>
+          </div>
+        )}
+      </div>
+
       {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
       {colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks")}
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
@@ -162,6 +220,8 @@ export function Sidebar() {
         <LogOut size={16} />
         <span className="label">Sign out</span>
       </button>
+
+      {newCollection && <CreateCollectionModal onClose={() => setNewCollection(false)} />}
 
       <ColorPickerModal
         open={modal !== null}

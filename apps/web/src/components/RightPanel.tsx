@@ -1,4 +1,5 @@
 import { Info, PanelRight, Pin, PinOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
@@ -27,11 +28,46 @@ export function RightPanel() {
     clearSelection,
   } = usePanels();
   const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
-  const expanded = rightPinned || hovered;
+
+  // Unpinned, the hover grace alone isn't enough: a drag that strays outside
+  // (layout reordering) or typing while the mouse wanders would collapse the
+  // panel mid-interaction. Hold it open while a pointer interaction started
+  // inside it is ongoing, or while focus is inside it.
+  const asideRef = useRef<HTMLElement>(null);
+  const [holdOpen, setHoldOpen] = useState(false);
+  useEffect(() => {
+    const el = asideRef.current;
+    if (!el) return;
+    let pointerHeld = false;
+    const update = () => setHoldOpen(pointerHeld || el.contains(document.activeElement));
+    const onFocusIn = () => update();
+    const onFocusOut = () => setTimeout(update, 0);
+    const onPointerDown = () => {
+      pointerHeld = true;
+      update();
+    };
+    const onPointerUp = () => {
+      pointerHeld = false;
+      setTimeout(update, 0);
+    };
+    el.addEventListener("focusin", onFocusIn);
+    el.addEventListener("focusout", onFocusOut);
+    el.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointerup", onPointerUp);
+    return () => {
+      el.removeEventListener("focusin", onFocusIn);
+      el.removeEventListener("focusout", onFocusOut);
+      el.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("pointerup", onPointerUp);
+    };
+  }, []);
+
+  const expanded = rightPinned || hovered || holdOpen;
   const showInfo = selectedBlockId !== null;
 
   return (
     <aside
+      ref={asideRef}
       className={`right-panel${expanded ? " expanded" : ""}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}

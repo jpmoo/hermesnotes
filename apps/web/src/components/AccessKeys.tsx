@@ -11,7 +11,7 @@ export function AccessKeys() {
   const [keys, setKeys] = useState<AccessKey[]>([]);
   const [name, setName] = useState("");
   const [created, setCreated] = useState<CreatedAccessKey | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<null | "link" | "key">(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,7 +25,7 @@ export function AccessKeys() {
     if (!name.trim()) return;
     setBusy(true);
     setError(null);
-    setCopied(false);
+    setCopied(null);
     try {
       const key = await api.post<CreatedAccessKey>("/auth/tokens", { name: name.trim() });
       setCreated(key);
@@ -44,10 +44,10 @@ export function AccessKeys() {
     await load();
   };
 
-  const copy = async () => {
+  const copy = async (what: "link" | "key") => {
     if (!created) return;
-    await navigator.clipboard.writeText(keyUrl(created.token));
-    setCopied(true);
+    await navigator.clipboard.writeText(what === "link" ? keyUrl(created.token) : created.token);
+    setCopied(what);
   };
 
   return (
@@ -56,8 +56,9 @@ export function AccessKeys() {
         Access keys
       </h2>
       <p className="hint" style={{ marginBottom: 14 }}>
-        A link that skips login. Open the URL and you're signed in on that device. Anyone with the
-        link has full access until you revoke it — treat it like a password.
+        A link that skips login — open the URL and you're signed in on that device. The raw key
+        also works as an API bearer token (e.g. for the MCP server). Anyone with it has full
+        access until you revoke it — treat it like a password.
       </p>
 
       <div className="row" style={{ marginBottom: 14 }}>
@@ -90,7 +91,14 @@ export function AccessKeys() {
           >
             {keyUrl(created.token)}
           </div>
-          <button onClick={() => void copy()}>{copied ? "Copied ✓" : "Copy link"}</button>
+          <div className="row" style={{ gap: 8 }}>
+            <button onClick={() => void copy("link")}>
+              {copied === "link" ? "Copied ✓" : "Copy login link"}
+            </button>
+            <button onClick={() => void copy("key")}>
+              {copied === "key" ? "Copied ✓" : "Copy key (for API/MCP)"}
+            </button>
+          </div>
         </div>
       )}
 

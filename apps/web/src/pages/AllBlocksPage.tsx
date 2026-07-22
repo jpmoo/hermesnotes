@@ -1,5 +1,5 @@
 import type { FilterGroup } from "@hermes/shared";
-import { Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
@@ -72,6 +72,17 @@ export function AllBlocksPage() {
 
   const { toolbar, renderList } = useBlockView(blocks, types, { scope: "allblocks" });
 
+  // Per-card collapse (block view only; masonry cards are already compact).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const allCollapsed = blocks.length > 0 && blocks.every((b) => collapsed.has(b.id));
+  const toggleCard = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   return (
     <>
       <h1 className="page-title title-with-icon">
@@ -101,6 +112,12 @@ export function AllBlocksPage() {
         <button className="ghost" onClick={() => setSaveOpen(true)}>
           Save as collection…
         </button>
+        <button
+          className="ghost"
+          onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(blocks.map((b) => b.id)))}
+        >
+          {allCollapsed ? "Expand all" : "Collapse all"}
+        </button>
         <span className="hint">{blocks.length} block(s)</span>
       </div>
 
@@ -112,13 +129,24 @@ export function AllBlocksPage() {
         <div className="hint">No blocks match this filter.</div>
       ) : (
         renderList((b, compact) => (
-          <BlockCard
-            block={b}
-            type={typeById.get(b.blockTypeId)}
-            onConflict={reload}
-            onDeleted={onDeleted}
-            compact={compact}
-          />
+          <div className={compact ? undefined : "bv-card-wrap"}>
+            {!compact && (
+              <button
+                className="icon-btn card-collapse"
+                title={collapsed.has(b.id) ? "Expand" : "Collapse"}
+                onClick={() => toggleCard(b.id)}
+              >
+                {collapsed.has(b.id) ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+              </button>
+            )}
+            <BlockCard
+              block={b}
+              type={typeById.get(b.blockTypeId)}
+              onConflict={reload}
+              onDeleted={onDeleted}
+              compact={compact || collapsed.has(b.id)}
+            />
+          </div>
         ))
       )}
 

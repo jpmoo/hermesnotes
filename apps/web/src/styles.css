@@ -2890,3 +2890,27 @@ input.matrix-axis-y::placeholder {
   border-radius: 12px;
   box-shadow: none;
 }
+
+/* All-blocks list: per-card collapse toggle in the top-right corner. */
+.bv-card-wrap {
+  position: relative;
+}
+.card-collapse {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+.bv-card-wrap:hover .card-collapse {
+  opacity: 1;
+}
+.card-collapse:hover {
+  background: transparent;
+  color: var(--accent-ink);
+}

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import { ActiveLineSource, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
+import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
 import { linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
@@ -76,7 +77,14 @@ export function MarkdownEditor({
     content: value,
     autofocus: autofocus ? "end" : false,
     editorProps: { attributes: { class: "note-editor" } },
-    onCreate: ({ editor }) => linksToMentions(editor),
+    onCreate: ({ editor }) => {
+      // Patch the parser (fixes empty checkboxes on every later parse); the
+      // initial content was already parsed before this, so re-parse it when it
+      // contained a bare `- [ ]` so the starting doc is correct too.
+      patchMarkdownParser(editor);
+      if (/^\s*[-*+] \[[ xX]\]\s*$/m.test(value)) editor.commands.setContent(value, false);
+      linksToMentions(editor);
+    },
     onUpdate: ({ editor }) => {
       const md = normalizeMarkdown(editor.storage.markdown.getMarkdown() as string);
       setMarkdown(md);

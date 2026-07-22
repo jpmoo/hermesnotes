@@ -13,7 +13,6 @@ import { CollectionView } from "./pages/CollectionView.tsx";
 import { AllBlocksPage } from "./pages/AllBlocksPage.tsx";
 import { BlockPage } from "./pages/BlockPage.tsx";
 import { TodayPage } from "./pages/TodayPage.tsx";
-import { UnattachedPage } from "./pages/UnattachedPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
 import { TypesPage } from "./pages/TypesPage.tsx";
@@ -65,7 +64,7 @@ function Shell() {
         <div className="main-inner">
           <NavBar />
           <Routes>
-            <Route path="/" element={<UnattachedPage />} />
+            <Route path="/" element={<Navigate to="/blocks" replace />} />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/today/:date" element={<TodayPage />} />
             <Route path="/blocks" element={<AllBlocksPage />} />

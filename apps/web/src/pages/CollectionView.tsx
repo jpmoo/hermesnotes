@@ -228,7 +228,9 @@ function ListItem({
           <input type="checkbox" checked={boxChecked} onChange={toggleCheck} className="li-check" />
         ) : format === "ordered" ? (
           <span className="li-marker">{index + 1}.</span>
-        ) : null}
+        ) : (
+          <span className="li-marker">•</span>
+        )}
 
         {statusField && format !== "checklist" ? (
           <button className="li-status" onClick={cycleStatus} title={`Status: ${status.replace(/_/g, " ")}`}>

@@ -1045,10 +1045,13 @@ input.typed-title:focus {
 .collection-open {
   display: block;
 }
+.collection-name {
+  display: block;
+  font-size: 14px;
+}
 .collection-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+  display: block;
+  margin-top: 6px;
   text-transform: capitalize;
 }
 input.collection-title {

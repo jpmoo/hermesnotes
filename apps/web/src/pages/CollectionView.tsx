@@ -67,6 +67,7 @@ function ListItem({
   syncStatus,
   collectionId,
   onRemove,
+  onMemberChange,
   readonly = false,
   expandSignal,
 }: {
@@ -77,6 +78,7 @@ function ListItem({
   syncStatus: boolean;
   collectionId: string;
   onRemove: (blockId: string) => void;
+  onMemberChange: (id: string, patch: { properties?: Record<string, unknown>; content?: string | null }) => void;
   readonly?: boolean;
   expandSignal?: { open: boolean; nonce: number };
 }) {
@@ -182,8 +184,14 @@ function ListItem({
     else setProps((p) => ({ ...p, title: value }));
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      if (isText) void patchBlock({ content: value });
-      else void patchBlock({ properties: { ...props, title: value } });
+      if (isText) {
+        void patchBlock({ content: value });
+        onMemberChange(member.id, { content: value });
+      } else {
+        const next = { ...props, title: value };
+        void patchBlock({ properties: next });
+        onMemberChange(member.id, { properties: next });
+      }
     }, 600);
   };
 
@@ -198,6 +206,7 @@ function ListItem({
       const nextProps = { ...props, [statusKey!]: next };
       setProps(nextProps);
       void patchBlock({ properties: nextProps });
+      onMemberChange(member.id, { properties: nextProps });
     }
   };
 
@@ -208,6 +217,7 @@ function ListItem({
       const nextProps = { ...props, [statusKey!]: next };
       setProps(nextProps);
       void patchBlock({ properties: nextProps });
+      onMemberChange(member.id, { properties: nextProps });
     } else {
       setChecked((c) => !c);
       void api.patch(`/collections/${collectionId}/members/${member.id}`, {
@@ -242,9 +252,9 @@ function ListItem({
           {!fullBlock ? (
             <div className="hint">Loading…</div>
           ) : isText ? (
-            <TextBlockEditor block={fullBlock} type={type} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+            <TextBlockEditor block={fullBlock} type={type} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} onChange={(p) => onMemberChange(member.id, p)} />
           ) : (
-            <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+            <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} onChange={(p) => onMemberChange(member.id, p)} />
           )}
         </div>
         {!readonly && (
@@ -334,9 +344,9 @@ function ListItem({
           {!fullBlock ? (
             <div className="hint">Loading…</div>
           ) : isText ? (
-            <TextBlockEditor block={fullBlock} type={type} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+            <TextBlockEditor block={fullBlock} type={type} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} onChange={(p) => onMemberChange(member.id, p)} />
           ) : (
-            <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} />
+            <TypedBlockCard block={fullBlock} type={type!} onConflict={reloadFull} onDeleted={() => onRemove(member.id)} onChange={(p) => onMemberChange(member.id, p)} />
           )}
         </div>
       )}
@@ -463,6 +473,13 @@ export function CollectionView() {
     setMembers((m) => m.filter((x) => x.id !== blockId));
     await api.del(`/collections/${id}/members/${blockId}`);
   };
+
+  // Reflect an inline edit into the member list so the current sort re-runs
+  // (only reorders visibly when a property sort is active).
+  const onMemberChange = (
+    blockId: string,
+    patch: { properties?: Record<string, unknown>; content?: string | null },
+  ) => setMembers((m) => m.map((x) => (x.id === blockId ? { ...x, ...patch } : x)));
 
   const onDragEnd = (e: DragEndEvent) => {
     if (isDynamic || sortActive) return;
@@ -637,6 +654,7 @@ export function CollectionView() {
                   syncStatus={syncStatus}
                   collectionId={id}
                   onRemove={onRemove}
+                  onMemberChange={onMemberChange}
                   readonly={isDynamic || sortActive}
                   expandSignal={expandSignal}
                 />

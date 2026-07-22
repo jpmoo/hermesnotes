@@ -55,12 +55,14 @@ export function TypedBlockCard({
   type,
   onConflict,
   onDeleted,
+  onChange,
   compact = false,
 }: {
   block: Block;
   type: BlockType;
   onConflict: () => void;
   onDeleted: (id: string) => void;
+  onChange?: (patch: { properties?: Record<string, unknown>; content?: string | null }) => void;
   compact?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
@@ -107,7 +109,10 @@ export function TypedBlockCard({
     const next = { ...props, [key]: value };
     setProps(next);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void save(next), 700);
+    timer.current = setTimeout(() => {
+      void save(next);
+      onChange?.({ properties: next });
+    }, 700);
   };
 
   const remove = async () => {

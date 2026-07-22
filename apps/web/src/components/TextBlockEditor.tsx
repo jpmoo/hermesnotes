@@ -20,6 +20,7 @@ export function TextBlockEditor({
   type,
   onConflict,
   onDeleted,
+  onChange,
   canDelete = true,
   compact = false,
 }: {
@@ -27,6 +28,7 @@ export function TextBlockEditor({
   type?: BlockType;
   onConflict: () => void;
   onDeleted: (id: string) => void;
+  onChange?: (patch: { properties?: Record<string, unknown>; content?: string | null }) => void;
   canDelete?: boolean;
   compact?: boolean;
 }) {
@@ -69,12 +71,18 @@ export function TextBlockEditor({
     const next = { ...props, [key]: value };
     setProps(next);
     if (propsTimer.current) clearTimeout(propsTimer.current);
-    propsTimer.current = setTimeout(() => void patch({ properties: next }), 700);
+    propsTimer.current = setTimeout(() => {
+      void patch({ properties: next });
+      onChange?.({ properties: next });
+    }, 700);
   };
 
   const scheduleSave = (value: string) => {
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void patch({ content: value }), 700);
+    timer.current = setTimeout(() => {
+      void patch({ content: value });
+      onChange?.({ content: value });
+    }, 700);
   };
 
   useEffect(

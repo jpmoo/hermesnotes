@@ -12,7 +12,8 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
-import { oneLineText } from "../lib/display.ts";
+import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
+import { darkTextOn, oneLineText } from "../lib/display.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
@@ -129,6 +130,24 @@ export function FavoritesPage() {
   }, [collections, stripSort, stripDir, favorites]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Per-chip background: right-click → set/clear, stored on the collection
+  // (bg_color), so the Collections page rows share it.
+  const [chipMenu, setChipMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [coloring, setColoring] = useState<Block | null>(null);
+  useEffect(() => {
+    if (!chipMenu) return;
+    const close = () => setChipMenu(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("scroll", close, true);
+    };
+  }, [chipMenu]);
+  const setChipColor = (id: string, color: string | null) => {
+    void api.patch(`/collections/${id}`, { bg_color: color }).then(reload);
+  };
   const onChipDrag = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -223,6 +242,18 @@ export function FavoritesPage() {
                 <FavChip key={c.id} id={c.id} draggable={stripSort === "manual"}>
                   <button
                     className="sec-sublink fav-collection"
+                    style={
+                      typeof c.properties.bg_color === "string" && c.properties.bg_color
+                        ? {
+                            background: c.properties.bg_color,
+                            color: darkTextOn(c.properties.bg_color) ? "#26282b" : "#ffffff",
+                          }
+                        : undefined
+                    }
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setChipMenu({ id: c.id, x: e.clientX, y: e.clientY });
+                    }}
                     onClick={() => openBlock(c.id, { collection: true })}
                   >
                     <CollectionIcon
@@ -258,6 +289,50 @@ export function FavoritesPage() {
         </div>
       )}
 
+      {chipMenu && (
+        <div
+          className="menu"
+          style={{ position: "fixed", left: chipMenu.x, top: chipMenu.y, right: "auto" }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className="menu-item"
+            onClick={() => {
+              setColoring(collections.find((c) => c.id === chipMenu.id) ?? null);
+              setChipMenu(null);
+            }}
+          >
+            Set background…
+          </button>
+          {typeof collections.find((c) => c.id === chipMenu.id)?.properties.bg_color === "string" && (
+            <button
+              className="menu-item"
+              onClick={() => {
+                setChipColor(chipMenu.id, null);
+                setChipMenu(null);
+              }}
+            >
+              Clear background
+            </button>
+          )}
+        </div>
+      )}
+      {coloring && (
+        <ColorPickerModal
+          open
+          title="Chip background"
+          value={
+            typeof coloring.properties.bg_color === "string" && coloring.properties.bg_color
+              ? coloring.properties.bg_color
+              : "#eef4f6"
+          }
+          onCancel={() => setColoring(null)}
+          onSave={(c) => {
+            setChipColor(coloring.id, c);
+            setColoring(null);
+          }}
+        />
+      )}
       {loading ? (
         <div className="hint">Loading…</div>
       ) : blocks.length === 0 ? (

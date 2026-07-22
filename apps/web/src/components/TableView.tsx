@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
-import { oneLineHtml } from "../lib/display.ts";
+import { darkTextOn, oneLineHtml } from "../lib/display.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
@@ -37,14 +37,6 @@ const pretty = (k: string) => {
   const t = k.replace(/_/g, " ");
   return t.charAt(0).toUpperCase() + t.slice(1);
 };
-
-/** Perceived-luminance check so the header text stays readable on any color. */
-function darkText(color: string): boolean {
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(color);
-  if (!m) return true;
-  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h!, 16) / 255);
-  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.55;
-}
 
 /** Parse a "prop:" column key; datespans split into ".start"/".end" columns. */
 function propParts(key: string): { fkey: string; part?: "start" | "end" } | null {
@@ -418,7 +410,7 @@ export function TableView({
   };
   const [colorOpen, setColorOpen] = useState(false);
   const headerBg = headerColor ?? "var(--surface-2)";
-  const headerFg = headerColor ? (darkText(headerColor) ? "#26282b" : "#ffffff") : undefined;
+  const headerFg = headerColor ? (darkTextOn(headerColor) ? "#26282b" : "#ffffff") : undefined;
   const sortIndex = (key: string) => sort.findIndex((s) => s.key === key);
 
   return (

@@ -69,3 +69,11 @@ export function isOverdue(v: string | null | undefined): boolean {
   const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   return v < today;
 }
+
+/** Perceived-luminance check: true when dark text reads well on `color`. */
+export function darkTextOn(color: string): boolean {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(color);
+  if (!m) return true;
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h!, 16) / 255);
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.55;
+}

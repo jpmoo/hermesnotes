@@ -1897,6 +1897,17 @@ input.li-text:focus {
   border-radius: 10px;
   background: var(--surface);
 }
+.sec-add-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sec-add-head .segmented {
+  flex: 1;
+}
+.sec-add-close {
+  flex-shrink: 0;
+}
 .sec-add-list {
   max-height: 220px;
   overflow-y: auto;
@@ -1904,6 +1915,18 @@ input.li-text:focus {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.sec-add-list .type-item {
+  text-transform: none;
+}
+.sec-add-list .type-item svg {
+  flex: 0 0 auto;
+}
+.sec-add-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sec-note {
   margin-top: 8px;

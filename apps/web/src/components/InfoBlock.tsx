@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Clock, Locate, Maximize2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Locate, Maximize2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
@@ -6,6 +6,9 @@ import { oneLineText } from "../lib/display.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
+
+const fmtDay = (date: string) =>
+  new Date(`${date}T00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 interface RecentInfo {
   label: string;
@@ -30,7 +33,8 @@ const getInfo = (id: string) =>
     .get(id)!;
 
 function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
-  const { recents, selectedBlockId } = usePanels();
+  const { recents, selectedBlockId, selectedToday } = usePanels();
+  const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [info, setInfo] = useState<Record<string, RecentInfo>>({});
   const [types, setTypes] = useState<BlockType[]>([]);
@@ -39,9 +43,9 @@ function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
   useEffect(() => {
     if (!open) return;
     void api.get<BlockType[]>("/block-types").then(setTypes);
-    recents.forEach((id) => {
-      if (info[id]) return;
-      void getInfo(id).then((v) => setInfo((m) => ({ ...m, [id]: v })));
+    recents.forEach((e) => {
+      if (e.kind !== "block" || info[e.id]) return;
+      void getInfo(e.id).then((v) => setInfo((m) => ({ ...m, [e.id]: v })));
     });
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -60,18 +64,33 @@ function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
         <div className="menu recents-menu">
           {recents.length === 0 ? (
             <div className="hint" style={{ padding: "6px 10px" }}>
-              No recent blocks
+              Nothing recent
             </div>
           ) : (
-            recents.map((id) => {
-              const it = info[id];
+            recents.map((e) => {
+              if (e.kind === "today") {
+                return (
+                  <button
+                    key={`t:${e.date}`}
+                    className={`menu-item recent-item${e.date === selectedToday ? " active" : ""}`}
+                    onClick={() => {
+                      nav(`/today/${e.date}`);
+                      setOpen(false);
+                    }}
+                  >
+                    <CalendarDays size={14} />
+                    <span className="recent-label">Today · {fmtDay(e.date)}</span>
+                  </button>
+                );
+              }
+              const it = info[e.id];
               const t = it?.blockTypeId ? types.find((x) => x.id === it.blockTypeId) : undefined;
               return (
                 <button
-                  key={id}
-                  className={`menu-item recent-item${id === selectedBlockId ? " active" : ""}`}
+                  key={`b:${e.id}`}
+                  className={`menu-item recent-item${e.id === selectedBlockId && !selectedToday ? " active" : ""}`}
                   onClick={() => {
-                    onPick(id);
+                    onPick(e.id);
                     setOpen(false);
                   }}
                 >
@@ -93,9 +112,23 @@ function RecentsMenu({ onPick }: { onPick: (id: string) => void }) {
 
 /** The right-panel block info: navigation controls (back/origin/forward/recents/expand) + the info pane. */
 export function InfoBlock({ blockId }: { blockId: string }) {
-  const { pushBlock, back, forward, goOrigin, canBack, canForward, atOrigin, selectedIsCollection } =
-    usePanels();
+  const {
+    pushBlock,
+    back,
+    forward,
+    goOrigin,
+    canBack,
+    canForward,
+    atOrigin,
+    selectedIsCollection,
+    selectedToday,
+  } = usePanels();
   const nav = useNavigate();
+  const fullPage = selectedToday
+    ? `/today/${selectedToday}`
+    : selectedIsCollection
+      ? `/collections/${blockId}`
+      : `/block/${blockId}`;
 
   return (
     <div className="info-block">
@@ -116,13 +149,7 @@ export function InfoBlock({ blockId }: { blockId: string }) {
         </button>
         <span style={{ flex: 1 }} />
         <RecentsMenu onPick={pushBlock} />
-        <button
-          className="icon-btn"
-          title="Open as full page"
-          onClick={() =>
-            nav(selectedIsCollection ? `/collections/${blockId}` : `/block/${blockId}`)
-          }
-        >
+        <button className="icon-btn" title="Open as full page" onClick={() => nav(fullPage)}>
           <Maximize2 size={14} />
         </button>
       </div>

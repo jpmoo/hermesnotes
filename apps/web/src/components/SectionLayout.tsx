@@ -10,8 +10,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Lock, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type BlockSearchResult, type Collection } from "../api.ts";
+import { api, type BlockSearchResult, type BlockType, type Collection } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 
 export interface SectionEntry {
   id: string;
@@ -73,11 +74,13 @@ function AddMenu({
 }) {
   const [tab, setTab] = useState<"collection" | "note">("collection");
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [types, setTypes] = useState<BlockType[]>([]);
   const [q, setQ] = useState("");
   const [notes, setNotes] = useState<BlockSearchResult[]>([]);
 
   useEffect(() => {
     void api.get<Collection[]>("/collections").then(setCollections);
+    void api.get<BlockType[]>("/block-types").then(setTypes);
   }, []);
   useEffect(() => {
     if (tab !== "note") return;
@@ -92,12 +95,17 @@ function AddMenu({
 
   return (
     <div className="sec-add-menu">
-      <div className="segmented" style={{ marginBottom: 8 }}>
-        <button className={`seg${tab === "collection" ? " active" : ""}`} onClick={() => setTab("collection")}>
-          Collection
-        </button>
-        <button className={`seg${tab === "note" ? " active" : ""}`} onClick={() => setTab("note")}>
-          Note
+      <div className="sec-add-head">
+        <div className="segmented">
+          <button className={`seg${tab === "collection" ? " active" : ""}`} onClick={() => setTab("collection")}>
+            Collection
+          </button>
+          <button className={`seg${tab === "note" ? " active" : ""}`} onClick={() => setTab("note")}>
+            Note
+          </button>
+        </div>
+        <button className="icon-btn sec-add-close" title="Close" onClick={onClose}>
+          <X size={14} />
         </button>
       </div>
       {tab === "collection" ? (
@@ -105,13 +113,18 @@ function AddMenu({
           {collections.map((c) => (
             <button
               key={c.id}
-              className="menu-item"
+              className="menu-item type-item"
               onClick={() => {
                 onAddCollection(c.id);
                 onClose();
               }}
             >
-              {oneLineText(c.properties) || "Untitled"}
+              <BlockIcon
+                iconKey={(c.properties.icon_key as string) ?? "folder"}
+                color={(c.properties.icon_color as string) ?? null}
+                size={15}
+              />
+              <span className="sec-add-label">{oneLineText(c.properties) || "Untitled"}</span>
             </button>
           ))}
           {collections.length === 0 && <div className="hint">No collections yet.</div>}
@@ -125,18 +138,26 @@ function AddMenu({
             onChange={(e) => setQ(e.target.value)}
           />
           <div className="sec-add-list">
-            {notes.map((n) => (
-              <button
-                key={n.id}
-                className="menu-item"
-                onClick={() => {
-                  onAddNote(n.id);
-                  onClose();
-                }}
-              >
-                {n.label}
-              </button>
-            ))}
+            {notes.map((n) => {
+              const t = types.find((x) => x.id === n.blockTypeId);
+              return (
+                <button
+                  key={n.id}
+                  className="menu-item type-item"
+                  onClick={() => {
+                    onAddNote(n.id);
+                    onClose();
+                  }}
+                >
+                  <BlockIcon
+                    iconKey={!t || t.isText ? "type" : t.iconKey}
+                    color={t && !t.isText ? t.iconColor : null}
+                    size={15}
+                  />
+                  <span className="sec-add-label">{n.label}</span>
+                </button>
+              );
+            })}
             {notes.length === 0 && <div className="hint">No matches.</div>}
           </div>
         </>

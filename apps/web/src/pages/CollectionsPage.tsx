@@ -14,7 +14,7 @@ function title(c: Collection): string {
 
 const KINDS = [
   { key: "list", label: "Lists" },
-  { key: "document", label: "Documents" },
+  { key: "document", label: "Spreads" },
   { key: "matrix", label: "Matrices" },
   { key: "table", label: "Tables" },
 ] as const;
@@ -126,7 +126,7 @@ export function CollectionsPage() {
               >
                 <span className="chrome collection-name">{title(c)}</span>
                 <span className="hint collection-meta" style={{ color: text ?? undefined }}>
-                  {meta} · {c.collectionKind}
+                  {meta} · {c.collectionKind === "document" ? "spread" : c.collectionKind}
                 </span>
               </button>
 

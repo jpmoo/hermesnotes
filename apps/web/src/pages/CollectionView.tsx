@@ -335,7 +335,7 @@ export function CollectionView() {
           onMemberChange={onMemberChange}
         />
       ) : members.length === 0 ? (
-        <div className="hint">{isDocument ? "Empty document. Add a section." : "Empty list. Add an item."}</div>
+        <div className="hint">{isDocument ? "Empty spread. Add a section." : "Empty list. Add an item."}</div>
       ) : isDocument ? (
         <DndContext
           sensors={sensors}

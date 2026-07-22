@@ -6,7 +6,7 @@ import { api, type Collection } from "../api.ts";
 // Only the kinds that actually exist today (matrix defaults to a 2×2 grid).
 const KINDS: { key: CollectionKind; label: string }[] = [
   { key: "list", label: "List" },
-  { key: "document", label: "Document" },
+  { key: "document", label: "Spread" },
   { key: "matrix", label: "Matrix" },
 ];
 

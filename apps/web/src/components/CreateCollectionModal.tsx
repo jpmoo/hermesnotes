@@ -62,7 +62,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
               className={`seg${kind === "document" ? " active" : ""}`}
               onClick={() => setKind("document")}
             >
-              Document
+              Spread
             </button>
             <button
               className={`seg${kind === "matrix" ? " active" : ""}`}

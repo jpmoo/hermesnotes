@@ -75,6 +75,7 @@ export function TodayPage() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const { slotEl, setTitle, setHasContent, selectToday, selectedToday } = usePanels();
   const typeById = new Map(types.map((t) => [t.id, t]));
 
@@ -89,7 +90,10 @@ export function TodayPage() {
 
   useEffect(() => {
     setLoading(true);
-    load().finally(() => setLoading(false));
+    setFailed(false);
+    load()
+      .catch(() => setFailed(true))
+      .finally(() => setLoading(false));
   }, [load]);
 
   useEffect(() => {
@@ -247,7 +251,27 @@ export function TodayPage() {
         )}
       </p>
 
-      {loading || !sheet ? <div className="hint">Loading…</div> : layout.map(renderSection)}
+      {loading ? (
+        <div className="hint">Loading…</div>
+      ) : failed || !sheet ? (
+        <div className="hint">
+          Couldn’t load this day.{" "}
+          <button
+            className="ghost"
+            onClick={() => {
+              setLoading(true);
+              setFailed(false);
+              void load()
+                .catch(() => setFailed(true))
+                .finally(() => setLoading(false));
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        layout.map(renderSection)
+      )}
 
       {slotEl &&
         createPortal(

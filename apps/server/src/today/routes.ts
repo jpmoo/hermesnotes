@@ -1,4 +1,4 @@
-import { and, eq, gte, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { normalizeTodayLayout, todayLayoutSchema, type PropertySchema } from "@hermes/shared";
@@ -16,10 +16,12 @@ async function findOrCreateNote(userId: string, date: string) {
     .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>'today_note' = ${date}`))
     .limit(1);
   if (existing) return existing;
+  // Look up by the isText flag, not the (user-renameable) type name.
   const [textType] = await db
     .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
     .from(blockTypes)
-    .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.name, "text")))
+    .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.isText, true)))
+    .orderBy(desc(blockTypes.builtin))
     .limit(1);
   if (!textType) throw badRequest("text block type missing");
   const [created] = await db

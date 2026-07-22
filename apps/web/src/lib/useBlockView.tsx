@@ -149,9 +149,12 @@ export function useBlockView<T extends Viewable>(
   const orderKey = opts.scope ? `hn.bv.order.${opts.scope}` : "";
 
   const [levels, setLevels] = useState<SortLevel[]>([]);
-  const [manualMode, setManualModeState] = useState<boolean>(
+  const [manualModeState, setManualModeState] = useState<boolean>(
     () => manualAvailable && (externalManual ? true : readLS(manualKey) === "1"),
   );
+  // Never manual when it isn't available (e.g. a collection that resolves to
+  // dynamic-smart after its members load), regardless of stale state.
+  const manualMode = manualModeState && manualAvailable;
   const [localOrder, setLocalOrder] = useState<string[]>(() => {
     try {
       return orderKey ? (JSON.parse(readLS(orderKey) || "[]") as string[]) : [];

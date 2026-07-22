@@ -289,9 +289,6 @@ export function CollectionView() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const typeById = new Map(types.map((t) => [t.id, t]));
-  const { sorted, toolbar: sortBar, active: sortActive } = useBlockView(members, types, {
-    enableView: false,
-  });
 
   const load = async () => {
     const [data, ts] = await Promise.all([
@@ -326,6 +323,26 @@ export function CollectionView() {
   const isDynamic = isSmart && smartMode === "dynamic";
   const isDocument = collection?.collectionKind === "document";
   const filterQuery: unknown = collection?.properties.filter_query;
+
+  // Reorder a member (manual list order), persisted as membership order.
+  const moveMember = (activeId: string, overId: string) => {
+    if (isDynamic) return;
+    const oldI = members.findIndex((m) => m.id === activeId);
+    const newI = members.findIndex((m) => m.id === overId);
+    if (oldI < 0 || newI < 0) return;
+    const arr = arrayMove(members, oldI, newI);
+    setMembers(arr);
+    const afterId = arr[newI - 1]?.id ?? null;
+    const beforeId = arr[newI + 1]?.id ?? null;
+    void api.patch(`/collections/${id}/members/${activeId}`, { afterId, beforeId });
+  };
+
+  // Same sort/manual toolbar as All blocks. Manual order = membership order
+  // (drag), so it's offered on every list except dynamic smart ones.
+  const { sorted, toolbar: sortBar, active: sortActive } = useBlockView(members, types, {
+    enableView: false,
+    manual: isDynamic ? null : { onMove: moveMember },
+  });
 
   const refresh = async () => {
     await api.post(`/collections/${id}/materialize`);
@@ -366,14 +383,7 @@ export function CollectionView() {
     if (isDynamic || sortActive) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
-    const oldI = members.findIndex((m) => m.id === active.id);
-    const newI = members.findIndex((m) => m.id === over.id);
-    if (oldI < 0 || newI < 0) return;
-    const arr = arrayMove(members, oldI, newI);
-    setMembers(arr);
-    const afterId = arr[newI - 1]?.id ?? null;
-    const beforeId = arr[newI + 1]?.id ?? null;
-    void api.patch(`/collections/${id}/members/${String(active.id)}`, { afterId, beforeId });
+    moveMember(String(active.id), String(over.id));
   };
 
   const ordered = [...types].sort((a, b) =>

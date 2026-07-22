@@ -6,6 +6,7 @@ import { db } from "../db.js";
 import { badRequest, conflict, unauthorized } from "../lib/errors.js";
 import { generateToken, sha256 } from "../lib/hash.js";
 import { seedBlockTypes } from "../blocks/seed.js";
+import { seedWelcomeContent } from "../blocks/welcome.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { issueSession, SESSION_COOKIE } from "./session.js";
 import { authenticate, requireUser } from "./middleware.js";
@@ -52,6 +53,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await seedBlockTypes(tx, id);
       return { userId: id, isAdmin: admin };
     });
+
+    // Starter content ("Start here" spread + getting-started checklist).
+    // Best-effort: a failure here must never block the signup.
+    try {
+      await seedWelcomeContent(db, userId);
+    } catch (err) {
+      req.log.warn({ err }, "welcome content seeding failed");
+    }
 
     setSessionCookie(reply, userId);
     reply.code(201);

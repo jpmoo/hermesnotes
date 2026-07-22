@@ -46,20 +46,26 @@ export const Mentions = Extension.create<{ handlers: MentionHandlers | null }>({
         pluginKey: new PluginKey(`mention-${char}`),
         allowSpaces: false,
         startOfLine: false,
-        // Don't trigger inside a raw source block (code) — the chars are literal there.
-        allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
+        // Allow inside our raw source line (also a code node), but not inside a
+        // real code block, where the chars are literal.
+        allow: ({ state, range }) => {
+          const parent = state.doc.resolve(range.from).parent;
+          return parent.type.name === "sourceBlock" || !parent.type.spec.code;
+        },
         // Items are fetched by the React dropdown; the built-in list is unused.
         items: () => [],
         command: ({ editor, range, props }) => {
-          editor
-            .chain()
-            .focus()
-            .deleteRange(range)
-            .insertContent([
-              { type: "mention", attrs: { href: props.href, label: props.label } },
-              { type: "text", text: " " },
-            ])
-            .run();
+          const inSource =
+            editor.state.doc.resolve(range.from).parent.type.name === "sourceBlock";
+          // In the raw source line insert the markdown link text (it re-chips
+          // into a mention when the line renders); elsewhere insert the chip.
+          const content = inSource
+            ? [{ type: "text", text: `[${props.label}](${props.href}) ` }]
+            : [
+                { type: "mention", attrs: { href: props.href, label: props.label } },
+                { type: "text", text: " " },
+              ];
+          editor.chain().focus().deleteRange(range).insertContent(content).run();
         },
         render: () => {
           const toState = (props: {

@@ -179,7 +179,6 @@ export function TypedBlockCard({
       )}
 
       <div className="block-meta">
-        <span className="type-name">{type.name}</span>
         <span className="meta-dates">
           Created {fmtDateTime(block.createdAt)} · Edited {fmtDateTime(updatedAt)}
         </span>

@@ -764,11 +764,6 @@ input.typed-title:focus {
 .meta-dates {
   color: var(--text-faint);
 }
-.type-name {
-  font-family: var(--font-chrome);
-  text-transform: capitalize;
-}
-
 /* ── Types page & editor ──────────────────────────────────────── */
 .type-row {
   display: flex;

@@ -14,7 +14,7 @@ import { TagEditor } from "./TagEditor.tsx";
 type SaveState = "idle" | "saving" | "error";
 
 /** Icon-as-status control: the block icon reflects status; click cycles to next. */
-function StatusControl({
+export function StatusControl({
   field,
   value,
   onChange,

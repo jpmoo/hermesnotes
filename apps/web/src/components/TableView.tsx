@@ -10,6 +10,7 @@ import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { MentionTextInput } from "./MentionTextInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
+import { StatusControl } from "./TypedBlockCard.tsx";
 
 /**
  * Column keys: "title" (always first), "prop:<field key>" for properties drawn
@@ -164,6 +165,18 @@ function TableRow({
     // Blank cell when this block's type doesn't carry the field — editing it
     // would invent properties the type never defined.
     if (!field || !ownKeys.has(fkey)) return null;
+    // Status matches the rest of the app: the icon cycles on click, no menu.
+    if (field.type === "status") {
+      return (
+        <StatusControl
+          field={field}
+          value={props[fkey]}
+          onChange={(v) => update(fkey, v)}
+          fallbackIconKey={type?.iconKey ?? null}
+          fallbackColor={type?.iconColor ?? null}
+        />
+      );
+    }
     return (
       <FieldInput field={field} value={props[fkey]} onChange={(v) => update(fkey, v)} blockId={member.id} />
     );
@@ -221,6 +234,7 @@ export function TableView({
   const [headerColor, setHeaderColor] = useState<string | null>(
     typeof props.table_header_color === "string" ? props.table_header_color : null,
   );
+  const [hideTitle, setHideTitle] = useState(props.table_hide_title === true);
   const persist = (patch: Record<string, unknown>) => void api.patch(`/collections/${cid}`, patch);
 
   const isDynamic = props.membership_mode === "smart" && (props.smart_mode ?? "dynamic") === "dynamic";
@@ -246,8 +260,9 @@ export function TableView({
     return f?.label?.trim() || pretty(key.slice(5));
   };
 
-  const shown = ["title", ...columns];
+  const shown = hideTitle ? [...columns] : ["title", ...columns];
   const available = [
+    ...(hideTitle ? [{ key: "title", label: "Title" }] : []),
     ...[...fieldByKey.entries()]
       .filter(([k, f]) => f.type !== "attachments" && !columns.includes(`prop:${k}`))
       .map(([k, f]) => ({ key: `prop:${k}`, label: f.label?.trim() || pretty(k) })),
@@ -255,14 +270,24 @@ export function TableView({
   ];
 
   const addColumn = (key: string) => {
+    if (key === "title") {
+      setHideTitle(false);
+      persist({ table_hide_title: false });
+      return;
+    }
     const next = [...columns, key];
     setColumns(next);
     persist({ table_columns: next });
   };
   const removeColumn = (key: string) => {
-    const next = columns.filter((k) => k !== key);
-    setColumns(next);
-    persist({ table_columns: next });
+    if (key === "title") {
+      setHideTitle(true);
+      persist({ table_hide_title: true });
+    } else {
+      const next = columns.filter((k) => k !== key);
+      setColumns(next);
+      persist({ table_columns: next });
+    }
     if (sort.some((s) => s.key === key)) {
       const ns = sort.filter((s) => s.key !== key);
       setSort(ns);
@@ -442,14 +467,10 @@ export function TableView({
               Clear all sorting
             </button>
           )}
-          {menu.key !== "title" && (
-            <>
-              <div className="menu-sep" />
-              <button className="menu-item" onClick={() => { removeColumn(menu.key); setMenu(null); }}>
-                Remove column
-              </button>
-            </>
-          )}
+          <div className="menu-sep" />
+          <button className="menu-item" onClick={() => { removeColumn(menu.key); setMenu(null); }}>
+            Remove column
+          </button>
         </div>
       )}
 

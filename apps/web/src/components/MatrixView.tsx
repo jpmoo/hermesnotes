@@ -218,7 +218,7 @@ function Chip({
         {onRemove && (
           <button
             className="icon-btn chip-remove"
-            title="Remove from matrix"
+            title="Put in drawer"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();

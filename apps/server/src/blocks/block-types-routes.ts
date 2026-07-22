@@ -57,7 +57,9 @@ export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
     return db
       .select({
         ...typeView,
-        blockCount: sql<number>`(SELECT count(*)::int FROM ${blocks} b WHERE b.block_type_id = ${blockTypes.id})`,
+        // NB: ${blockTypes.id} would render as unqualified "id", which inside
+        // the subquery resolves to b.id — qualify the outer column explicitly.
+        blockCount: sql<number>`(SELECT count(*)::int FROM ${blocks} b WHERE b.block_type_id = ${blockTypes}.id)`,
       })
       .from(blockTypes)
       .where(eq(blockTypes.ownerId, userId))

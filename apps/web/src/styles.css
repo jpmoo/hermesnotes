@@ -1636,19 +1636,48 @@ input.matrix-axis-y::placeholder {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
-.lane-drop {
-  min-height: 46px;
-  border-radius: 9px;
+/* Date mode row-regions: a droppable band spanning all day columns. */
+.row-band {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  min-height: 84px;
+  z-index: 0;
+  /* The grid is start-aligned; the band must fill every row it spans. */
   align-self: stretch;
 }
-.lane-drop.over {
-  background: rgba(95, 164, 181, 0.08);
-  outline: 1px dashed var(--accent);
+.row-band.colored {
+  border-color: transparent;
+}
+.row-band.over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+.row-band-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+}
+.row-band-head.colored {
+  background: rgba(255, 255, 255, 0.72);
+  border-radius: 11px 11px 0 0;
+  margin: 1px 1px 0;
 }
 .date-bar {
   position: relative;
   z-index: 1;
-  padding: 2px 0;
+  padding: 2px 8px;
+}
+.date-bar .matrix-chip {
+  background: rgba(255, 255, 255, 0.6);
+}
+.matrix-span-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .matrix-bind select {
   width: auto;
@@ -2116,18 +2145,6 @@ input.matrix-axis-y::placeholder {
 }
 .masonry-item > .card {
   margin: 0;
-}
-.masonry-expand {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  width: 26px;
-  height: 26px;
-  opacity: 0.7;
-}
-.masonry-item:hover .masonry-expand {
-  opacity: 1;
 }
 .masonry-grip {
   position: absolute;
@@ -2828,4 +2845,46 @@ input.matrix-axis-y::placeholder {
   align-self: stretch;
   margin: 2px 3px;
   background: var(--border);
+}
+
+/* Embedded sections: icon-open affordance + non-floating matrix drawer. */
+.sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sec-head .sec-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sec-open-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+.sec-open-btn:hover {
+  background: transparent;
+  color: var(--accent-ink);
+}
+.note-embed {
+  position: relative;
+}
+.note-open-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+}
+/* An embedded matrix's drawer scrolls with the page instead of sticking. */
+.matrix-embed .matrix-drawer {
+  position: static;
+  margin: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: none;
 }

@@ -1,5 +1,5 @@
 import type { TodayLayout, TodaySection } from "@hermes/shared";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Maximize2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -52,10 +52,18 @@ function NoteSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockId]);
   useEffect(reload, [reload]);
+  const { openBlock } = usePanels();
   if (!block) return null;
   const typeById = new Map(types.map((t) => [t.id, t]));
   return (
-    <section className="today-section">
+    <section className="today-section note-embed">
+      <button
+        className="icon-btn sec-open-btn note-open-btn"
+        title="Open note"
+        onClick={() => openBlock(blockId)}
+      >
+        <Maximize2 size={14} />
+      </button>
       <BlockCard
         block={block}
         type={typeById.get(block.blockTypeId)}
@@ -76,7 +84,7 @@ export function TodayPage() {
   const [labels, setLabels] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const { slotEl, bottomSlotEl, setTitle, setHasContent, selectToday, selectedToday } = usePanels();
+  const { slotEl, bottomSlotEl, setHasContent, selectToday, selectedToday } = usePanels();
   const typeById = new Map(types.map((t) => [t.id, t]));
 
   const load = useCallback(async () => {
@@ -98,9 +106,8 @@ export function TodayPage() {
 
   useEffect(() => {
     setHasContent(true);
-    setTitle("Today");
     return () => setHasContent(false);
-  }, [setHasContent, setTitle]);
+  }, [setHasContent]);
 
   // Give the Today page its own info block (the day's note), recorded in recents
   // by date. Runs on date/note change only; skip if already this day's entry so

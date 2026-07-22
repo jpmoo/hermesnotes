@@ -369,7 +369,7 @@ export function CollectionView() {
   const [allExpanded, setAllExpanded] = useState(false);
   const [titleVal, setTitleVal] = useState("");
   const menuRef = useRef<HTMLDivElement>(null);
-  const { bottomSlotEl, setTitle, setHasContent, selectBlock, selectedBlockId } = usePanels();
+  const { bottomSlotEl, setHasContent, selectBlock, selectedBlockId } = usePanels();
   const titleTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -454,11 +454,10 @@ export function CollectionView() {
       return;
     }
     setHasContent(true);
-    setTitle(isDocument ? "Sections" : "Query");
     return () => {
       setHasContent(false);
     };
-  }, [isSmart, isDocument, setHasContent, setTitle]);
+  }, [isSmart, isDocument, setHasContent]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);

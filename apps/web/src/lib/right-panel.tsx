@@ -12,8 +12,6 @@ interface PanelsApi {
   setSlotEl: (el: HTMLElement | null) => void;
   bottomSlotEl: HTMLElement | null; // renders below the info pane
   setBottomSlotEl: (el: HTMLElement | null) => void;
-  title: string;
-  setTitle: (t: string) => void;
   hasContent: boolean;
   setHasContent: (b: boolean) => void;
   leftPinned: boolean;
@@ -86,7 +84,6 @@ const readRecents = (k: string): RecentEntry[] => {
 export function PanelsProvider({ children }: { children: ReactNode }) {
   const [slotEl, setSlotEl] = useState<HTMLElement | null>(null);
   const [bottomSlotEl, setBottomSlotEl] = useState<HTMLElement | null>(null);
-  const [title, setTitle] = useState("");
   const [hasContent, setHasContent] = useState(false);
   const [leftPinned, setLeftRaw] = useState(() => readBool("hn.pin.left"));
   const [rightPinned, setRightRaw] = useState(() => readBool("hn.pin.right"));
@@ -177,8 +174,6 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       setSlotEl,
       bottomSlotEl,
       setBottomSlotEl,
-      title,
-      setTitle,
       hasContent,
       setHasContent,
       leftPinned,
@@ -201,7 +196,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       refreshInfo,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slotEl, bottomSlotEl, title, hasContent, leftPinned, rightPinned, nav, recents, infoTick],
+    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, recents, infoTick],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

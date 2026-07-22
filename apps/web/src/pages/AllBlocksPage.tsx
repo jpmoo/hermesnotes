@@ -20,7 +20,7 @@ export function AllBlocksPage() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { bottomSlotEl, setTitle, setHasContent } = usePanels();
+  const { bottomSlotEl, setHasContent } = usePanels();
 
   const typeById = new Map(types.map((t) => [t.id, t]));
 
@@ -43,9 +43,8 @@ export function AllBlocksPage() {
   // Offer the query builder in the right panel.
   useEffect(() => {
     setHasContent(true);
-    setTitle("Filter");
     return () => setHasContent(false);
-  }, [setHasContent, setTitle]);
+  }, [setHasContent]);
 
   useEffect(() => {
     if (!menuOpen) return;

@@ -1,7 +1,9 @@
+import { Maximize2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
+import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { MatrixView } from "./MatrixView.tsx";
 
@@ -20,6 +22,7 @@ export function CollectionSection({
   reportLabel?: (label: string) => void;
 }) {
   const [state, setState] = useState<{ collection: Collection; members: Member[] } | null>(null);
+  const { openBlock } = usePanels();
 
   const load = useCallback(() => {
     void api
@@ -38,14 +41,20 @@ export function CollectionSection({
   const title = oneLineText(state.collection.properties) || "Untitled";
   return (
     <section className="today-section">
-      <h2 className="today-h">
-        {title}
-        <Link className="sec-open" to={`/collections/${collectionId}`}>
-          open ↗
-        </Link>
+      <h2 className="today-h sec-head">
+        <span className="sec-title">{title}</span>
+        <button
+          className="icon-btn sec-open-btn"
+          title="Open collection"
+          onClick={() => openBlock(collectionId, { collection: true })}
+        >
+          <Maximize2 size={14} />
+        </button>
       </h2>
       {state.collection.collectionKind === "matrix" ? (
-        <MatrixView collection={state.collection} members={state.members} types={types} onChanged={load} />
+        <div className="matrix-embed">
+          <MatrixView collection={state.collection} members={state.members} types={types} onChanged={load} />
+        </div>
       ) : state.members.length === 0 ? (
         <div className="hint">Empty.</div>
       ) : (

@@ -11,13 +11,14 @@ import {
 } from "@dnd-kit/core";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronDown, ChevronUp, Settings2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
+import { DateTimePicker } from "./DateTimePicker.tsx";
 
 interface RegionDef {
   title: string;
@@ -44,7 +45,8 @@ const DAYS_MAX = 7;
 const pretty = (v: string) => v.replace(/_/g, " ");
 
 // Date-bound region modes: columns are consecutive days.
-const DATE_KEYS = ["@days_before", "@days_after", "@days_around"] as const;
+const DATE_KEYS = ["@days_before", "@days_after", "@days_around", "@days_span"] as const;
+const SPAN_MAX = 31; // day-column cap for a custom range
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
@@ -59,6 +61,23 @@ function dayList(mode: string, count: number): string[] {
     d.setDate(d.getDate() + startOffset + i);
     return ymd(d);
   });
+}
+
+/** Day columns for an explicit start..end range (capped at SPAN_MAX). */
+function daySpan(start: string, end: string): string[] {
+  const ok = (v: string) => /^\d{4}-\d{2}-\d{2}/.test(v);
+  const st = ok(start) ? start.slice(0, 10) : "";
+  const en = ok(end) ? end.slice(0, 10) : "";
+  if (!st || !en || en < st) return [st || en || ymd(new Date())];
+  const out: string[] = [];
+  const d = new Date(`${st}T00:00`);
+  for (let i = 0; i < SPAN_MAX; i++) {
+    const k = ymd(d);
+    out.push(k);
+    if (k === en) break;
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
 }
 
 const fmtDayHead = (date: string) =>
@@ -88,8 +107,8 @@ function dayIndexes(schema: PropertySchema | null | undefined, props: Record<str
   return out;
 }
 
-function readRegions(props: Record<string, unknown>, count: number): RegionDef[] {
-  const raw = Array.isArray(props.matrix_regions) ? (props.matrix_regions as RegionDef[]) : [];
+function readRegions(props: Record<string, unknown>, count: number, key = "matrix_regions"): RegionDef[] {
+  const raw = Array.isArray(props[key]) ? (props[key] as RegionDef[]) : [];
   return Array.from({ length: count }, (_, i) => ({
     ...raw[i],
     title: String(raw[i]?.title ?? ""),
@@ -353,14 +372,28 @@ function RegionCell({
   );
 }
 
-/** A full-width drop strip for one lane in date mode. */
-function LaneDrop({ lane }: { lane: number }) {
-  const drop = useDroppable({ id: `lane:${lane}` });
+/** Date mode: the full-width droppable band behind one row-region. */
+function RowBand({
+  index,
+  color,
+  rowStart,
+  rowSpan,
+}: {
+  index: number;
+  color: string | null;
+  rowStart: number;
+  rowSpan: number;
+}) {
+  const drop = useDroppable({ id: `row:${index}` });
   return (
     <div
       ref={drop.setNodeRef}
-      className={`lane-drop${drop.isOver ? " over" : ""}`}
-      style={{ gridColumn: "1 / -1", gridRow: lane + 2 }}
+      className={`row-band${drop.isOver ? " over" : ""}${color ? " colored" : ""}`}
+      style={{
+        gridColumn: "1 / -1",
+        gridRow: `${rowStart} / ${rowStart + rowSpan}`,
+        ...(color ? { background: color } : {}),
+      }}
     />
   );
 }
@@ -397,7 +430,17 @@ export function MatrixView({
   const dateMode = isSmart && (DATE_KEYS as readonly string[]).includes(bindKey);
   const bound = isSmart && !!bindKey && !dateMode; // status-bound
   const dayCount = Math.min(DAYS_MAX, Math.max(1, Number(props.matrix_bind_count) || 3));
-  const days = useMemo(() => (dateMode ? dayList(bindKey, dayCount) : []), [dateMode, bindKey, dayCount]);
+  const spanStart = typeof props.matrix_date_start === "string" ? props.matrix_date_start : "";
+  const spanEnd = typeof props.matrix_date_end === "string" ? props.matrix_date_end : "";
+  const days = useMemo(
+    () =>
+      dateMode
+        ? bindKey === "@days_span"
+          ? daySpan(spanStart, spanEnd)
+          : dayList(bindKey, dayCount)
+        : [],
+    [dateMode, bindKey, dayCount, spanStart, spanEnd],
+  );
   const lanesMap = useMemo(
     () => (props.matrix_lanes && typeof props.matrix_lanes === "object" ? (props.matrix_lanes as Record<string, number>) : {}),
     [props.matrix_lanes],
@@ -405,9 +448,13 @@ export function MatrixView({
 
   const cols = Math.min(REGION_MAX, Math.max(1, Number(props.matrix_cols) || 2));
   const rows = Math.min(REGION_MAX, Math.max(1, Number(props.matrix_rows) || 2));
-  const count = cols * rows;
+  // Date mode swaps the region axis: day columns × row-regions. Rows have their
+  // own defs (matrix_date_rows) so the custom grid's regions stay untouched.
+  const dRows = Math.min(REGION_MAX, Math.max(1, Number(props.matrix_date_row_count) || 1));
+  const regionsKey = dateMode ? "matrix_date_rows" : "matrix_regions";
+  const count = dateMode ? dRows : cols * rows;
 
-  const [regions, setRegions] = useState<RegionDef[]>(() => readRegions(props, count));
+  const [regions, setRegions] = useState<RegionDef[]>(() => readRegions(props, count, regionsKey));
   const [colorEdit, setColorEdit] = useState<number | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -418,9 +465,9 @@ export function MatrixView({
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    setRegions(readRegions(collection.properties, count));
+    setRegions(readRegions(collection.properties, count, regionsKey));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collection, count]);
+  }, [collection, count, regionsKey]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -542,12 +589,22 @@ export function MatrixView({
     };
   }, [drawerOpen, q, isSmart, bound, memberIds, props.filter_query]);
 
-  // Date mode: contiguous day-runs per block ("bars"), stacked in lanes. A
-  // block keeps ONE lane so its bars align across columns; explicit lanes come
-  // from matrix_lanes, the rest pack into the first non-overlapping lane.
+  /** Date mode: the row-region a card sits in (matrix_lanes, clamped). */
+  const rowOfCard = (id: string): number => {
+    const r = Number(lanesMap[id]);
+    return Number.isInteger(r) && r >= 0 && r < dRows ? r : 0;
+  };
+
+  // Date mode: contiguous day-runs per block ("bars"). Each card belongs to a
+  // row-region (rowOfCard); within a row, bars pack into the first sub-lane
+  // where they don't overlap, so a card's bars stay aligned across columns.
   const dateData = useMemo(() => {
-    const empty = { bars: [] as { item: Item; start: number; end: number; lane: number }[], loose: [] as Item[], laneCount: 0 };
-    if (!dateMode) return empty;
+    if (!dateMode)
+      return {
+        bars: [] as { item: Item; start: number; end: number; row: number; sub: number }[],
+        loose: [] as Item[],
+        subCounts: [] as number[],
+      };
     const typeById = new Map(types.map((t) => [t.id, t]));
     const withRuns: { item: Item; runs: [number, number][]; firstDay: number }[] = [];
     const loose: Item[] = [];
@@ -573,28 +630,33 @@ export function MatrixView({
       withRuns.push({ item: blockToItem(b), runs, firstDay: idxs[0]! });
     }
     withRuns.sort((a, z) => a.firstDay - z.firstDay || a.item.label.localeCompare(z.item.label));
-    const laneSpans: [number, number][][] = [];
-    const overlaps = (lane: number, runs: [number, number][]) =>
-      (laneSpans[lane] ?? []).some(([s1, e1]) => runs.some(([s2, e2]) => s1 <= e2 && s2 <= e1));
-    const bars: { item: Item; start: number; end: number; lane: number }[] = [];
+    const subSpans: [number, number][][][] = Array.from({ length: dRows }, () => []);
+    const overlaps = (row: number, sub: number, runs: [number, number][]) =>
+      (subSpans[row]![sub] ?? []).some(([s1, e1]) => runs.some(([s2, e2]) => s1 <= e2 && s2 <= e1));
+    const bars: { item: Item; start: number; end: number; row: number; sub: number }[] = [];
     for (const bw of withRuns) {
-      let lane = lanesMap[bw.item.id];
-      if (!Number.isInteger(lane) || lane! < 0 || overlaps(lane!, bw.runs)) {
-        lane = 0;
-        while (overlaps(lane, bw.runs)) lane++;
-      }
-      laneSpans[lane!] = [...(laneSpans[lane!] ?? []), ...bw.runs];
-      for (const [rs, re] of bw.runs) bars.push({ item: bw.item, start: rs, end: re, lane: lane! });
+      const row = rowOfCard(bw.item.id);
+      let sub = 0;
+      while (overlaps(row, sub, bw.runs)) sub++;
+      subSpans[row]![sub] = [...(subSpans[row]![sub] ?? []), ...bw.runs];
+      for (const [rs, re] of bw.runs) bars.push({ item: bw.item, start: rs, end: re, row, sub });
     }
-    return { bars, loose, laneCount: laneSpans.length };
+    const subCounts = subSpans.map((x) => Math.max(1, x.length));
+    return { bars, loose, subCounts };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateMode, matches, days, types, lanesMap]);
+  }, [dateMode, matches, days, types, lanesMap, dRows]);
 
-  const setLane = (blockId: string, lane: number) => {
-    void api
-      .patch(`/collections/${collection.id}`, { matrix_lanes: { ...lanesMap, [blockId]: lane } })
-      .then(onChanged);
-  };
+  // Grid-row of a row-region's header line (row 1 holds the day heads).
+  const rowStartOf = (r: number) =>
+    2 + dateData.subCounts.slice(0, r).reduce((a, b) => a + 1 + b, 0);
+  const rowCounts = useMemo(() => {
+    const c = new Map<number, Set<string>>();
+    for (const b of dateData.bars) {
+      if (!c.has(b.row)) c.set(b.row, new Set());
+      c.get(b.row)!.add(b.item.id);
+    }
+    return c;
+  }, [dateData]);
 
   // Editable axis labels (custom/status grids).
   const [axisX, setAxisX] = useState(String(props.matrix_x_label ?? ""));
@@ -619,7 +681,7 @@ export function MatrixView({
     setRegions(next);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(
-      () => void api.patch(`/collections/${collection.id}`, { matrix_regions: next }),
+      () => void api.patch(`/collections/${collection.id}`, { [regionsKey]: next }),
       600,
     );
   };
@@ -630,7 +692,7 @@ export function MatrixView({
     const next = regions.map((r, idx) => (idx === colorEdit ? { ...r, color } : r));
     setColorEdit(null);
     setRegions(next);
-    void api.patch(`/collections/${collection.id}`, { matrix_regions: next });
+    void api.patch(`/collections/${collection.id}`, { [regionsKey]: next });
   };
 
   const resize = (nextCols: number, nextRows: number) => {
@@ -643,9 +705,28 @@ export function MatrixView({
       .then(onChanged);
   };
 
+  const resizeDateRows = (nextRows: number) => {
+    selectCollection();
+    const r = Math.min(REGION_MAX, Math.max(1, nextRows));
+    const n = readRegions({ matrix_date_rows: regions }, r, "matrix_date_rows");
+    void api
+      .patch(`/collections/${collection.id}`, { matrix_date_row_count: r, matrix_date_rows: n })
+      .then(onChanged);
+  };
+
   const setBind = (key: string) => {
     selectCollection();
-    void api.patch(`/collections/${collection.id}`, { matrix_bind_property: key || null }).then(onChanged);
+    const patch: Record<string, unknown> = { matrix_bind_property: key || null };
+    // A fresh custom range starts as today..today+6.
+    if (key === "@days_span") {
+      if (!spanStart) patch.matrix_date_start = ymd(new Date());
+      if (!spanEnd) {
+        const d = new Date();
+        d.setDate(d.getDate() + 6);
+        patch.matrix_date_end = ymd(d);
+      }
+    }
+    void api.patch(`/collections/${collection.id}`, patch).then(onChanged);
   };
 
   // Region actions (custom grids): tag on enter / tag off on leave / status on
@@ -683,7 +764,7 @@ export function MatrixView({
     );
     setActionsEdit(null);
     setRegions(next);
-    void api.patch(`/collections/${collection.id}`, { matrix_regions: next });
+    void api.patch(`/collections/${collection.id}`, { [regionsKey]: next });
   };
   const statusOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -782,8 +863,21 @@ export function MatrixView({
     if (!item || overId == null) return;
     const over = String(overId);
     if (dateMode) {
-      // Vertical moves only: dates own the columns, drops set the lane.
-      if (over.startsWith("lane:")) setLane(item.id, Number(over.slice(5)));
+      // Vertical moves only: dates own the columns, drops set the row-region.
+      if (over.startsWith("row:")) {
+        const row = Number(over.slice(4));
+        const prev = rowOfCard(item.id);
+        if (prev === row) return;
+        void api
+          .patch(`/collections/${collection.id}`, { matrix_lanes: { ...lanesMap, [item.id]: row } })
+          .then(async () => {
+            await applyRegionLeave(item, prev);
+            await applyRegionEnter(item, row);
+            onChanged();
+            refreshInfo();
+            setQueryTick((t) => t + 1);
+          });
+      }
       return;
     }
     if (over.startsWith("r:")) {
@@ -876,10 +970,42 @@ export function MatrixView({
               <option value="@days_before">Days · ending today</option>
               <option value="@days_after">Days · starting today</option>
               <option value="@days_around">Days · around today</option>
+              <option value="@days_span">Days · custom range</option>
             </select>
           </label>
         )}
         {dateMode && (
+          <span className="cols-ctl">
+            <span className="hint">Rows</span>
+            <button className="icon-btn" onClick={() => resizeDateRows(dRows - 1)}>−</button>
+            <span className="cols-n">{dRows}</span>
+            <button className="icon-btn" onClick={() => resizeDateRows(dRows + 1)}>+</button>
+          </span>
+        )}
+        {dateMode && bindKey === "@days_span" && (
+          <span className="matrix-span-ctl">
+            <DateTimePicker
+              value={spanStart}
+              placeholder="Start"
+              onChange={(v) =>
+                void api
+                  .patch(`/collections/${collection.id}`, { matrix_date_start: v.slice(0, 10) })
+                  .then(onChanged)
+              }
+            />
+            <span className="hint">to</span>
+            <DateTimePicker
+              value={spanEnd}
+              placeholder="End"
+              onChange={(v) =>
+                void api
+                  .patch(`/collections/${collection.id}`, { matrix_date_end: v.slice(0, 10) })
+                  .then(onChanged)
+              }
+            />
+          </span>
+        )}
+        {dateMode && bindKey !== "@days_span" && (
           <span className="cols-ctl">
             <span className="hint">Days</span>
             <button
@@ -908,32 +1034,94 @@ export function MatrixView({
       </div>
 
       {dateMode ? (
-        <div
-          className="matrix-date-grid"
-          style={{ gridTemplateColumns: `repeat(${days.length || 1}, 1fr)` }}
-          onClick={selectCollection}
-        >
-          {days.map((d, i) => (
+        <div className="matrix-wrap">
+          <input
+            className="matrix-axis-y"
+            placeholder="Y axis"
+            value={axisY}
+            onFocus={selectCollection}
+            onChange={(e) => saveAxis("y", e.target.value)}
+          />
+          <div className="matrix-main">
+            <input
+              className="matrix-axis-x"
+              placeholder="X axis"
+              value={axisX}
+              onFocus={selectCollection}
+              onChange={(e) => saveAxis("x", e.target.value)}
+            />
             <div
-              key={d}
-              className={`date-head${d === ymd(new Date()) ? " today" : ""}`}
-              style={{ gridColumn: i + 1, gridRow: 1 }}
+              className="matrix-date-grid"
+              style={{ gridTemplateColumns: `repeat(${days.length || 1}, 1fr)` }}
+              onClick={selectCollection}
             >
-              {fmtDayHead(d)}
+              {days.map((d, i) => (
+                <div
+                  key={d}
+                  className={`date-head${d === ymd(new Date()) ? " today" : ""}`}
+                  style={{ gridColumn: i + 1, gridRow: 1 }}
+                >
+                  {fmtDayHead(d)}
+                </div>
+              ))}
+              {regions.map((def, r) => (
+                <Fragment key={r}>
+                  <RowBand
+                    index={r}
+                    color={def.color}
+                    rowStart={rowStartOf(r)}
+                    rowSpan={1 + (dateData.subCounts[r] ?? 1)}
+                  />
+                  <div
+                    className={`row-band-head${def.color ? " colored" : ""}`}
+                    style={{ gridColumn: "1 / -1", gridRow: rowStartOf(r) }}
+                  >
+                    <button
+                      className="region-color"
+                      title="Row color"
+                      style={{ background: def.color ?? "var(--border-strong)" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectCollection();
+                        setColorEdit(r);
+                      }}
+                    />
+                    <input
+                      className="region-title"
+                      placeholder="Untitled row"
+                      value={def.title}
+                      onFocus={selectCollection}
+                      onChange={(e) => onTitle(r, e.target.value)}
+                    />
+                    <button
+                      className={`icon-btn region-actions${hasActions(def) ? " set" : ""}`}
+                      title={hasActions(def) ? "Row actions (configured)" : "Row actions"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        selectCollection();
+                        openActions(r);
+                      }}
+                    >
+                      <Settings2 size={13} />
+                    </button>
+                    <span className="region-count">{rowCounts.get(r)?.size || ""}</span>
+                  </div>
+                </Fragment>
+              ))}
+              {dateData.bars.map((b, i) => (
+                <div
+                  key={`${b.item.id}:${i}`}
+                  className="date-bar"
+                  style={{
+                    gridColumn: `${b.start + 1} / ${b.end + 2}`,
+                    gridRow: rowStartOf(b.row) + 1 + b.sub,
+                  }}
+                >
+                  <Chip item={b.item} onStatus={onStatus} />
+                </div>
+              ))}
             </div>
-          ))}
-          {Array.from({ length: dateData.laneCount + 1 }, (_, L) => (
-            <LaneDrop key={L} lane={L} />
-          ))}
-          {dateData.bars.map((b, i) => (
-            <div
-              key={`${b.item.id}:${i}`}
-              className="date-bar"
-              style={{ gridColumn: `${b.start + 1} / ${b.end + 2}`, gridRow: b.lane + 2 }}
-            >
-              <Chip item={b.item} onStatus={onStatus} />
-            </div>
-          ))}
+          </div>
         </div>
       ) : (
         <div className="matrix-wrap">

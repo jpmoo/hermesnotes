@@ -15,11 +15,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FieldDef } from "@hermes/shared";
-import { GripVertical, Maximize2 } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
+import { usePanels } from "./right-panel.tsx";
 
 /** Minimal shape a viewable block must expose. Both Block and Member satisfy it. */
 interface Viewable {
@@ -82,24 +82,13 @@ function valueFor(b: Viewable, key: SortKey): string {
   return v == null ? "" : String(v);
 }
 
-/** A masonry card: compact preview + an expand button that opens the full card. */
-function MasonryCard({ render }: { render: (compact: boolean) => ReactNode }) {
-  const [open, setOpen] = useState(false);
+/** A masonry card: compact preview. Clicking selects the block, whose full
+ * editable card lives in the right panel (no inline expand needed). */
+function MasonryCard({ blockId, render }: { blockId: string; render: (compact: boolean) => ReactNode }) {
+  const { selectBlock } = usePanels();
   return (
-    <div className="masonry-item">
-      <button className="icon-btn masonry-expand" title="Expand" onClick={() => setOpen(true)}>
-        <Maximize2 size={13} />
-      </button>
+    <div className="masonry-item" onClick={() => selectBlock(blockId)}>
       {render(true)}
-      {open &&
-        createPortal(
-          <div className="modal-backdrop" onClick={() => setOpen(false)}>
-            <div className="modal-card block-modal" onClick={(e) => e.stopPropagation()}>
-              {render(false)}
-            </div>
-          </div>,
-          document.body,
-        )}
     </div>
   );
 }
@@ -122,9 +111,10 @@ function ManualRow({ id, children }: { id: string; children: ReactNode }) {
 /** A draggable masonry cell in manual mode: the card with a corner grip. */
 function ManualMasonryItem({ id, children }: { id: string; children: ReactNode }) {
   const s = useSortable({ id });
+  const { selectBlock } = usePanels();
   const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
-    <div ref={s.setNodeRef} style={style} className="masonry-item">
+    <div ref={s.setNodeRef} style={style} className="masonry-item" onClick={() => selectBlock(id)}>
       <button className="drag-handle masonry-grip" {...s.attributes} {...s.listeners} title="Drag to arrange">
         <GripVertical size={15} />
       </button>
@@ -421,7 +411,7 @@ export function useBlockView<T extends Viewable>(
     return (
       <div className="masonry" style={{ columnCount: columns }}>
         {sorted.map((it) => (
-          <MasonryCard key={it.id} render={(compact) => renderCard(it, compact)} />
+          <MasonryCard key={it.id} blockId={it.id} render={(compact) => renderCard(it, compact)} />
         ))}
       </div>
     );

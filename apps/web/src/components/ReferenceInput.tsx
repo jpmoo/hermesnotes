@@ -76,6 +76,21 @@ export function ReferenceInput({
   };
   const remove = (id: string) => onChange(ids.filter((x) => x !== id));
 
+  /** No match for the typed name — create a block of the target type with it. */
+  const createAndAdd = async () => {
+    const title = query.trim();
+    if (!title || !refTypeId) return;
+    try {
+      const b = await api.post<Block>("/blocks", {
+        blockTypeId: refTypeId,
+        properties: { title },
+      });
+      add({ id: b.id, label: title });
+    } catch {
+      /* ignore */
+    }
+  };
+
   const available = results.filter((r) => !ids.includes(r.id));
 
   return (
@@ -114,11 +129,16 @@ export function ReferenceInput({
               dangerouslySetInnerHTML={{ __html: firstLineHtml(o.label) }}
             />
           ))}
-          {available.length === 0 && (
-            <div className="hint" style={{ padding: "6px 10px" }}>
-              No matches.
-            </div>
-          )}
+          {available.length === 0 &&
+            (query.trim() ? (
+              <button className="menu-item" onClick={() => void createAndAdd()}>
+                Create “{query.trim()}”
+              </button>
+            ) : (
+              <div className="hint" style={{ padding: "6px 10px" }}>
+                No matches.
+              </div>
+            ))}
         </div>
       )}
     </div>

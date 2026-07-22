@@ -76,7 +76,20 @@ export function MarkdownEditor({
     ],
     content: value,
     autofocus: autofocus ? "end" : false,
-    editorProps: { attributes: { class: "note-editor" } },
+    editorProps: {
+      attributes: { class: "note-editor" },
+      // Mentions (block:/tag:) navigate via their chip; plain web links open in
+      // a new tab on click (openOnClick is off, so tiptap won't do it for us).
+      handleClick: (_view, _pos, event) => {
+        const a = (event.target as HTMLElement).closest?.("a[href]");
+        const href = a?.getAttribute("href") ?? "";
+        if (/^https?:\/\//i.test(href)) {
+          window.open(href, "_blank", "noopener");
+          return true;
+        }
+        return false;
+      },
+    },
     onCreate: ({ editor }) => {
       // Patch the parser (fixes empty checkboxes on every later parse); the
       // initial content was already parsed before this, so re-parse it when it

@@ -20,7 +20,6 @@ export function RightPanel() {
     setBottomSlotEl,
     rightPinned,
     setRightPinned,
-    title,
     hasContent,
     selectedBlockId,
     selectedToday,
@@ -37,12 +36,12 @@ export function RightPanel() {
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <div className="panel-rail-icon" title={hasContent ? title : "Note info & options"}>
+      <div className="panel-rail-icon" title="Info">
         {hasContent || showInfo ? <Info size={18} /> : <PanelRight size={18} />}
       </div>
       <div className="panel-body">
         <div className="panel-head">
-          <span className="panel-title">{hasContent ? title : "Details"}</span>
+          <span className="panel-title">Info</span>
           <button
             className="icon-btn panel-pin"
             title={rightPinned ? "Unpin panel" : "Pin panel open"}

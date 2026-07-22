@@ -1,6 +1,6 @@
 import { Extension, Node } from "@tiptap/core";
 import { DOMParser as PMDOMParser, Fragment, type Node as PMNode, type Schema } from "@tiptap/pm/model";
-import { Plugin, PluginKey, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 
 /**
  * A block that holds the raw markdown source of one block (a `code` node, so
@@ -74,6 +74,32 @@ function rechipMentions(tr: Transaction, schema: Schema): Transaction {
     tr = tr.replaceWith(r.from, r.to, mentionType.create({ href: r.href, label: r.label }));
   }
   return tr;
+}
+
+/**
+ * If a source line's whole text is just a list/quote marker + trailing space,
+ * build the block it should become (empty). This stands in for the normal
+ * markdown input rules, which can't fire inside the code source line. Task
+ * lists aren't handled here: `- ` renders to a bullet first, then the `[ ] `
+ * input rule converts it in the rendered content.
+ */
+function starterNode(text: string, schema: Schema): PMNode | null {
+  const bulletList = schema.nodes.bulletList;
+  const orderedList = schema.nodes.orderedList;
+  const listItem = schema.nodes.listItem;
+  const blockquote = schema.nodes.blockquote;
+  const paragraph = schema.nodes.paragraph;
+  if (!paragraph) return null;
+  if (bulletList && listItem && /^[-*+] $/.test(text)) {
+    return bulletList.create(null, listItem.create(null, paragraph.create()));
+  }
+  if (orderedList && listItem && /^\d+\. $/.test(text)) {
+    return orderedList.create(null, listItem.create(null, paragraph.create()));
+  }
+  if (blockquote && /^> $/.test(text)) {
+    return blockquote.create(null, paragraph.create());
+  }
+  return null;
 }
 
 /** Map a caret offset in the rendered block to a plausible offset in its source. */
@@ -161,6 +187,26 @@ export const ActiveLineSource = Extension.create({
           if (!sourceType || !paraType) return null;
 
           const $head = newState.selection.$head;
+
+          // Live list/quote starters: typing `- `, `1. `, `> ` in a source line
+          // renders the matching (empty) block, then normal list editing takes
+          // over (input rules for `[ ] `, Tab to nest, Enter for new items).
+          if (docChanged && $head.parent.type === sourceType) {
+            const node = starterNode($head.parent.textContent, schema);
+            if (node) {
+              const from = $head.before();
+              const to = $head.after();
+              let tr = newState.tr.replaceWith(from, to, node);
+              try {
+                tr = tr.setSelection(Selection.near(tr.doc.resolve(from + 1), 1));
+              } catch {
+                /* leave selection as mapped */
+              }
+              tr.setMeta(META, true);
+              return tr;
+            }
+          }
+
           const activeIndex = $head.depth >= 1 ? $head.index(0) : -1;
 
           // Which top-level blocks need swapping?

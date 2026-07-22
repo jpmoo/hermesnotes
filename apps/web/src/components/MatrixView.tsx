@@ -540,9 +540,9 @@ export function MatrixView({
           </>
         )}
         {isSmart && bindable.length > 0 && (
-          <label className="row" style={{ gap: 6 }}>
+          <label className="matrix-bind">
             <span className="hint">Regions</span>
-            <select value={bindKey} onChange={(e) => setBind(e.target.value)} style={{ width: "auto", height: 30 }}>
+            <select value={bindKey} onChange={(e) => setBind(e.target.value)}>
               <option value="">Custom grid</option>
               {bindable.map((b) => (
                 <option key={b.key} value={b.key}>

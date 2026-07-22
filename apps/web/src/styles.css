@@ -1527,6 +1527,18 @@ input.region-title:focus {
   color: var(--text-muted);
   padding-left: 22px;
 }
+.matrix-bind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.matrix-bind select {
+  width: auto;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
 .region-title-static {
   flex: 1;
   min-width: 0;

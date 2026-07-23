@@ -3373,6 +3373,15 @@ input.matrix-axis-y::placeholder {
 .cv-node .md-input {
   background: transparent;
 }
+/* The status control sits bare on the node — no chrome, no tint, any shade. */
+.cv-node .status-btn,
+.cv-node.cv-shaded .status-btn,
+.cv-node .status-btn:hover,
+.cv-node.cv-shaded .status-btn:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
 /* Shaded node: interactive surfaces read as a more transparent version of
    the node's color — translucent white lets the shade through, like matrix
    region cards. Popups (calendar, menus) opt back out for readability. */

@@ -31,7 +31,7 @@ import { QueryPanel } from "../components/QueryPanel.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TableView } from "../components/TableView.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
-import { useBlockView } from "../lib/useBlockView.tsx";
+import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 
 /** A draggable document section row (a full card with a grip handle). */
 function DocSection({
@@ -143,9 +143,19 @@ export function CollectionView() {
   // (drag), so it's offered on every list except dynamic smart ones.
   // Blocks format gets the full Block/Masonry/Chips view toggle; the one-line
   // formats keep their row rendering (a view toggle makes no sense there).
+  // Canonical view state lives on the collection; embeds inherit it and fork
+  // on their first change (see CollectionSection).
+  const vsTimer = useRef<ReturnType<typeof setTimeout>>();
   const { sorted, toolbar: sortBar, active: sortActive, renderList } = useBlockView(members, types, {
     enableView: format === "blocks",
     manual: isDynamic ? null : { onMove: moveMember },
+    viewState: {
+      initial: (collection?.properties.view_state as BlockViewState | undefined) ?? undefined,
+      onChange: (vs) => {
+        if (vsTimer.current) clearTimeout(vsTimer.current);
+        vsTimer.current = setTimeout(() => void api.patch(`/collections/${id}`, { view_state: vs }), 600);
+      },
+    },
   });
 
   // One refresh affordance for every smart collection: snapshots re-materialize
@@ -356,7 +366,7 @@ export function CollectionView() {
               {members.map((m) => (
                 <DocSection key={m.id} id={m.id} draggable={!isDynamic}>
                   {m.collectionKind ? (
-                    <CollectionSection collectionId={m.id} types={types} />
+                    <CollectionSection collectionId={m.id} types={types} host={id} />
                   ) : (
                     <BlockCard
                       block={m as unknown as Block}

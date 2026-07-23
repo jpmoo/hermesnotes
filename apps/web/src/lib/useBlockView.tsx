@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { FieldDef } from "@hermes/shared";
 import { GripVertical } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
 import { BlockIcon } from "./icons.tsx";
@@ -38,6 +38,13 @@ interface SortLevel {
   dir: "asc" | "desc";
 }
 type ViewMode = "block" | "masonry" | "chips";
+
+/** Persistable view selections: canonical on the collection, forkable per embed. */
+export interface BlockViewState {
+  manual?: boolean;
+  sort?: { key: string; dir: "asc" | "desc" }[];
+  viewMode?: ViewMode;
+}
 
 const VIEW_KEY = "hn.blockview.mode";
 const COLS_KEY = "hn.blockview.cols";
@@ -180,6 +187,8 @@ export function useBlockView<T extends Viewable>(
     enableView?: boolean;
     scope?: string;
     manual?: { onMove: (activeId: string, overId: string) => void } | null;
+    /** Inherit/persist sort + view selections (collection pages and embeds). */
+    viewState?: { initial?: BlockViewState; onChange?: (vs: BlockViewState) => void };
   } = {},
 ): {
   sorted: T[];
@@ -195,10 +204,16 @@ export function useBlockView<T extends Viewable>(
   const manualAvailable = Boolean(externalManual) || Boolean(opts.scope);
   const manualKey = opts.scope ? `hn.bv.manual.${opts.scope}` : "";
   const orderKey = opts.scope ? `hn.bv.order.${opts.scope}` : "";
+  const vs = opts.viewState;
 
-  const [levels, setLevels] = useState<SortLevel[]>([]);
-  const [manualModeState, setManualModeState] = useState<boolean>(
-    () => manualAvailable && (externalManual ? true : readLS(manualKey) === "1"),
+  const [levels, setLevels] = useState<SortLevel[]>(() => (vs?.initial?.sort as SortLevel[]) ?? []);
+  const [manualModeState, setManualModeState] = useState<boolean>(() =>
+    manualAvailable &&
+    (vs?.initial?.manual !== undefined
+      ? vs.initial.manual
+      : externalManual
+        ? true
+        : readLS(manualKey) === "1"),
   );
   // Never manual when it isn't available (e.g. a collection that resolves to
   // dynamic-smart after its members load), regardless of stale state.
@@ -211,9 +226,34 @@ export function useBlockView<T extends Viewable>(
     }
   });
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
+    const iv = vs?.initial?.viewMode;
+    if (iv === "block" || iv === "masonry" || iv === "chips") return iv;
     const v = readLS(VIEW_KEY);
     return v === "masonry" || v === "chips" ? v : "block";
   });
+
+  // A collection's state arrives async on its own page: re-seed when the
+  // provided initial actually changes (embed callers mount with it in hand).
+  const initKey = JSON.stringify(vs?.initial ?? null);
+  const seeded = useRef(initKey);
+  useEffect(() => {
+    if (seeded.current === initKey) return;
+    seeded.current = initKey;
+    const i = vs?.initial;
+    if (!i) return;
+    if (i.sort) setLevels(i.sort as SortLevel[]);
+    if (i.manual !== undefined && manualAvailable) setManualModeState(i.manual);
+    if (i.viewMode) setViewModeState(i.viewMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initKey]);
+
+  /** Report a selection change to the persistence hook (fork or canonical). */
+  const reportVS = (patch: BlockViewState) =>
+    vs?.onChange?.({ manual: manualMode0(), sort: levels, viewMode, ...patch });
+  // manualMode isn't computed yet at definition time — thunk it.
+  function manualMode0(): boolean {
+    return manualModeState && manualAvailable;
+  }
   const clampCols = (n: number) => Math.min(4, Math.max(2, n || 3));
   const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(COLS_KEY))));
   // Chips are compact, so they take a wider range; the grid stretches them to
@@ -231,6 +271,7 @@ export function useBlockView<T extends Viewable>(
   const setViewMode = (v: ViewMode) => {
     setViewModeState(v);
     writeLS(VIEW_KEY, v);
+    reportVS({ viewMode: v });
   };
   const setColumns = (n: number) => {
     const c = clampCols(n);
@@ -289,14 +330,18 @@ export function useBlockView<T extends Viewable>(
     return copy;
   }, [items, levels, manualMode, externalManual, localOrder]);
 
+  const applyLevels = (next: SortLevel[]) => {
+    setLevels(next);
+    reportVS({ sort: next });
+  };
   const addLevel = () => {
     const used = new Set(levels.map((l) => l.key));
     const next = options.find((o) => !used.has(o.key)) ?? options[0];
-    if (next) setLevels((ls) => [...ls, { key: next.key, dir: "asc" }]);
+    if (next) applyLevels([...levels, { key: next.key, dir: "asc" }]);
   };
   const setLevel = (i: number, patch: Partial<SortLevel>) =>
-    setLevels((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-  const removeLevel = (i: number) => setLevels((ls) => ls.filter((_, idx) => idx !== i));
+    applyLevels(levels.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const removeLevel = (i: number) => applyLevels(levels.filter((_, idx) => idx !== i));
 
   const chooseManual = (on: boolean) => {
     if (on === manualMode) return;
@@ -310,6 +355,7 @@ export function useBlockView<T extends Viewable>(
       }
     }
     setManualMode(on);
+    reportVS({ manual: on, sort: on ? [] : levels });
   };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -389,7 +435,7 @@ export function useBlockView<T extends Viewable>(
             {levels.length > 0 ? "+ level" : "+ Sort"}
           </button>
           {levels.length > 0 && (
-            <button className="ghost" onClick={() => setLevels([])} title="Clear sort">
+            <button className="ghost" onClick={() => applyLevels([])} title="Clear sort">
               Clear
             </button>
           )}

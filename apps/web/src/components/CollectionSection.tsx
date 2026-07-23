@@ -12,7 +12,7 @@ import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { usePanels } from "../lib/right-panel.tsx";
-import { useBlockView } from "../lib/useBlockView.tsx";
+import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { ListItem, type ListFormat } from "./ListItem.tsx";
 import { MatrixView } from "./MatrixView.tsx";
@@ -27,12 +27,14 @@ function ListBody({
   setMembers,
   types,
   reload,
+  host,
 }: {
   collection: Collection;
   members: Member[];
   setMembers: SetMembers;
   types: BlockType[];
   reload: () => void;
+  host?: string;
 }) {
   const cid = collection.id;
   const props = collection.properties as Record<string, unknown>;
@@ -55,9 +57,34 @@ function ListBody({
     void api.patch(`/collections/${cid}/members/${activeId}`, { afterId, beforeId });
   };
 
+  // Embeds inherit the original list's saved view state, then fork on first
+  // change — stored per host+collection, never written back to the original.
+  const forkKey = host ? `hn.vs.${host}.${cid}` : null;
+  const initialVS = ((): BlockViewState | undefined => {
+    if (forkKey) {
+      try {
+        const raw = localStorage.getItem(forkKey);
+        if (raw) return JSON.parse(raw) as BlockViewState;
+      } catch {
+        /* fall through to canonical */
+      }
+    }
+    return (props.view_state as BlockViewState | undefined) ?? undefined;
+  })();
   const { sorted, toolbar, active: sortActive, renderList } = useBlockView(members, types, {
     enableView: format === "blocks",
     manual: isDynamic ? null : { onMove: moveMember },
+    viewState: {
+      initial: initialVS,
+      onChange: (vs) => {
+        if (!forkKey) return;
+        try {
+          localStorage.setItem(forkKey, JSON.stringify(vs));
+        } catch {
+          /* ignore */
+        }
+      },
+    },
   });
 
   const onRemove = (blockId: string) => {
@@ -139,10 +166,12 @@ export function CollectionSection({
   collectionId,
   types,
   reportLabel,
+  host,
 }: {
   collectionId: string;
   types: BlockType[];
   reportLabel?: (label: string) => void;
+  host?: string;
 }) {
   const [state, setState] = useState<{ collection: Collection; members: Member[] } | null>(null);
   const { openBlock } = usePanels();
@@ -199,6 +228,7 @@ export function CollectionSection({
           setMembers={setMembers}
           types={types}
           reload={load}
+          host={host}
         />
       ) : state.members.length === 0 ? (
         <div className="hint">Empty.</div>

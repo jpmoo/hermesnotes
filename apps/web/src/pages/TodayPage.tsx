@@ -223,6 +223,7 @@ export function TodayPage() {
       case "collection":
         return (
           <CollectionSection
+            host="today"
             key={`c${s.id}`}
             collectionId={s.id}
             types={types}

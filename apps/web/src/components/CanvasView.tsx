@@ -664,7 +664,14 @@ export function CanvasView({
     });
     for (const mid of rg.memberIds) {
       if (mid.startsWith("n:")) continue; // ephemeral notes aren't blocks
-      await api.post(`/collections/${c.id}/members`, { blockId: mid }).catch(() => {});
+      // Matrix members are invisible without a cell — start them all in the
+      // first region; the user arranges from there.
+      await api
+        .post(`/collections/${c.id}/members`, {
+          blockId: mid,
+          ...(kind === "matrix" ? { context: { region: 0 } } : {}),
+        })
+        .catch(() => {});
     }
     if (sync) patchRegion(rg.id, { linkedCollectionId: c.id });
     setCreatedCollection({ id: c.id, title: rg.title?.trim() || "Region", kind });

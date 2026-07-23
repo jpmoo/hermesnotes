@@ -12,7 +12,6 @@ import {
   Heart,
   Inbox,
   Layers,
-  LayoutDashboard,
   LayoutGrid,
   Link,
   List,
@@ -25,6 +24,7 @@ import {
   Target,
   Type,
   User,
+  Workflow,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -148,7 +148,7 @@ export function CollectionIcon({
   color?: string | null;
 }) {
   const Icon = canvas
-    ? LayoutDashboard
+    ? Workflow
     : matrix
     ? LayoutGrid
     : table

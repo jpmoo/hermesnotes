@@ -153,6 +153,7 @@ export interface SearchHit {
   document: boolean;
   matrix: boolean;
   table: boolean;
+  canvas: boolean;
   smart: boolean;
   semantic: boolean;
 }

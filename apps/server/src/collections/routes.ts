@@ -25,7 +25,7 @@ const ICON_BY_KIND: Record<string, string> = {
   kanban: "kanban",
   matrix: "grid-3x3",
   masonry: "layout-grid",
-  canvas: "layout-dashboard",
+  canvas: "workflow",
 };
 
 /** Embed a collection by its own title + description (design doc §4). */

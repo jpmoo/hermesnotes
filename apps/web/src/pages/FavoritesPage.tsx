@@ -260,6 +260,7 @@ export function FavoritesPage() {
                       document={c.collectionKind === "document"}
                       matrix={c.collectionKind === "matrix"}
                       table={c.collectionKind === "table"}
+                canvas={c.collectionKind === "canvas"}
                       smart={(c.properties as Record<string, unknown>)?.membership_mode === "smart"}
                       size={15}
                     />

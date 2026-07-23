@@ -69,7 +69,7 @@ export function MentionMenu({
             table: "table",
             kanban: "kanban",
             masonry: "layout-grid",
-            canvas: "layout-dashboard",
+            canvas: "workflow",
           };
           opts = rows
             .filter((r) => r.blockTypeId !== personType?.id)

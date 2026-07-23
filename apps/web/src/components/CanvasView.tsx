@@ -408,12 +408,21 @@ export function CanvasView({
     // (ctrlKey wheel) or ⌘/Ctrl+wheel zooms. Registered once — the handler
     // touches no render state directly.
     const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
         zoomBy(Math.exp(-e.deltaY * 0.014), e.clientX, e.clientY);
-      } else {
-        setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+        return;
       }
+      // Swiping over a node whose content can scroll in that direction lets
+      // the node scroll natively; otherwise the canvas pans.
+      const body = (e.target as HTMLElement).closest?.(".cv-body");
+      if (body && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        const canDown = body.scrollTop + body.clientHeight < body.scrollHeight - 1;
+        const canUp = body.scrollTop > 0;
+        if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) return;
+      }
+      e.preventDefault();
+      setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);

@@ -664,6 +664,75 @@ export function buildTools(server: McpServer, api: Api): void {
       return lines.join("\n");
     }),
   );
+
+  server.tool(
+    "block_update",
+    "Update ANY block by id (from search/block_get): note body (content), title, arbitrary " +
+      "properties (shallow-merged — keys must match the block type's fields; read the block " +
+      "with block_get first), and add/remove tags. Collections accept title and description. " +
+      "For tasks, prefer task_update (status validation, projects, date shorthand).",
+    {
+      id: z.string().uuid(),
+      title: z.string().optional(),
+      content: z.string().optional(),
+      properties: z.record(z.unknown()).optional(),
+      add_tags: z.array(z.string()).optional(),
+      remove_tags: z.array(z.string()).optional(),
+    },
+    run(async (a) => {
+      const b = await api.get<HermesBlock & { collectionKind: string | null; content: string | null }>(
+        `/blocks/${a.id}`,
+      );
+      const changed: string[] = [];
+
+      if (b.collectionKind) {
+        // Collections: properties are collection config — only expose the safe pair.
+        const patch: Record<string, unknown> = {};
+        if (a.title !== undefined) {
+          patch.title = a.title;
+          changed.push("title");
+        }
+        const desc = a.properties?.description;
+        if (typeof desc === "string") {
+          patch.description = desc;
+          changed.push("description");
+        }
+        if (a.content !== undefined)
+          throw new Error("Collections have no body content — use title/description.");
+        if (Object.keys(patch).length) await api.patch(`/collections/${b.id}`, patch);
+      } else {
+        const p = { ...(b.properties as Record<string, unknown>) };
+        const body: Record<string, unknown> = { version: b.version };
+        if (a.title !== undefined) {
+          p.title = a.title;
+          changed.push("title");
+        }
+        if (a.properties) {
+          Object.assign(p, a.properties);
+          changed.push(...Object.keys(a.properties));
+        }
+        if (a.title !== undefined || a.properties) body.properties = p;
+        if (a.content !== undefined) {
+          body.content = a.content;
+          changed.push("content");
+        }
+        if (Object.keys(body).length > 1) await api.patch(`/blocks/${b.id}`, body);
+      }
+
+      if (a.add_tags?.length || a.remove_tags?.length) {
+        const cur = await api.get<string[]>(`/blocks/${b.id}/tags`);
+        const norm = (t: string) => t.trim().toLowerCase().replace(/^#+/, "");
+        let next = [...cur];
+        for (const t of a.add_tags ?? []) if (!next.includes(norm(t))) next.push(norm(t));
+        const drop = new Set((a.remove_tags ?? []).map(norm));
+        next = next.filter((t) => !drop.has(t));
+        await api.put(`/blocks/${b.id}/tags`, { tags: next });
+        changed.push("tags");
+      }
+
+      return changed.length ? `Updated [${b.id}]: ${changed.join(", ")}.` : "Nothing to change.";
+    }),
+  );
 }
 
 interface HermesBlock {

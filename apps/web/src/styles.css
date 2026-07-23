@@ -3169,6 +3169,12 @@ input.matrix-axis-y::placeholder {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* ProseMirror injects `[contenteditable=false] { white-space: normal }` for
+   inline nodes (link chips), which reopens wrapping inside the nowrap line —
+   pin every descendant while truncating. */
+.tv-truncate .tv-cell .mention-input .mention-line * {
+  white-space: nowrap;
+}
 .tv-truncate .tv-cell .longtext {
   max-height: 40px;
   overflow: hidden;

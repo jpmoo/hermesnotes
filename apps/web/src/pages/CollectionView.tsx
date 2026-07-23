@@ -30,6 +30,7 @@ import { ListItem, type ListFormat as Format } from "../components/ListItem.tsx"
 import { QueryPanel } from "../components/QueryPanel.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TableView } from "../components/TableView.tsx";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 
@@ -77,6 +78,9 @@ export function CollectionView() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const typeById = new Map(types.map((t) => [t.id, t]));
+
+  // A deletion anywhere (e.g. the info panel) drops the member immediately.
+  useBlockDeleted((bid) => setMembers((m) => m.filter((x) => x.id !== bid)));
 
   const load = async () => {
     const [data, ts] = await Promise.all([

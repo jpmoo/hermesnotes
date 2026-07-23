@@ -13,9 +13,47 @@ import { api, type Block } from "../api.ts";
 
 type Listener = (blockId: string, origin: string) => void;
 const listeners = new Set<Listener>();
+type DeleteListener = (blockId: string) => void;
+const deleteListeners = new Set<DeleteListener>();
 
 export function emitBlockChange(blockId: string, origin: string): void {
   for (const l of [...listeners]) l(blockId, origin);
+}
+
+/** A block was permanently deleted — every surface drops it immediately. */
+export function emitBlockDeleted(blockId: string): void {
+  for (const l of [...deleteListeners]) l(blockId);
+}
+
+export function useBlockDeleted(cb: (blockId: string) => void): void {
+  const ref = useRef(cb);
+  ref.current = cb;
+  useEffect(() => {
+    const l: DeleteListener = (id) => ref.current(id);
+    deleteListeners.add(l);
+    return () => {
+      deleteListeners.delete(l);
+    };
+  }, []);
+}
+
+/**
+ * Fires on ANY change event for the block (own edits included) without
+ * refetching — for surfaces that need to refresh derived data such as the
+ * info pane's connections.
+ */
+export function useBlockChanged(blockId: string, cb: () => void): void {
+  const ref = useRef(cb);
+  ref.current = cb;
+  useEffect(() => {
+    const l: Listener = (id) => {
+      if (id === blockId) ref.current();
+    };
+    listeners.add(l);
+    return () => {
+      listeners.delete(l);
+    };
+  }, [blockId]);
 }
 
 /** Unique origin token for one mounted editing surface. */

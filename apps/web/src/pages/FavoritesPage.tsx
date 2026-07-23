@@ -16,6 +16,7 @@ import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { darkTextOn, oneLineText } from "../lib/display.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
 
@@ -52,6 +53,7 @@ export function FavoritesPage() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [loading, setLoading] = useState(true);
   const typeById = new Map(types.map((t) => [t.id, t]));
+  useBlockDeleted((bid) => setBlocks((prev) => prev.filter((b) => b.id !== bid)));
 
   useEffect(() => {
     void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});

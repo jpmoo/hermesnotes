@@ -14,6 +14,7 @@ import { api, type Block, type BlockSearchResult, type BlockType, type Collectio
 import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { emitBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -222,8 +223,20 @@ export function CanvasView({
     persistProps({ canvas_notes: next });
   };
   const saveEdges = (next: CanvasEdge[]) => {
+    // Ping both endpoints of every edge that changed so an open info pane
+    // refreshes its "Connected on canvas" list right away.
+    const before = new Map(edges.map((e) => [e.id, JSON.stringify(e)]));
+    const after = new Map(next.map((e) => [e.id, JSON.stringify(e)]));
+    const touched = new Set<string>();
+    for (const e of [...edges, ...next]) {
+      if (before.get(e.id) !== after.get(e.id)) {
+        if (!e.from.startsWith("n:")) touched.add(e.from);
+        if (!e.to.startsWith("n:")) touched.add(e.to);
+      }
+    }
     setEdges(next);
     persistProps({ canvas_edges: next });
+    for (const id of touched) emitBlockChange(id, "canvas-edges");
   };
   const saveRegions = (next: CanvasRegion[]) => {
     setRegions(next);
@@ -786,6 +799,19 @@ export function CanvasView({
     onChanged();
     showToast(`Added “${b.label}”.`);
   };
+
+  // A block deleted anywhere: its edges and region memberships evaporate
+  // (the member list itself shrinks via CollectionView's subscription).
+  useBlockDeleted((bid) => {
+    if (edges.some((e) => e.from === bid || e.to === bid))
+      saveEdges(edges.filter((e) => e.from !== bid && e.to !== bid));
+    if (regions.some((r) => r.memberIds.includes(bid)))
+      saveRegions(
+        regions
+          .map((r) => ({ ...r, memberIds: r.memberIds.filter((m) => m !== bid) }))
+          .filter((r) => r.memberIds.length > 0),
+      );
+  });
 
   const addNote = (at?: { x: number; y: number }) => {
     const c = at ?? viewCenter();

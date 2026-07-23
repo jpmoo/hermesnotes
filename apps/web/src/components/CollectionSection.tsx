@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { BlockCard } from "./BlockCard.tsx";
@@ -190,6 +191,7 @@ export function CollectionSection({
 
   const setMembers: SetMembers = (fn) =>
     setState((s) => (s ? { ...s, members: fn(s.members) } : s));
+  useBlockDeleted((bid) => setMembers((m) => m.filter((x) => x.id !== bid)));
 
   if (!state) return null;
   const kind = state.collection.collectionKind;

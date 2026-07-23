@@ -4,7 +4,7 @@ import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { fmtDateTime } from "../lib/format.ts";
-import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
+import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -128,6 +128,7 @@ export function TypedBlockCard({
 
   const remove = async () => {
     await api.del(`/blocks/${block.id}`);
+    emitBlockDeleted(block.id);
     onDeleted(block.id);
   };
 

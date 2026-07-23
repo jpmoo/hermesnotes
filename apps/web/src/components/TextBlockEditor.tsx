@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
-import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
+import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { oneLineText } from "../lib/display.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -113,6 +113,7 @@ export function TextBlockEditor({
 
   const remove = async () => {
     await api.del(`/blocks/${block.id}`);
+    emitBlockDeleted(block.id);
     onDeleted(block.id);
   };
 

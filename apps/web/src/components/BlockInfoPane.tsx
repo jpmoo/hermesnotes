@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { useBlockChanged } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { LongTextField } from "./LongTextField.tsx";
@@ -107,6 +108,11 @@ export function BlockInfoPane({
   useEffect(() => {
     void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => setInfo(null));
   }, [blockId, infoTick]);
+  // Any change event for this block (own edits included — mentions and canvas
+  // edges alter connections) refreshes the info section in place.
+  useBlockChanged(blockId, () =>
+    void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => {}),
+  );
 
   const loadBlock = () =>
     api

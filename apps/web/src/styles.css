@@ -3343,6 +3343,7 @@ input.matrix-axis-y::placeholder {
   cursor: default;
 }
 .cv-grab {
+  user-select: none;
   flex: none;
   height: 16px;
   display: flex;
@@ -3361,6 +3362,11 @@ input.matrix-axis-y::placeholder {
   overflow: auto;
   padding: 0 6px 6px;
 }
+/* Canvas is placement-only: no block deletion from a node (info panel owns
+   that), and the created/edited footer is noise at node scale. */
+.cv-node .block-meta {
+  display: none;
+}
 /* The embedded card sheds its chrome — the node box is the chrome. */
 .cv-node .card {
   background: transparent;
@@ -3370,6 +3376,7 @@ input.matrix-axis-y::placeholder {
   padding: 2px 6px 6px;
 }
 .cv-corner {
+  user-select: none;
   position: absolute;
   width: 12px;
   height: 12px;
@@ -3475,4 +3482,44 @@ input.cv-zoom {
   width: calc(100% - 16px);
   font-size: 12px;
   padding: 5px 8px;
+}
+
+/* Canvas regions, marquee select, node selection */
+.cv-region {
+  position: absolute;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 14px;
+  cursor: grab;
+}
+.cv-region:active {
+  cursor: grabbing;
+}
+.cv-region-title {
+  padding: 8px 14px;
+  font-family: var(--font-chrome);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+.cv-marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: rgba(95, 164, 181, 0.08);
+  pointer-events: none;
+}
+.cv-node.cv-sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.cv-make-region {
+  position: absolute;
+  z-index: 6;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  box-shadow: var(--shadow-lift);
 }

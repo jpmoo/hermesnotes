@@ -15,6 +15,7 @@ import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { QueryBuilder } from "./QueryBuilder.tsx";
 
 /**
@@ -58,6 +59,14 @@ interface CanvasNote extends Rect {
   text: string;
   color?: string | null;
 }
+interface CanvasRegion {
+  id: string;
+  title: string;
+  color?: string;
+  memberIds: string[];
+  /** A collection mirroring this region: canvas add/remove keeps it updated. */
+  linkedCollectionId?: string | null;
+}
 
 const DEFAULT_W = 280;
 const DEFAULT_H = 190;
@@ -66,6 +75,15 @@ const NOTE_H = 120;
 const MIN_W = 140;
 const MIN_H = 80;
 const NODE_COLORS = ["#ffffff", "#fdf3d8", "#e7f1e4", "#e3edf5", "#f5e3e7", "#ece5f6", "#eef4f6"];
+const REGION_COLORS = [
+  "rgba(95, 164, 181, 0.12)",
+  "rgba(222, 184, 72, 0.14)",
+  "rgba(47, 109, 79, 0.10)",
+  "rgba(181, 82, 95, 0.10)",
+  "rgba(106, 90, 205, 0.10)",
+];
+const REGION_PAD = 22;
+const REGION_TOP = 44;
 const EDGE_COLORS = ["#5f6b74", "#5fa4b5", "#b5525f", "#2f6d4f", "#8a6d1f", "#6a5acd"];
 
 const uid = () => crypto.randomUUID();
@@ -169,10 +187,23 @@ export function CanvasView({
   const [edges, setEdges] = useState<CanvasEdge[]>(() =>
     Array.isArray(props.canvas_edges) ? (props.canvas_edges as CanvasEdge[]) : [],
   );
+  const [regions, setRegions] = useState<CanvasRegion[]>(() =>
+    Array.isArray(props.canvas_regions) ? (props.canvas_regions as CanvasRegion[]) : [],
+  );
+  const [selected, setSelected] = useState<string[]>([]);
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout>>();
+  const pendingPatch = useRef<Record<string, unknown>>({});
+  // Merge patches: notes/edges/regions often save back-to-back within one
+  // debounce window, and a replacing patch would drop the earlier one.
   const persistProps = (patch: Record<string, unknown>) => {
+    Object.assign(pendingPatch.current, patch);
     if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => void api.patch(`/collections/${cid}`, patch), 500);
+    persistTimer.current = setTimeout(() => {
+      const p = pendingPatch.current;
+      pendingPatch.current = {};
+      void api.patch(`/collections/${cid}`, p);
+    }, 500);
   };
   const saveNotes = (next: CanvasNote[]) => {
     setNotes(next);
@@ -182,6 +213,12 @@ export function CanvasView({
     setEdges(next);
     persistProps({ canvas_edges: next });
   };
+  const saveRegions = (next: CanvasRegion[]) => {
+    setRegions(next);
+    persistProps({ canvas_regions: next });
+  };
+  const patchRegion = (id: string, patch: Partial<CanvasRegion>) =>
+    saveRegions(regions.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
   const rectOf = (id: string): Rect | null => {
     if (id.startsWith("n:")) {
@@ -197,6 +234,56 @@ export function CanvasView({
     ...members.map((m) => local[m.id] ?? ctxOf(m)).filter((r): r is NodeCtx => r !== null),
     ...notes,
   ];
+
+  /** Bounding box (with region padding) of the given node ids. */
+  const rectFromIds = (ids: string[]): Rect | null => {
+    const rs = ids.map(rectOf).filter((r): r is Rect => r !== null);
+    if (!rs.length) return null;
+    const x1 = Math.min(...rs.map((r) => r.x));
+    const y1 = Math.min(...rs.map((r) => r.y));
+    const x2 = Math.max(...rs.map((r) => r.x + r.w));
+    const y2 = Math.max(...rs.map((r) => r.y + r.h));
+    return { x: x1 - REGION_PAD, y: y1 - REGION_TOP, w: x2 - x1 + REGION_PAD * 2, h: y2 - y1 + REGION_TOP + REGION_PAD };
+  };
+  const regionRect = (rg: CanvasRegion) => rectFromIds(rg.memberIds);
+  const inRect = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+
+  /** Mirror a region change into its linked collection (best-effort). */
+  const syncLinked = (rg: CanvasRegion, op: "add" | "remove", nodeId: string) => {
+    if (!rg.linkedCollectionId || nodeId.startsWith("n:")) return;
+    if (op === "add")
+      void api.post(`/collections/${rg.linkedCollectionId}/members`, { blockId: nodeId }).catch(() => {});
+    else void api.del(`/collections/${rg.linkedCollectionId}/members/${nodeId}`).catch(() => {});
+  };
+
+  /** After a node drag: joins the region it landed in, leaves ones it left. */
+  const updateRegionMembership = (nodeId: string) => {
+    const r = rectOf(nodeId);
+    if (!r) return;
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    let changed = false;
+    const next = regions
+      .map((rg) => {
+        const others = rg.memberIds.filter((id) => id !== nodeId);
+        const base = rectFromIds(others);
+        const isMember = rg.memberIds.includes(nodeId);
+        const inside = base ? inRect(base, cx, cy) : false;
+        if (isMember && !inside) {
+          changed = true;
+          syncLinked(rg, "remove", nodeId);
+          return { ...rg, memberIds: others };
+        }
+        if (!isMember && inside) {
+          changed = true;
+          syncLinked(rg, "add", nodeId);
+          return { ...rg, memberIds: [...rg.memberIds, nodeId] };
+        }
+        return rg;
+      })
+      .filter((rg) => rg.memberIds.length > 0);
+    if (changed) saveRegions(next);
+  };
 
   const persistMemberCtx = (blockId: string, ctx: NodeCtx) =>
     void api.patch(`/collections/${cid}/members/${blockId}`, {
@@ -259,21 +346,32 @@ export function CanvasView({
     | { kind: "pan"; sx: number; sy: number; ox: number; oy: number; moved: boolean }
     | { kind: "node"; id: string; dx: number; dy: number; moved: boolean }
     | { kind: "resize"; id: string; corner: string; start: Rect; sx: number; sy: number }
+    | { kind: "marquee" }
+    | { kind: "region"; id: string; sx: number; sy: number; starts: Record<string, Rect>; moved: boolean }
     | null
   >(null);
   const [linking, setLinking] = useState<{ from: string; side: Side; x: number; y: number } | null>(null);
   const hoverNode = useRef<string | null>(null);
 
-  const setZoomAt = (nz: number, sx: number, sy: number) => {
-    const z = Math.min(3, Math.max(0.1, nz));
-    const r = wrapRef.current!.getBoundingClientRect();
-    const px = sx - r.left;
-    const py = sy - r.top;
-    setView((v) => ({
-      z,
-      x: px - ((px - v.x) / v.z) * z,
-      y: py - ((py - v.y) / v.z) * z,
-    }));
+  // Fully functional updates so rapid wheel events never read a stale zoom
+  // (the old closure-over-view version stuttered under fast pinches).
+  const zoomBy = (factor: number, sx: number, sy: number) => {
+    const rect = wrapRef.current!.getBoundingClientRect();
+    const px = sx - rect.left;
+    const py = sy - rect.top;
+    setView((v) => {
+      const z = Math.min(3, Math.max(0.1, v.z * factor));
+      return { z, x: px - ((px - v.x) / v.z) * z, y: py - ((py - v.y) / v.z) * z };
+    });
+  };
+  const zoomTo = (nz: number, sx: number, sy: number) => {
+    const rect = wrapRef.current!.getBoundingClientRect();
+    const px = sx - rect.left;
+    const py = sy - rect.top;
+    setView((v) => {
+      const z = Math.min(3, Math.max(0.1, nz));
+      return { z, x: px - ((px - v.x) / v.z) * z, y: py - ((py - v.y) / v.z) * z };
+    });
   };
 
   useEffect(() => {
@@ -281,11 +379,12 @@ export function CanvasView({
     if (!el) return;
     // Native listener: React's wheel is passive, and we must preventDefault
     // to stop page scroll / browser zoom. Two-finger swipe pans; pinch
-    // (ctrlKey wheel) or ⌘/Ctrl+wheel zooms.
+    // (ctrlKey wheel) or ⌘/Ctrl+wheel zooms. Registered once — the handler
+    // touches no render state directly.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        setZoomAt(view.z * Math.exp(-e.deltaY * 0.008), e.clientX, e.clientY);
+        zoomBy(Math.exp(-e.deltaY * 0.014), e.clientX, e.clientY);
       } else {
         setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
       }
@@ -293,12 +392,36 @@ export function CanvasView({
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view.z]);
+  }, []);
 
   const onBgPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
     if (e.target !== e.currentTarget) return;
-    drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
+    e.preventDefault(); // stop text-selection sweeps while panning/selecting
+    if (e.shiftKey) {
+      const p = toCanvas(e.clientX, e.clientY);
+      setMarquee({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+      drag.current = { kind: "marquee" };
+    } else {
+      setSelected([]);
+      drag.current = { kind: "pan", sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y, moved: false };
+    }
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const startRegionDrag = (id: string, e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rg = regions.find((r) => r.id === id);
+    if (!rg) return;
+    const p = toCanvas(e.clientX, e.clientY);
+    const starts: Record<string, Rect> = {};
+    for (const mid of rg.memberIds) {
+      const r = rectOf(mid);
+      if (r) starts[mid] = { ...r };
+    }
+    drag.current = { kind: "region", id, sx: p.x, sy: p.y, starts, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: ReactPointerEvent) => {
@@ -322,6 +445,23 @@ export function CanvasView({
       const ctx = { ...cur, x: p.x - d.dx, y: p.y - d.dy } as NodeCtx;
       if (d.id.startsWith("n:")) setNotes((ns) => ns.map((n) => (n.id === d.id ? { ...n, x: ctx.x, y: ctx.y } : n)));
       else setLocal((prev) => ({ ...prev, [d.id]: ctx }));
+    } else if (d.kind === "marquee") {
+      const p = toCanvas(e.clientX, e.clientY);
+      setMarquee((m) => (m ? { ...m, x2: p.x, y2: p.y } : m));
+    } else if (d.kind === "region") {
+      const p = toCanvas(e.clientX, e.clientY);
+      d.moved = true;
+      const dx = p.x - d.sx;
+      const dy = p.y - d.sy;
+      for (const [mid, start] of Object.entries(d.starts)) {
+        if (mid.startsWith("n:"))
+          setNotes((ns) => ns.map((n) => (n.id === mid ? { ...n, x: start.x + dx, y: start.y + dy } : n)));
+        else
+          setLocal((prev) => ({
+            ...prev,
+            [mid]: { ...((prev[mid] ?? rectOf(mid)) as NodeCtx), x: start.x + dx, y: start.y + dy },
+          }));
+      }
     } else if (d.kind === "resize") {
       const dx = (e.clientX - d.sx) / view.z;
       const dy = (e.clientY - d.sy) / view.z;
@@ -378,11 +518,50 @@ export function CanvasView({
       return;
     }
     if (!d) return;
+    if (d.kind === "marquee") {
+      if (marquee) {
+        const mr = {
+          x: Math.min(marquee.x1, marquee.x2),
+          y: Math.min(marquee.y1, marquee.y2),
+          w: Math.abs(marquee.x2 - marquee.x1),
+          h: Math.abs(marquee.y2 - marquee.y1),
+        };
+        const hit = [
+          ...members.map((m) => m.id).filter((id) => {
+            const r = rectOf(id);
+            return r && r.x < mr.x + mr.w && r.x + r.w > mr.x && r.y < mr.y + mr.h && r.y + r.h > mr.y;
+          }),
+          ...notes
+            .filter((n) => n.x < mr.x + mr.w && n.x + n.w > mr.x && n.y < mr.y + mr.h && n.y + n.h > mr.y)
+            .map((n) => n.id),
+        ];
+        setSelected(hit);
+        setMarquee(null);
+      }
+      return;
+    }
+    if (d.kind === "region" && !d.moved) {
+      setSelected([d.id]);
+      return;
+    }
+    if (d.kind === "region" && d.moved) {
+      const rg = regions.find((r) => r.id === d.id);
+      if (rg) {
+        persistProps({ canvas_notes: notes });
+        for (const mid of rg.memberIds) {
+          if (mid.startsWith("n:")) continue;
+          const r = rectOf(mid);
+          if (r) persistMemberCtx(mid, r as NodeCtx);
+        }
+      }
+      return;
+    }
     if (d.kind === "node" && d.moved) {
       const r = rectOf(d.id);
       if (!r) return;
       if (d.id.startsWith("n:")) persistProps({ canvas_notes: notes });
       else persistMemberCtx(d.id, r as NodeCtx);
+      updateRegionMembership(d.id);
     } else if (d.kind === "resize") {
       const r = rectOf(d.id);
       if (!r) return;
@@ -393,6 +572,7 @@ export function CanvasView({
 
   const startNodeDrag = (id: string, e: ReactPointerEvent) => {
     if (e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
     const p = toCanvas(e.clientX, e.clientY);
     const r = rectOf(id);
@@ -402,6 +582,7 @@ export function CanvasView({
   };
   const startResize = (id: string, corner: string, e: ReactPointerEvent) => {
     if (e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
     const r = rectOf(id);
     if (!r) return;
@@ -412,25 +593,42 @@ export function CanvasView({
   // ── menus ──
   const [nodeMenu, setNodeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [edgeMenu, setEdgeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [regionMenu, setRegionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [syncNewCollection, setSyncNewCollection] = useState(true);
   useEffect(() => {
-    if (!nodeMenu && !edgeMenu) return;
+    if (!nodeMenu && !edgeMenu && !regionMenu) return;
     const close = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
       if (!t.closest(".cv-menu")) {
         setNodeMenu(null);
         setEdgeMenu(null);
+        setRegionMenu(null);
       }
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [nodeMenu, edgeMenu]);
+  }, [nodeMenu, edgeMenu, regionMenu]);
 
+  /** Region → a real collection of its blocks (manual; optionally kept in sync). */
+  const createRegionCollection = async (rg: CanvasRegion, kind: string, sync: boolean) => {
+    const c = await api.post<Collection>("/collections", {
+      kind,
+      title: rg.title?.trim() || "Region",
+      membershipMode: "explicit",
+    });
+    for (const mid of rg.memberIds) {
+      if (mid.startsWith("n:")) continue; // ephemeral notes aren't blocks
+      await api.post(`/collections/${c.id}/members`, { blockId: mid }).catch(() => {});
+    }
+    if (sync) patchRegion(rg.id, { linkedCollectionId: c.id });
+  };
+
+  // Removal is membership-only — deleting the block itself is the info
+  // panel's job, never the canvas's.
   const removeNode = async (id: string) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.filter((n) => n.id !== id));
     } else {
-      const dismissed = Array.isArray(props.canvas_dismissed) ? (props.canvas_dismissed as string[]) : [];
-      persistProps({ canvas_dismissed: [...new Set([...dismissed, id])] });
       await api.del(`/collections/${cid}/members/${id}`);
       onChanged();
     }
@@ -447,6 +645,55 @@ export function CanvasView({
       persistMemberCtx(id, ctx);
     }
   };
+
+  // Bulk removal (Delete key / Clear): regions dissolve (blocks stay unless
+  // themselves selected); block removal is membership-only, never deletion.
+  const [confirmRemove, setConfirmRemove] = useState<string[] | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const removeMany = async (ids: string[]) => {
+    const regionIds = new Set(regions.map((r) => r.id));
+    const pickedRegions = ids.filter((id) => regionIds.has(id));
+    const nodeIds = ids.filter((id) => !regionIds.has(id));
+    const noteIds = new Set(nodeIds.filter((id) => id.startsWith("n:")));
+    const blockIds = nodeIds.filter((id) => !id.startsWith("n:"));
+    if (noteIds.size) saveNotes(notes.filter((n) => !noteIds.has(n.id)));
+    saveRegions(
+      regions
+        .filter((r) => !pickedRegions.includes(r.id))
+        .map((r) => ({ ...r, memberIds: r.memberIds.filter((m) => !nodeIds.includes(m)) }))
+        .filter((r) => r.memberIds.length > 0),
+    );
+    saveEdges(edges.filter((e) => !nodeIds.includes(e.from) && !nodeIds.includes(e.to)));
+    for (const b of blockIds) await api.del(`/collections/${cid}/members/${b}`).catch(() => {});
+    setSelected([]);
+    if (blockIds.length) onChanged();
+  };
+  const clearCanvas = async () => {
+    saveNotes([]);
+    saveEdges([]);
+    saveRegions([]);
+    for (const m of members) await api.del(`/collections/${cid}/members/${m.id}`).catch(() => {});
+    setSelected([]);
+    onChanged();
+  };
+
+  // Delete removes the selection (confirmed); ⌘/Ctrl-A selects everything.
+  // Ignored while typing in any input/editor.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest?.("input, textarea, select, [contenteditable=true]")) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSelected([...members.map((m) => m.id), ...notes.map((n) => n.id)]);
+      } else if ((e.key === "Delete" || e.key === "Backspace") && selected.length > 0) {
+        e.preventDefault();
+        setConfirmRemove([...selected]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [members, notes, selected]);
 
   const addNote = (at?: { x: number; y: number }) => {
     const c = at ?? viewCenter();
@@ -507,7 +754,7 @@ export function CanvasView({
   const nodeBox = (id: string, r: NodeCtx, body: ReactNode, isNote: boolean) => (
     <div
       key={id}
-      className={`cv-node${isNote ? " cv-note" : ""}`}
+      className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}`}
       style={{
         left: r.x,
         top: r.y,
@@ -537,6 +784,7 @@ export function CanvasView({
           title="Drag to connect"
           onPointerDown={(e) => {
             if (e.button !== 0) return;
+            e.preventDefault();
             e.stopPropagation();
             const p = toCanvas(e.clientX, e.clientY);
             setLinking({ from: id, side: sd, x: p.x, y: p.y });
@@ -558,6 +806,28 @@ export function CanvasView({
       }}
     >
       <div className="cv-layer" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
+        {regions.map((rg) => {
+          const rr = regionRect(rg);
+          if (!rr) return null;
+          return (
+            <div
+              key={rg.id}
+              className="cv-region"
+              style={{ left: rr.x, top: rr.y, width: rr.w, height: rr.h, background: rg.color ?? REGION_COLORS[0] }}
+              onPointerDown={(e) => startRegionDrag(rg.id, e)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setRegionMenu({ id: rg.id, x: e.clientX, y: e.clientY });
+              }}
+            >
+              <div className="cv-region-title">
+                {rg.title || "Region"}
+                {rg.linkedCollectionId && <span title="Synced to a collection"> ⟲</span>}
+              </div>
+            </div>
+          );
+        })}
         <svg className="cv-svg" width={0} height={0}>
           <defs>
             {edges.map((e) => (
@@ -641,6 +911,41 @@ export function CanvasView({
           );
         })}
 
+        {marquee && (
+          <div
+            className="cv-marquee"
+            style={{
+              left: Math.min(marquee.x1, marquee.x2),
+              top: Math.min(marquee.y1, marquee.y2),
+              width: Math.abs(marquee.x2 - marquee.x1),
+              height: Math.abs(marquee.y2 - marquee.y1),
+            }}
+          />
+        )}
+        {selected.length > 1 &&
+          (() => {
+            const bb = rectFromIds(selected);
+            if (!bb) return null;
+            return (
+              <button
+                className="cv-make-region"
+                style={{ left: bb.x, top: bb.y - 34 }}
+                onClick={() => {
+                  // A node lives in at most one region: pull from others first.
+                  const cleaned = regions
+                    .map((rg) => ({ ...rg, memberIds: rg.memberIds.filter((id) => !selected.includes(id)) }))
+                    .filter((rg) => rg.memberIds.length > 0);
+                  saveRegions([
+                    ...cleaned,
+                    { id: uid(), title: "Region", memberIds: [...new Set(selected)] },
+                  ]);
+                  setSelected([]);
+                }}
+              >
+                Create region ({selected.length})
+              </button>
+            );
+          })()}
         {notes.map((n) =>
           nodeBox(
             n.id,
@@ -658,7 +963,7 @@ export function CanvasView({
 
       {/* toolbar */}
       <div className="cv-toolbar">
-        <button className="icon-btn" title="Zoom out" onClick={() => setZoomAt(view.z / 1.2, innerWidth / 2, innerHeight / 2)}>
+        <button className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.2, innerWidth / 2, innerHeight / 2)}>
           <Minus size={14} />
         </button>
         <input
@@ -666,17 +971,20 @@ export function CanvasView({
           value={`${zoomPct}%`}
           onChange={(e) => {
             const n = Number(e.target.value.replace(/[^\d]/g, ""));
-            if (n >= 10 && n <= 300) setZoomAt(n / 100, innerWidth / 2, innerHeight / 2);
+            if (n >= 10 && n <= 300) zoomTo(n / 100, innerWidth / 2, innerHeight / 2);
           }}
         />
-        <button className="icon-btn" title="Zoom in" onClick={() => setZoomAt(view.z * 1.2, innerWidth / 2, innerHeight / 2)}>
+        <button className="icon-btn" title="Zoom in" onClick={() => zoomBy(1.2, innerWidth / 2, innerHeight / 2)}>
           <Plus size={14} />
         </button>
         <span className="cv-tb-sep" />
         <button className="ghost" onClick={() => addNote()}>
           <StickyNote size={14} /> Note
         </button>
-        <span className="hint">Drag space to pan · wheel to zoom · double-click for a note</span>
+        <button className="ghost" onClick={() => setConfirmClear(true)}>
+          Clear
+        </button>
+        <span className="hint">Drag space to pan · shift-drag to select · double-click for a note</span>
       </div>
 
       {/* node menu */}
@@ -791,6 +1099,101 @@ export function CanvasView({
           </div>,
           document.body,
         )}
+
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        title={`Remove ${confirmRemove?.length ?? 0} item${(confirmRemove?.length ?? 0) === 1 ? "" : "s"} from the canvas?`}
+        message="Blocks are only removed from the canvas — they are not deleted. Ephemeral notes and regions are discarded."
+        confirmLabel="Remove"
+        onCancel={() => setConfirmRemove(null)}
+        onConfirm={() => {
+          const ids = confirmRemove ?? [];
+          setConfirmRemove(null);
+          void removeMany(ids);
+        }}
+      />
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear the whole canvas?"
+        message="Every block is removed from the canvas (not deleted); ephemeral notes, connections, and regions are discarded."
+        confirmLabel="Clear"
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={() => {
+          setConfirmClear(false);
+          void clearCanvas();
+        }}
+      />
+
+      {/* region menu */}
+      {regionMenu &&
+        (() => {
+          const rg = regions.find((r) => r.id === regionMenu.id);
+          if (!rg) return null;
+          return createPortal(
+            <div
+              className="menu cv-menu"
+              style={{ position: "fixed", left: regionMenu.x, top: regionMenu.y, right: "auto" }}
+            >
+              <input
+                className="cv-edge-label-input"
+                placeholder="Region title…"
+                value={rg.title}
+                onChange={(e) => patchRegion(rg.id, { title: e.target.value })}
+              />
+              <div className="cv-menu-row">
+                {REGION_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className="cv-swatch"
+                    style={{ background: c }}
+                    onClick={() => patchRegion(rg.id, { color: c })}
+                  />
+                ))}
+              </div>
+              <div className="menu-sep" />
+              <div className="hint" style={{ padding: "4px 10px" }}>Create collection from region…</div>
+              <label className="cv-menu-row" style={{ cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={syncNewCollection}
+                  style={{ width: "auto" }}
+                  onChange={(e) => setSyncNewCollection(e.target.checked)}
+                />
+                <span style={{ fontSize: 12 }}>Keep synced with region</span>
+              </label>
+              <div className="cv-menu-row">
+                {[
+                  ["list", "List"],
+                  ["document", "Spread"],
+                  ["matrix", "Matrix"],
+                  ["table", "Table"],
+                ].map(([k, label]) => (
+                  <button
+                    key={k}
+                    className="seg"
+                    onClick={() => {
+                      void createRegionCollection(rg, k!, syncNewCollection);
+                      setRegionMenu(null);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="menu-sep" />
+              <button
+                className="menu-item"
+                onClick={() => {
+                  saveRegions(regions.filter((r) => r.id !== rg.id));
+                  setRegionMenu(null);
+                }}
+              >
+                Delete region (keeps the blocks)
+              </button>
+            </div>,
+            document.body,
+          );
+        })()}
 
       {/* edge menu */}
       {edgeMenu &&

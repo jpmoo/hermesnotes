@@ -3599,3 +3599,20 @@ textarea.cv-eph-panel {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Canvas toast: brief confirmation, bottom-center. */
+.cv-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 12;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-lift);
+  pointer-events: none;
+  animation: modalFade 0.15s ease;
+}

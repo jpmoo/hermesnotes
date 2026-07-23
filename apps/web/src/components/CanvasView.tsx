@@ -1,5 +1,6 @@
 import { GripHorizontal, Minus, Plus } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import {
   useEffect,
   useMemo,
@@ -140,6 +141,17 @@ export function CanvasView({
   const cid = collection.id;
   const props = collection.properties as Record<string, unknown>;
   const { selectBlock, bottomSlotEl, selectedBlockId } = usePanels();
+  const nav = useNavigate();
+
+  // Transient feedback: a toast for quick acts, a dialog for created collections.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const showToast = (msg: string) => {
+    setToast(msg);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
+  };
+  const [createdCollection, setCreatedCollection] = useState<{ id: string; title: string; kind: string } | null>(null);
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -646,6 +658,7 @@ export function CanvasView({
       await api.post(`/collections/${c.id}/members`, { blockId: mid }).catch(() => {});
     }
     if (sync) patchRegion(rg.id, { linkedCollectionId: c.id });
+    setCreatedCollection({ id: c.id, title: rg.title?.trim() || "Region", kind });
   };
 
   // Removal is membership-only — deleting the block itself is the info
@@ -974,6 +987,7 @@ export function CanvasView({
                     { id: uid(), title: "Region", memberIds: [...new Set(selected)] },
                   ]);
                   setSelected([]);
+                  showToast("Region created — right-click it to name, color, or make a collection.");
                 }}
               >
                 Create region ({selected.length})
@@ -1163,6 +1177,31 @@ export function CanvasView({
                     {accepting ? "Adding…" : "Accept"}
                   </button>
                 )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {toast && <div className="cv-toast">{toast}</div>}
+
+      {createdCollection &&
+        createPortal(
+          <div className="modal-backdrop" onClick={() => setCreatedCollection(null)}>
+            <div className="modal-card" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
+              <h2 className="modal-title">Collection created</h2>
+              <p className="modal-message">
+                “{createdCollection.title}” is now a{" "}
+                {createdCollection.kind === "document" ? "spread" : createdCollection.kind} with the
+                region's blocks.
+              </p>
+              <div className="modal-actions">
+                <button className="ghost" onClick={() => setCreatedCollection(null)}>
+                  Stay here
+                </button>
+                <button className="primary" onClick={() => nav(`/collections/${createdCollection.id}`)}>
+                  Open it
+                </button>
               </div>
             </div>
           </div>,

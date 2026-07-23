@@ -460,6 +460,18 @@ label,
   background: var(--surface-2);
   color: var(--text);
 }
+button.nav-link {
+  border: none;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: var(--text-muted);
+}
+button.nav-link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
 .nav-link.active {
   background: #eef4f6;
   color: var(--accent-ink);
@@ -3783,5 +3795,5 @@ input.cv-add-input {
 
 /* Canvas page: tuck the canvas up toward the title. */
 .canvas-area {
-  margin-top: -8px;
+  margin-top: -16px;
 }

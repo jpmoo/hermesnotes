@@ -571,6 +571,99 @@ export function buildTools(server: McpServer, api: Api): void {
       return `Removed #${t} from ${n} block${n === 1 ? "" : "s"}.`;
     }),
   );
+
+  // ---------- general search / read ----------
+
+  interface SearchHit {
+    id: string;
+    kind: "block" | "collection" | "today";
+    date?: string;
+    blockTypeId: string | null;
+    label: string;
+    document: boolean;
+    matrix: boolean;
+    table: boolean;
+    smart: boolean;
+    semantic: boolean;
+  }
+
+  server.tool(
+    "search",
+    "Search EVERYTHING — every block (notes, tasks, people…) and collection — by literal match " +
+      "(title, body, properties) plus semantic similarity, like the app's top-bar search. " +
+      "Use this for requests like \"find my note about X\". Returns ids for block_get.",
+    { query: z.string().min(1) },
+    run(async (a) => {
+      const hits = await api.get<SearchHit[]>(`/search?q=${encodeURIComponent(a.query)}`);
+      if (!hits.length) return "No matches.";
+      const types = await api.get<{ id: string; name: string }[]>("/block-types");
+      const typeName = new Map(types.map((t) => [t.id, t.name]));
+      const kindOf = (h: SearchHit) =>
+        h.kind === "today"
+          ? `daily note ${h.date ?? ""}`.trim()
+          : h.kind === "collection"
+            ? `${h.smart ? "smart " : ""}${h.document ? "spread" : h.matrix ? "matrix" : h.table ? "table" : "list"}`
+            : (h.blockTypeId && typeName.get(h.blockTypeId)) || "block";
+      return hits
+        .map((h) => `- ${h.label} — ${kindOf(h)}${h.semantic ? " (semantic match)" : ""} [${h.id}]`)
+        .join("\n");
+    }),
+  );
+
+  server.tool(
+    "block_get",
+    "Read one block or collection by id (from search): content, properties, tags, and " +
+      "containing collections. Collections also list their members.",
+    { id: z.string().uuid() },
+    run(async (a) => {
+      const b = await api.get<{
+        id: string;
+        blockTypeId: string | null;
+        collectionKind: string | null;
+        content: string | null;
+        properties: Record<string, unknown>;
+        createdAt: string;
+        updatedAt: string;
+      }>(`/blocks/${a.id}`);
+      const info = await api.get<{
+        tags: string[];
+        inCollections: { id: string; label: string }[];
+      }>(`/blocks/${a.id}/info`);
+
+      const lines: string[] = [];
+      const title = typeof b.properties?.title === "string" ? b.properties.title : "";
+      if (title) lines.push(`# ${title}`);
+      if (b.collectionKind) {
+        const kind = b.collectionKind === "document" ? "spread" : b.collectionKind;
+        lines.push(`Collection (${kind}) [${b.id}]`);
+        const d = await api.get<{
+          members: { id: string; content: string | null; properties: Record<string, unknown> }[];
+        }>(`/collections/${b.id}`);
+        lines.push(`Members (${d.members.length}):`);
+        for (const m of d.members) {
+          const label =
+            (typeof m.properties?.title === "string" && m.properties.title) ||
+            (m.content ?? "").split("\n")[0] ||
+            "Untitled";
+          lines.push(`- ${label} [${m.id}]`);
+        }
+      } else {
+        lines.push(`Block [${b.id}] created ${fmtDate(b.createdAt)}, edited ${fmtDate(b.updatedAt)}`);
+        if (b.content) lines.push("", b.content);
+        const props = Object.entries(b.properties ?? {}).filter(
+          ([k, v]) => k !== "title" && v != null && v !== "",
+        );
+        if (props.length) {
+          lines.push("", "Properties:");
+          for (const [k, v] of props) lines.push(`- ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+        }
+      }
+      if (info.tags.length) lines.push("", `Tags: ${info.tags.map((t) => `#${t}`).join(" ")}`);
+      if (info.inCollections.length)
+        lines.push(`In collections: ${info.inCollections.map((c) => `${c.label} [${c.id}]`).join(", ")}`);
+      return lines.join("\n");
+    }),
+  );
 }
 
 interface HermesBlock {

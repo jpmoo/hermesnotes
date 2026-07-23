@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * On-theme confirmation modal. Backdrop click and Escape cancel; the Cancel
@@ -38,7 +39,10 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  return (
+  // Portal to <body>: callers may live inside the auto-hiding right panel,
+  // whose collapse (display:none) or stacking context would swallow an
+  // in-place modal the moment the pointer heads toward it.
+  return createPortal(
     <div className="modal-backdrop" onClick={onCancel}>
       <div
         className="modal-card"
@@ -57,6 +61,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

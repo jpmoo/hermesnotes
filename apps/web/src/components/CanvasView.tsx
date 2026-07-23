@@ -597,7 +597,10 @@ export function CanvasView({
   const [syncNewCollection, setSyncNewCollection] = useState(true);
   useEffect(() => {
     if (!nodeMenu && !edgeMenu && !regionMenu) return;
-    const close = (e: MouseEvent) => {
+    // pointerdown, not mousedown: canvas drags preventDefault() their
+    // pointerdown, which suppresses derived mouse events — a canvas click
+    // would never close the menu otherwise.
+    const close = (e: PointerEvent) => {
       const t = e.target as HTMLElement;
       if (!t.closest(".cv-menu")) {
         setNodeMenu(null);
@@ -605,8 +608,8 @@ export function CanvasView({
         setRegionMenu(null);
       }
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
   }, [nodeMenu, edgeMenu, regionMenu]);
 
   /** Region → a real collection of its blocks (manual; optionally kept in sync). */

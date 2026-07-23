@@ -21,6 +21,7 @@ import { api, type Block, type BlockType, type Collection, type Member } from ".
 import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineText } from "../lib/display.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
+import { CanvasView } from "../components/CanvasView.tsx";
 import { MatrixView } from "../components/MatrixView.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
@@ -122,6 +123,7 @@ export function CollectionView() {
   const isDocument = collection?.collectionKind === "document";
   const isMatrix = collection?.collectionKind === "matrix";
   const isTable = collection?.collectionKind === "table";
+  const isCanvas = collection?.collectionKind === "canvas";
   const filterQuery: unknown = collection?.properties.filter_query;
 
   // Reorder a member (manual list order), persisted as membership order.
@@ -159,10 +161,10 @@ export function CollectionView() {
     }
   };
 
-  // Right panel: query editor for smart collections, the section tool for
-  // documents, and the table tools (columns/header/toggles) for tables.
+  // Right panel: query editor for smart collections (and canvases — their
+  // query feeds the field), the section tool for documents, table tools.
   useEffect(() => {
-    if (!isSmart && !isDocument && !isTable) {
+    if (!isSmart && !isDocument && !isTable && !isCanvas) {
       setHasContent(false);
       return;
     }
@@ -170,7 +172,7 @@ export function CollectionView() {
     return () => {
       setHasContent(false);
     };
-  }, [isSmart, isDocument, isTable, setHasContent]);
+  }, [isSmart, isDocument, isTable, isCanvas, setHasContent]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -245,7 +247,7 @@ export function CollectionView() {
       />
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
-        {!isDocument && !isMatrix && !isTable && (
+        {!isDocument && !isMatrix && !isTable && !isCanvas && (
           <div className="segmented">
             {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
               <button
@@ -293,9 +295,11 @@ export function CollectionView() {
           </div>
         )}
 
-        {isSmart && (
+        {(isSmart || isCanvas) && (
           <>
-            <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
+            {isSmart && (
+              <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
+            )}
             <button
               className="icon-btn"
               title={!isDynamic && !isMatrix ? "Refresh from query" : "Re-run the query"}
@@ -307,7 +311,7 @@ export function CollectionView() {
           </>
         )}
 
-        {!isDocument && !isMatrix && !isTable && format !== "blocks" && members.length > 0 && (
+        {!isDocument && !isMatrix && !isTable && !isCanvas && format !== "blocks" && members.length > 0 && (
           <button
             className="ghost"
             style={{ marginLeft: "auto" }}
@@ -322,10 +326,12 @@ export function CollectionView() {
         )}
       </div>
 
-      {!isDocument && !isMatrix && !isTable && members.length > 0 && sortBar}
+      {!isDocument && !isMatrix && !isTable && !isCanvas && members.length > 0 && sortBar}
 
       {isMatrix ? (
         <MatrixView collection={collection} members={members} types={types} onChanged={() => void load()} />
+      ) : isCanvas ? (
+        <CanvasView collection={collection} members={members} types={types} onChanged={() => void load()} />
       ) : isTable ? (
         <TableView
           collection={collection}
@@ -428,14 +434,14 @@ export function CollectionView() {
         />
       )}
       {bottomSlotEl &&
-        (isDocument || isSmart) &&
+        (isDocument || isSmart || isCanvas) &&
         selectedBlockId === id &&
         createPortal(
           <>
             <div className="panel-divider" />
-            {isSmart && (
+            {(isSmart || isCanvas) && (
               <>
-                <div className="panel-h">Query</div>
+                <div className="panel-h">{isCanvas ? "Query (feeds the canvas)" : "Query"}</div>
                 <QueryPanel
                   key={id}
                   collectionId={id}

@@ -8,7 +8,7 @@ import { QueryBuilder } from "./QueryBuilder.tsx";
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [title, setTitle] = useState("Untitled");
-  const [kind, setKind] = useState<"list" | "document" | "matrix" | "table">("list");
+  const [kind, setKind] = useState<"list" | "document" | "matrix" | "table" | "canvas">("list");
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(2);
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
@@ -29,8 +29,14 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
       const c = await api.post<Collection>("/collections", {
         kind,
         title,
-        membershipMode: mode,
-        ...(mode === "smart" ? { smartMode, filterQuery: filter } : {}),
+        membershipMode: kind === "canvas" ? "explicit" : mode,
+        ...(kind === "canvas"
+          ? filter.items.length > 0
+            ? { filterQuery: filter }
+            : {}
+          : mode === "smart"
+            ? { smartMode, filterQuery: filter }
+            : {}),
         ...(kind === "matrix" ? { matrixCols: cols, matrixRows: rows } : {}),
       });
       // The modal is mounted in the sidebar, which outlives route changes —
@@ -76,6 +82,12 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             >
               Table
             </button>
+            <button
+              className={`seg${kind === "canvas" ? " active" : ""}`}
+              onClick={() => setKind("canvas")}
+            >
+              Canvas
+            </button>
           </div>
           <div className="hint" style={{ marginTop: 6 }}>
             {kind === "list"
@@ -84,7 +96,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
                 ? "Full-card sections you arrange with the layout tool in the right panel."
                 : kind === "matrix"
                   ? "An x/y grid of regions (Eisenhower 2×2, Kanban 3×1…) — drag blocks in from a drawer."
-                  : "A spreadsheet-style grid: one row per block, property columns you pick, inline editing."}
+                  : kind === "table"
+                    ? "A spreadsheet-style grid: one row per block, property columns you pick, inline editing."
+                    : "An infinite field: drop blocks anywhere, connect them with lines, zoom and pan. Add manually and by query at once."}
           </div>
         </div>
 
@@ -118,6 +132,15 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        {kind === "canvas" ? (
+          <div className="field">
+            <span className="field-label">Feed from a query (optional)</span>
+            <div className="hint" style={{ marginBottom: 6 }}>
+              Matching blocks land on the canvas automatically — you can still drop blocks manually too.
+            </div>
+            <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />
+          </div>
+        ) : (
         <div className="field">
           <span className="field-label">Membership</span>
           <div className="segmented">
@@ -134,8 +157,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
               : "Blocks are selected by a query."}
           </div>
         </div>
+        )}
 
-        {mode === "smart" && (
+        {kind !== "canvas" && mode === "smart" && (
           <>
             <div className="field">
               <span className="field-label">Updates</span>

@@ -16,6 +16,7 @@ const KINDS = [
   { key: "document", label: "Spreads" },
   { key: "matrix", label: "Matrices" },
   { key: "table", label: "Tables" },
+  { key: "canvas", label: "Canvases" },
 ] as const;
 
 export function CollectionsPage() {
@@ -148,6 +149,7 @@ export function CollectionsPage() {
                   document={c.collectionKind === "document"}
                   matrix={c.collectionKind === "matrix"}
                   table={c.collectionKind === "table"}
+                  canvas={c.collectionKind === "canvas"}
                   smart={isSmart}
                   size={20}
                   color={iconColor}

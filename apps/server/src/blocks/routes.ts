@@ -738,10 +738,46 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       )
       .limit(50);
 
+    // Canvas edges: user-drawn connections on any canvas containing this block.
+    const canvasRows = await db
+      .select({ id: blocks.id, properties: blocks.properties })
+      .from(blocks)
+      .where(and(eq(blocks.ownerId, userId), eq(blocks.collectionKind, "canvas")));
+    interface CanvasEdge {
+      from?: string;
+      to?: string;
+      label?: string;
+    }
+    const touching: { canvasLabel: string; otherId: string; edgeLabel?: string }[] = [];
+    for (const c of canvasRows) {
+      const cp = c.properties as Record<string, unknown>;
+      const edges = Array.isArray(cp.canvas_edges) ? (cp.canvas_edges as CanvasEdge[]) : [];
+      for (const e of edges) {
+        if (e.from !== id && e.to !== id) continue;
+        const other = e.from === id ? e.to : e.from;
+        // Skip edges to ephemeral canvas notes (not real blocks).
+        if (!other || other.startsWith("n:")) continue;
+        touching.push({ canvasLabel: labelOf(cp, null), otherId: other, edgeLabel: e.label });
+      }
+    }
+    let canvasOtherRows: typeof linkRows = [];
+    if (touching.length) {
+      canvasOtherRows = await db
+        .select({
+          id: blocks.id,
+          properties: blocks.properties,
+          content: blocks.content,
+          blockTypeId: blocks.blockTypeId,
+          collectionKind: blocks.collectionKind,
+        })
+        .from(blocks)
+        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(touching.map((t) => t.otherId))])));
+    }
+
     // Resolve type icons for every connected block in one query.
     const connTypeIds = [
       ...new Set(
-        [...inRows, ...linkRows, ...fromRows]
+        [...inRows, ...linkRows, ...fromRows, ...canvasOtherRows]
           .map((r) => r.blockTypeId)
           .filter((v): v is string => Boolean(v)),
       ),
@@ -779,6 +815,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const inCollections = inRows.map(withIcon);
     const linksTo = linkRows.map(withIcon);
     const linkedFrom = fromRows.map(withIcon);
+    const canvasById = new Map(canvasOtherRows.map((r) => [r.id, r]));
+    const canvasConnections = touching.flatMap((t) => {
+      const row = canvasById.get(t.otherId);
+      return row
+        ? [{ ...withIcon(row), edgeLabel: t.edgeLabel, canvasLabel: t.canvasLabel }]
+        : [];
+    });
 
     const tagRows = await db
       .select({ name: tags.name })

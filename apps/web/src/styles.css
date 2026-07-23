@@ -3282,3 +3282,195 @@ input.matrix-axis-y::placeholder {
 .collection-desc {
   margin: 0 0 14px;
 }
+
+/* ── Infinite canvas collection ────────────────────────────────── */
+.cv-wrap {
+  position: relative;
+  height: calc(100vh - 230px);
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background:
+    radial-gradient(circle, var(--border) 1px, transparent 1px) 0 0 / 26px 26px,
+    var(--surface-2);
+  touch-action: none;
+  cursor: grab;
+}
+.cv-wrap:active {
+  cursor: grabbing;
+}
+.cv-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.cv-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.cv-edge {
+  fill: none;
+  pointer-events: none;
+}
+.cv-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.cv-edge-label {
+  font-size: 11px;
+  fill: var(--text-muted);
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 4px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.cv-node {
+  position: absolute;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+}
+.cv-grab {
+  flex: none;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: grab;
+  border-radius: 10px 10px 0 0;
+}
+.cv-grab:active {
+  cursor: grabbing;
+}
+.cv-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 6px 6px;
+}
+/* The embedded card sheds its chrome — the node box is the chrome. */
+.cv-node .card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 2px 6px 6px;
+}
+.cv-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  z-index: 3;
+}
+.cv-nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.cv-ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.cv-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.cv-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.cv-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 4;
+  cursor: crosshair;
+}
+.cv-node:hover .cv-handle {
+  opacity: 1;
+}
+.cv-h-n { top: -6px; left: calc(50% - 6px); }
+.cv-h-s { bottom: -6px; left: calc(50% - 6px); }
+.cv-h-w { left: -6px; top: calc(50% - 6px); }
+.cv-h-e { right: -6px; top: calc(50% - 6px); }
+.cv-note-text {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: transparent;
+  resize: none;
+  font-size: 13px;
+  font-family: var(--font-body);
+  outline: none;
+}
+.cv-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+}
+.cv-zoom {
+  width: 56px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 12px;
+  padding: 4px 2px;
+}
+.cv-tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+.cv-toolbar .ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cv-menu {
+  min-width: 190px;
+}
+.cv-menu-row {
+  display: flex;
+  gap: 4px;
+  padding: 5px 8px;
+  flex-wrap: wrap;
+}
+.cv-menu-row .seg {
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.cv-menu-row .seg.active {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+.cv-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  padding: 0;
+}
+.cv-edge-label-input {
+  margin: 6px 8px 2px;
+  width: calc(100% - 16px);
+  font-size: 12px;
+  padding: 5px 8px;
+}

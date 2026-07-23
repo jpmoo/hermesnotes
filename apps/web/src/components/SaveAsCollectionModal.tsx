@@ -8,6 +8,7 @@ const KINDS: { key: CollectionKind; label: string }[] = [
   { key: "list", label: "List" },
   { key: "document", label: "Spread" },
   { key: "matrix", label: "Matrix" },
+  { key: "canvas", label: "Canvas" },
 ];
 
 const FORMATS: { key: ListFormat; label: string }[] = [

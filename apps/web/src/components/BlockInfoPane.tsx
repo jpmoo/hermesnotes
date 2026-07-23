@@ -128,10 +128,15 @@ export function BlockInfoPane({
     block != null && !block.collectionKind && !titleOverride && pathname !== `/block/${blockId}`;
   const editorType = block?.blockTypeId ? types.find((t) => t.id === block.blockTypeId) : undefined;
 
+  const canvasConns = (info.canvasConnections ?? []).map((c) => ({
+    ...c,
+    label: `${c.label}${c.edgeLabel ? ` — “${c.edgeLabel}”` : ""} · ${c.canvasLabel}`,
+  }));
   const noConnections =
     info.inCollections.length === 0 &&
     info.linksTo.length === 0 &&
     info.linkedFrom.length === 0 &&
+    canvasConns.length === 0 &&
     (editable || info.tags.length === 0);
 
   const fav = isFavorite(blockId);
@@ -228,6 +233,7 @@ export function BlockInfoPane({
             />
             <ConnGroup label="Links to" items={info.linksTo} onSelect={onSelect} />
             <ConnGroup label="Linked from" items={info.linkedFrom} onSelect={onSelect} />
+            <ConnGroup label="Connected on canvas" items={canvasConns} onSelect={onSelect} />
             {!editable && info.tags.length > 0 && (
               <div className="info-conn">
                 <div className="info-conn-label">Tagged</div>

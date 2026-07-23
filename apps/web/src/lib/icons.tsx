@@ -12,6 +12,7 @@ import {
   Heart,
   Inbox,
   Layers,
+  LayoutDashboard,
   LayoutGrid,
   Link,
   List,
@@ -133,6 +134,7 @@ export function CollectionIcon({
   document = false,
   matrix = false,
   table = false,
+  canvas = false,
   smart = false,
   size = 16,
   color,
@@ -140,11 +142,14 @@ export function CollectionIcon({
   document?: boolean;
   matrix?: boolean;
   table?: boolean;
+  canvas?: boolean;
   smart?: boolean;
   size?: number;
   color?: string | null;
 }) {
-  const Icon = matrix
+  const Icon = canvas
+    ? LayoutDashboard
+    : matrix
     ? LayoutGrid
     : table
       ? Table

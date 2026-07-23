@@ -139,6 +139,17 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       properties.table_sort = [];
       properties.table_col_widths = {};
     }
+    if (body.kind === "canvas") {
+      // A canvas is manual AND query-fed at once — not a membership-mode
+      // fork. Placement is explicit membership context; the optional query's
+      // matches are synced in as placed members by the client, and
+      // canvas_dismissed keeps removed ones from coming back.
+      properties.membership_mode = "explicit";
+      if (body.filterQuery) properties.filter_query = safeFilter(body.filterQuery);
+      properties.canvas_edges = [];
+      properties.canvas_notes = [];
+      properties.canvas_dismissed = [];
+    }
     if (body.kind === "matrix") {
       // An x/y grid of regions; members are placed via context.region (index,
       // row-major). A smart matrix uses its query only to feed the drawer.
@@ -166,7 +177,13 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
     // Snapshot: materialize current matches into memberships once. Matrices
     // never auto-materialize — placement is always an explicit drag.
-    if (body.membershipMode === "smart" && body.smartMode === "snapshot" && body.kind !== "matrix" && row) {
+    if (
+      body.membershipMode === "smart" &&
+      body.smartMode === "snapshot" &&
+      body.kind !== "matrix" &&
+      body.kind !== "canvas" &&
+      row
+    ) {
       await materialize(userId, row.id, safeFilter(body.filterQuery));
     }
     reply.code(201);

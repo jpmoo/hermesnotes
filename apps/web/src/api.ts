@@ -133,6 +133,7 @@ export interface BlockInfo {
   inCollections: ConnRef[];
   linksTo: ConnRef[];
   linkedFrom: ConnRef[];
+  canvasConnections: (ConnRef & { edgeLabel?: string; canvasLabel: string })[];
   tags: string[];
 }
 

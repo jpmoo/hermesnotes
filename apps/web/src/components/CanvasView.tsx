@@ -46,6 +46,9 @@ export interface CanvasEdge {
   width?: number;
   color?: string;
   arrow?: "none" | "forward" | "back" | "both";
+  /** Live edges are real connections (surface in the info block); ephemeral
+   * ones are canvas-only decoration. Absent = live (pre-flag edges). */
+  live?: boolean;
 }
 interface CanvasNote extends Rect {
   id: string; // "n:<uuid>"
@@ -345,7 +348,7 @@ export function CanvasView({
             Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
           saveEdges([
             ...edges,
-            { id: uid(), from: linking.from, to: target, fromSide: linking.side, toSide, arrow: "forward" },
+            { id: uid(), from: linking.from, to: target, fromSide: linking.side, toSide, arrow: "forward", live: true },
           ]);
         }
       }
@@ -714,6 +717,22 @@ export function CanvasView({
               value={menuEdge.label ?? ""}
               onChange={(e) => patchEdge(menuEdge.id, { label: e.target.value })}
             />
+            <div className="cv-menu-row">
+              <button
+                className={`seg${menuEdge.live !== false ? " active" : ""}`}
+                title="A real connection — shows in both blocks' info"
+                onClick={() => patchEdge(menuEdge.id, { live: true, dash: "solid" })}
+              >
+                Live
+              </button>
+              <button
+                className={`seg${menuEdge.live === false ? " active" : ""}`}
+                title="Canvas-only decoration — no system connection"
+                onClick={() => patchEdge(menuEdge.id, { live: false, dash: "dotted" })}
+              >
+                Ephemeral
+              </button>
+            </div>
             <div className="cv-menu-row">
               {(["solid", "dashed", "dotted"] as const).map((d) => (
                 <button

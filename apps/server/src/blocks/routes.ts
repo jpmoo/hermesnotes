@@ -747,6 +747,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       from?: string;
       to?: string;
       label?: string;
+      live?: boolean;
     }
     const touching: { canvasLabel: string; otherId: string; edgeLabel?: string }[] = [];
     for (const c of canvasRows) {
@@ -754,6 +755,8 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       const edges = Array.isArray(cp.canvas_edges) ? (cp.canvas_edges as CanvasEdge[]) : [];
       for (const e of edges) {
         if (e.from !== id && e.to !== id) continue;
+        // Ephemeral edges are canvas-only decoration, not system connections.
+        if (e.live === false) continue;
         const other = e.from === id ? e.to : e.from;
         // Skip edges to ephemeral canvas notes (not real blocks).
         if (!other || other.startsWith("n:")) continue;

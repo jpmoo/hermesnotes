@@ -830,12 +830,22 @@ export function CanvasView({
       blockId: b.id,
       context: { x: note.x, y: note.y, w: note.w, h: note.h, color: note.color ?? null },
     });
-    // Remap edges from the ephemeral id to the real block.
+    // Remap edges AND region memberships from the ephemeral id to the real
+    // block — conversion must not eject the note from its region.
     saveEdges(edges.map((e) => ({
       ...e,
       from: e.from === note.id ? b.id : e.from,
       to: e.to === note.id ? b.id : e.to,
     })));
+    if (regions.some((r) => r.memberIds.includes(note.id))) {
+      saveRegions(
+        regions.map((r) => {
+          if (!r.memberIds.includes(note.id)) return r;
+          syncLinked(r, "add", b.id); // the real block joins any linked collection
+          return { ...r, memberIds: r.memberIds.map((m) => (m === note.id ? b.id : m)) };
+        }),
+      );
+    }
     saveNotes(notes.filter((n) => n.id !== note.id));
     onChanged();
     selectBlock(b.id);

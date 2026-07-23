@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { FilterGroup } from "@hermes/shared";
-import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
+import { api, type Block, type BlockSearchResult, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -415,7 +415,7 @@ export function CanvasView({
       }
       // Swiping over a node whose content can scroll in that direction lets
       // the node scroll natively; otherwise the canvas pans.
-      const body = (e.target as HTMLElement).closest?.(".cv-body");
+      const body = (e.target as HTMLElement).closest?.(".cv-body, .cv-add-list");
       if (body && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
         const canDown = body.scrollTop + body.clientHeight < body.scrollHeight - 1;
         const canUp = body.scrollTop > 0;
@@ -751,6 +751,35 @@ export function CanvasView({
     return () => window.removeEventListener("keydown", onKey);
   }, [members, notes, selected]);
 
+  // ── inline add: dynamic search, results with icons, Add on click ──
+  const [addQ, setAddQ] = useState("");
+  const [addResults, setAddResults] = useState<BlockSearchResult[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => {
+    if (!addOpen || !addQ.trim()) {
+      setAddResults([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      void api
+        .get<BlockSearchResult[]>(`/blocks/search?q=${encodeURIComponent(addQ)}`)
+        .then(setAddResults)
+        .catch(() => setAddResults([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [addQ, addOpen]);
+  const addFromSearch = async (b: BlockSearchResult) => {
+    const taken = allRects();
+    const center = viewCenter();
+    const spot = findSpot(center.x, center.y, DEFAULT_W, DEFAULT_H, taken);
+    await api.post(`/collections/${cid}/members`, {
+      blockId: b.id,
+      context: { x: spot.x, y: spot.y, w: DEFAULT_W, h: DEFAULT_H },
+    });
+    onChanged();
+    showToast(`Added “${b.label}”.`);
+  };
+
   const addNote = (at?: { x: number; y: number }) => {
     const c = at ?? viewCenter();
     const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, NOTE_W, NOTE_H, allRects());
@@ -1040,6 +1069,49 @@ export function CanvasView({
             />,
             true,
           ),
+        )}
+      </div>
+
+      {/* inline add search (top left) */}
+      <div className="cv-add">
+        <input
+          className="cv-add-input"
+          placeholder="Add a block…"
+          value={addQ}
+          onFocus={() => setAddOpen(true)}
+          onBlur={() => setTimeout(() => setAddOpen(false), 150)}
+          onChange={(e) => setAddQ(e.target.value)}
+        />
+        {addOpen && addQ.trim() && (
+          <div className="cv-add-list">
+            {addResults
+              .filter((b) => !members.some((m) => m.id === b.id) && b.id !== cid)
+              .map((b) => {
+                const t = b.blockTypeId ? typeById.get(b.blockTypeId) : undefined;
+                return (
+                  <button
+                    key={b.id}
+                    className="cv-add-row"
+                    // mousedown so the input's blur doesn't kill the click
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      void addFromSearch(b);
+                    }}
+                  >
+                    <BlockIcon
+                      iconKey={!t || t.isText ? "type" : t.iconKey}
+                      color={!t || t.isText ? null : t.iconColor}
+                      size={14}
+                    />
+                    <span className="cv-add-label">{b.label}</span>
+                    <span className="cv-add-go">Add</span>
+                  </button>
+                );
+              })}
+            {addResults.filter((b) => !members.some((m) => m.id === b.id) && b.id !== cid).length === 0 && (
+              <div className="hint" style={{ padding: "7px 10px" }}>No matches.</div>
+            )}
+          </div>
         )}
       </div>
 

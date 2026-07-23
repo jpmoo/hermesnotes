@@ -3645,3 +3645,62 @@ textarea.cv-eph-panel {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* Canvas inline add-search (top left). */
+.cv-add {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  width: 250px;
+}
+input.cv-add-input {
+  width: 100%;
+  height: 32px;
+  padding: 4px 11px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+.cv-add-list {
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-lift);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.cv-add-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+}
+.cv-add-row:hover {
+  background: var(--surface-2);
+}
+.cv-add-row svg {
+  flex: none;
+}
+.cv-add-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-add-go {
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 12px;
+}

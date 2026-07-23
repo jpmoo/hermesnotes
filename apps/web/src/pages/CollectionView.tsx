@@ -270,7 +270,7 @@ export function CollectionView() {
             ))}
           </div>
         )}
-        {!isDynamic && !isMatrix && (
+        {!isDynamic && !isMatrix && !isCanvas && (
           <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
             <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
               + Add

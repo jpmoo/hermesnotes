@@ -3422,14 +3422,16 @@ input.matrix-axis-y::placeholder {
   border-radius: var(--radius-control);
   box-shadow: var(--shadow-soft);
 }
-.cv-zoom {
-  width: 56px;
+/* input.* so the global input:not([type]) width/height rules don't win. */
+input.cv-zoom {
+  width: 54px;
+  height: 26px;
   text-align: center;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--surface-2);
   font-size: 12px;
-  padding: 4px 2px;
+  padding: 2px;
 }
 .cv-tb-sep {
   width: 1px;

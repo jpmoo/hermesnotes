@@ -36,6 +36,8 @@ const LABELS: Record<Target, string> = {
 
 // Preference keys (server-side, synced across devices) for each colorable row.
 // The Unattached row keeps the legacy "inbox_colors" key so saved colors carry over.
+const NEW_KEY = "newmenu_colors";
+const SEARCH_KEY = "search_colors";
 const TODAY_KEY = "today_colors";
 const FAVORITES_KEY = "favorites_colors";
 const ALLBLOCKS_KEY = "allblocks_colors";
@@ -114,6 +116,42 @@ export function Sidebar() {
     cancelOpen();
   };
 
+  const kebab = (key: string, label: string) => (
+    <div className="nav-kebab">
+      <button
+        className="kebab-btn"
+        title={`${label} options`}
+        onClick={() => setOpenMenu((cur) => (cur === key ? null : key))}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {openMenu === key && (
+        <div className="menu">
+          {TARGETS.map((t) => (
+            <button
+              key={t}
+              className="menu-item"
+              onClick={() => {
+                setModal({ key, target: t });
+                setOpenMenu(null);
+              }}
+            >
+              {LABELS[t]}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const rowStyleOf = (key: string): CSSProperties => {
+    const c = colors(key);
+    const rowStyle: CSSProperties = {};
+    if (c.bg) rowStyle.background = c.bg;
+    if (c.text) rowStyle.color = c.text;
+    return rowStyle;
+  };
+
   const colorRow = (
     key: string,
     to: string,
@@ -122,40 +160,35 @@ export function Sidebar() {
     label: string,
   ) => {
     const c = colors(key);
-    const rowStyle: CSSProperties = {};
-    if (c.bg) rowStyle.background = c.bg;
-    if (c.text) rowStyle.color = c.text;
     return (
-      <div className="nav-row" style={rowStyle}>
+      <div className="nav-row" style={rowStyleOf(key)}>
         <NavLink to={to} end={end} className="nav-link" title={label}>
           <Icon size={18} className="nav-row-icon" style={c.icon ? { color: c.icon } : undefined} />
           <span className="label">{label}</span>
         </NavLink>
-        <div className="nav-kebab">
-          <button
-            className="kebab-btn"
-            title={`${label} options`}
-            onClick={() => setOpenMenu((cur) => (cur === key ? null : key))}
-          >
-            <MoreVertical size={16} />
-          </button>
-          {openMenu === key && (
-            <div className="menu">
-              {TARGETS.map((t) => (
-                <button
-                  key={t}
-                  className="menu-item"
-                  onClick={() => {
-                    setModal({ key, target: t });
-                    setOpenMenu(null);
-                  }}
-                >
-                  {LABELS[t]}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {kebab(key, label)}
+      </div>
+    );
+  };
+
+  /** A colorable rail row whose main control is a button (Search, New…). */
+  const actionRow = (
+    key: string,
+    Icon: LucideIcon,
+    label: string,
+    onClick: () => void,
+    extra?: React.ReactNode,
+    extraClass = "",
+  ) => {
+    const c = colors(key);
+    return (
+      <div className={`nav-row${extraClass ? ` ${extraClass}` : ""}`} style={{ ...rowStyleOf(key), position: "relative" }}>
+        <button className="nav-link" title={label} onClick={onClick}>
+          <Icon size={18} className="nav-row-icon" style={c.icon ? { color: c.icon } : undefined} />
+          <span className="label">{label}</span>
+        </button>
+        {kebab(key, label)}
+        {extra}
       </div>
     );
   };
@@ -180,12 +213,12 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="nav-row sidebar-plus" style={{ position: "relative" }}>
-        <button className="nav-link" title="New block or collection" onClick={() => setPlusOpen((o) => !o)}>
-          <Plus size={18} className="nav-row-icon" />
-          <span className="label">New…</span>
-        </button>
-        {plusOpen && (
+      {actionRow(
+        NEW_KEY,
+        Plus,
+        "New…",
+        () => setPlusOpen((o) => !o),
+        plusOpen ? (
           <div className="menu" style={{ left: 8, right: "auto", top: "100%" }}>
             {orderedTypes.map((t) => (
               <button key={t.id} className="menu-item type-item" onClick={() => void createBlock(t)}>
@@ -203,15 +236,11 @@ export function Sidebar() {
               Collection…
             </button>
           </div>
-        )}
-      </div>
-
-      <div className="nav-row">
-        <button className="nav-link" title="Search everything" onClick={() => setSearchOpen(true)}>
-          <Search size={18} className="nav-row-icon" />
-          <span className="label">Search</span>
-        </button>
-      </div>
+        ) : undefined,
+        "sidebar-plus",
+      )}
+      {actionRow(SEARCH_KEY, Search, "Search", () => setSearchOpen(true))}
+      <div className="nav-divider" />
 
       {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
       <div className="nav-divider" />

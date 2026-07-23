@@ -3779,3 +3779,9 @@ input.cv-add-input {
 .search-modal-results .menu-item {
   width: 100%;
 }
+
+
+/* Canvas page: tuck the canvas up toward the title. */
+.canvas-area {
+  margin-top: -8px;
+}

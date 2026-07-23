@@ -344,7 +344,9 @@ export function CollectionView() {
       {isMatrix ? (
         <MatrixView collection={collection} members={members} types={types} onChanged={() => void load()} />
       ) : isCanvas ? (
-        <CanvasView collection={collection} members={members} types={types} onChanged={() => void load()} />
+        <div className="canvas-area">
+          <CanvasView collection={collection} members={members} types={types} onChanged={() => void load()} />
+        </div>
       ) : isTable ? (
         <TableView
           collection={collection}

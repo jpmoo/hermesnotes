@@ -967,6 +967,30 @@ export function CanvasView({
           );
         })}
 
+        {(() => {
+          // While dragging a region member, show where membership ends: the
+          // pre-drag outline + grace margin. Crossing it flips to the danger
+          // color — release there and the node leaves the region.
+          const d = drag.current;
+          if (d?.kind !== "node" || !d.moved) return null;
+          const r = rectOf(d.id);
+          if (!r) return null;
+          const cx = r.x + r.w / 2;
+          const cy = r.y + r.h / 2;
+          return Object.entries(d.startRegions).map(([rgId, base]) => {
+            const b = inflate(base, REGION_GRACE);
+            const leaving = !inRect(b, cx, cy);
+            return (
+              <div
+                key={`limit-${rgId}`}
+                className={`cv-region-limit${leaving ? " leaving" : ""}`}
+                style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
+              >
+                <span className="cv-region-limit-tag">{leaving ? "leaves region" : "stays in region"}</span>
+              </div>
+            );
+          });
+        })()}
         {marquee && (
           <div
             className="cv-marquee"

@@ -3616,3 +3616,32 @@ textarea.cv-eph-panel {
   pointer-events: none;
   animation: modalFade 0.15s ease;
 }
+
+/* Drag-time region membership boundary (pre-drag outline + grace). */
+.cv-region-limit {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  border-radius: 18px;
+  pointer-events: none;
+  opacity: 0.65;
+}
+.cv-region-limit.leaving {
+  border-color: var(--danger);
+}
+.cv-region-limit-tag {
+  position: absolute;
+  top: -22px;
+  left: 12px;
+  font-size: 11px;
+  font-family: var(--font-chrome);
+  color: var(--accent-ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.cv-region-limit.leaving .cv-region-limit-tag {
+  color: var(--danger);
+  border-color: var(--danger);
+}

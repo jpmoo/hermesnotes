@@ -3373,6 +3373,32 @@ input.matrix-axis-y::placeholder {
 .cv-node .md-input {
   background: transparent;
 }
+/* Shaded node: interactive surfaces read as a more transparent version of
+   the node's color — translucent white lets the shade through, like matrix
+   region cards. Popups (calendar, menus) opt back out for readability. */
+.cv-node.cv-shaded input,
+.cv-node.cv-shaded select,
+.cv-node.cv-shaded textarea,
+.cv-node.cv-shaded .icon-btn,
+.cv-node.cv-shaded button.ghost,
+.cv-node.cv-shaded .dtp-trigger,
+.cv-node.cv-shaded .mention-input.field-text,
+.cv-node.cv-shaded .ref-chips,
+.cv-node.cv-shaded .ref-chip,
+.cv-node.cv-shaded .tag-chip,
+.cv-node.cv-shaded .seg {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.cv-node.cv-shaded .seg.active {
+  background: rgba(255, 255, 255, 0.85);
+}
+.cv-node.cv-shaded :is(.dtp-pop, .menu, .mention-menu),
+.cv-node.cv-shaded :is(.dtp-pop, .menu, .mention-menu) :is(input, select, textarea, button, .icon-btn) {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
 /* The embedded card sheds its chrome — the node box is the chrome. */
 .cv-node .card {
   background: transparent;

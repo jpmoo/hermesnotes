@@ -140,15 +140,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       properties.table_col_widths = {};
     }
     if (body.kind === "canvas") {
-      // A canvas is manual AND query-fed at once — not a membership-mode
-      // fork. Placement is explicit membership context; the optional query's
-      // matches are synced in as placed members by the client, and
-      // canvas_dismissed keeps removed ones from coming back.
+      // A canvas is always explicit membership; blocks arrive by manual drop
+      // or by the on-canvas query's Apply (a one-shot placement, not a feed).
       properties.membership_mode = "explicit";
-      if (body.filterQuery) properties.filter_query = safeFilter(body.filterQuery);
       properties.canvas_edges = [];
       properties.canvas_notes = [];
-      properties.canvas_dismissed = [];
     }
     if (body.kind === "matrix") {
       // An x/y grid of regions; members are placed via context.region (index,

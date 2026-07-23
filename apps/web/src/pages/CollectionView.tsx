@@ -305,11 +305,9 @@ export function CollectionView() {
           </div>
         )}
 
-        {(isSmart || isCanvas) && (
+        {isSmart && (
           <>
-            {isSmart && (
-              <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            )}
+            <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
             <button
               className="icon-btn"
               title={!isDynamic && !isMatrix ? "Refresh from query" : "Re-run the query"}
@@ -444,14 +442,14 @@ export function CollectionView() {
         />
       )}
       {bottomSlotEl &&
-        (isDocument || isSmart || isCanvas) &&
+        (isDocument || isSmart) &&
         selectedBlockId === id &&
         createPortal(
           <>
             <div className="panel-divider" />
-            {(isSmart || isCanvas) && (
+            {isSmart && (
               <>
-                <div className="panel-h">{isCanvas ? "Query (feeds the canvas)" : "Query"}</div>
+                <div className="panel-h">Query</div>
                 <QueryPanel
                   key={id}
                   collectionId={id}

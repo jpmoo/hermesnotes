@@ -10,9 +10,12 @@ import {
 } from "react";
 import type { FilterGroup } from "@hermes/shared";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
-import { normalizeFilter } from "../lib/filter.ts";
+import { oneLineText } from "../lib/display.ts";
+import { emptyGroup } from "../lib/filter.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
+import { QueryBuilder } from "./QueryBuilder.tsx";
 
 /**
  * Infinite canvas collection: members are boxes placed at membership context
@@ -118,7 +121,7 @@ export function CanvasView({
 }) {
   const cid = collection.id;
   const props = collection.properties as Record<string, unknown>;
-  const { selectBlock } = usePanels();
+  const { selectBlock, bottomSlotEl, selectedBlockId } = usePanels();
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -200,53 +203,56 @@ export function CanvasView({
       context: { x: ctx.x, y: ctx.y, w: ctx.w, h: ctx.h, color: ctx.color ?? null },
     });
 
-  // ── sync: auto-place query matches + unplaced members, non-overlapping ──
-  const syncing = useRef(false);
+  // ── auto-place members that arrived without a position (+ Add, finder,
+  //    accepted query batches) ──
   useEffect(() => {
-    if (syncing.current) return;
-    const run = async () => {
-      syncing.current = true;
-      try {
-        const dismissed = new Set(
-          Array.isArray(props.canvas_dismissed) ? (props.canvas_dismissed as string[]) : [],
-        );
-        const have = new Set(members.map((m) => m.id));
-        const taken = allRects();
-        const center = viewCenter();
-        let changed = false;
-
-        // Query feed: add matches not present and not dismissed.
-        const filter = normalizeFilter(props.filter_query);
-        if (filter.items.length > 0) {
-          const matches = await api.post<Block[]>("/blocks/query", { filterQuery: filter });
-          for (const b of matches) {
-            if (b.id === cid || have.has(b.id) || dismissed.has(b.id)) continue;
-            const spot = findSpot(center.x, center.y, DEFAULT_W, DEFAULT_H, taken);
-            taken.push({ ...spot, w: DEFAULT_W, h: DEFAULT_H });
-            await api.post(`/collections/${cid}/members`, {
-              blockId: b.id,
-              context: { x: spot.x, y: spot.y, w: DEFAULT_W, h: DEFAULT_H },
-            });
-            changed = true;
-          }
-        }
-        // Manual adds that arrived without a position (+ Add menu, finder).
-        for (const m of members) {
-          if (ctxOf(m) || local[m.id]) continue;
-          const spot = findSpot(center.x, center.y, DEFAULT_W, DEFAULT_H, taken);
-          taken.push({ ...spot, w: DEFAULT_W, h: DEFAULT_H });
-          const ctx = { x: spot.x, y: spot.y, w: DEFAULT_W, h: DEFAULT_H };
-          setLocal((p) => ({ ...p, [m.id]: ctx }));
-          persistMemberCtx(m.id, ctx);
-        }
-        if (changed) onChanged();
-      } finally {
-        syncing.current = false;
-      }
-    };
-    void run();
+    const taken = allRects();
+    const center = viewCenter();
+    for (const m of members) {
+      if (ctxOf(m) || local[m.id]) continue;
+      const spot = findSpot(center.x, center.y, DEFAULT_W, DEFAULT_H, taken);
+      taken.push({ ...spot, w: DEFAULT_W, h: DEFAULT_H });
+      const ctx = { x: spot.x, y: spot.y, w: DEFAULT_W, h: DEFAULT_H };
+      setLocal((p) => ({ ...p, [m.id]: ctx }));
+      persistMemberCtx(m.id, ctx);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, collection.updatedAt]);
+  }, [members]);
+
+  // ── query: build in the panel, Apply → preview modal → Accept adds ──
+  const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
+  const [tags, setTags] = useState<string[]>([]);
+  const [preview, setPreview] = useState<Block[] | null>(null);
+  const [accepting, setAccepting] = useState(false);
+  useEffect(() => {
+    void api.get<{ name: string }[]>("/tags").then((t) => setTags(t.map((x) => x.name))).catch(() => {});
+  }, []);
+  const applyQuery = async () => {
+    const have = new Set(members.map((m) => m.id));
+    const matches = await api.post<Block[]>("/blocks/query", { filterQuery: filter });
+    setPreview(matches.filter((b) => b.id !== cid && !have.has(b.id)));
+  };
+  const acceptPreview = async () => {
+    if (!preview) return;
+    setAccepting(true);
+    try {
+      const taken = allRects();
+      const center = viewCenter();
+      for (const b of preview) {
+        const spot = findSpot(center.x, center.y, DEFAULT_W, DEFAULT_H, taken);
+        taken.push({ ...spot, w: DEFAULT_W, h: DEFAULT_H });
+        await api.post(`/collections/${cid}/members`, {
+          blockId: b.id,
+          context: { x: spot.x, y: spot.y, w: DEFAULT_W, h: DEFAULT_H },
+        });
+      }
+      setFilter(emptyGroup()); // accepted — the builder resets
+      setPreview(null);
+      onChanged();
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   // ── pan / zoom ──
   const drag = useRef<
@@ -274,11 +280,15 @@ export function CanvasView({
     const el = wrapRef.current;
     if (!el) return;
     // Native listener: React's wheel is passive, and we must preventDefault
-    // to stop page scroll / browser zoom.
+    // to stop page scroll / browser zoom. Two-finger swipe pans; pinch
+    // (ctrlKey wheel) or ⌘/Ctrl+wheel zooms.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.008 : 0.0015)); // ctrl = pinch
-      setZoomAt(view.z * factor, e.clientX, e.clientY);
+      if (e.ctrlKey || e.metaKey) {
+        setZoomAt(view.z * Math.exp(-e.deltaY * 0.008), e.clientX, e.clientY);
+      } else {
+        setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+      }
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -714,6 +724,70 @@ export function CanvasView({
             >
               {nodeMenu.id.startsWith("n:") ? "Delete note" : "Remove from canvas"}
             </button>
+          </div>,
+          document.body,
+        )}
+
+      {/* query builder in the right panel: Apply-driven, never live */}
+      {bottomSlotEl &&
+        selectedBlockId === cid &&
+        createPortal(
+          <>
+            <div className="panel-divider" />
+            <div className="panel-h">Add by query</div>
+            <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />
+            <button
+              className="primary"
+              style={{ marginTop: 10 }}
+              disabled={filter.items.length === 0}
+              onClick={() => void applyQuery()}
+            >
+              Apply…
+            </button>
+          </>,
+          bottomSlotEl,
+        )}
+
+      {/* preview modal */}
+      {preview &&
+        createPortal(
+          <div className="modal-backdrop" onClick={() => setPreview(null)}>
+            <div className="modal-card" style={{ maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+              <h2 className="modal-title">
+                Add {preview.length} block{preview.length === 1 ? "" : "s"} to the canvas?
+              </h2>
+              {preview.length === 0 ? (
+                <p className="modal-message">Every match is already on the canvas.</p>
+              ) : (
+                <div className="cv-preview-list">
+                  {preview.map((b) => {
+                    const t = b.blockTypeId ? typeById.get(b.blockTypeId) : undefined;
+                    return (
+                      <div className="cv-preview-row" key={b.id}>
+                        <BlockIcon
+                          iconKey={!t || t.isText ? "type" : t.iconKey}
+                          color={!t || t.isText ? null : t.iconColor}
+                          size={15}
+                        />
+                        <span className="cv-preview-label">
+                          {oneLineText(b.properties, b.content) || "Untitled"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="modal-actions">
+                <button className="ghost" onClick={() => setPreview(null)}>
+                  Cancel
+                </button>
+                {preview.length > 0 && (
+                  <button className="primary" disabled={accepting} onClick={() => void acceptPreview()}>
+                    {accepting ? "Adding…" : "Accept"}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>,
           document.body,
         )}

@@ -30,13 +30,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
         kind,
         title,
         membershipMode: kind === "canvas" ? "explicit" : mode,
-        ...(kind === "canvas"
-          ? filter.items.length > 0
-            ? { filterQuery: filter }
-            : {}
-          : mode === "smart"
-            ? { smartMode, filterQuery: filter }
-            : {}),
+        ...(kind !== "canvas" && mode === "smart" ? { smartMode, filterQuery: filter } : {}),
         ...(kind === "matrix" ? { matrixCols: cols, matrixRows: rows } : {}),
       });
       // The modal is mounted in the sidebar, which outlives route changes —
@@ -133,12 +127,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
         )}
 
         {kind === "canvas" ? (
-          <div className="field">
-            <span className="field-label">Feed from a query (optional)</span>
-            <div className="hint" style={{ marginBottom: 6 }}>
-              Matching blocks land on the canvas automatically — you can still drop blocks manually too.
-            </div>
-            <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />
+          <div className="hint" style={{ marginBottom: 14 }}>
+            Add blocks on the canvas itself: drop them manually, or build a query in the right
+            panel and Apply to place the matches.
           </div>
         ) : (
         <div className="field">

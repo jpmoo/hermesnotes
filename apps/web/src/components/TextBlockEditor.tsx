@@ -134,6 +134,7 @@ export function TextBlockEditor({
           onChange={scheduleSave}
           placeholder="Write a note…"
           autofocus={!block.content}
+          blockId={block.id}
         />
       )}
 

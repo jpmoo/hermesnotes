@@ -692,6 +692,12 @@ export function CanvasView({
       } else if ((e.key === "Delete" || e.key === "Backspace") && selected.length > 0) {
         e.preventDefault();
         setConfirmRemove([...selected]);
+      } else if (e.key.startsWith("Arrow")) {
+        e.preventDefault();
+        const step = 80;
+        const dx = e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0;
+        const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+        setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
       }
     };
     window.addEventListener("keydown", onKey);

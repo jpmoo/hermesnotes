@@ -3535,3 +3535,38 @@ textarea.cv-eph-panel {
   min-height: 110px;
   resize: vertical;
 }
+
+/* Inline markdown images: resizable, attachment-backed. */
+.md-img {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+.md-img img {
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+}
+.md-img-handle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.md-img:hover .md-img-handle {
+  opacity: 1;
+}
+.ProseMirror-selectednode.md-img,
+.md-img.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 8px;
+}

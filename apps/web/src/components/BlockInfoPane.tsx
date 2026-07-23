@@ -189,7 +189,7 @@ export function BlockInfoPane({
       {isCollection && (
         <div className="collection-desc" key={`desc-${blockId}`}>
           <div className="panel-h">Description</div>
-          <LongTextField value={desc} onChange={saveDesc} placeholder="Describe this collection…" />
+          <LongTextField value={desc} onChange={saveDesc} placeholder="Describe this collection…" blockId={blockId} />
         </div>
       )}
       <dl className="info-grid">

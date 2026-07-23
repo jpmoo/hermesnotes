@@ -1,8 +1,11 @@
+import { Image as ImageIcon } from "lucide-react";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { api, type Attachment } from "../api.ts";
+import { MdImage } from "../lib/image-node.ts";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
@@ -33,13 +36,17 @@ export function MarkdownEditor({
   onChange,
   placeholder = "Write…",
   autofocus = false,
+  blockId,
 }: {
   value: string;
   onChange: (markdown: string) => void;
   placeholder?: string;
   autofocus?: boolean;
+  /** Enables image paste/insert (images are stored as block attachments). */
+  blockId?: string;
 }) {
   const [mode, setMode] = useState<Mode>("live");
+  const [imgMenu, setImgMenu] = useState<Attachment[] | null>(null);
   const [markdown, setMarkdown] = useState(value);
   const [sug, setSug] = useState<MentionState | null>(null);
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
@@ -70,6 +77,7 @@ export function MarkdownEditor({
       SmartEnter,
       HeadingIndent,
       MentionNode,
+      MdImage,
       SourceBlock,
       ActiveLineSource,
       Mentions.configure({ handlers }),
@@ -82,6 +90,33 @@ export function MarkdownEditor({
       // a new tab. Intercept at mousedown: a click would first move the
       // selection, the active-line swap would turn the block into raw source,
       // and the anchor would vanish before handleClick ever saw it.
+      // Pasted images upload to the block's attachments and drop in as
+      // resizable inline images (deleting one never deletes the attachment).
+      handlePaste: (view, event) => {
+        if (!blockId) return false;
+        const files = [...(event.clipboardData?.files ?? [])].filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        void (async () => {
+          const form = new FormData();
+          for (const f of files) form.append("file", f);
+          try {
+            const saved = await api.upload<Attachment[]>(`/blocks/${blockId}/attachments`, form);
+            for (const att of saved) {
+              const node = view.state.schema.nodes.mdImage!.create({
+                src: `attachment:${att.id}`,
+                alt: att.filename.replace(/\.[a-z0-9]+$/i, ""),
+              });
+              view.dispatch(view.state.tr.replaceSelectionWith(node));
+            }
+          } catch {
+            /* upload failed; nothing inserted */
+          }
+        })();
+        return true;
+      },
       handleDOMEvents: {
         mousedown: (_view, event) => {
           if (event.button !== 0) return false;
@@ -114,6 +149,13 @@ export function MarkdownEditor({
       onChange(md);
     },
   });
+
+  useEffect(() => {
+    if (!imgMenu) return;
+    const close = () => setImgMenu(null);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [imgMenu]);
 
   const autosize = () => {
     const el = taRef.current;
@@ -157,6 +199,52 @@ export function MarkdownEditor({
       <button className="ghost longtext-toggle" onClick={toggle} type="button">
         {mode === "live" ? "Raw" : "Live preview"}
       </button>
+      {blockId && mode === "live" && (
+        <span className="nav-kebab" style={{ position: "relative" }}>
+          <button
+            className="ghost longtext-toggle"
+            type="button"
+            title="Insert an attached image"
+            onClick={() =>
+              void api
+                .get<Attachment[]>(`/blocks/${blockId}/attachments`)
+                .then((all) => setImgMenu(all.filter((a) => a.mime.startsWith("image/"))))
+                .catch(() => setImgMenu([]))
+            }
+          >
+            <ImageIcon size={12} />
+          </button>
+          {imgMenu && (
+            <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
+              {imgMenu.length === 0 && (
+                <div className="hint" style={{ padding: "6px 10px" }}>
+                  No image attachments — paste an image to add one.
+                </div>
+              )}
+              {imgMenu.map((a) => (
+                <button
+                  key={a.id}
+                  className="menu-item"
+                  type="button"
+                  onClick={() => {
+                    editor
+                      ?.chain()
+                      .focus()
+                      .insertContent({
+                        type: "mdImage",
+                        attrs: { src: `attachment:${a.id}`, alt: a.filename.replace(/\.[a-z0-9]+$/i, "") },
+                      })
+                      .run();
+                    setImgMenu(null);
+                  }}
+                >
+                  {a.filename}
+                </button>
+              ))}
+            </div>
+          )}
+        </span>
+      )}
       {sug && <MentionMenu state={sug} keydown={keydown} onClose={() => setSug(null)} />}
     </div>
   );

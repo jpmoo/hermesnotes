@@ -8,15 +8,17 @@ export function LongTextField({
   value,
   onChange,
   placeholder = "Write…",
+  blockId,
 }: {
   value: unknown;
   onChange: (value: string) => void;
   placeholder?: string;
+  blockId?: string;
 }) {
   const initial = typeof value === "string" ? value : "";
   return (
     <div className="longtext">
-      <MarkdownEditor value={initial} onChange={onChange} placeholder={placeholder} />
+      <MarkdownEditor value={initial} onChange={onChange} placeholder={placeholder} blockId={blockId} />
     </div>
   );
 }

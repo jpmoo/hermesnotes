@@ -40,6 +40,7 @@ export function FieldInput({
           value={value}
           onChange={(v) => onChange(v)}
           placeholder={field.label ?? "Write…"}
+          blockId={blockId}
         />
       );
     case "recurrence":

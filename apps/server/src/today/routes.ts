@@ -8,12 +8,16 @@ import { badRequest } from "../lib/errors.js";
 import { zonedDayRange } from "../lib/timezone.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 
-/** Find (or lazily create) the hidden scratchpad note for a date. */
+/** Find (or lazily create) the hidden scratchpad note for a date. If duplicate
+ * notes exist for a date (e.g. a first-visit create race), prefer the one with
+ * content, then the oldest — deterministically, so a day's note never "vanishes"
+ * behind an empty twin. */
 async function findOrCreateNote(userId: string, date: string) {
   const [existing] = await db
     .select(blockView)
     .from(blocks)
     .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>'today_note' = ${date}`))
+    .orderBy(sql`COALESCE(${blocks.content}, '') <> '' DESC`, blocks.createdAt)
     .limit(1);
   if (existing) return existing;
   // Look up by the isText flag, not the (user-renameable) type name.

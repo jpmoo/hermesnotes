@@ -3529,6 +3529,13 @@ input.cv-zoom {
   font-size: 12px;
   box-shadow: var(--shadow-lift);
 }
+/* Keep the accent pill on hover — the global button hover washed it out
+   under white text. */
+.cv-make-region:hover {
+  background: var(--accent);
+  color: #fff;
+  filter: brightness(0.92);
+}
 
 textarea.cv-eph-panel {
   width: 100%;

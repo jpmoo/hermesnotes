@@ -256,8 +256,14 @@ export function CanvasView({
     else void api.del(`/collections/${rg.linkedCollectionId}/members/${nodeId}`).catch(() => {});
   };
 
+  // Leaving a region requires a deliberate yank: the member must land beyond
+  // the region's PRE-DRAG outline plus this grace margin. Anything closer
+  // stays a member, and the region simply reshapes around the new position.
+  const REGION_GRACE = 90;
+  const inflate = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + m * 2, h: r.h + m * 2 });
+
   /** After a node drag: joins the region it landed in, leaves ones it left. */
-  const updateRegionMembership = (nodeId: string) => {
+  const updateRegionMembership = (nodeId: string, startRegions: Record<string, Rect> = {}) => {
     const r = rectOf(nodeId);
     if (!r) return;
     const cx = r.x + r.w / 2;
@@ -266,15 +272,23 @@ export function CanvasView({
     const next = regions
       .map((rg) => {
         const others = rg.memberIds.filter((id) => id !== nodeId);
-        const base = rectFromIds(others);
         const isMember = rg.memberIds.includes(nodeId);
-        const inside = base ? inRect(base, cx, cy) : false;
-        if (isMember && !inside) {
-          changed = true;
-          syncLinked(rg, "remove", nodeId);
-          return { ...rg, memberIds: others };
+        if (isMember) {
+          // Hysteresis: judge against the pre-drag outline (or, failing that,
+          // the others' rect), inflated by the grace margin.
+          const base = startRegions[rg.id] ?? rectFromIds(others);
+          const stays = base ? inRect(inflate(base, REGION_GRACE), cx, cy) : false;
+          if (!stays) {
+            changed = true;
+            syncLinked(rg, "remove", nodeId);
+            return { ...rg, memberIds: others };
+          }
+          return rg;
         }
-        if (!isMember && inside) {
+        // Joining uses the strict current outline — dropping INTO a region
+        // should feel precise, not magnetic.
+        const base = rectFromIds(others);
+        if (base && inRect(base, cx, cy)) {
           changed = true;
           syncLinked(rg, "add", nodeId);
           return { ...rg, memberIds: [...rg.memberIds, nodeId] };
@@ -344,7 +358,7 @@ export function CanvasView({
   // ── pan / zoom ──
   const drag = useRef<
     | { kind: "pan"; sx: number; sy: number; ox: number; oy: number; moved: boolean }
-    | { kind: "node"; id: string; dx: number; dy: number; moved: boolean }
+    | { kind: "node"; id: string; dx: number; dy: number; moved: boolean; startRegions: Record<string, Rect> }
     | { kind: "resize"; id: string; corner: string; start: Rect; sx: number; sy: number }
     | { kind: "marquee" }
     | { kind: "region"; id: string; sx: number; sy: number; starts: Record<string, Rect>; moved: boolean }
@@ -561,7 +575,7 @@ export function CanvasView({
       if (!r) return;
       if (d.id.startsWith("n:")) persistProps({ canvas_notes: notes });
       else persistMemberCtx(d.id, r as NodeCtx);
-      updateRegionMembership(d.id);
+      updateRegionMembership(d.id, d.startRegions);
     } else if (d.kind === "resize") {
       const r = rectOf(d.id);
       if (!r) return;
@@ -577,7 +591,15 @@ export function CanvasView({
     const p = toCanvas(e.clientX, e.clientY);
     const r = rectOf(id);
     if (!r) return;
-    drag.current = { kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false };
+    // Remember each containing region's full outline: leaving is judged
+    // against where the region WAS, not the shrunken rect of the others.
+    const startRegions: Record<string, Rect> = {};
+    for (const rg of regions) {
+      if (!rg.memberIds.includes(id)) continue;
+      const rr = regionRect(rg);
+      if (rr) startRegions[rg.id] = rr;
+    }
+    drag.current = { kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false, startRegions };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const startResize = (id: string, corner: string, e: ReactPointerEvent) => {

@@ -79,15 +79,21 @@ export function MarkdownEditor({
     editorProps: {
       attributes: { class: "note-editor" },
       // Mentions (block:/tag:) navigate via their chip; plain web links open in
-      // a new tab on click (openOnClick is off, so tiptap won't do it for us).
-      handleClick: (_view, _pos, event) => {
-        const a = (event.target as HTMLElement).closest?.("a[href]");
-        const href = a?.getAttribute("href") ?? "";
-        if (/^https?:\/\//i.test(href)) {
-          window.open(href, "_blank", "noopener");
-          return true;
-        }
-        return false;
+      // a new tab. Intercept at mousedown: a click would first move the
+      // selection, the active-line swap would turn the block into raw source,
+      // and the anchor would vanish before handleClick ever saw it.
+      handleDOMEvents: {
+        mousedown: (_view, event) => {
+          if (event.button !== 0) return false;
+          const a = (event.target as HTMLElement).closest?.("a[href]");
+          const href = a?.getAttribute("href") ?? "";
+          if (/^https?:\/\//i.test(href)) {
+            event.preventDefault();
+            window.open(href, "_blank", "noopener");
+            return true;
+          }
+          return false;
+        },
       },
     },
     onCreate: ({ editor }) => {

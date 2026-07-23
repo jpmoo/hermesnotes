@@ -1,4 +1,4 @@
-import { GripHorizontal, Minus, Plus, StickyNote } from "lucide-react";
+import { GripHorizontal, Minus, Plus } from "lucide-react";
 import { createPortal } from "react-dom";
 import {
   useEffect,
@@ -978,9 +978,6 @@ export function CanvasView({
           <Plus size={14} />
         </button>
         <span className="cv-tb-sep" />
-        <button className="ghost" onClick={() => addNote()}>
-          <StickyNote size={14} /> Note
-        </button>
         <button className="ghost" onClick={() => setConfirmClear(true)}>
           Clear
         </button>

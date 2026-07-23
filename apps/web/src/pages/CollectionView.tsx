@@ -286,8 +286,9 @@ export function CollectionView() {
                 >
                   Find existing…
                 </button>
-                <div className="menu-sep" />
-                {ordered.map((t) => (
+                {/* Canvas creates via ephemeral notes (double-click), not here. */}
+                {!isCanvas && <div className="menu-sep" />}
+                {!isCanvas && ordered.map((t) => (
                   <button
                     key={t.id}
                     className="menu-item type-item"

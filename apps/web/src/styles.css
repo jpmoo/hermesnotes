@@ -3367,6 +3367,12 @@ input.matrix-axis-y::placeholder {
 .cv-node .block-meta {
   display: none;
 }
+/* Editor surfaces inside a node inherit the node's shade. */
+.cv-node .longtext,
+.cv-node .note-editor,
+.cv-node .md-input {
+  background: transparent;
+}
 /* The embedded card sheds its chrome — the node box is the chrome. */
 .cv-node .card {
   background: transparent;
@@ -3419,7 +3425,7 @@ input.matrix-axis-y::placeholder {
   position: absolute;
   top: 10px;
   left: 10px;
-  z-index: 10;
+  z-index: 4; /* above the canvas layer, below dropdown menus (z 5) */
   display: flex;
   align-items: center;
   gap: 6px;

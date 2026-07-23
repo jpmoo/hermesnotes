@@ -175,11 +175,26 @@ export const ActiveLineSource = Extension.create({
     return [
       new Plugin({
         key: KEY,
+        // Focus changes don't produce transactions, so ping one through —
+        // appendTransaction below re-evaluates and renders/sources accordingly.
+        props: {
+          handleDOMEvents: {
+            focus: (view) => {
+              view.dispatch(view.state.tr.setMeta("focusPing", true));
+              return false;
+            },
+            blur: (view) => {
+              view.dispatch(view.state.tr.setMeta("focusPing", true));
+              return false;
+            },
+          },
+        },
         appendTransaction(trs, oldState, newState) {
           if (trs.some((tr) => tr.getMeta(META))) return null;
           const selChanged = !oldState.selection.eq(newState.selection);
           const docChanged = trs.some((tr) => tr.docChanged);
-          if (!selChanged && !docChanged) return null;
+          const focusPing = trs.some((tr) => tr.getMeta("focusPing"));
+          if (!selChanged && !docChanged && !focusPing) return null;
 
           const schema = newState.schema;
           const sourceType = schema.nodes.sourceBlock;
@@ -207,7 +222,11 @@ export const ActiveLineSource = Extension.create({
             }
           }
 
-          const activeIndex = $head.depth >= 1 ? $head.index(0) : -1;
+          // Only a FOCUSED editor shows a source line: a freshly mounted (or
+          // merely rendered) note has a selection at its first block, and that
+          // must not present as raw markdown. Unfocused → everything renders.
+          const focused = editor.view?.hasFocus() ?? false;
+          const activeIndex = focused && $head.depth >= 1 ? $head.index(0) : -1;
 
           // Which top-level blocks need swapping?
           const ops: { from: number; node: PMNode; action: "source" | "render" }[] = [];

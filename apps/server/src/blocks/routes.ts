@@ -724,6 +724,9 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
             and(
               sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
               sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+              // Canvas edge/region bookkeeping holds member ids — placement,
+              // not a reference (edges surface via canvasConnections instead).
+              sql`${blocks.collectionKind} IS DISTINCT FROM 'canvas'`,
             ),
             sql`${blocks.content} LIKE ${`%block:${id}%`}`,
             sql`${blocks.properties}::text LIKE ${`%block:${id}%`}`,
@@ -850,6 +853,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       inCollections,
       linksTo,
       linkedFrom,
+      canvasConnections,
       tags: tagRows.map((t) => t.name),
     };
   });

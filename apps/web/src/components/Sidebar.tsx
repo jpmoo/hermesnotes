@@ -7,6 +7,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Search,
   Star,
   Settings,
   Shapes,
@@ -18,6 +19,7 @@ import { api, type Block, type BlockType } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
 import { CreateCollectionModal } from "./CreateCollectionModal.tsx";
+import { SearchModal } from "./SearchModal.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useHoverIntent } from "../lib/useHoverIntent.ts";
@@ -54,6 +56,7 @@ export function Sidebar() {
   const [modal, setModal] = useState<{ key: string; target: Target } | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   const [newCollection, setNewCollection] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [types, setTypes] = useState<BlockType[]>([]);
   const { openBlock } = usePanels();
   const {
@@ -203,6 +206,13 @@ export function Sidebar() {
         )}
       </div>
 
+      <div className="nav-row">
+        <button className="nav-link" title="Search everything" onClick={() => setSearchOpen(true)}>
+          <Search size={18} className="nav-row-icon" />
+          <span className="label">Search</span>
+        </button>
+      </div>
+
       {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
       <div className="nav-divider" />
       {colorRow(FAVORITES_KEY, "/favorites", false, Star, "Favorites")}
@@ -227,6 +237,7 @@ export function Sidebar() {
       </button>
 
       {newCollection && <CreateCollectionModal onClose={() => setNewCollection(false)} />}
+      {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
 
       <ColorPickerModal
         open={modal !== null}

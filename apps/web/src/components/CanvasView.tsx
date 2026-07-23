@@ -156,6 +156,20 @@ export function CanvasView({
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  // Fill the viewport: measure where the canvas actually starts and take the
+  // rest (the CSS calc() is only a first-paint fallback).
+  const [wrapH, setWrapH] = useState<number | null>(null);
+  useEffect(() => {
+    const measure = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      setWrapH(Math.max(460, window.innerHeight - el.getBoundingClientRect().top - 20));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+
   // ── viewport (persisted locally per canvas) ──
   const VIEW_KEY = `hn.canvas.view.${cid}`;
   const [view, setView] = useState<{ x: number; y: number; z: number }>(() => {
@@ -926,6 +940,7 @@ export function CanvasView({
     <div
       ref={wrapRef}
       className="cv-wrap"
+      style={wrapH != null ? { height: wrapH } : undefined}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerDown={onBgPointerDown}

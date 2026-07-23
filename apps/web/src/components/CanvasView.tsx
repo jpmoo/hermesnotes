@@ -648,6 +648,9 @@ export function CanvasView({
 
   // Bulk removal (Delete key / Clear): regions dissolve (blocks stay unless
   // themselves selected); block removal is membership-only, never deletion.
+  // Focusing an ephemeral note edits it in the panel too — without touching
+  // selectBlock, so it never lands in the recents history.
+  const [ephSel, setEphSel] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const removeMany = async (ids: string[]) => {
@@ -954,6 +957,7 @@ export function CanvasView({
               className="cv-note-text"
               value={n.text}
               placeholder="Ephemeral note — right-click to convert"
+              onFocus={() => setEphSel(n.id)}
               onChange={(e) => saveNotes(notes.map((x) => (x.id === n.id ? { ...x, text: e.target.value } : x)))}
             />,
             true,
@@ -961,7 +965,7 @@ export function CanvasView({
         )}
       </div>
 
-      {/* toolbar */}
+      {/* toolbar (lower right) */}
       <div className="cv-toolbar">
         <button className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.2, innerWidth / 2, innerHeight / 2)}>
           <Minus size={14} />
@@ -981,7 +985,6 @@ export function CanvasView({
         <button className="ghost" onClick={() => setConfirmClear(true)}>
           Clear
         </button>
-        <span className="hint">Drag space to pan · shift-drag to select · double-click for a note</span>
       </div>
 
       {/* node menu */}
@@ -1032,6 +1035,44 @@ export function CanvasView({
           </div>,
           document.body,
         )}
+
+      {/* ephemeral note editor in the panel (no recents entry) */}
+      {bottomSlotEl &&
+        ephSel &&
+        (() => {
+          const note = notes.find((n) => n.id === ephSel);
+          if (!note) return null;
+          return createPortal(
+            <>
+              <div className="panel-divider" />
+              <div className="panel-h">Ephemeral note</div>
+              <textarea
+                className="cv-eph-panel"
+                value={note.text}
+                placeholder="Write…"
+                onChange={(e) =>
+                  saveNotes(notes.map((x) => (x.id === note.id ? { ...x, text: e.target.value } : x)))
+                }
+              />
+              <div className="hint" style={{ margin: "6px 0" }}>Convert to…</div>
+              <div className="cv-menu-row" style={{ padding: 0 }}>
+                {orderedTypes.map((t) => (
+                  <button
+                    key={t.id}
+                    className="seg"
+                    onClick={() => {
+                      void convertNote(note, t);
+                      setEphSel(null);
+                    }}
+                  >
+                    {t.isText ? "Note" : t.name}
+                  </button>
+                ))}
+              </div>
+            </>,
+            bottomSlotEl,
+          );
+        })()}
 
       {/* query builder in the right panel: Apply-driven, never live */}
       {bottomSlotEl &&

@@ -3,6 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type Block, type BlockType, type Member } from "../api.ts";
+import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineHtml, oneLineText } from "../lib/display.ts";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -53,6 +54,15 @@ export function ListItem({
   const [fullBlock, setFullBlock] = useState<Block | null>(null);
   const versionRef = useRef(member.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+
+  // Cross-surface sync (e.g. edits made in the info panel appear in the row).
+  const origin = useBlockOrigin();
+  useBlockSync(member.id, origin, (b) => {
+    versionRef.current = b.version;
+    setProps(b.properties ?? {});
+    setContent(b.content ?? "");
+    setFullBlock(null); // expanded card refetches lazily
+  });
 
   // Expand/collapse-all broadcast from the toolbar.
   useEffect(() => {
@@ -128,6 +138,7 @@ export function ListItem({
         version: versionRef.current,
       });
       versionRef.current = updated.version;
+      emitBlockChange(member.id, origin);
     } catch {
       /* keep local; a refresh will reconcile */
     }

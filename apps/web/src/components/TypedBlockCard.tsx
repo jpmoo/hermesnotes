@@ -4,6 +4,7 @@ import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { fmtDateTime } from "../lib/format.ts";
+import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -74,6 +75,14 @@ export function TypedBlockCard({
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const { selectBlock } = usePanels();
 
+  // Cross-surface sync: announce saves; adopt foreign edits of this block.
+  const origin = useBlockOrigin();
+  useBlockSync(block.id, origin, (b) => {
+    setProps(b.properties ?? {});
+    versionRef.current = b.version;
+    setUpdatedAt(b.updatedAt);
+  });
+
   const schema = type.propertySchema;
   const fields = [...(schema?.fields ?? [])].sort((a, b) => a.order - b.order);
   const titleField = fields.find((f) => f.key === "title");
@@ -95,6 +104,7 @@ export function TypedBlockCard({
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
+      emitBlockChange(block.id, origin);
       // A recurring task just spawned its next occurrence — refresh the list.
       if (updated.recurred) onConflict();
     } catch (err) {

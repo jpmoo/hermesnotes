@@ -3423,8 +3423,8 @@ input.matrix-axis-y::placeholder {
 }
 .cv-toolbar {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  right: 10px;
+  bottom: 10px;
   z-index: 4; /* above the canvas layer, below dropdown menus (z 5) */
   display: flex;
   align-items: center;
@@ -3528,4 +3528,10 @@ input.cv-zoom {
   padding: 5px 12px;
   font-size: 12px;
   box-shadow: var(--shadow-lift);
+}
+
+textarea.cv-eph-panel {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
 }

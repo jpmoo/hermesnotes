@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
+import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { oneLineText } from "../lib/display.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -44,6 +45,20 @@ export function TextBlockEditor({
   const propsTimer = useRef<ReturnType<typeof setTimeout>>();
   const { selectBlock } = usePanels();
 
+  // Cross-surface sync. The markdown editor owns its content, so foreign
+  // updates remount it (keyed) with the fresh text.
+  const origin = useBlockOrigin();
+  const [ext, setExt] = useState<{ content: string; nonce: number }>({
+    content: block.content ?? "",
+    nonce: 0,
+  });
+  useBlockSync(block.id, origin, (b) => {
+    setProps(b.properties ?? {});
+    versionRef.current = b.version;
+    setUpdatedAt(b.updatedAt);
+    setExt((e) => ({ content: b.content ?? "", nonce: e.nonce + 1 }));
+  });
+
   // The body IS the "description" field; any other schema fields render below it.
   const extraFields = [...(type?.propertySchema?.fields ?? [])]
     .filter((f) => f.key !== "description")
@@ -61,6 +76,7 @@ export function TextBlockEditor({
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
+      emitBlockChange(block.id, origin);
       // #tag mentions were synced to the block's tags — refresh the chips.
       if (updated.tagsChanged) setTagsRefresh((k) => k + 1);
     } catch (err) {
@@ -113,7 +129,8 @@ export function TextBlockEditor({
         </div>
       ) : (
         <MarkdownEditor
-          value={block.content ?? ""}
+          key={ext.nonce}
+          value={ext.content}
           onChange={scheduleSave}
           placeholder="Write a note…"
           autofocus={!block.content}

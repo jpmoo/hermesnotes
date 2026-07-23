@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { darkTextOn, oneLineHtml } from "../lib/display.ts";
+import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
@@ -119,6 +120,13 @@ function TableRow({
   const versionRef = useRef(member.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
 
+  // Cross-surface sync: info-panel edits show in the row immediately.
+  const origin = useBlockOrigin();
+  useBlockSync(member.id, origin, (b) => {
+    versionRef.current = b.version;
+    setProps(b.properties ?? {});
+  });
+
   // A dynamic-smart requery (or outside edit) hands us a fresh member object;
   // adopt it unless the user is mid-edit (pending debounce).
   useEffect(() => {
@@ -141,6 +149,7 @@ function TableRow({
         .patch<Block>(`/blocks/${member.id}`, { properties: next, version: versionRef.current })
         .then((u) => {
           versionRef.current = u.version;
+          emitBlockChange(member.id, origin);
         })
         .catch(() => {
           /* keep local; a refresh reconciles */

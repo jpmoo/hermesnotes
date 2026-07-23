@@ -346,9 +346,21 @@ export function CanvasView({
           const dyc = sa.y - (tr.y + tr.h / 2);
           const toSide: Side =
             Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
+          // A live link needs two real blocks — anything touching an
+          // ephemeral note is forced ephemeral (dotted).
+          const eph = linking.from.startsWith("n:") || target.startsWith("n:");
           saveEdges([
             ...edges,
-            { id: uid(), from: linking.from, to: target, fromSide: linking.side, toSide, arrow: "forward", live: true },
+            {
+              id: uid(),
+              from: linking.from,
+              to: target,
+              fromSide: linking.side,
+              toSide,
+              arrow: "forward",
+              live: !eph,
+              ...(eph ? { dash: "dotted" as const } : {}),
+            },
           ]);
         }
       }
@@ -720,7 +732,12 @@ export function CanvasView({
             <div className="cv-menu-row">
               <button
                 className={`seg${menuEdge.live !== false ? " active" : ""}`}
-                title="A real connection — shows in both blocks' info"
+                disabled={menuEdge.from.startsWith("n:") || menuEdge.to.startsWith("n:")}
+                title={
+                  menuEdge.from.startsWith("n:") || menuEdge.to.startsWith("n:")
+                    ? "Ephemeral notes can't hold live links — convert the note to a block first"
+                    : "A real connection — shows in both blocks' info"
+                }
                 onClick={() => patchEdge(menuEdge.id, { live: true, dash: "solid" })}
               >
                 Live

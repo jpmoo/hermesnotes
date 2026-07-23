@@ -3570,3 +3570,25 @@ textarea.cv-eph-panel {
   outline-offset: 1px;
   border-radius: 8px;
 }
+
+/* Query builder reference value: picked-target chip. */
+.qb-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  max-width: 180px;
+}
+.qb-ref-chip svg {
+  flex: none;
+}
+.qb-ref-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

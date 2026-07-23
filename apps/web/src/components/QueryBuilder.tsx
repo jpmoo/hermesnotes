@@ -1,7 +1,10 @@
 import type { Condition, FieldDef, FilterGroup, PropertyOp } from "@hermes/shared";
-import { useEffect, useRef, useState } from "react";
-import { api, type BlockType } from "../api.ts";
+import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
+import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 
 type Item = Condition | FilterGroup;
 type Kind = Condition["kind"];
@@ -18,6 +21,8 @@ const KIND_LABELS: Record<Kind, string> = {
 };
 
 const PROP_OPS: PropertyOp[] = ["eq", "neq", "contains", "lt", "gt", "empty", "notEmpty"];
+// Reference fields hold arrays of block ids: only membership-style ops apply.
+const REF_OPS: PropertyOp[] = ["contains", "empty", "notEmpty"];
 const OP_LABEL: Record<PropertyOp, string> = {
   eq: "is",
   neq: "is not",
@@ -56,6 +61,136 @@ function collectTypeIds(g: FilterGroup, out: Set<string>): void {
   }
 }
 
+/**
+ * Reference-field value: a dynamic search over the field's target type.
+ * Stores the picked block's id (what the property actually contains) while
+ * showing its label. Dropdown is position:fixed so panels can't clip it.
+ */
+function RefValueInput({
+  refTypeId,
+  value,
+  onChange,
+}: {
+  refTypeId?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<BlockRef[]>([]);
+  const [label, setLabel] = useState<string | null>(null);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
+  const [refType, setRefType] = useState<BlockType | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // The target type's icon labels both the results and the picked chip.
+  useEffect(() => {
+    if (!refTypeId) return;
+    void api
+      .get<BlockType[]>("/block-types")
+      .then((ts) => setRefType(ts.find((t) => t.id === refTypeId) ?? null))
+      .catch(() => {});
+  }, [refTypeId]);
+
+  useEffect(() => {
+    if (!value) {
+      setLabel(null);
+      return;
+    }
+    void api
+      .get<Block>(`/blocks/${value}`)
+      .then((b) => setLabel(oneLineText(b.properties, b.content) || "Untitled"))
+      .catch(() => setLabel("(unknown)"));
+  }, [value]);
+
+  useEffect(() => {
+    if (!open || !refTypeId) return;
+    const t = setTimeout(() => {
+      void api
+        .get<BlockRef[]>(
+          `/blocks/references?typeId=${encodeURIComponent(refTypeId)}&q=${encodeURIComponent(q)}`,
+        )
+        .then(setResults)
+        .catch(() => setResults([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [q, open, refTypeId]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (r) setPos({ left: r.left, top: r.bottom + 4, width: Math.max(r.width, 220) });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    document.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      document.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (ref.current && !ref.current.contains(t) && !t.closest(".qb-ref-menu")) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  if (!refTypeId) return <span className="hint">no target type</span>;
+  return (
+    <div className="ref-combo" ref={ref}>
+      {value && !open ? (
+        <button className="ghost qb-ref-chip" type="button" onClick={() => setOpen(true)}>
+          <BlockIcon iconKey={refType?.iconKey} color={refType?.iconColor} size={13} />
+          <span className="qb-ref-chip-label">{label ?? "…"}</span>
+        </button>
+      ) : (
+        <input
+          placeholder="Search…"
+          value={q}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            className="menu qb-ref-menu"
+            style={{ position: "fixed", left: pos.left, top: pos.top, width: pos.width, right: "auto" }}
+          >
+            {results.map((r) => (
+              <button
+                key={r.id}
+                className="menu-item type-item"
+                type="button"
+                onClick={() => {
+                  onChange(r.id);
+                  setOpen(false);
+                  setQ("");
+                }}
+              >
+                <BlockIcon iconKey={refType?.iconKey} color={refType?.iconColor} size={14} />
+                <span>{r.label}</span>
+              </button>
+            ))}
+            {results.length === 0 && (
+              <div className="hint" style={{ padding: "6px 10px" }}>
+                No matches.
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
 /** Value input matched to the selected field's type. */
 function ValueInput({
   field,
@@ -87,6 +222,8 @@ function ValueInput({
         <option value="false">false</option>
       </select>
     );
+  if (t === "reference")
+    return <RefValueInput refTypeId={field?.refTypeId} value={value} onChange={onChange} />;
   if ((t === "status" || t === "select") && field?.options?.length)
     return (
       <select value={value} onChange={(e) => onChange(e.target.value)}>
@@ -167,7 +304,16 @@ function ConditionRow({
 
       {c.kind === "property" && (
         <>
-          <select value={c.key} onChange={(e) => onChange({ ...c, key: e.target.value })}>
+          <select
+            value={c.key}
+            onChange={(e) => {
+              const key = e.target.value;
+              const nf = fields.find((f) => f.key === key);
+              const op =
+                nf?.type === "reference" && !REF_OPS.includes(c.op) ? "contains" : c.op;
+              onChange({ ...c, key, op, value: "" });
+            }}
+          >
             {fields.map((f) => (
               <option key={f.key} value={f.key}>
                 {f.label?.trim() || f.key.replace(/_/g, " ")}
@@ -175,11 +321,15 @@ function ConditionRow({
             ))}
           </select>
           <select value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as PropertyOp })}>
-            {PROP_OPS.map((op) => (
-              <option key={op} value={op}>
-                {OP_LABEL[op]}
-              </option>
-            ))}
+            {(fields.find((f) => f.key === c.key)?.type === "reference" ? REF_OPS : PROP_OPS).map(
+              (op) => (
+                <option key={op} value={op}>
+                  {fields.find((f) => f.key === c.key)?.type === "reference" && op === "contains"
+                    ? "includes"
+                    : OP_LABEL[op]}
+                </option>
+              ),
+            )}
           </select>
           {c.op !== "empty" && c.op !== "notEmpty" && (
             <ValueInput

@@ -4094,3 +4094,43 @@ input.cv-add-input {
     overflow-x: hidden;
   }
 }
+
+/* Collapsed blocks (All blocks / Favorites). Block view → one-line title;
+   masonry → the real card clamped to a uniform height with a fade. */
+.blk-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 40px 11px 12px; /* right room for the collapse chevron */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  cursor: pointer;
+}
+.blk-collapsed:hover {
+  border-color: var(--border-strong);
+}
+.blk-collapsed-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text);
+}
+.masonry-collapsed {
+  position: relative;
+  height: 150px;
+  overflow: hidden;
+}
+.masonry-collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  background: linear-gradient(transparent, var(--surface));
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  pointer-events: none;
+}

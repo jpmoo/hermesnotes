@@ -12,6 +12,7 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
+import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { darkTextOn, oneLineText } from "../lib/display.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
@@ -341,31 +342,47 @@ export function FavoritesPage() {
       ) : blocks.length === 0 ? (
         <div className="hint">Nothing starred yet — use the ★ in the info panel.</div>
       ) : (
-        renderList((b, compact) => (
-          <div className={compact ? undefined : "bv-card-wrap"}>
-            {!compact && (
+        renderList((b, compact) => {
+          const col = collapsed.has(b.id);
+          return (
+            <div className="bv-card-wrap">
               <button
                 className="icon-btn card-collapse"
-                title={collapsed.has(b.id) ? "Expand" : "Collapse"}
+                title={col ? "Expand" : "Collapse"}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleCard(b.id);
                 }}
               >
-                {collapsed.has(b.id) ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>
-            )}
-            <BlockCard
-              block={b}
-              type={typeById.get(b.blockTypeId)}
-              onConflict={reload}
-              onDeleted={reload}
-              compact={compact || collapsed.has(b.id)}
-              textCollapsed={collapsed.has(b.id)}
-            />
-          </div>
-        ))
+              {col ? (
+                compact ? (
+                  <div className="masonry-collapsed">
+                    <BlockCard
+                      block={b}
+                      type={typeById.get(b.blockTypeId)}
+                      onConflict={reload}
+                      onDeleted={reload}
+                      compact
+                    />
+                  </div>
+                ) : (
+                  <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
+                )
+              ) : (
+                <BlockCard
+                  block={b}
+                  type={typeById.get(b.blockTypeId)}
+                  onConflict={reload}
+                  onDeleted={reload}
+                  compact={compact}
+                />
+              )}
+            </div>
+          );
+        })
       )}
     </>
   );

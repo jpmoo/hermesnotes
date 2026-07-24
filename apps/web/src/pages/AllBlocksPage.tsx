@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
+import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -98,31 +99,49 @@ export function AllBlocksPage() {
       ) : blocks.length === 0 ? (
         <div className="hint">No blocks match this filter.</div>
       ) : (
-        renderList((b, compact) => (
-          <div className={compact ? undefined : "bv-card-wrap"}>
-            {!compact && (
+        renderList((b, compact) => {
+          const col = collapsed.has(b.id);
+          return (
+            <div className="bv-card-wrap">
               <button
                 className="icon-btn card-collapse"
-                title={collapsed.has(b.id) ? "Expand" : "Collapse"}
+                title={col ? "Expand" : "Collapse"}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
                   toggleCard(b.id);
                 }}
               >
-                {collapsed.has(b.id) ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>
-            )}
-            <BlockCard
-              block={b}
-              type={typeById.get(b.blockTypeId)}
-              onConflict={reload}
-              onDeleted={onDeleted}
-              compact={compact || collapsed.has(b.id)}
-              textCollapsed={collapsed.has(b.id)}
-            />
-          </div>
-        ))
+              {col ? (
+                compact ? (
+                  // Masonry: real card content clamped to a uniform height.
+                  <div className="masonry-collapsed">
+                    <BlockCard
+                      block={b}
+                      type={typeById.get(b.blockTypeId)}
+                      onConflict={reload}
+                      onDeleted={onDeleted}
+                      compact
+                    />
+                  </div>
+                ) : (
+                  // Block view: one-line title.
+                  <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
+                )
+              ) : (
+                <BlockCard
+                  block={b}
+                  type={typeById.get(b.blockTypeId)}
+                  onConflict={reload}
+                  onDeleted={onDeleted}
+                  compact={compact}
+                />
+              )}
+            </div>
+          );
+        })
       )}
 
       {saveOpen && <SaveAsCollectionModal filter={filter} onClose={() => setSaveOpen(false)} />}

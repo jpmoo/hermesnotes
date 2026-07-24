@@ -46,9 +46,11 @@
   color-scheme: dark;
 }
 /* Nav active highlight (hardcoded light teal-tint → token). */
-:root[data-theme="dark"] .nav-link.active,
-:root[data-theme="dark"] .nav-row .nav-link.active {
+:root[data-theme="dark"] .nav-link.active {
   background: rgba(111, 179, 196, 0.16);
+}
+:root[data-theme="dark"] .nav-row .nav-link.active {
+  background: transparent;
 }
 /* Page-title icons pass a hardcoded dark stroke inline; flip in dark. */
 :root[data-theme="dark"] .title-with-icon > svg {
@@ -507,10 +509,14 @@ label,
 button.nav-link {
   border: none;
   background: transparent;
-  flex: 1;
-  min-width: 0;
   text-align: left;
   color: var(--text-muted);
+}
+/* Only stretch horizontally inside a nav-row; standalone bottom buttons
+   (theme toggle, sign out) must NOT flex-grow down the column. */
+.nav-row button.nav-link {
+  flex: 1;
+  min-width: 0;
 }
 button.nav-link:hover {
   background: var(--surface-2);

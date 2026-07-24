@@ -15,6 +15,9 @@ interface PreferencesApi {
   favorites: string[];
   isFavorite: (id: string) => boolean;
   toggleFavorite: (id: string) => void;
+  /** Banner framing for a landing page (key like "blocks"/"today"). */
+  banner: (key: string) => unknown;
+  setBanner: (key: string, value: unknown) => void;
 }
 
 const Ctx = createContext<PreferencesApi | null>(null);
@@ -41,8 +44,15 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const toggleFavorite = (id: string) =>
     setPref("favorites", isFavorite(id) ? favorites.filter((x) => x !== id) : [...favorites, id]);
 
+  const banners = (prefs.banners as Record<string, unknown>) ?? {};
+  const banner = (key: string) => banners[key];
+  const setBanner = (key: string, value: unknown) =>
+    setPref("banners", { ...banners, [key]: value ?? undefined });
+
   return (
-    <Ctx.Provider value={{ prefs, setPref, colors, favorites, isFavorite, toggleFavorite }}>
+    <Ctx.Provider
+      value={{ prefs, setPref, colors, favorites, isFavorite, toggleFavorite, banner, setBanner }}
+    >
       {children}
     </Ctx.Provider>
   );

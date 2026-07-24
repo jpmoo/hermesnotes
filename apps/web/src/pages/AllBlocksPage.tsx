@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, FolderPlus, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
+import { Banner, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
@@ -10,6 +11,7 @@ import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
 import { emptyGroup } from "../lib/filter.ts";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
 
 export function AllBlocksPage() {
@@ -20,6 +22,7 @@ export function AllBlocksPage() {
   const [loading, setLoading] = useState(true);
   const [saveOpen, setSaveOpen] = useState(false);
   const { bottomSlotEl, setHasContent, selectPage } = usePanels();
+  const { banner, setBanner } = usePreferences();
 
   const typeById = new Map(types.map((t) => [t.id, t]));
   useBlockDeleted((bid) => setBlocks((prev) => prev.filter((b) => b.id !== bid)));
@@ -68,6 +71,11 @@ export function AllBlocksPage() {
 
   return (
     <>
+      <Banner
+        value={banner("blocks") as BannerValue | null}
+        editable
+        onChange={(v) => setBanner("blocks", v)}
+      />
       <h1 className="page-title title-with-icon">
         <Layers size={22} color="#26282b" />
         All blocks

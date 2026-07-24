@@ -12,6 +12,7 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
+import { Banner, type BannerValue } from "../components/Banner.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { darkTextOn, oneLineText } from "../lib/display.ts";
@@ -48,7 +49,7 @@ function FavChip({ id, draggable, children }: { id: string; draggable: boolean; 
 }
 
 export function FavoritesPage() {
-  const { favorites, setPref } = usePreferences();
+  const { favorites, setPref, banner, setBanner } = usePreferences();
   const { openBlock, selectPage } = usePanels();
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [types, setTypes] = useState<BlockType[]>([]);
@@ -185,6 +186,11 @@ export function FavoritesPage() {
 
   return (
     <>
+      <Banner
+        value={banner("favorites") as BannerValue | null}
+        editable
+        onChange={(v) => setBanner("favorites", v)}
+      />
       <h1 className="page-title title-with-icon">
         <Star size={22} color="#26282b" />
         Favorites

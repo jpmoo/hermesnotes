@@ -179,6 +179,17 @@ export const blockTags = pgTable(
 );
 
 /** Files uploaded against a block, stored inline (bytea) in the database. */
+export const banners = pgTable("banners", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  data: bytea("data").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const attachments = pgTable(
   "attachments",
   {

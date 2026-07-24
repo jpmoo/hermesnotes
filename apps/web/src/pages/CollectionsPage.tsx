@@ -5,7 +5,9 @@ import { api, type Collection } from "../api.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { oneLineText } from "../lib/display.ts";
+import { Banner, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 
 function title(c: Collection): string {
   return oneLineText(c.properties) || "Untitled";
@@ -23,6 +25,7 @@ const KINDS = [
 export function CollectionsPage() {
   const nav = useNavigate();
   const { selectPage } = usePanels();
+  const { banner, setBanner } = usePreferences();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<Collection | null>(null);
@@ -76,6 +79,11 @@ export function CollectionsPage() {
 
   return (
     <>
+      <Banner
+        value={banner("collections") as BannerValue | null}
+        editable
+        onChange={(v) => setBanner("collections", v)}
+      />
       <h1 className="page-title title-with-icon">
         <Library size={22} color="#26282b" />
         Collections

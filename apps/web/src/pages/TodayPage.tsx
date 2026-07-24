@@ -10,7 +10,9 @@ import { SectionLayout, type SectionEntry } from "../components/SectionLayout.ts
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TodayCalendar } from "../components/TodayCalendar.tsx";
 import { oneLineText } from "../lib/display.ts";
+import { Banner, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -85,6 +87,7 @@ export function TodayPage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const { slotEl, bottomSlotEl, setHasContent, selectToday, selectedToday } = usePanels();
+  const { banner, setBanner } = usePreferences();
   const typeById = new Map(types.map((t) => [t.id, t]));
 
   const load = useCallback(async () => {
@@ -245,6 +248,11 @@ export function TodayPage() {
 
   return (
     <>
+      <Banner
+        value={banner("today") as BannerValue | null}
+        editable
+        onChange={(v) => setBanner("today", v)}
+      />
       <h1 className="page-title title-with-icon">
         <CalendarDays size={22} color="#26282b" />
         {isToday ? `Today · ${label}` : label}

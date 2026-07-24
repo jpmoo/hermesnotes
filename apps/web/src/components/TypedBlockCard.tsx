@@ -8,6 +8,7 @@ import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from 
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { Banner, type BannerValue } from "./Banner.tsx";
 import { FieldInput } from "./FieldInput.tsx";
 import { MentionTextInput } from "./MentionTextInput.tsx";
 import { TagEditor } from "./TagEditor.tsx";
@@ -132,8 +133,17 @@ export function TypedBlockCard({
     onDeleted(block.id);
   };
 
+  const banner = (props.banner as BannerValue | null) ?? null;
   return (
     <div className="card typed-card" onPointerDownCapture={() => selectBlock(block.id)}>
+      {!compact && (
+        <Banner
+          value={banner}
+          editable
+          onChange={(v) => update("banner", v ?? null)}
+          height={150}
+        />
+      )}
       <div className="typed-head">
         {statusField ? (
           <StatusControl

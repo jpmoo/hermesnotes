@@ -20,6 +20,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineText } from "../lib/display.ts";
+import { Banner, type BannerValue } from "../components/Banner.tsx";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { CalendarView } from "../components/CalendarView.tsx";
 import { CanvasView } from "../components/CanvasView.tsx";
@@ -252,8 +253,15 @@ export function CollectionView() {
   if (loading) return <div className="hint">Loading…</div>;
   if (!collection) return <div className="hint">Collection not found.</div>;
 
+  const banner = (collection.properties.banner as BannerValue | null) ?? null;
+  const setBanner = (v: BannerValue | null) => {
+    setCollection((c) => (c ? { ...c, properties: { ...c.properties, banner: v ?? undefined } } : c));
+    void api.patch(`/collections/${id}`, { banner: v ?? null });
+  };
+
   return (
     <>
+      <Banner value={banner} editable onChange={setBanner} />
       <input
         className="collection-title"
         value={titleVal}

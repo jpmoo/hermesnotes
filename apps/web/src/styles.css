@@ -3944,6 +3944,11 @@ input.cv-add-input {
   grid-column: 1;
   padding: 64px 16px 80px;
 }
+/* Back/forward + recents live in the fixed mobile bar — drop the in-page
+   nav row so navigation isn't duplicated. */
+.app-shell.mobile .top-nav {
+  display: none;
+}
 .app-shell.mobile .mobile-bar {
   display: flex;
   align-items: center;

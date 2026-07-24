@@ -1,5 +1,5 @@
 import type { Block, BlockType } from "../api.ts";
-import { oneLineText } from "../lib/display.ts";
+import { flattenMentions, oneLineText } from "../lib/display.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { Banner, type BannerValue } from "./Banner.tsx";
@@ -30,19 +30,37 @@ export function CollapsedRow({
       </span>
     </div>
   );
-  // Masonry collapsed cards are all the same height: a fixed slice area
-  // (the banner, or a blank placeholder) above the title row.
+  // Masonry collapsed cards share one height. With a banner: the slice sits
+  // on top, title below. Without: title on top, a preview of the rest below.
   if (masonry) {
+    if (banner) {
+      return (
+        <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
+          <Banner value={banner} height={56} className="banner-slice collapsed" />
+          {row}
+        </div>
+      );
+    }
     return (
       <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
-        {banner ? (
-          <Banner value={banner} height={56} className="banner-slice collapsed" />
-        ) : (
-          <div className="blk-collapsed-slice" />
-        )}
         {row}
+        <div className="blk-collapsed-preview">{previewOf(block, isText)}</div>
       </div>
     );
   }
   return row;
+}
+
+/** Plain-text preview of a block's body (everything after the title line for a
+ * text note; the description field for a typed block). */
+function previewOf(block: Block, isText: boolean): string {
+  if (isText) {
+    const content = block.content ?? "";
+    const start = content.search(/\S/);
+    if (start < 0) return "";
+    const nl = content.indexOf("\n", start);
+    return flattenMentions(nl >= 0 ? content.slice(nl + 1).trim() : "");
+  }
+  const desc = (block.properties as Record<string, unknown>).description;
+  return typeof desc === "string" ? flattenMentions(desc.trim()) : "";
 }

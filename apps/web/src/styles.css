@@ -4279,8 +4279,26 @@ input.cv-add-input {
   border-radius: 0;
   background: transparent;
 }
-/* Placeholder slice so banner-less collapsed cards match the banner ones. */
-.blk-collapsed-slice {
+/* Banner-less collapsed masonry: title on top, note preview below (same total
+   height as a banner card: title row + 56px). */
+.blk-collapsed-preview {
+  position: relative;
   height: 56px;
-  background: var(--surface-2);
+  overflow: hidden;
+  padding: 0 12px 6px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.blk-collapsed-preview::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  background: linear-gradient(transparent, var(--surface));
+  pointer-events: none;
 }

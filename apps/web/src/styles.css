@@ -56,6 +56,19 @@
 :root[data-theme="dark"] .title-with-icon > svg {
   stroke: var(--text);
 }
+/* Light teal-tint actives (#eef4f6) are illegible in dark — retint. */
+:root[data-theme="dark"] .seg.active {
+  background: rgba(111, 179, 196, 0.24);
+  color: var(--text);
+}
+:root[data-theme="dark"] .tag-chip {
+  background: rgba(111, 179, 196, 0.18);
+  color: var(--text);
+}
+:root[data-theme="dark"] .seg {
+  background: var(--surface);
+  color: var(--text-muted);
+}
 /* The collapse pill is translucent-white in light; use a dark pill in dark. */
 :root[data-theme="dark"] .card-collapse {
   background: rgba(20, 22, 24, 0.72);

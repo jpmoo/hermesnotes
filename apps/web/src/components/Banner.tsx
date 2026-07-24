@@ -24,11 +24,13 @@ export function Banner({
   editable = false,
   onChange,
   height = 180,
+  className,
 }: {
   value: BannerValue | null | undefined;
   editable?: boolean;
   onChange?: (v: BannerValue | null) => void;
   height?: number;
+  className?: string;
 }) {
   const dragRef = useRef<{ sx: number; sy: number; x: number; y: number } | null>(null);
 
@@ -58,7 +60,7 @@ export function Banner({
   };
 
   return (
-    <div className={`banner${editable ? " editable" : ""}`} style={{ height }}>
+    <div className={`banner${editable ? " editable" : ""}${className ? ` ${className}` : ""}`} style={{ height }}>
       <div
         className="banner-img"
         style={{

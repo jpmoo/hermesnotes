@@ -27,6 +27,7 @@ export function TextBlockEditor({
   onChange,
   canDelete = true,
   compact = false,
+  hideBanner = false,
 }: {
   block: Block;
   type?: BlockType;
@@ -35,6 +36,8 @@ export function TextBlockEditor({
   onChange?: (patch: { properties?: Record<string, unknown>; content?: string | null }) => void;
   canDelete?: boolean;
   compact?: boolean;
+  /** Suppress banner UI entirely (e.g. the Today scratchpad). */
+  hideBanner?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -121,10 +124,11 @@ export function TextBlockEditor({
   const banner = (props.banner as BannerValue | null) ?? null;
   return (
     <div className="card" onPointerDownCapture={() => selectBlock(block.id)}>
-      {!compact && banner && (
+      {!hideBanner && !compact && banner && (
         <Banner value={banner} editable onChange={(v) => updateField("banner", v ?? null)} height={150} />
       )}
-      {!compact && !banner && (
+      {!hideBanner && compact && banner && <Banner value={banner} height={110} className="banner-slice" />}
+      {!hideBanner && !compact && !banner && (
         <div className="text-banner-add-row">
           <BannerAddButton onAdded={(v) => updateField("banner", v)} />
         </div>

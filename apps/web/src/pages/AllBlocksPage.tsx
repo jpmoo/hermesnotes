@@ -130,21 +130,8 @@ export function AllBlocksPage() {
                 {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>
               {col ? (
-                compact ? (
-                  // Masonry: real card content clamped to a uniform height.
-                  <div className="masonry-collapsed">
-                    <BlockCard
-                      block={b}
-                      type={typeById.get(b.blockTypeId)}
-                      onConflict={reload}
-                      onDeleted={onDeleted}
-                      compact
-                    />
-                  </div>
-                ) : (
-                  // Block view: one-line title.
-                  <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
-                )
+                // Masonry keeps a small banner slice; block view is one line.
+                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} masonry={compact} />
               ) : (
                 <BlockCard
                   block={b}

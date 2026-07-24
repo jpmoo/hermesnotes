@@ -2932,19 +2932,20 @@ input.matrix-axis-y::placeholder {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 2;
+  z-index: 6; /* above the banner strip */
   width: 24px;
   height: 24px;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.82);
   color: var(--text-muted);
-  opacity: 0.55;
+  opacity: 0.7;
+  backdrop-filter: blur(3px);
 }
 .bv-card-wrap:hover .card-collapse {
   opacity: 1;
 }
 .card-collapse:hover {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.95);
   color: var(--accent-ink);
 }
 
@@ -4169,6 +4170,12 @@ input.cv-add-input {
   background: rgba(20, 22, 24, 0.55);
   backdrop-filter: blur(4px);
   color: #fff;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.banner:hover .banner-tools,
+.banner:focus-within .banner-tools {
+  opacity: 1;
 }
 .banner-tools .icon-btn {
   border: none;
@@ -4243,4 +4250,32 @@ input.cv-add-input {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 8px;
+}
+
+
+/* Banner slices inside masonry cards (read-only). */
+.banner-slice {
+  margin-bottom: 8px;
+}
+.banner-slice .banner-img {
+  cursor: default;
+}
+.blk-collapsed-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+}
+.blk-collapsed-card:hover {
+  border-color: var(--border-strong);
+}
+.blk-collapsed-card .banner-slice {
+  margin-bottom: 0;
+  border-radius: 0;
+}
+.blk-collapsed-card .blk-collapsed {
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }

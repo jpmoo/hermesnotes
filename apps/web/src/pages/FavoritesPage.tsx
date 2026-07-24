@@ -371,19 +371,8 @@ export function FavoritesPage() {
                 {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>
               {col ? (
-                compact ? (
-                  <div className="masonry-collapsed">
-                    <BlockCard
-                      block={b}
-                      type={typeById.get(b.blockTypeId)}
-                      onConflict={reload}
-                      onDeleted={reload}
-                      compact
-                    />
-                  </div>
-                ) : (
-                  <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
-                )
+                // Masonry keeps a small banner slice; block view is one line.
+                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} masonry={compact} />
               ) : (
                 <BlockCard
                   block={b}

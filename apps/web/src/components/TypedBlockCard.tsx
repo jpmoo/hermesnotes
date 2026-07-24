@@ -139,6 +139,7 @@ export function TypedBlockCard({
       {!compact && banner && (
         <Banner value={banner} editable onChange={(v) => update("banner", v ?? null)} height={150} />
       )}
+      {compact && banner && <Banner value={banner} height={110} className="banner-slice" />}
       <div className="typed-head">
         {statusField ? (
           <StatusControl

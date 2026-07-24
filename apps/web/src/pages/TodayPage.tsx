@@ -192,6 +192,7 @@ export function TodayPage() {
               onConflict={load}
               onDeleted={load}
               canDelete={false}
+              hideBanner
             />
           </section>
         ) : null;

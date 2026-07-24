@@ -5,6 +5,14 @@ import { App } from "./App.tsx";
 import { AuthProvider } from "./auth/AuthContext.tsx";
 import "./styles.css";
 
+// Apply the saved theme before first paint to avoid a flash.
+try {
+  const t = localStorage.getItem("hn.theme");
+  if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+} catch {
+  /* ignore */
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>

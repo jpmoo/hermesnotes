@@ -25,6 +25,50 @@
   --shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+/* ── Dark theme ──────────────────────────────────────────────────
+   Applied via data-theme="dark" on <html> (set pre-paint in main.tsx and
+   synced through prefs). Overrides the core tokens; a few hardcoded light
+   spots get dark equivalents below. */
+:root[data-theme="dark"] {
+  --bg: #16181b;
+  --surface: #1e2125;
+  --surface-2: #262a2f;
+  --text: #e6e8ea;
+  --text-muted: #a2a8af;
+  --text-faint: #6d747b;
+  --border: #31363b;
+  --border-strong: #454b52;
+  --accent: #6fb3c4;
+  --accent-ink: #d7dce1;
+  --danger: #d6707d;
+  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-lift: 0 3px 12px rgba(0, 0, 0, 0.55);
+  color-scheme: dark;
+}
+/* Nav active highlight (hardcoded light teal-tint → token). */
+:root[data-theme="dark"] .nav-link.active,
+:root[data-theme="dark"] .nav-row .nav-link.active {
+  background: rgba(111, 179, 196, 0.16);
+}
+/* Page-title icons pass a hardcoded dark stroke inline; flip in dark. */
+:root[data-theme="dark"] .title-with-icon > svg {
+  stroke: var(--text);
+}
+/* The collapse pill is translucent-white in light; use a dark pill in dark. */
+:root[data-theme="dark"] .card-collapse {
+  background: rgba(20, 22, 24, 0.72);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+:root[data-theme="dark"] .card-collapse:hover {
+  background: rgba(20, 22, 24, 0.9);
+}
+/* Matrix/canvas readable surfaces are white-tinted for pastel regions; in dark
+   keep them light so text stays legible over the (still-pastel) region color. */
+:root[data-theme="dark"] .banner-slice .banner-img {
+  filter: none;
+}
+
 * {
   box-sizing: border-box;
 }

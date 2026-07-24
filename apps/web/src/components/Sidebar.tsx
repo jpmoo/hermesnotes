@@ -3,6 +3,7 @@ import {
   Layers,
   Library,
   LogOut,
+  Moon,
   MoreVertical,
   Pin,
   PinOff,
@@ -11,6 +12,7 @@ import {
   Star,
   Settings,
   Shapes,
+  Sun,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
@@ -53,7 +55,7 @@ const COLLECTIONS_KEY = "collections_colors";
 export function Sidebar() {
   const { logout } = useAuth();
   const { leftPinned, setLeftPinned } = usePanels();
-  const { colors, setPref } = usePreferences();
+  const { colors, setPref, theme, setTheme } = usePreferences();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [modal, setModal] = useState<{ key: string; target: Target } | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
@@ -256,6 +258,14 @@ export function Sidebar() {
         <Shapes size={18} />
         <span className="label">Types</span>
       </NavLink>
+      <button
+        className="nav-link"
+        title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+      >
+        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+        <span className="label">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+      </button>
       <NavLink to="/settings" className="nav-link" title="Settings">
         <Settings size={18} />
         <span className="label">Settings</span>

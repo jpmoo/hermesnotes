@@ -18,6 +18,8 @@ interface PreferencesApi {
   /** Banner framing for a landing page (key like "blocks"/"today"). */
   banner: (key: string) => unknown;
   setBanner: (key: string, value: unknown) => void;
+  theme: "light" | "dark";
+  setTheme: (t: "light" | "dark") => void;
 }
 
 const Ctx = createContext<PreferencesApi | null>(null);
@@ -49,9 +51,43 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const setBanner = (key: string, value: unknown) =>
     setPref("banners", { ...banners, [key]: value ?? undefined });
 
+  const theme: "light" | "dark" = prefs.theme === "dark" ? "dark" : "light";
+  const setTheme = (t: "light" | "dark") => {
+    setPref("theme", t);
+    try {
+      localStorage.setItem("hn.theme", t);
+    } catch {
+      /* ignore */
+    }
+    document.documentElement.dataset.theme = t;
+  };
+  // Apply the synced theme once prefs load (and keep localStorage in step for
+  // the next no-flash boot).
+  useEffect(() => {
+    if (prefs.theme === "dark" || prefs.theme === "light") {
+      document.documentElement.dataset.theme = prefs.theme;
+      try {
+        localStorage.setItem("hn.theme", prefs.theme);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [prefs.theme]);
+
   return (
     <Ctx.Provider
-      value={{ prefs, setPref, colors, favorites, isFavorite, toggleFavorite, banner, setBanner }}
+      value={{
+        prefs,
+        setPref,
+        colors,
+        favorites,
+        isFavorite,
+        toggleFavorite,
+        banner,
+        setBanner,
+        theme,
+        setTheme,
+      }}
     >
       {children}
     </Ctx.Provider>

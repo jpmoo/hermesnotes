@@ -2327,6 +2327,7 @@ input.matrix-axis-y::placeholder {
   padding: 2px 4px 2px 9px;
   border-radius: 999px;
   background: rgba(95, 164, 181, 0.14);
+  color: var(--text);
   font-size: 12.5px;
   max-width: 220px;
 }

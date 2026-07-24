@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
+import { CollapsibleCard, useCollapse } from "../components/CollapsibleCard.tsx";
 import { CollectionSection } from "../components/CollectionSection.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
@@ -149,15 +150,20 @@ export function TodayPage() {
 
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
   const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
-  const card = (b: Block, compact: boolean) => (
-    <BlockCard
-      block={b}
-      type={typeById.get(b.blockTypeId)}
-      onConflict={load}
-      onDeleted={() => void load()}
-      compact={compact}
-    />
-  );
+  const relevantCollapse = useCollapse((sheet?.relevant ?? []).map((b) => b.id));
+  const activityCollapse = useCollapse((sheet?.activity ?? []).map((b) => b.id));
+  const cardWith =
+    (col: ReturnType<typeof useCollapse>) => (b: Block, compact: boolean) => (
+      <CollapsibleCard
+        block={b}
+        type={typeById.get(b.blockTypeId)}
+        compact={compact}
+        collapsed={col.collapsed.has(b.id)}
+        onToggle={() => col.toggle(b.id)}
+        onConflict={load}
+        onDeleted={() => void load()}
+      />
+    );
 
   const STANDARD_LABELS: Record<string, string> = {
     scratchpad: "Scratchpad",
@@ -204,8 +210,15 @@ export function TodayPage() {
               <div className="hint">Nothing dated to this day.</div>
             ) : (
               <>
-                {relevantView.toolbar}
-                {relevantView.renderList(card)}
+                <div className="row" style={{ gap: 12, marginBottom: 8 }}>
+                  {relevantView.toolbar}
+                  {relevantView.viewMode !== "chips" && (
+                    <button className="ghost" onClick={relevantCollapse.toggleAll}>
+                      {relevantCollapse.allCollapsed ? "Expand all" : "Collapse all"}
+                    </button>
+                  )}
+                </div>
+                {relevantView.renderList(cardWith(relevantCollapse))}
               </>
             )}
           </section>
@@ -218,8 +231,15 @@ export function TodayPage() {
               <div className="hint">No activity on this day.</div>
             ) : (
               <>
-                {activityView.toolbar}
-                {activityView.renderList(card)}
+                <div className="row" style={{ gap: 12, marginBottom: 8 }}>
+                  {activityView.toolbar}
+                  {activityView.viewMode !== "chips" && (
+                    <button className="ghost" onClick={activityCollapse.toggleAll}>
+                      {activityCollapse.allCollapsed ? "Expand all" : "Collapse all"}
+                    </button>
+                  )}
+                </div>
+                {activityView.renderList(cardWith(activityCollapse))}
               </>
             )}
           </section>

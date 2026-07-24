@@ -1827,8 +1827,15 @@ input.matrix-axis-y::placeholder {
   padding: 12px;
   margin-bottom: 0;
 }
-.panel-editor .typed-fields {
+.panel-editor .typed-fields,
+.cv-node .typed-fields {
   grid-template-columns: 1fr;
+}
+.cv-node input,
+.cv-node select,
+.cv-node textarea {
+  min-width: 0;
+  max-width: 100%;
 }
 .panel-editor input,
 .panel-editor select,
@@ -3456,6 +3463,18 @@ input.matrix-axis-y::placeholder {
 .cv-node.cv-shaded .status-btn:hover {
   background: transparent;
   border-color: transparent;
+}
+
+/* A shaded node's color is a light pastel, so force dark text tokens locally
+   (descendants use var(--text)/--text-muted/--accent-ink) — otherwise dark
+   theme's light text is illegible on the light shade. */
+.cv-node.cv-shaded {
+  --text: #26282b;
+  --text-muted: #565b60;
+  --text-faint: #7a7f84;
+  --accent-ink: #3d4247;
+  --border: rgba(0, 0, 0, 0.16);
+  --border-strong: rgba(0, 0, 0, 0.24);
 }
 
 /* Shaded node: interactive surfaces read as a more transparent version of

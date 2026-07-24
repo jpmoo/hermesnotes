@@ -30,41 +30,11 @@ export function Banner({
   onChange?: (v: BannerValue | null) => void;
   height?: number;
 }) {
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<{ sx: number; sy: number; x: number; y: number } | null>(null);
 
-  if (!value) {
-    if (!editable) return null;
-    return (
-      <div className="banner-empty">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/gif"
-          hidden
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-            if (!file) return;
-            setBusy(true);
-            try {
-              const form = new FormData();
-              form.append("file", file);
-              const { id } = await api.upload<{ id: string }>("/banners", form);
-              onChange?.({ id, zoom: 1, x: 50, y: 50 });
-            } finally {
-              setBusy(false);
-            }
-          }}
-        />
-        <button className="ghost banner-add" disabled={busy} onClick={() => fileRef.current?.click()}>
-          <ImagePlus size={15} />
-          {busy ? "Uploading…" : "Add banner"}
-        </button>
-      </div>
-    );
-  }
+  // Empty state is no longer a block here — callers place <BannerAddButton>
+  // on the title line instead. The strip renders only once a banner exists.
+  if (!value) return null;
 
   const zoom = value.zoom ?? 1;
   const x = value.x ?? 50;
@@ -122,5 +92,58 @@ export function Banner({
         </div>
       )}
     </div>
+  );
+}
+
+
+/** Upload an image and return a fresh centered/1x banner value. */
+export async function uploadBanner(file: File): Promise<BannerValue> {
+  const form = new FormData();
+  form.append("file", file);
+  const { id } = await api.upload<{ id: string }>("/banners", form);
+  return { id, zoom: 1, x: 50, y: 50 };
+}
+
+/** The "Add banner" affordance — placed on a title line by the caller. */
+export function BannerAddButton({
+  onAdded,
+  className,
+  label = "Add banner",
+}: {
+  onAdded: (v: BannerValue) => void;
+  className?: string;
+  label?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif"
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          setBusy(true);
+          try {
+            onAdded(await uploadBanner(file));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <button
+        className={`ghost banner-add${className ? ` ${className}` : ""}`}
+        disabled={busy}
+        title="Add a banner image (PNG, JPG, GIF)"
+        onClick={() => fileRef.current?.click()}
+      >
+        <ImagePlus size={14} />
+        {busy ? "Uploading…" : label}
+      </button>
+    </>
   );
 }

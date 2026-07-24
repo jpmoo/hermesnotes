@@ -8,7 +8,7 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldInput } from "./FieldInput.tsx";
-import { Banner, type BannerValue } from "./Banner.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "./Banner.tsx";
 import { MarkdownEditor } from "./MarkdownEditor.tsx";
 import { TagEditor } from "./TagEditor.tsx";
 
@@ -121,13 +121,13 @@ export function TextBlockEditor({
   const banner = (props.banner as BannerValue | null) ?? null;
   return (
     <div className="card" onPointerDownCapture={() => selectBlock(block.id)}>
-      {!compact && (
-        <Banner
-          value={banner}
-          editable
-          onChange={(v) => updateField("banner", v ?? null)}
-          height={150}
-        />
+      {!compact && banner && (
+        <Banner value={banner} editable onChange={(v) => updateField("banner", v ?? null)} height={150} />
+      )}
+      {!compact && !banner && (
+        <div className="text-banner-add-row">
+          <BannerAddButton onAdded={(v) => updateField("banner", v)} />
+        </div>
       )}
       {compact ? (
         // Masonry preview: text-note icon + the first line as a (truncated)

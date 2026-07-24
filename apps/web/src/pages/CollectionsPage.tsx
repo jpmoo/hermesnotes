@@ -5,7 +5,7 @@ import { api, type Collection } from "../api.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { oneLineText } from "../lib/display.ts";
-import { Banner, type BannerValue } from "../components/Banner.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 
@@ -79,15 +79,22 @@ export function CollectionsPage() {
 
   return (
     <>
-      <Banner
-        value={banner("collections") as BannerValue | null}
-        editable
-        onChange={(v) => setBanner("collections", v)}
-      />
-      <h1 className="page-title title-with-icon">
+      {(banner("collections") as BannerValue | null) && (
+        <Banner
+          value={banner("collections") as BannerValue}
+          editable
+          onChange={(v) => setBanner("collections", v)}
+        />
+      )}
+      <div className="page-head">
+        <h1 className="page-title title-with-icon">
         <Library size={22} color="#26282b" />
         Collections
       </h1>
+        {!(banner("collections")) && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("collections", v)} />
+        )}
+      </div>
       <p className="page-sub">Ordered, filterable groupings of blocks.</p>
 
       <div className="sort-bar">

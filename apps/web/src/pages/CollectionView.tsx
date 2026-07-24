@@ -20,7 +20,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineText } from "../lib/display.ts";
-import { Banner, type BannerValue } from "../components/Banner.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { FinderModal } from "../components/FinderModal.tsx";
 import { CalendarView } from "../components/CalendarView.tsx";
 import { CanvasView } from "../components/CanvasView.tsx";
@@ -261,14 +261,17 @@ export function CollectionView() {
 
   return (
     <>
-      <Banner value={banner} editable onChange={setBanner} />
-      <input
-        className="collection-title"
-        value={titleVal}
-        placeholder="Untitled list"
-        onFocus={() => selectBlock(id, { collection: true })}
-        onChange={(e) => saveTitle(e.target.value)}
-      />
+      {banner && <Banner value={banner} editable onChange={setBanner} />}
+      <div className="collection-head">
+        <input
+          className="collection-title"
+          value={titleVal}
+          placeholder="Untitled list"
+          onFocus={() => selectBlock(id, { collection: true })}
+          onChange={(e) => saveTitle(e.target.value)}
+        />
+        {!banner && <BannerAddButton className="page-head-add" onAdded={setBanner} />}
+      </div>
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
         {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && (

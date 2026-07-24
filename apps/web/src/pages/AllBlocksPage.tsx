@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, FolderPlus, Layers } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
-import { Banner, type BannerValue } from "../components/Banner.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
@@ -71,15 +71,22 @@ export function AllBlocksPage() {
 
   return (
     <>
-      <Banner
-        value={banner("blocks") as BannerValue | null}
-        editable
-        onChange={(v) => setBanner("blocks", v)}
-      />
-      <h1 className="page-title title-with-icon">
+      {(banner("blocks") as BannerValue | null) && (
+        <Banner
+          value={banner("blocks") as BannerValue}
+          editable
+          onChange={(v) => setBanner("blocks", v)}
+        />
+      )}
+      <div className="page-head">
+        <h1 className="page-title title-with-icon">
         <Layers size={22} color="#26282b" />
         All blocks
       </h1>
+        {!(banner("blocks")) && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("blocks", v)} />
+        )}
+      </div>
       <p className="page-sub">
         Every block. Filter with the query builder on the right, then save it as a list.
       </p>
@@ -89,7 +96,7 @@ export function AllBlocksPage() {
           <FolderPlus size={15} />
           Save as collection
         </button>
-        {viewMode === "block" && (
+        {viewMode !== "chips" && (
           <button
             className="ghost"
             onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(blocks.map((b) => b.id)))}

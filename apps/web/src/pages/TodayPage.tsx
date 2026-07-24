@@ -10,7 +10,7 @@ import { SectionLayout, type SectionEntry } from "../components/SectionLayout.ts
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TodayCalendar } from "../components/TodayCalendar.tsx";
 import { oneLineText } from "../lib/display.ts";
-import { Banner, type BannerValue } from "../components/Banner.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
@@ -248,15 +248,22 @@ export function TodayPage() {
 
   return (
     <>
-      <Banner
-        value={banner("today") as BannerValue | null}
-        editable
-        onChange={(v) => setBanner("today", v)}
-      />
-      <h1 className="page-title title-with-icon">
+      {(banner("today") as BannerValue | null) && (
+        <Banner
+          value={banner("today") as BannerValue}
+          editable
+          onChange={(v) => setBanner("today", v)}
+        />
+      )}
+      <div className="page-head">
+        <h1 className="page-title title-with-icon">
         <CalendarDays size={22} color="#26282b" />
         {isToday ? `Today · ${label}` : label}
       </h1>
+        {!(banner("today")) && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("today", v)} />
+        )}
+      </div>
       {!isToday && (
         <p className="page-sub">
           <Link to="/today">back to today</Link>

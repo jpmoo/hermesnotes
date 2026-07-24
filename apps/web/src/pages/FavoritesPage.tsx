@@ -12,7 +12,7 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
-import { Banner, type BannerValue } from "../components/Banner.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { darkTextOn, oneLineText } from "../lib/display.ts";
@@ -186,15 +186,22 @@ export function FavoritesPage() {
 
   return (
     <>
-      <Banner
-        value={banner("favorites") as BannerValue | null}
-        editable
-        onChange={(v) => setBanner("favorites", v)}
-      />
-      <h1 className="page-title title-with-icon">
+      {(banner("favorites") as BannerValue | null) && (
+        <Banner
+          value={banner("favorites") as BannerValue}
+          editable
+          onChange={(v) => setBanner("favorites", v)}
+        />
+      )}
+      <div className="page-head">
+        <h1 className="page-title title-with-icon">
         <Star size={22} color="#26282b" />
         Favorites
       </h1>
+        {!(banner("favorites")) && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("favorites", v)} />
+        )}
+      </div>
       <p className="page-sub">Starred blocks and collections (star them in the info panel).</p>
 
       {collections.length > 0 && (
@@ -288,7 +295,7 @@ export function FavoritesPage() {
         <div className="row" style={{ marginBottom: 10, gap: 12 }}>
           <span className="sort-label">Blocks</span>
           {toolbar}
-          {viewMode === "block" && (
+          {viewMode !== "chips" && (
             <button
               className="ghost"
               onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(plain.map((b) => b.id)))}

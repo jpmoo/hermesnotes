@@ -535,10 +535,19 @@ export function useBlockView<T extends Viewable>(
         </div>
       );
     }
+    // Fixed column buckets (round-robin) instead of CSS column-count: a card
+    // stays in its column when its height changes (e.g. collapse), rather than
+    // the whole grid reflowing across columns.
+    const buckets: T[][] = Array.from({ length: columns }, () => []);
+    sorted.forEach((it, i) => buckets[i % columns]!.push(it));
     return (
-      <div className="masonry" style={{ columnCount: columns }}>
-        {sorted.map((it) => (
-          <MasonryCard key={it.id} blockId={it.id} render={(compact) => renderCard(it, compact)} />
+      <div className="masonry-cols" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        {buckets.map((col, ci) => (
+          <div className="masonry-col" key={ci}>
+            {col.map((it) => (
+              <MasonryCard key={it.id} blockId={it.id} render={(compact) => renderCard(it, compact)} />
+            ))}
+          </div>
         ))}
       </div>
     );

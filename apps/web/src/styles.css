@@ -4191,12 +4191,56 @@ input.cv-add-input {
   width: 84px;
   accent-color: var(--accent);
 }
-.banner-empty {
-  margin-bottom: 14px;
-}
 .banner-add {
   display: inline-flex;
   align-items: center;
   gap: 7px;
   font-size: 12.5px;
+  flex-shrink: 0;
+}
+
+/* Column-bucketed masonry: fixed columns so a card keeps its column when it
+   collapses/expands (CSS column-count would reflow the whole grid). */
+.masonry-cols {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+}
+.masonry-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.masonry-col .masonry-item {
+  margin-bottom: 0;
+  break-inside: auto;
+}
+
+
+/* Title lines that carry a right-justified "Add banner" button. */
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.collection-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.page-head .page-title {
+  margin-bottom: 0;
+}
+.page-head-add {
+  margin-left: auto;
+}
+.typed-head .head-banner-add {
+  margin-left: auto;
+}
+.text-banner-add-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }

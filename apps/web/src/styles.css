@@ -4044,3 +4044,17 @@ input.cv-add-input {
     opacity: 0;
   }
 }
+
+/* Locked canvas: hide structural affordances (drag grip, resize corners,
+   connect handles). Block bodies stay fully interactive; pan/zoom/select stay. */
+.cv-wrap.locked .cv-grab,
+.cv-wrap.locked .cv-corner,
+.cv-wrap.locked .cv-handle {
+  display: none;
+}
+.cv-wrap.locked .cv-node {
+  cursor: default;
+}
+.cv-lock.on {
+  color: var(--accent);
+}

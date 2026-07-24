@@ -1,6 +1,7 @@
-import { GripHorizontal, Minus, Plus } from "lucide-react";
+import { GripHorizontal, Minus, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { useIsMobile } from "../lib/useIsMobile.ts";
 import {
   useEffect,
   useMemo,
@@ -143,6 +144,30 @@ export function CanvasView({
   const props = collection.properties as Record<string, unknown>;
   const { selectBlock, bottomSlotEl, selectedBlockId } = usePanels();
   const nav = useNavigate();
+  const isMobile = useIsMobile();
+
+  // Locked: pan/zoom + selecting and editing block contents stay live, but no
+  // structural editing (move/resize/connect/create/region/menus/clear). Phones
+  // are always locked — the canvas has too many affordances for touch.
+  const [lockPref, setLockPref] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("hn.canvas.locked") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const locked = isMobile || lockPref;
+  const toggleLock = () => {
+    setLockPref((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem("hn.canvas.locked", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   // Transient feedback: a toast for quick acts, a dialog for created collections.
   const [toast, setToast] = useState<string | null>(null);
@@ -460,7 +485,7 @@ export function CanvasView({
     if (e.button !== 0) return;
     if (e.target !== e.currentTarget) return;
     e.preventDefault(); // stop text-selection sweeps while panning/selecting
-    if (e.shiftKey) {
+    if (e.shiftKey && !locked) {
       const p = toCanvas(e.clientX, e.clientY);
       setMarquee({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       drag.current = { kind: "marquee" };
@@ -472,6 +497,7 @@ export function CanvasView({
   };
 
   const startRegionDrag = (id: string, e: ReactPointerEvent) => {
+    if (locked) return;
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -633,6 +659,7 @@ export function CanvasView({
   };
 
   const startNodeDrag = (id: string, e: ReactPointerEvent) => {
+    if (locked) return;
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -651,6 +678,7 @@ export function CanvasView({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const startResize = (id: string, corner: string, e: ReactPointerEvent) => {
+    if (locked) return;
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -907,6 +935,7 @@ export function CanvasView({
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}
       onContextMenu={(e) => {
+        if (locked) return;
         e.preventDefault();
         e.stopPropagation();
         setNodeMenu({ id, x: e.clientX, y: e.clientY });
@@ -925,7 +954,7 @@ export function CanvasView({
           className={`cv-handle cv-h-${sd}`}
           title="Drag to connect"
           onPointerDown={(e) => {
-            if (e.button !== 0) return;
+            if (locked || e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
             const p = toCanvas(e.clientX, e.clientY);
@@ -939,13 +968,13 @@ export function CanvasView({
   return (
     <div
       ref={wrapRef}
-      className="cv-wrap"
+      className={`cv-wrap${locked ? " locked" : ""}`}
       style={wrapH != null ? { height: wrapH } : undefined}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerDown={onBgPointerDown}
       onDoubleClick={(e) => {
-        if (e.target === e.currentTarget) addNote(toCanvas(e.clientX, e.clientY));
+        if (!locked && e.target === e.currentTarget) addNote(toCanvas(e.clientX, e.clientY));
       }}
     >
       <div className="cv-layer" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
@@ -959,6 +988,7 @@ export function CanvasView({
               style={{ left: rr.x, top: rr.y, width: rr.w, height: rr.h, background: rg.color ?? REGION_COLORS[0] }}
               onPointerDown={(e) => startRegionDrag(rg.id, e)}
               onContextMenu={(e) => {
+                if (locked) return;
                 e.preventDefault();
                 e.stopPropagation();
                 setRegionMenu({ id: rg.id, x: e.clientX, y: e.clientY });
@@ -998,10 +1028,11 @@ export function CanvasView({
                   d={p.d}
                   className="cv-edge-hit"
                   onContextMenu={(ev) => {
+                    if (locked) return;
                     ev.preventDefault();
                     setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY });
                   }}
-                  onClick={(ev) => setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY })}
+                  onClick={(ev) => !locked && setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY })}
                 />
                 <path
                   d={p.d}
@@ -1175,6 +1206,18 @@ export function CanvasView({
 
       {/* toolbar (lower right) */}
       <div className="cv-toolbar">
+        {!isMobile && (
+          <>
+            <button
+              className={`icon-btn cv-lock${lockPref ? " on" : ""}`}
+              title={lockPref ? "Locked — click to edit" : "Lock canvas (navigation only)"}
+              onClick={toggleLock}
+            >
+              {lockPref ? <Lock size={14} /> : <Unlock size={14} />}
+            </button>
+            <span className="cv-tb-sep" />
+          </>
+        )}
         <button className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.2, innerWidth / 2, innerHeight / 2)}>
           <Minus size={14} />
         </button>
@@ -1189,10 +1232,14 @@ export function CanvasView({
         <button className="icon-btn" title="Zoom in" onClick={() => zoomBy(1.2, innerWidth / 2, innerHeight / 2)}>
           <Plus size={14} />
         </button>
-        <span className="cv-tb-sep" />
-        <button className="ghost" onClick={() => setConfirmClear(true)}>
-          Clear
-        </button>
+        {!locked && (
+          <>
+            <span className="cv-tb-sep" />
+            <button className="ghost" onClick={() => setConfirmClear(true)}>
+              Clear
+            </button>
+          </>
+        )}
       </div>
 
       {/* node menu */}

@@ -10,32 +10,36 @@ const WELCOME_NOTE = `# Welcome to Hermes 👋
 
 Everything here is a **block** — notes, tasks, events, people, even collections.
 
-- **Click a block** to open it in the **info panel** on the right: edit it, see its connections, star it (★) for Favorites.
-- **Today** is your daily note — a scratchpad that keeps one sheet per day.
-- In any text, type **@** to mention a person, **#** to tag, and **|** to link any block or collection. Links become chips that open in the info panel.
-- The **+ button** in the left rail creates notes, blocks, and collections from anywhere.
-- **Search** (top bar) matches titles, bodies, and properties — and also finds things by *meaning*, so describing what you want works too.
+- **Click a block** to open it in the **info panel** on the right: edit it in place, see its connections, and star it (★, top-right of the panel) for **Favorites**.
+- The left rail is your home base: **New…** (make a block of any type, or a collection), **Search**, **Today**, **Favorites**, **All blocks**, and **Collections**. Each row is colorable — hover it and use the ⋮ menu.
+- **Today** is your daily note — a scratchpad that keeps one sheet per day, with a calendar to jump between days.
+- In any text box — even titles — type **@** to mention a person, **#** to tag, and **|** to link any block. A search dropdown helps you pick; picks become chips that open in the info panel. Mention a person who doesn't exist yet and they're created for you.
+- Mentions stay in sync: rename a person or tag and every reference updates. A chip whose target was deleted goes grey and stops linking.
+- **Search** (rail) lists keyword **Matches** and, separately, semantic **Similar** results — so describing what you want in your own words works too.
+- On a **phone**, the rail becomes a drop-down menu and the info panel a tab — everything's still here, just reshaped.
 
 Delete this note whenever you're done with it.`;
 
 const COLLECTIONS_NOTE = `# Collections, briefly
 
-A **collection** is an ordered, filterable grouping of blocks. Four kinds:
+A **collection** is an ordered, filterable grouping of blocks. Pick the kind that fits how you want to see them:
 
-- **List** — one line per item: bullet, ordered, checklist, or full blocks. Blocks format gets Block / Masonry / Chips views.
+- **List** — one line per item: bullet, ordered, checklist, or full blocks (with Block / Masonry views and per-card collapse).
 - **Spread** — full-card sections you arrange with the layout tool (this "Start here" is a spread).
-- **Matrix** — an x/y grid of regions (Eisenhower 2×2, Kanban 3×1…): drag blocks in from a drawer.
-- **Table** — a spreadsheet: one row per block, property columns you pick, inline editing, right-click headers to sort.
+- **Matrix** — an x/y grid of regions (Eisenhower 2×2, Kanban 3×1…). Drag blocks in from the drawer, or bind regions to a **status** (they become the columns) or to **dates** (day columns with movable row-regions). Regions can even act — add a tag or set a status when a card enters.
+- **Table** — a spreadsheet: one row per block, property columns you choose, inline editing, click a header to sort.
+- **Canvas** — a freeform board: place blocks anywhere, draw connections, group them into regions. A **lock** toggle freezes the layout so you can browse (and still edit a block's contents) without nudging anything.
+- **Calendar** — your dated blocks laid out by month, week, or 3-day.
 
-Membership is **Manual** (you add blocks) or **Smart** (a query decides — build it in the right panel, live-updating or snapshot).`;
+Membership is **Manual** (you add blocks) or **Smart** (a query decides — build it in the right panel, live-updating or snapshot). Save any **All blocks** filter straight into a smart collection.`;
 
 const CHECKLIST_ITEMS = [
-  "Create a note with the + button in the left rail",
-  "Open All blocks and build a filter in the right panel",
-  "Save that filter as a smart collection",
-  "Star a block with the ★ in the info panel — it appears in Favorites",
-  "Make a table collection and right-click a column header to sort",
-  "Try a semantic search — describe what you're looking for in the top bar",
+  "Make a note from the rail's New… button",
+  "In its title, type @ to mention someone (a new person is created), and # to tag",
+  "Star a block with the ★ in the info panel — it shows up in Favorites",
+  "Open All blocks, build a filter in the right panel, and Save as collection",
+  "Create a Matrix collection and drag a few tasks into its regions",
+  "Try a Search from the rail — compare the keyword Matches with the Similar (semantic) results",
 ];
 
 /** Title/description embed source, mirroring the collections routes. */
@@ -134,7 +138,7 @@ export async function seedWelcomeContent(db: Db, ownerId: string): Promise<void>
   const spreadId = await collection(
     "document",
     "Start here",
-    "How to use Hermes: blocks, the info panel, mentions, and collections.",
+    "How to use Hermes: blocks, the info panel, mentions, favorites, and every collection kind.",
     {},
   );
   await addMembers(spreadId, [

@@ -4279,3 +4279,8 @@ input.cv-add-input {
   border-radius: 0;
   background: transparent;
 }
+/* Placeholder slice so banner-less collapsed cards match the banner ones. */
+.blk-collapsed-slice {
+  height: 56px;
+  background: var(--surface-2);
+}

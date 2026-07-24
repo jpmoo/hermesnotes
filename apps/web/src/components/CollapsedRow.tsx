@@ -30,11 +30,16 @@ export function CollapsedRow({
       </span>
     </div>
   );
-  // Masonry collapsed shows a thin banner slice above the title.
-  if (masonry && banner) {
+  // Masonry collapsed cards are all the same height: a fixed slice area
+  // (the banner, or a blank placeholder) above the title row.
+  if (masonry) {
     return (
       <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
-        <Banner value={banner} height={56} className="banner-slice collapsed" />
+        {banner ? (
+          <Banner value={banner} height={56} className="banner-slice collapsed" />
+        ) : (
+          <div className="blk-collapsed-slice" />
+        )}
         {row}
       </div>
     );

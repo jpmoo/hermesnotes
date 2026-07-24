@@ -4,6 +4,8 @@ import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { NavBar } from "./components/NavBar.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
+import { useIsMobile } from "./lib/useIsMobile.ts";
+import { MobileBar } from "./components/MobileBar.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
 import { PreferencesProvider, usePreferences } from "./lib/preferences.tsx";
@@ -46,6 +48,14 @@ function Shell() {
   const { leftPinned, rightPinned } = usePanels();
   const { colors } = usePreferences();
   const { pathname } = useLocation();
+  const isMobile = useIsMobile();
+  const [navOpen, setNavOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  // Any navigation dismisses the mobile overlays.
+  useEffect(() => {
+    setNavOpen(false);
+    setInfoOpen(false);
+  }, [pathname]);
   const key = sectionKey(pathname);
   const c = key ? colors(key) : {};
   const themed = Boolean(c.bg || c.text || c.icon);
@@ -55,10 +65,37 @@ function Shell() {
     "--section-icon": c.icon ?? "currentColor",
   } as CSSProperties;
 
+  const shellClass =
+    `app-shell${leftPinned ? " left-pinned" : ""}${rightPinned ? " right-pinned" : ""}` +
+    (isMobile ? " mobile" : "") +
+    (isMobile && navOpen ? " m-nav-open" : "") +
+    (isMobile && infoOpen ? " m-info-open" : "");
+
   return (
-    <div
-      className={`app-shell${leftPinned ? " left-pinned" : ""}${rightPinned ? " right-pinned" : ""}`}
-    >
+    <div className={shellClass}>
+      {isMobile && (
+        <MobileBar
+          navOpen={navOpen}
+          onToggleNav={() => {
+            setInfoOpen(false);
+            setNavOpen((o) => !o);
+          }}
+          infoOpen={infoOpen}
+          onToggleInfo={() => {
+            setNavOpen(false);
+            setInfoOpen((o) => !o);
+          }}
+        />
+      )}
+      {isMobile && (navOpen || infoOpen) && (
+        <div
+          className="mobile-backdrop"
+          onClick={() => {
+            setNavOpen(false);
+            setInfoOpen(false);
+          }}
+        />
+      )}
       <Sidebar />
       <main className={`main${themed ? " themed" : ""}`} style={style}>
         {themed && <div className="section-shade" aria-hidden />}

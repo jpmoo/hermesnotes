@@ -3930,3 +3930,117 @@ input.cv-add-input {
   background: var(--danger);
   flex-shrink: 0;
 }
+
+/* ── Phone layout ────────────────────────────────────────────────
+   Rail becomes a drop-down menu; the right panel becomes an Info sheet.
+   Both stay mounted (slots/plumbing intact) — this only reshapes them. */
+.mobile-bar {
+  display: none;
+}
+.app-shell.mobile {
+  grid-template-columns: 1fr;
+}
+.app-shell.mobile .main {
+  grid-column: 1;
+  padding: 64px 16px 80px;
+}
+.app-shell.mobile .mobile-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 52px;
+  padding: 0 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  z-index: 60;
+}
+.mobile-logo {
+  height: 24px;
+  width: auto;
+  margin: 0 auto 0 6px;
+}
+.mobile-info-btn.has-sel {
+  color: var(--accent);
+}
+.mobile-info-btn.on {
+  background: var(--surface-2);
+  color: var(--accent-ink);
+}
+.mobile-backdrop {
+  position: fixed;
+  inset: 52px 0 0 0;
+  z-index: 45;
+  background: rgba(30, 32, 35, 0.32);
+}
+
+/* Rail → drop-down menu under the bar. Hidden until the menu button opens it. */
+.app-shell.mobile .sidebar {
+  display: none;
+}
+.app-shell.mobile.m-nav-open .sidebar {
+  display: flex;
+  position: fixed;
+  top: 56px;
+  left: 8px;
+  right: auto;
+  bottom: auto;
+  width: 232px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+  z-index: 55;
+  padding: 8px;
+}
+/* Always show labels + color kebabs in the mobile menu (override the rail's
+   collapsed-state hiding); drop the pin + auto-hide spacer. */
+.app-shell.mobile .sidebar .label {
+  display: inline;
+  opacity: 1;
+  width: auto;
+  pointer-events: auto;
+}
+.app-shell.mobile .sidebar .nav-kebab {
+  display: flex;
+}
+.app-shell.mobile .sidebar .panel-pin,
+.app-shell.mobile .sidebar .spacer {
+  display: none;
+}
+.app-shell.mobile .sidebar .brand-name {
+  display: inline;
+}
+
+/* Right panel → full Info sheet from the bottom. */
+.app-shell.mobile .right-panel {
+  display: none;
+}
+.app-shell.mobile.m-info-open .right-panel {
+  display: block;
+  position: fixed;
+  inset: 52px 0 0 0;
+  width: auto;
+  border-left: none;
+  border-top: 1px solid var(--border);
+  z-index: 55;
+  padding: 16px;
+  animation: sheetUp 0.16s ease;
+}
+.app-shell.mobile.m-info-open .right-panel .panel-body {
+  display: block;
+}
+.app-shell.mobile .right-panel .panel-rail-icon,
+.app-shell.mobile .right-panel .panel-pin {
+  display: none;
+}
+@keyframes sheetUp {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+}

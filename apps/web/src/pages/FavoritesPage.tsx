@@ -347,7 +347,11 @@ export function FavoritesPage() {
               <button
                 className="icon-btn card-collapse"
                 title={collapsed.has(b.id) ? "Expand" : "Collapse"}
-                onClick={() => toggleCard(b.id)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleCard(b.id);
+                }}
               >
                 {collapsed.has(b.id) ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               </button>

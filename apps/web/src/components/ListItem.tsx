@@ -292,7 +292,11 @@ export function ListItem({
           <button
             className="icon-btn li-expand"
             title={expanded ? "Collapse" : "Expand"}
-            onClick={toggleItem}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleItem();
+            }}
           >
             {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
           </button>

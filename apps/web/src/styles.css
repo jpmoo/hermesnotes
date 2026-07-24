@@ -3939,10 +3939,21 @@ input.cv-add-input {
 }
 .app-shell.mobile {
   grid-template-columns: 1fr;
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 .app-shell.mobile .main {
   grid-column: 1;
+  min-width: 0; /* let the grid child shrink instead of overflowing */
+  max-width: 100vw;
+  overflow-x: hidden;
   padding: 64px 16px 80px;
+}
+/* Wide toolbars/rows scroll inside themselves rather than widening the page. */
+.app-shell.mobile .main .sort-bar,
+.app-shell.mobile .main .segmented {
+  max-width: 100%;
+  overflow-x: auto;
 }
 /* Back/forward + recents live in the fixed mobile bar — drop the in-page
    nav row so navigation isn't duplicated. */
@@ -3957,16 +3968,25 @@ input.cv-add-input {
   top: 0;
   left: 0;
   right: 0;
+  width: 100%;
+  box-sizing: border-box;
   height: 52px;
   padding: 0 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 60;
 }
+.mobile-bar .icon-btn {
+  flex-shrink: 0;
+}
+.mobile-info-btn {
+  margin-left: auto; /* always pin Info to the right edge */
+}
 .mobile-logo {
   height: 24px;
   width: auto;
-  margin: 0 auto 0 6px;
+  margin-left: 6px;
+  min-width: 0;
 }
 .mobile-info-btn.has-sel {
   color: var(--accent);
@@ -4062,4 +4082,15 @@ input.cv-add-input {
 }
 .cv-lock.on {
   color: var(--accent);
+}
+
+
+/* Phone: never allow the document itself to scroll sideways. */
+@media (max-width: 720px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
 }

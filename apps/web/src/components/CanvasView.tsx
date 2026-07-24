@@ -481,6 +481,64 @@ export function CanvasView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Two-finger pinch to zoom + pan on touch (the wrap sets touch-action:none,
+  // so the browser won't do it for us). A pinch cancels any in-flight
+  // single-finger pan (pinchRef).
+  const pinchRef = useRef(false);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const dist = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const mid = (a: Touch, b: Touch) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+    let prev: { d: number; m: { x: number; y: number } } | null = null;
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchRef.current = true;
+        drag.current = null; // abandon any pan the first finger began
+        prev = { d: dist(e.touches[0]!, e.touches[1]!), m: mid(e.touches[0]!, e.touches[1]!) };
+        e.preventDefault();
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !prev) return;
+      e.preventDefault();
+      const d = dist(e.touches[0]!, e.touches[1]!);
+      const m = mid(e.touches[0]!, e.touches[1]!);
+      const rect = el.getBoundingClientRect();
+      const px = m.x - rect.left;
+      const py = m.y - rect.top;
+      const ppx = prev.m.x - rect.left;
+      const ppy = prev.m.y - rect.top;
+      const ratio = prev.d > 0 ? d / prev.d : 1;
+      setView((v) => {
+        const z = Math.min(3, Math.max(0.1, v.z * ratio));
+        // The world point under the previous midpoint stays under the new one
+        // (zoom about the pinch) and follows the midpoint's travel (pan).
+        const wx = (ppx - v.x) / v.z;
+        const wy = (ppy - v.y) / v.z;
+        return { z, x: px - wx * z, y: py - wy * z };
+      });
+      prev = { d, m };
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchRef.current = false;
+        prev = null;
+      }
+    };
+    el.addEventListener("touchstart", onStart, { passive: false });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onBgPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
     if (e.target !== e.currentTarget) return;
@@ -513,6 +571,7 @@ export function CanvasView({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: ReactPointerEvent) => {
+    if (pinchRef.current) return;
     if (linking) {
       const p = toCanvas(e.clientX, e.clientY);
       setLinking((l) => (l ? { ...l, x: p.x, y: p.y } : l));

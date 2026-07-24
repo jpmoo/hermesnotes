@@ -44,6 +44,7 @@ const TODAY_KEY = "today_colors";
 const FAVORITES_KEY = "favorites_colors";
 const ALLBLOCKS_KEY = "allblocks_colors";
 const COLLECTIONS_KEY = "collections_colors";
+const TYPES_KEY = "types_colors";
 
 /**
  * Left navigation. Auto-hides to a 56px icon rail. Hovering an empty area of the
@@ -250,14 +251,11 @@ export function Sidebar() {
       <div className="nav-divider" />
       {colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks")}
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
+      {colorRow(TYPES_KEY, "/types", false, Shapes, "Types")}
 
+      {/* Utilities stay anchored at the very bottom, grouped together. */}
       <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />
-
       <div className="nav-divider" />
-      <NavLink to="/types" className="nav-link" title="Block types">
-        <Shapes size={18} />
-        <span className="label">Types</span>
-      </NavLink>
       <button
         className="nav-link"
         title={theme === "dark" ? "Switch to light" : "Switch to dark"}

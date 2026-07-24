@@ -8,7 +8,7 @@ import { QueryBuilder } from "./QueryBuilder.tsx";
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [title, setTitle] = useState("Untitled");
-  const [kind, setKind] = useState<"list" | "document" | "matrix" | "table" | "canvas">("list");
+  const [kind, setKind] = useState<"list" | "document" | "matrix" | "table" | "canvas" | "calendar">("list");
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(2);
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
@@ -82,6 +82,15 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             >
               Canvas
             </button>
+            <button
+              className={`seg${kind === "calendar" ? " active" : ""}`}
+              onClick={() => {
+                setKind("calendar");
+                setMode("smart");
+              }}
+            >
+              Calendar
+            </button>
           </div>
           <div className="hint" style={{ marginTop: 6 }}>
             {kind === "list"
@@ -92,7 +101,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
                   ? "An x/y grid of regions (Eisenhower 2×2, Kanban 3×1…) — drag blocks in from a drawer."
                   : kind === "table"
                     ? "A spreadsheet-style grid: one row per block, property columns you pick, inline editing."
-                    : "An infinite field: drop blocks anywhere, connect them with lines, zoom and pan. Add manually and by query at once."}
+                    : kind === "canvas"
+                      ? "An infinite field: drop blocks anywhere, connect them with lines, zoom and pan. Add manually and by query at once."
+                      : "A month / week / 3-day calendar. A saved query feeds it; cards land on the days their date or datespan fields point to."}
           </div>
         </div>
 

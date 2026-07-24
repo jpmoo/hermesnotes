@@ -21,6 +21,7 @@ import { api, type Block, type BlockType, type Collection, type Member } from ".
 import { BlockIcon } from "../lib/icons.tsx";
 import { oneLineText } from "../lib/display.ts";
 import { FinderModal } from "../components/FinderModal.tsx";
+import { CalendarView } from "../components/CalendarView.tsx";
 import { CanvasView } from "../components/CanvasView.tsx";
 import { MatrixView } from "../components/MatrixView.tsx";
 import { NewItemModal } from "../components/NewItemModal.tsx";
@@ -128,6 +129,7 @@ export function CollectionView() {
   const isMatrix = collection?.collectionKind === "matrix";
   const isTable = collection?.collectionKind === "table";
   const isCanvas = collection?.collectionKind === "canvas";
+  const isCalendar = collection?.collectionKind === "calendar";
   const filterQuery: unknown = collection?.properties.filter_query;
 
   // Reorder a member (manual list order), persisted as membership order.
@@ -178,7 +180,7 @@ export function CollectionView() {
   // Right panel: query editor for smart collections (and canvases — their
   // query feeds the field), the section tool for documents, table tools.
   useEffect(() => {
-    if (!isSmart && !isDocument && !isTable && !isCanvas) {
+    if (!isSmart && !isDocument && !isTable && !isCanvas && !isCalendar) {
       setHasContent(false);
       return;
     }
@@ -186,7 +188,7 @@ export function CollectionView() {
     return () => {
       setHasContent(false);
     };
-  }, [isSmart, isDocument, isTable, isCanvas, setHasContent]);
+  }, [isSmart, isDocument, isTable, isCanvas, isCalendar, setHasContent]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -261,7 +263,7 @@ export function CollectionView() {
       />
 
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
-        {!isDocument && !isMatrix && !isTable && !isCanvas && (
+        {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && (
           <div className="segmented">
             {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
               <button
@@ -274,7 +276,7 @@ export function CollectionView() {
             ))}
           </div>
         )}
-        {!isDynamic && !isMatrix && !isCanvas && (
+        {!isDynamic && !isMatrix && !isCanvas && !isCalendar && (
           <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
             <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
               + Add
@@ -324,7 +326,7 @@ export function CollectionView() {
           </>
         )}
 
-        {!isDocument && !isMatrix && !isTable && !isCanvas && format !== "blocks" && members.length > 0 && (
+        {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && format !== "blocks" && members.length > 0 && (
           <button
             className="ghost"
             style={{ marginLeft: "auto" }}
@@ -339,10 +341,12 @@ export function CollectionView() {
         )}
       </div>
 
-      {!isDocument && !isMatrix && !isTable && !isCanvas && members.length > 0 && sortBar}
+      {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && members.length > 0 && sortBar}
 
       {isMatrix ? (
         <MatrixView collection={collection} members={members} types={types} onChanged={() => void load()} />
+      ) : isCalendar ? (
+        <CalendarView collection={collection} members={members} types={types} onChanged={() => void load()} />
       ) : isCanvas ? (
         <div className="canvas-area">
           <CanvasView collection={collection} members={members} types={types} onChanged={() => void load()} />

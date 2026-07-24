@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   Bell,
   Bookmark,
   Calendar,
@@ -135,6 +136,7 @@ export function CollectionIcon({
   matrix = false,
   table = false,
   canvas = false,
+  calendar = false,
   smart = false,
   size = 16,
   color,
@@ -143,11 +145,14 @@ export function CollectionIcon({
   matrix?: boolean;
   table?: boolean;
   canvas?: boolean;
+  calendar?: boolean;
   smart?: boolean;
   size?: number;
   color?: string | null;
 }) {
-  const Icon = canvas
+  const Icon = calendar
+    ? CalendarDays
+    : canvas
     ? Workflow
     : matrix
     ? LayoutGrid

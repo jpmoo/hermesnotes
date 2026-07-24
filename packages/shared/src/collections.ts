@@ -9,6 +9,7 @@ export const collectionKindSchema = z.enum([
   "table",
   "masonry",
   "canvas",
+  "calendar",
 ]);
 export type CollectionKind = z.infer<typeof collectionKindSchema>;
 

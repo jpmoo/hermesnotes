@@ -26,6 +26,7 @@ const ICON_BY_KIND: Record<string, string> = {
   matrix: "grid-3x3",
   masonry: "layout-grid",
   canvas: "workflow",
+  calendar: "calendar-days",
 };
 
 /** Embed a collection by its own title + description (design doc §4). */
@@ -145,6 +146,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       properties.membership_mode = "explicit";
       properties.canvas_edges = [];
       properties.canvas_notes = [];
+    }
+    if (body.kind === "calendar") {
+      // Smart-fed date view (month/week/3-day). Cards auto-place by their
+      // date/datespan fields; no explicit placement. Default to month.
+      properties.calendar_view = "month";
     }
     if (body.kind === "matrix") {
       // An x/y grid of regions; members are placed via context.region (index,

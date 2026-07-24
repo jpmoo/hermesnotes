@@ -3797,3 +3797,136 @@ input.cv-add-input {
 .canvas-area {
   margin-top: -16px;
 }
+
+/* ── Calendar collection ─────────────────────────────────────── */
+.cal-wrap {
+  margin-bottom: 16px;
+}
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cal-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cal-today-btn {
+  padding: 4px 12px;
+}
+.cal-range {
+  font-family: var(--font-chrome);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+.cal-dow-row {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cal-dow-cell {
+  text-align: center;
+  font-family: var(--font-chrome);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.cal-grid {
+  display: grid;
+  gap: 8px;
+}
+/* Month cells are uniform; week/3-day stretch tall. */
+.cal-grid.cal-month .cal-cell {
+  min-height: 96px;
+}
+.cal-grid.cal-week .cal-cell,
+.cal-grid.cal-day3 .cal-cell {
+  min-height: 420px;
+}
+.cal-cell {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 5px 6px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+.cal-cell.today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.cal-cell.anchor {
+  background: var(--surface-2);
+}
+.cal-cell-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+}
+.cal-dow {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.cal-daynum {
+  font-family: var(--font-chrome);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cal-cell.today .cal-daynum {
+  color: var(--accent);
+}
+.cal-cell-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+.cal-chip:hover {
+  border-color: var(--border-strong);
+}
+.cal-chip .chip-status {
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: inline-flex;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.cal-chip-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-chip-overdue {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}

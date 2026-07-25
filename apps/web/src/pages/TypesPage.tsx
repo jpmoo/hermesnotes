@@ -13,7 +13,7 @@ export function TypesPage() {
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<EditorState>(null);
   const [deleting, setDeleting] = useState<BlockType | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const load = () =>
@@ -60,10 +60,22 @@ export function TypesPage() {
       <h1 className="page-title">Block types</h1>
       <p className="page-sub">Define a type's icon and its fields (the editing form + embedding).</p>
 
-      <div className="row" style={{ marginBottom: 18 }}>
+      <div className="row" style={{ marginBottom: 18, gap: 12 }}>
         <button className="primary" onClick={() => setEditor({ mode: "new" })}>
           + New type
         </button>
+        {types.length > 0 && (
+          <button
+            className="ghost"
+            onClick={() =>
+              setOpenIds((cur) =>
+                cur.size === types.length ? new Set() : new Set(types.map((t) => t.id)),
+              )
+            }
+          >
+            {openIds.size === types.length ? "Collapse all" : "Expand all"}
+          </button>
+        )}
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -76,10 +88,17 @@ export function TypesPage() {
             <div className="card type-row">
               <button
                 className="icon-btn type-handle"
-                title={openId === t.id ? "Hide blocks" : "Show blocks of this type"}
-                onClick={() => setOpenId((cur) => (cur === t.id ? null : t.id))}
+                title={openIds.has(t.id) ? "Hide blocks" : "Show blocks of this type"}
+                onClick={() =>
+                  setOpenIds((cur) => {
+                    const next = new Set(cur);
+                    if (next.has(t.id)) next.delete(t.id);
+                    else next.add(t.id);
+                    return next;
+                  })
+                }
               >
-                {openId === t.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                {openIds.has(t.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </button>
               <span className="icon-preview">
                 <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={20} />
@@ -102,7 +121,7 @@ export function TypesPage() {
                 </button>
               )}
             </div>
-            {openId === t.id && <TypeBlockList type={t} />}
+            {openIds.has(t.id) && <TypeBlockList type={t} />}
           </div>
         ))
       )}

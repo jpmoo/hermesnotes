@@ -2,6 +2,7 @@ import { Download, FileText, Paperclip, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, apiBase, type Attachment } from "../api.ts";
+import { useIsMobile } from "../lib/useIsMobile.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 function humanSize(n: number): string {
@@ -20,6 +21,7 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [confirm, setConfirm] = useState<Attachment | null>(null);
+  const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = () =>
@@ -65,7 +67,13 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         onClick={() => inputRef.current?.click()}
       >
         <Upload size={16} />
-        <span>{busy ? "Uploading…" : "Drop files or click to upload"}</span>
+        <span>
+          {busy
+            ? "Uploading…"
+            : isMobile
+              ? "Add files and images from your device"
+              : "Drop files or click to upload"}
+        </span>
         <input
           ref={inputRef}
           type="file"

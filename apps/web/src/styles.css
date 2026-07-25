@@ -275,8 +275,10 @@ label,
   font-weight: 700;
 }
 /* Icon keeps its own color (independent of text color) unless overridden inline. */
-.nav-row-icon {
+.nav-row-icon,
+.nav-link svg {
   color: var(--text-muted);
+  flex-shrink: 0; /* keep icons full size in the narrow (collapsed) rail */
 }
 .nav-kebab {
   position: relative;

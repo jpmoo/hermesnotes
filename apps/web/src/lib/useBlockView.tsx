@@ -1,6 +1,7 @@
 import {
   DndContext,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -370,7 +371,13 @@ export function useBlockView<T extends Viewable>(
     reportVS({ manual: on, sort: on ? [] : levels });
   };
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Mouse: drag after a small move. Touch: press-and-hold (delay) so a normal
+  // swipe still scrolls the list — a plain pointer sensor hijacked scrolling on
+  // phones, which is why manual sort felt broken there.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+  );
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;

@@ -1209,6 +1209,7 @@ input.collection-title:focus {
   cursor: grab;
   display: inline-flex;
   align-items: center;
+  touch-action: none; /* let the touch sensor own the gesture (no scroll steal) */
 }
 .drag-handle:active {
   cursor: grabbing;
@@ -4529,36 +4530,53 @@ input.cv-add-input {
 }
 
 /* ── Mobile control ergonomics ───────────────────────────────────
-   The sort/view toolbars sit in the info sheet on phones; give them room,
-   bigger touch targets, and stop label text wrapping mid-word. */
+   On phones the sort/view toolbar stacks vertically: each control group is
+   its own full-width row, so nothing is cramped or wrapping mid-word. */
 .app-shell.mobile .sort-bar {
-  gap: 10px;
-  row-gap: 10px;
-  padding: 10px 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
 }
 .app-shell.mobile .sort-bar .segmented {
-  flex: 0 0 auto;
-  max-width: 100%;
+  display: flex;
+  width: 100%;
 }
-.app-shell.mobile .seg {
+.app-shell.mobile .sort-bar .segmented .seg {
+  flex: 1;
   white-space: nowrap;
-  padding: 9px 14px;
+  padding: 10px 8px;
   font-size: 13px;
+  text-align: center;
 }
-.app-shell.mobile .sort-level,
-.app-shell.mobile .cols-ctl {
+.app-shell.mobile .sort-level {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 8px;
   flex-wrap: nowrap;
-  gap: 6px;
 }
 .app-shell.mobile .sort-level select {
+  flex: 1;
   min-width: 0;
 }
 .app-shell.mobile .sort-bar .icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
 }
-/* Give the sheet's portaled tools breathing room from the edges. */
-.app-shell.mobile.m-info-open .right-panel .sort-bar {
-  width: 100%;
+.app-shell.mobile .sort-bar .ghost {
+  padding: 9px 14px;
+}
+.app-shell.mobile .cols-ctl {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.app-shell.mobile .cols-ctl .cols-n {
+  min-width: 20px;
+  text-align: center;
+}
+.app-shell.mobile .sort-label {
+  font-weight: 700;
 }

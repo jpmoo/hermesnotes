@@ -1,6 +1,5 @@
 import { Info, PanelRight, Pin, PinOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
 
@@ -27,13 +26,39 @@ export function RightPanel() {
     openBlock,
     clearSelection,
   } = usePanels();
-  const { active: hovered, setActive: setHovered, onMouseEnter, onMouseLeave } = useHoverIntent();
-
-  // Unpinned, the hover grace alone isn't enough: a drag that strays outside
-  // (layout reordering) or typing while the mouse wanders would collapse the
-  // panel mid-interaction. Hold it open while a pointer interaction started
-  // inside it is ongoing, or while focus is inside it.
   const asideRef = useRef<HTMLElement>(null);
+
+  // Keep-open is driven by the pointer's geometry, not mouseenter/leave — the
+  // latter misfired with the panel's width transition and portaled content
+  // (e.g. the Today calendar), collapsing the panel while the cursor was still
+  // over it. `over` = pointer within the panel's rect (+ a small left grace),
+  // with a short leave delay.
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    let leave: ReturnType<typeof setTimeout> | undefined;
+    const onMove = (e: PointerEvent) => {
+      const el = asideRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const inside =
+        e.clientX >= r.left - 10 && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      if (inside) {
+        clearTimeout(leave);
+        setOver(true);
+      } else {
+        clearTimeout(leave);
+        leave = setTimeout(() => setOver(false), 240);
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      clearTimeout(leave);
+    };
+  }, []);
+
+  // Also hold open while a pointer interaction started inside it is ongoing, or
+  // while focus is inside it (drags that stray outside, typing in the builder).
   const [holdOpen, setHoldOpen] = useState(false);
   useEffect(() => {
     const el = asideRef.current;
@@ -62,16 +87,11 @@ export function RightPanel() {
     };
   }, []);
 
-  const expanded = rightPinned || hovered || holdOpen;
+  const expanded = rightPinned || over || holdOpen;
   const showInfo = selectedBlockId !== null;
 
   return (
-    <aside
-      ref={asideRef}
-      className={`right-panel${expanded ? " expanded" : ""}`}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+    <aside ref={asideRef} className={`right-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-rail-icon" title="Info">
         {hasContent || showInfo ? <Info size={18} /> : <PanelRight size={18} />}
       </div>
@@ -84,7 +104,7 @@ export function RightPanel() {
             onClick={() => {
               if (rightPinned) {
                 setRightPinned(false);
-                setHovered(false); // collapse to the rail on unpin
+                setOver(false); // collapse to the rail on unpin
               } else {
                 setRightPinned(true);
               }

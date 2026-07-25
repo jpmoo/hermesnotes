@@ -4447,6 +4447,24 @@ input.cv-add-input {
   position: relative;
   z-index: 1;
 }
+.app-shell.has-bg .main .page-title {
+  color: var(--bg-title, var(--text));
+  text-shadow: 0 1px 3px var(--bg-title-shadow, transparent);
+}
+.app-shell.has-bg .main .page-title svg {
+  color: var(--bg-title, currentColor);
+  stroke: var(--bg-title, currentColor);
+}
+.app-shell.has-bg .main .page-sub,
+/* Other text that sits directly on the background (not inside a card):
+   empty states, "N of M" counts, Today section headers. */
+.app-shell.has-bg .main-inner > .hint,
+.app-shell.has-bg .main-inner > .row > .hint,
+.app-shell.has-bg .main .today-h {
+  color: var(--bg-title, var(--text-muted));
+  opacity: 0.9;
+  text-shadow: 0 1px 3px var(--bg-title-shadow, transparent);
+}
 
 /* Background settings card bits. */
 .bg-opt {

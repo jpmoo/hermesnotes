@@ -9,6 +9,7 @@ export function BackgroundSettings() {
   const useBanner = Boolean(prefs.bg_use_banner);
   const animate = Boolean(prefs.bg_animate);
   const scanlines = Boolean(prefs.bg_scanlines);
+  const blur = Math.max(0, Math.min(40, Number(prefs.bg_blur) || 0));
   const fallback = prefs.bg_fallback as BannerValue | null | undefined;
 
   const check = (key: string, checked: boolean, label: string, hint?: string) => (
@@ -33,6 +34,18 @@ export function BackgroundSettings() {
       {check("bg_use_banner", useBanner, "Use the page's banner as the background", "on landing pages that have a banner; zoomed to fill")}
       {check("bg_animate", animate, "Animate the background", "drifts very slowly in shifting directions")}
       {check("bg_scanlines", scanlines, "Scanline overlay", "faint CRT-style horizontal lines")}
+
+      <div className="field" style={{ marginTop: 10 }}>
+        <span className="field-label">Blur — {blur}px</span>
+        <input
+          type="range"
+          min={0}
+          max={40}
+          value={blur}
+          onChange={(e) => setPref("bg_blur", Number(e.target.value))}
+          style={{ width: "100%" }}
+        />
+      </div>
 
       <div className="field" style={{ marginTop: 14 }}>
         <span className="field-label">Fallback image</span>

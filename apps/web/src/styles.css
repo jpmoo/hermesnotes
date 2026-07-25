@@ -3680,6 +3680,9 @@ textarea.cv-eph-panel {
   display: inline-block;
   max-width: 100%;
   line-height: 0;
+  /* Anchor the image to the top of the line so a tall image flows DOWN, not
+     up and off the top of the note (esp. on narrow/mobile widths). */
+  vertical-align: top;
 }
 .md-img img {
   max-width: 100%;

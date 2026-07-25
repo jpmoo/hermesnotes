@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { apiBase } from "../api.ts";
+import { LINE_SWAP_META } from "./active-line-source.ts";
 
 /**
  * Inline image node for the markdown surfaces. Serializes as
@@ -103,6 +104,10 @@ export const MdImage = Node.create({
             editor.commands.command(({ tr }) => {
               const n = tr.doc.nodeAt(pos);
               if (n?.type.name === "mdImage") tr.setNodeMarkup(pos, undefined, { ...n.attrs, width: w });
+              // Don't let the active-line extension turn the image's line into
+              // raw markdown just because it changed.
+              tr.setMeta(LINE_SWAP_META, true);
+              tr.setMeta("addToHistory", true);
               return true;
             });
           }

@@ -35,7 +35,8 @@ export const SourceBlock = Node.create({
 });
 
 const KEY = new PluginKey("activeLineSource");
-const META = "lineSourceSwap";
+export const LINE_SWAP_META = "lineSourceSwap";
+const META = LINE_SWAP_META;
 const SOURCEABLE = new Set(["paragraph", "heading"]);
 
 type MdStorage = {

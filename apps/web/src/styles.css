@@ -4643,3 +4643,20 @@ input.cv-add-input {
   border-radius: 0 0 11px 11px;
   border-top: none;
 }
+
+/* Favorites section headers: centered horizontally, items vertically centered
+   (so Collapse-all sits centered next to the taller options bar). */
+.fav-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+/* A little more breathing room between the collections strip and the blocks. */
+.fav-blocks-head {
+  margin-top: 26px;
+}
+.fav-section-head .sort-bar-shell {
+  flex: 0 1 auto;
+}

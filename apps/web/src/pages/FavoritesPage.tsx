@@ -208,7 +208,7 @@ export function FavoritesPage() {
       <p className="page-sub">Starred blocks and collections (star them in the info panel).</p>
 
       {collections.length > 0 && (
-        <div className="row" style={{ marginBottom: 10, gap: 12 }}>
+        <div className="row fav-section-head">
           <span className="sort-label">Collections</span>
           {collections.length > 1 && (
             <div className="sort-bar-shell">
@@ -310,7 +310,7 @@ export function FavoritesPage() {
       )}
 
       {plain.length > 0 && (
-        <div className="row" style={{ marginBottom: 10, gap: 12 }}>
+        <div className="row fav-section-head fav-blocks-head">
           <span className="sort-label">Blocks</span>
           {toolbar}
           {viewMode !== "chips" && (

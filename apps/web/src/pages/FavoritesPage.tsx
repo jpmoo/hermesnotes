@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, Star } from "lucide-react";
+import { ChevronDown, ChevronUp, SlidersHorizontal, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
@@ -21,6 +21,7 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
+import { useIsMobile } from "../lib/useIsMobile.ts";
 
 /**
  * Starred blocks and collections. Same sort/view controls as All blocks
@@ -85,6 +86,8 @@ export function FavoritesPage() {
 
   // Strip sort: same options as everywhere (manual = the favorites order,
   // synced via preferences; drag chips to arrange).
+  const isMobile = useIsMobile();
+  const [stripToolsOpen, setStripToolsOpen] = useState(false);
   const [stripSort, setStripSort] = useState<StripSort>(() => {
     try {
       const v = localStorage.getItem(STRIP_SORT_KEY);
@@ -208,7 +211,20 @@ export function FavoritesPage() {
         <div className="row" style={{ marginBottom: 10, gap: 12 }}>
           <span className="sort-label">Collections</span>
           {collections.length > 1 && (
-            <div className="sort-bar" style={{ marginBottom: 0 }}>
+            <div className="sort-bar-shell">
+              {isMobile && (
+                <button
+                  className="sort-bar-toggle"
+                  onClick={() => setStripToolsOpen((o) => !o)}
+                  aria-expanded={stripToolsOpen}
+                >
+                  <SlidersHorizontal size={14} />
+                  <span>Sort &amp; view</span>
+                  {stripToolsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                </button>
+              )}
+              {(!isMobile || stripToolsOpen) && (
+                <div className="sort-bar" style={{ marginBottom: 0 }}>
               <div className="segmented">
                 {(
                   [
@@ -243,6 +259,8 @@ export function FavoritesPage() {
                   +
                 </button>
               </span>
+                </div>
+              )}
             </div>
           )}
         </div>

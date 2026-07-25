@@ -401,17 +401,17 @@ export function useBlockView<T extends Viewable>(
             className={`seg${manualMode ? " active" : ""}`}
             onClick={() => chooseManual(true)}
           >
-            Manual Sort
+            Manual sort
           </button>
           <button
             className={`seg${!manualMode ? " active" : ""}`}
             onClick={() => chooseManual(false)}
           >
-            Properties Sort
+            Properties sort
           </button>
         </div>
       ) : (
-        <span className="sort-label">Sort</span>
+        <span className="sort-label">sort</span>
       )}
 
       {manualMode ? (
@@ -444,7 +444,7 @@ export function useBlockView<T extends Viewable>(
             </span>
           ))}
           <button className="ghost sort-add" onClick={addLevel}>
-            {levels.length > 0 ? "+ level" : "+ Sort"}
+            {levels.length > 0 ? "+ level" : "+ sort"}
           </button>
           {levels.length > 0 && (
             <button className="ghost" onClick={() => applyLevels([])} title="Clear sort">

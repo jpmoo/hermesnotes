@@ -450,7 +450,7 @@ export function TableView({
                     <span className="tv-th">
                       <span className="tv-th-label">{labelOf(key)}</span>
                       {si >= 0 && (
-                        <span className="tv-sort-badge" title={`Sort level ${si + 1}`}>
+                        <span className="tv-sort-badge" title={`sort level ${si + 1}`}>
                           {sort[si]!.dir === "asc" ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
                           {sort.length > 1 && <span>{si + 1}</span>}
                         </span>

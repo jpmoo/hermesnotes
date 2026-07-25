@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useSetRouteBanner } from "../lib/route-banner.tsx";
 
 /** Full-page view of a single block. */
 export function BlockPage() {
@@ -39,6 +40,8 @@ export function BlockPage() {
     if (id && selRef.current !== id) selectBlock(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useSetRouteBanner(block ? (block.properties as Record<string, unknown>).banner : null);
 
   if (loading) return <div className="hint">Loading…</div>;
   if (gone || !block) return <div className="hint">Block not found.</div>;

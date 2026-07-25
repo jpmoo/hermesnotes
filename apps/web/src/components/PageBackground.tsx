@@ -2,6 +2,7 @@ import { useLocation } from "react-router-dom";
 import { apiBase } from "../api.ts";
 import type { BannerValue } from "./Banner.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
+import { useRouteBanner } from "../lib/route-banner.tsx";
 
 /** Which landing-page banner key backs a given route (null = not a landing). */
 function bannerKeyForPath(path: string): string | null {
@@ -23,12 +24,15 @@ export function PageBackground() {
   const { prefs, banner } = usePreferences();
   const { pathname } = useLocation();
 
+  const routeBanner = useRouteBanner() as BannerValue | null;
+  const isEntity =
+    pathname.startsWith("/block/") ||
+    (pathname.startsWith("/collections/") && pathname !== "/collections");
   const key = bannerKeyForPath(pathname);
-  const pageBanner = key ? (banner(key) as BannerValue | null) : null;
+  const pageBanner = isEntity ? routeBanner : key ? (banner(key) as BannerValue | null) : null;
   const fallback = prefs.bg_fallback as BannerValue | null | undefined;
 
-  const active =
-    prefs.bg_use_banner && pageBanner ? pageBanner : (fallback ?? null);
+  const active = (prefs.bg_use_banner ? pageBanner : null) ?? fallback ?? null;
   if (!active?.id) return null;
 
   const cls =
@@ -49,8 +53,12 @@ export function PageBackground() {
 export function useHasPageBackground(): boolean {
   const { prefs, banner } = usePreferences();
   const { pathname } = useLocation();
+  const routeBanner = useRouteBanner() as BannerValue | null;
+  const isEntity =
+    pathname.startsWith("/block/") ||
+    (pathname.startsWith("/collections/") && pathname !== "/collections");
   const key = bannerKeyForPath(pathname);
-  const pageBanner = key ? (banner(key) as BannerValue | null) : null;
+  const pageBanner = isEntity ? routeBanner : key ? (banner(key) as BannerValue | null) : null;
   const fallback = prefs.bg_fallback as BannerValue | null | undefined;
   return Boolean((prefs.bg_use_banner && pageBanner?.id) || fallback?.id);
 }

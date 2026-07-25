@@ -4,6 +4,7 @@ import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { NavBar } from "./components/NavBar.tsx";
 import { PageBackground, useHasPageBackground } from "./components/PageBackground.tsx";
+import { RouteBannerProvider } from "./lib/route-banner.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { useIsMobile } from "./lib/useIsMobile.ts";
 import { MobileBar } from "./components/MobileBar.tsx";
@@ -30,7 +31,9 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
   return (
     <PreferencesProvider>
       <PanelsProvider>
-        <Shell />
+        <RouteBannerProvider>
+          <Shell />
+        </RouteBannerProvider>
       </PanelsProvider>
     </PreferencesProvider>
   );

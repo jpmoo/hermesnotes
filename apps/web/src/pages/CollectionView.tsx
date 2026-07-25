@@ -34,6 +34,7 @@ import { SectionLayout, type SectionEntry } from "../components/SectionLayout.ts
 import { TableView } from "../components/TableView.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useSetRouteBanner } from "../lib/route-banner.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 
 /** A draggable document section row (a full card with a grip handle). */
@@ -249,6 +250,8 @@ export function CollectionView() {
       "Item",
     removable: true,
   }));
+
+  useSetRouteBanner(collection ? (collection.properties as Record<string, unknown>).banner : null);
 
   if (loading) return <div className="hint">Loading…</div>;
   if (!collection) return <div className="hint">Collection not found.</div>;

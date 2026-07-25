@@ -4662,3 +4662,14 @@ input.cv-add-input {
   flex: 0 1 auto;
   margin-bottom: 0; /* don't offset the bar's vertical center from the row */
 }
+
+
+/* Mobile: the section header wraps (label / toolbar / collapse each on a
+   line); tighten the row gap so the expand/collapse link rides up. */
+.app-shell.mobile .fav-section-head {
+  row-gap: 4px;
+  gap: 8px;
+}
+.app-shell.mobile .fav-blocks-head {
+  margin-top: 16px;
+}

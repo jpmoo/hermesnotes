@@ -4644,12 +4644,13 @@ input.cv-add-input {
   border-top: none;
 }
 
-/* Favorites section headers: centered horizontally, items vertically centered
-   (so Collapse-all sits centered next to the taller options bar). */
+/* Favorites section headers: label left-justified, everything vertically
+   centered on one line (a horizontal centerline runs through the label, the
+   options bar, and Collapse-all). */
 .fav-section-head {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 12px;
   margin-bottom: 10px;
 }
@@ -4659,4 +4660,5 @@ input.cv-add-input {
 }
 .fav-section-head .sort-bar-shell {
   flex: 0 1 auto;
+  margin-bottom: 0; /* don't offset the bar's vertical center from the row */
 }

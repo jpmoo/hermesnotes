@@ -4435,9 +4435,13 @@ input.cv-add-input {
     animation: none;
   }
 }
-/* Reveal the background: main goes transparent, content sits above it. */
+/* Reveal the background: main goes transparent but stays a stacking context
+   ABOVE the page-bg, so the themed color band (.section-shade) still shows at
+   the top over the image. */
 .app-shell.has-bg .main {
   background: transparent;
+  position: relative;
+  z-index: 1;
 }
 .app-shell.has-bg .main-inner {
   position: relative;

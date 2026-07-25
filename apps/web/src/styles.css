@@ -214,11 +214,10 @@ label,
 .sidebar:not(.expanded) .panel-pin {
   display: none;
 }
-/* In the rail, stack the logo and the expand (pin) button. */
+/* Keep the header the same height (40px) collapsed as expanded so the nav
+   rows below don't shift when the rail opens (the pin is hidden collapsed). */
 .sidebar:not(.expanded) .sidebar-head {
-  flex-direction: column;
-  align-items: flex-start;
-  height: auto;
+  height: 40px;
   gap: 8px;
 }
 .nav-divider {

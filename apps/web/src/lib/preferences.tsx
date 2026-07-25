@@ -61,6 +61,13 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     }
     document.documentElement.dataset.theme = t;
   };
+  // Panel transparency (0 = opaque … 100 = clear) → --panel-alpha on :root,
+  // which the sidebar/right-panel backgrounds mix with transparent.
+  useEffect(() => {
+    const t = Math.max(0, Math.min(100, Number(prefs.panel_transparency) || 0));
+    document.documentElement.style.setProperty("--panel-alpha", String(1 - t / 100));
+  }, [prefs.panel_transparency]);
+
   // Apply the synced theme once prefs load (and keep localStorage in step for
   // the next no-flash boot).
   useEffect(() => {

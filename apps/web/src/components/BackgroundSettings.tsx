@@ -10,6 +10,7 @@ export function BackgroundSettings() {
   const animate = Boolean(prefs.bg_animate);
   const scanlines = Boolean(prefs.bg_scanlines);
   const blur = Math.max(0, Math.min(40, Number(prefs.bg_blur) || 0));
+  const panelT = Math.max(0, Math.min(100, Number(prefs.panel_transparency) || 0));
   const fallback = prefs.bg_fallback as BannerValue | null | undefined;
 
   const check = (key: string, checked: boolean, label: string, hint?: string) => (
@@ -43,6 +44,21 @@ export function BackgroundSettings() {
           max={40}
           value={blur}
           onChange={(e) => setPref("bg_blur", Number(e.target.value))}
+          style={{ width: "100%" }}
+        />
+      </div>
+
+      <div className="field" style={{ marginTop: 10 }}>
+        <span className="field-label">Panel transparency — {panelT}%</span>
+        <p className="hint" style={{ marginBottom: 6 }}>
+          Let the background show through the left and right panels.
+        </p>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={panelT}
+          onChange={(e) => setPref("panel_transparency", Number(e.target.value))}
           style={{ width: "100%" }}
         />
       </div>

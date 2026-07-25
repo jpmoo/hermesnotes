@@ -4,6 +4,7 @@
    per-type icon accents and small semantic pills. */
 
 :root {
+  --panel-alpha: 1;
   --font-body: Verdana, Geneva, sans-serif;
   --font-chrome: Tahoma, Geneva, Verdana, sans-serif;
 
@@ -139,7 +140,7 @@ label,
   bottom: 0;
   z-index: 40;
   width: 420px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) calc(var(--panel-alpha) * 100%), transparent);
   border-left: 1px solid var(--border);
   padding: 18px 16px;
   overflow-y: auto;
@@ -190,7 +191,7 @@ label,
   bottom: 0;
   z-index: 40;
   width: 232px;
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) calc(var(--panel-alpha) * 100%), transparent);
   border-right: 1px solid var(--border);
   /* Same padding in both states so the logo/icons don't shift on expand —
      only the width animates. */

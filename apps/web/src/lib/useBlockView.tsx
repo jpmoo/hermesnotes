@@ -21,6 +21,7 @@ import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
 import { BlockIcon } from "./icons.tsx";
 import { usePanels } from "./right-panel.tsx";
+import { useIsMobile } from "./useIsMobile.ts";
 
 /** Minimal shape a viewable block must expose. Both Block and Member satisfy it. */
 interface Viewable {
@@ -254,19 +255,30 @@ export function useBlockView<T extends Viewable>(
   function manualMode0(): boolean {
     return manualModeState && manualAvailable;
   }
-  const clampCols = (n: number) => Math.min(4, Math.max(2, n || 3));
-  const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(COLS_KEY))));
+  const isMobile = useIsMobile();
+  // Columns persist separately for mobile vs desktop; phones may go to 1.
+  const colsKey = isMobile ? `${COLS_KEY}.m` : COLS_KEY;
+  const chipColsKey = isMobile ? `${CHIP_COLS_KEY}.m` : CHIP_COLS_KEY;
+  const clampCols = (n: number) =>
+    isMobile ? Math.min(3, Math.max(1, n || 1)) : Math.min(4, Math.max(2, n || 3));
+  const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(colsKey))));
   // Chips are compact, so they take a wider range; the grid stretches them to
   // fill the content width whatever the panels leave available.
   const clampChipCols = (n: number) => Math.min(10, Math.max(1, n || 4));
   const [chipCols, setChipColsState] = useState<number>(() =>
-    clampChipCols(Number(readLS(CHIP_COLS_KEY))),
+    clampChipCols(Number(readLS(chipColsKey))),
   );
   const setChipCols = (n: number) => {
     const c = clampChipCols(n);
     setChipColsState(c);
-    writeLS(CHIP_COLS_KEY, String(c));
+    writeLS(chipColsKey, String(c));
   };
+  // Re-read the device-appropriate column counts when crossing the breakpoint.
+  useEffect(() => {
+    setColumnsState(clampCols(Number(readLS(colsKey))));
+    setChipColsState(clampChipCols(Number(readLS(chipColsKey))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
 
   const setViewMode = (v: ViewMode) => {
     setViewModeState(v);
@@ -276,7 +288,7 @@ export function useBlockView<T extends Viewable>(
   const setColumns = (n: number) => {
     const c = clampCols(n);
     setColumnsState(c);
-    writeLS(COLS_KEY, String(c));
+    writeLS(colsKey, String(c));
   };
   const setManualMode = (on: boolean) => {
     setManualModeState(on);

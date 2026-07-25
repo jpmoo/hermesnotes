@@ -7,7 +7,8 @@ import "./styles.css";
 
 // Apply the saved theme before first paint to avoid a flash.
 try {
-  const t = localStorage.getItem("hn.theme");
+  const mobile = window.matchMedia("(max-width: 720px)").matches;
+  const t = localStorage.getItem(mobile ? "hn.theme.mobile" : "hn.theme");
   if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
 } catch {
   /* ignore */

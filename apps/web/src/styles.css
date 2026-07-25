@@ -4526,3 +4526,38 @@ input.cv-add-input {
 .md-img.ProseMirror-selectednode {
   margin-bottom: 34px;
 }
+
+/* ── Mobile control ergonomics ───────────────────────────────────
+   The sort/view toolbars sit in the info sheet on phones; give them room,
+   bigger touch targets, and stop label text wrapping mid-word. */
+.app-shell.mobile .sort-bar {
+  gap: 10px;
+  row-gap: 10px;
+  padding: 10px 12px;
+}
+.app-shell.mobile .sort-bar .segmented {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+.app-shell.mobile .seg {
+  white-space: nowrap;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+.app-shell.mobile .sort-level,
+.app-shell.mobile .cols-ctl {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.app-shell.mobile .sort-level select {
+  min-width: 0;
+}
+.app-shell.mobile .sort-bar .icon-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+/* Give the sheet's portaled tools breathing room from the edges. */
+.app-shell.mobile.m-info-open .right-panel .sort-bar {
+  width: 100%;
+}

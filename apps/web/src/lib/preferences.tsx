@@ -25,6 +25,14 @@ interface PreferencesApi {
 const Ctx = createContext<PreferencesApi | null>(null);
 
 /** Server-side UI preferences (nav colors, etc.), loaded once and shared. */
+const isMobileViewport = () => {
+  try {
+    return window.matchMedia("(max-width: 720px)").matches;
+  } catch {
+    return false;
+  }
+};
+
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<Record<string, unknown>>({});
 
@@ -51,11 +59,15 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   const setBanner = (key: string, value: unknown) =>
     setPref("banners", { ...banners, [key]: value ?? undefined });
 
-  const theme: "light" | "dark" = prefs.theme === "dark" ? "dark" : "light";
+  // Theme persists separately for mobile vs desktop (both synced): a phone can
+  // be dark while the desktop stays light.
+  const themeKey = isMobileViewport() ? "theme_mobile" : "theme";
+  const lsThemeKey = isMobileViewport() ? "hn.theme.mobile" : "hn.theme";
+  const theme: "light" | "dark" = prefs[themeKey] === "dark" ? "dark" : "light";
   const setTheme = (t: "light" | "dark") => {
-    setPref("theme", t);
+    setPref(themeKey, t);
     try {
-      localStorage.setItem("hn.theme", t);
+      localStorage.setItem(lsThemeKey, t);
     } catch {
       /* ignore */
     }
@@ -69,17 +81,19 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   }, [prefs.panel_transparency]);
 
   // Apply the synced theme once prefs load (and keep localStorage in step for
-  // the next no-flash boot).
+  // the next no-flash boot). Keyed by device type.
   useEffect(() => {
-    if (prefs.theme === "dark" || prefs.theme === "light") {
-      document.documentElement.dataset.theme = prefs.theme;
+    const v = prefs[themeKey];
+    if (v === "dark" || v === "light") {
+      document.documentElement.dataset.theme = v;
       try {
-        localStorage.setItem("hn.theme", prefs.theme);
+        localStorage.setItem(lsThemeKey, v);
       } catch {
         /* ignore */
       }
     }
-  }, [prefs.theme]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefs[themeKey], themeKey]);
 
   return (
     <Ctx.Provider

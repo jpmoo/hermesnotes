@@ -4490,29 +4490,34 @@ input.cv-add-input {
 .md-img-presets {
   position: absolute;
   left: 0;
-  bottom: -26px;
+  top: 100%; /* flush under the image — no gap to lose :hover across */
+  padding-top: 7px; /* hover bridge from image to buttons (part of .md-img) */
   display: none;
-  gap: 4px;
-  z-index: 3;
+  gap: 5px;
+  z-index: 4;
 }
 .md-img:hover .md-img-presets,
 .md-img.ProseMirror-selectednode .md-img-presets {
   display: flex;
 }
 .md-img-presets button {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: var(--surface);
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 2px 8px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 12px;
   border-radius: 999px;
   line-height: 1.4;
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
 }
 .md-img-presets button:hover {
-  background: var(--surface-2);
-  color: var(--text);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
 }
-/* Give a selected image room for the preset row below it. */
+/* Reserve room below only when selected (presets are then persistent); on
+   hover they may briefly overlap the next line, which is fine. */
 .md-img.ProseMirror-selectednode {
-  margin-bottom: 26px;
+  margin-bottom: 34px;
 }

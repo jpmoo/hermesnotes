@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
+import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -358,6 +359,9 @@ export function SettingsPage() {
       {status && <div className="hint" style={{ marginTop: 10 }}>{status}</div>}
       {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}
 
+      <div style={{ marginTop: 24 }}>
+        <BackgroundSettings />
+      </div>
       <div style={{ marginTop: 24 }}>
         <AccessKeys />
       </div>

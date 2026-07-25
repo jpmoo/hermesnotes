@@ -4388,3 +4388,77 @@ input.cv-add-input {
   background: linear-gradient(transparent, var(--surface));
   pointer-events: none;
 }
+
+/* ── Page background image (Settings → Background image) ──────────
+   A fixed layer behind content; the shell makes the main surface
+   transparent so it shows through the gaps between cards. */
+.page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.page-bg-img {
+  position: absolute;
+  inset: -8%; /* room for the zoom + drift without exposing edges */
+  background-size: cover;
+  background-position: center;
+  transform: scale(1.15);
+}
+.page-bg.anim .page-bg-img {
+  animation: bgDrift 90s ease-in-out infinite;
+}
+@keyframes bgDrift {
+  0% { transform: scale(1.15) translate(0, 0); }
+  20% { transform: scale(1.15) translate(-1.6%, 1.1%); }
+  40% { transform: scale(1.15) translate(1.2%, -1.4%); }
+  60% { transform: scale(1.15) translate(-1%, -1.2%); }
+  80% { transform: scale(1.15) translate(1.5%, 1.3%); }
+  100% { transform: scale(1.15) translate(0, 0); }
+}
+.page-bg.scan::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.16) 0,
+    rgba(0, 0, 0, 0.16) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-bg.anim .page-bg-img {
+    animation: none;
+  }
+}
+/* Reveal the background: main goes transparent, content sits above it. */
+.app-shell.has-bg .main {
+  background: transparent;
+}
+.app-shell.has-bg .main-inner {
+  position: relative;
+  z-index: 1;
+}
+
+/* Background settings card bits. */
+.bg-opt {
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: flex-start;
+}
+.bg-opt-hint {
+  font-weight: 400;
+}
+.bg-fallback-thumb {
+  width: 64px;
+  height: 40px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+}

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { NavBar } from "./components/NavBar.tsx";
+import { PageBackground, useHasPageBackground } from "./components/PageBackground.tsx";
 import { RightPanel } from "./components/RightPanel.tsx";
 import { useIsMobile } from "./lib/useIsMobile.ts";
 import { MobileBar } from "./components/MobileBar.tsx";
@@ -49,6 +50,7 @@ function Shell() {
   const { colors } = usePreferences();
   const { pathname } = useLocation();
   const isMobile = useIsMobile();
+  const hasBg = useHasPageBackground();
   const [navOpen, setNavOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   // Any navigation dismisses the mobile overlays.
@@ -69,10 +71,12 @@ function Shell() {
     `app-shell${leftPinned ? " left-pinned" : ""}${rightPinned ? " right-pinned" : ""}` +
     (isMobile ? " mobile" : "") +
     (isMobile && navOpen ? " m-nav-open" : "") +
-    (isMobile && infoOpen ? " m-info-open" : "");
+    (isMobile && infoOpen ? " m-info-open" : "") +
+    (hasBg ? " has-bg" : "");
 
   return (
     <div className={shellClass}>
+      <PageBackground />
       {isMobile && (
         <MobileBar
           navOpen={navOpen}

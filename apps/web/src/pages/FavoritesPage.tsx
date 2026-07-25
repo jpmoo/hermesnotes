@@ -372,7 +372,7 @@ export function FavoritesPage() {
               </button>
               {col ? (
                 // Masonry keeps a small banner slice; block view is one line.
-                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} masonry={compact} />
+                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
               ) : (
                 <BlockCard
                   block={b}

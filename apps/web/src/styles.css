@@ -4353,6 +4353,11 @@ input.cv-add-input {
   background: var(--surface);
   overflow: hidden;
   cursor: pointer;
+  margin-bottom: 12px; /* match .card spacing in the block stack */
+}
+/* Masonry columns space with their own gap — no doubled margin there. */
+.masonry-col .blk-collapsed-card {
+  margin-bottom: 0;
 }
 .blk-collapsed-card:hover {
   border-color: var(--border-strong);

@@ -54,7 +54,7 @@ export function CollapsibleCard({
         {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
       </button>
       {collapsed ? (
-        <CollapsedRow block={block} type={type} masonry={compact} />
+        <CollapsedRow block={block} type={type} />
       ) : (
         <BlockCard
           block={block}

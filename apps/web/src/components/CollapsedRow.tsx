@@ -9,11 +9,9 @@ import { Banner, type BannerValue } from "./Banner.tsx";
 export function CollapsedRow({
   block,
   type,
-  masonry = false,
 }: {
   block: Block;
   type: BlockType | undefined;
-  masonry?: boolean;
 }) {
   const { selectBlock } = usePanels();
   const isText = !type || type.isText;
@@ -30,8 +28,9 @@ export function CollapsedRow({
       </span>
     </div>
   );
-  // A collapsed block with a banner shows a slice on top, title below — in
-  // both block view and masonry.
+  // Uniform collapsed card in every view: with a banner → slice on top, title
+  // below; without → title on top, a preview of the note below. Same height
+  // either way.
   if (banner) {
     return (
       <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
@@ -40,17 +39,12 @@ export function CollapsedRow({
       </div>
     );
   }
-  // Masonry (no banner) keeps a uniform height: title on top, note preview
-  // below. Block view (no banner) is just the one-line title.
-  if (masonry) {
-    return (
-      <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
-        {row}
-        <div className="blk-collapsed-preview">{previewOf(block, isText)}</div>
-      </div>
-    );
-  }
-  return row;
+  return (
+    <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
+      {row}
+      <div className="blk-collapsed-preview">{previewOf(block, isText)}</div>
+    </div>
+  );
 }
 
 /** Plain-text preview of a block's body (everything after the title line for a

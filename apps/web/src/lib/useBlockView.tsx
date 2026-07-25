@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FieldDef } from "@hermes/shared";
-import { GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
@@ -378,6 +378,8 @@ export function useBlockView<T extends Viewable>(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
+  // On phones the sort/view controls collapse behind a handle to save space.
+  const [toolsOpen, setToolsOpen] = useState(false);
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -400,7 +402,7 @@ export function useBlockView<T extends Viewable>(
     { key: "chips", label: "Chips" },
   ];
 
-  const toolbar = (
+  const sortBar = (
     <div className="sort-bar">
       {manualAvailable ? (
         <div className="segmented">
@@ -496,6 +498,23 @@ export function useBlockView<T extends Viewable>(
           )}
         </span>
       )}
+    </div>
+  );
+
+  const toolbar = (
+    <div className="sort-bar-shell">
+      {isMobile && (
+        <button
+          className="sort-bar-toggle"
+          onClick={() => setToolsOpen((o) => !o)}
+          aria-expanded={toolsOpen}
+        >
+          <SlidersHorizontal size={14} />
+          <span>Sort &amp; view</span>
+          {toolsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+      )}
+      {(!isMobile || toolsOpen) && sortBar}
     </div>
   );
 

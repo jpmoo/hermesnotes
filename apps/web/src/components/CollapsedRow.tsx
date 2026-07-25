@@ -30,17 +30,19 @@ export function CollapsedRow({
       </span>
     </div>
   );
-  // Masonry collapsed cards share one height. With a banner: the slice sits
-  // on top, title below. Without: title on top, a preview of the rest below.
+  // A collapsed block with a banner shows a slice on top, title below — in
+  // both block view and masonry.
+  if (banner) {
+    return (
+      <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
+        <Banner value={banner} height={56} className="banner-slice collapsed" />
+        {row}
+      </div>
+    );
+  }
+  // Masonry (no banner) keeps a uniform height: title on top, note preview
+  // below. Block view (no banner) is just the one-line title.
   if (masonry) {
-    if (banner) {
-      return (
-        <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
-          <Banner value={banner} height={56} className="banner-slice collapsed" />
-          {row}
-        </div>
-      );
-    }
     return (
       <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
         {row}

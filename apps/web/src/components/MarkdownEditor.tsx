@@ -5,7 +5,7 @@ import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { api, type Attachment } from "../api.ts";
-import { MdImage } from "../lib/image-node.ts";
+import { IMG_SMALL, MdImage } from "../lib/image-node.ts";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
@@ -108,6 +108,7 @@ export function MarkdownEditor({
               const node = view.state.schema.nodes.mdImage!.create({
                 src: `attachment:${att.id}`,
                 alt: att.filename.replace(/\.[a-z0-9]+$/i, ""),
+                width: IMG_SMALL,
               });
               view.dispatch(view.state.tr.replaceSelectionWith(node));
             }
@@ -232,7 +233,11 @@ export function MarkdownEditor({
                       .focus()
                       .insertContent({
                         type: "mdImage",
-                        attrs: { src: `attachment:${a.id}`, alt: a.filename.replace(/\.[a-z0-9]+$/i, "") },
+                        attrs: {
+                          src: `attachment:${a.id}`,
+                          alt: a.filename.replace(/\.[a-z0-9]+$/i, ""),
+                          width: IMG_SMALL,
+                        },
                       })
                       .run();
                     setImgMenu(null);

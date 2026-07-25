@@ -5,12 +5,17 @@ import { LINE_SWAP_META } from "./active-line-source.ts";
 
 /**
  * Inline image node for the markdown surfaces. Serializes as
- * `![alt|width](src)` (Obsidian-style width suffix), where src is either a
- * web URL or `attachment:<id>` — resolved to the attachments endpoint at
- * render time so saved markdown stays host-independent. The node view adds a
- * corner drag handle for resizing. Deleting the node never touches the
+ * `![alt|width](src)` (Obsidian-style width suffix), where width is a px number
+ * or the keyword `fit` (full editor width), and src is either a web URL or
+ * `attachment:<id>` — resolved at render time so saved markdown stays
+ * host-independent. The node view has a corner drag handle plus Small / Medium
+ * / Fit presets; images default to Small. Deleting never touches the
  * underlying attachment.
  */
+
+export const IMG_SMALL = 220;
+export const IMG_MEDIUM = 440;
+export type ImgWidth = number | "fit" | null;
 
 export const resolveImageSrc = (src: string): string =>
   src.startsWith("attachment:") ? `${apiBase}/attachments/${src.slice(11)}` : src;
@@ -37,11 +42,11 @@ export const MdImage = Node.create({
         getAttrs: (el) => {
           const img = el as HTMLImageElement;
           const rawAlt = img.getAttribute("alt") ?? "";
-          const m = /^(.*)\|(\d+)$/.exec(rawAlt);
+          const m = /^(.*)\|(\d+|fit)$/.exec(rawAlt);
           return {
             src: img.getAttribute("src") ?? "",
             alt: m ? m[1] : rawAlt,
-            width: m ? Number(m[2]) : null,
+            width: m ? (m[2] === "fit" ? "fit" : Number(m[2])) : null,
           };
         },
       },
@@ -54,7 +59,7 @@ export const MdImage = Node.create({
       mergeAttributes(HTMLAttributes, {
         src: node.attrs.src,
         alt: node.attrs.alt,
-        ...(node.attrs.width ? { width: node.attrs.width } : {}),
+        ...(typeof node.attrs.width === "number" ? { width: node.attrs.width } : {}),
       }),
     ];
   },
@@ -78,12 +83,45 @@ export const MdImage = Node.create({
       const wrap = document.createElement("span");
       wrap.className = "md-img";
       const img = document.createElement("img");
+      const applyWidth = (w: ImgWidth) => {
+        if (w === "fit") img.style.width = "100%";
+        else if (typeof w === "number") img.style.width = `${w}px`;
+        else img.style.width = "";
+      };
       const sync = (n: PMNode) => {
         img.src = resolveImageSrc(String(n.attrs.src ?? ""));
         img.alt = String(n.attrs.alt ?? "");
-        img.style.width = n.attrs.width ? `${n.attrs.width}px` : "";
+        applyWidth(n.attrs.width as ImgWidth);
       };
       sync(node);
+
+      const setWidth = (w: ImgWidth) => {
+        if (typeof getPos !== "function") return;
+        const pos = getPos();
+        editor.commands.command(({ tr }) => {
+          const n = tr.doc.nodeAt(pos);
+          if (n?.type.name === "mdImage") tr.setNodeMarkup(pos, undefined, { ...n.attrs, width: w });
+          tr.setMeta(LINE_SWAP_META, true);
+          return true;
+        });
+      };
+      const presets = document.createElement("span");
+      presets.className = "md-img-presets";
+      presets.contentEditable = "false";
+      for (const [label, w] of [["Small", IMG_SMALL], ["Medium", IMG_MEDIUM], ["Fit", "fit"]] as [
+        string,
+        ImgWidth,
+      ][]) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = label;
+        b.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (editor.isEditable) setWidth(w);
+        });
+        presets.append(b);
+      }
       const handle = document.createElement("span");
       handle.className = "md-img-handle";
       handle.title = "Drag to resize";
@@ -115,7 +153,7 @@ export const MdImage = Node.create({
         document.addEventListener("pointermove", onMove);
         document.addEventListener("pointerup", onUp, { once: true });
       });
-      wrap.append(img, handle);
+      wrap.append(img, handle, presets);
       return {
         dom: wrap,
         update: (n) => {

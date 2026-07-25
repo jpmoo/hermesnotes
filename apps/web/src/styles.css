@@ -4608,6 +4608,16 @@ input.cv-add-input {
 .sort-bar-toggle {
   display: none;
 }
+/* On mobile a toolbar wrapped in a flex row (Favorites has a Blocks label +
+   Collapse-all beside it) must take its own full-width line so the handle
+   isn't squished to nothing. */
+.app-shell.mobile .main-inner .row {
+  flex-wrap: wrap;
+}
+.app-shell.mobile .sort-bar-shell {
+  flex: 1 1 100%;
+  min-width: 0;
+}
 .app-shell.mobile .sort-bar-toggle {
   display: flex;
   align-items: center;

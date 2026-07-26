@@ -22,7 +22,7 @@ type Gesture =
  * the bottom-right controls.
  */
 export function GraphPanel() {
-  const { selectedBlockId, selectBlock } = usePanels();
+  const { selectedBlockId, openBlock } = usePanels();
   const [depth, setDepth] = useState(1);
   const [data, setData] = useState<GraphResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,7 +59,7 @@ export function GraphPanel() {
       root={root}
       depth={depth}
       onDepth={setDepth}
-      onPick={(n) => selectBlock(n.id, { collection: n.collection })}
+      onPick={(n) => openBlock(n.id, { collection: n.collection })}
     />
   );
 }

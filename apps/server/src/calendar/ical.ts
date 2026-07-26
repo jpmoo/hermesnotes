@@ -194,6 +194,45 @@ function expand(ev: RawEvent, windowStart: number, windowEnd: number): number[] 
   return out;
 }
 
+/**
+ * Render an instant as a floating wall-clock string ("YYYY-MM-DDTHH:mm:ss") in
+ * the given IANA timezone. Feed events are real instants (UTC); the app shows
+ * everything in the user's configured zone, and the front-end treats these
+ * offsetless strings as face-value wall-clock.
+ */
+export function toZonedFloating(iso: string, tz: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(d);
+  } catch {
+    return iso; // unknown tz — leave as-is
+  }
+  const g = (t: string) => parts.find((x) => x.type === t)?.value ?? "00";
+  const hour = g("hour") === "24" ? "00" : g("hour");
+  return `${g("year")}-${g("month")}-${g("day")}T${hour}:${g("minute")}:${g("second")}`;
+}
+
+/** Convert a timed event's start/end into the given timezone; all-day untouched. */
+export function zoneEvent(ev: ParsedEvent, tz: string): ParsedEvent {
+  if (ev.allDay) return ev;
+  return {
+    ...ev,
+    start: toZonedFloating(ev.start, tz),
+    end: ev.end ? toZonedFloating(ev.end, tz) : null,
+  };
+}
+
 /** Parse an ICS document into raw events (recurrence rules preserved). */
 export function parseIcs(text: string): RawEvent[] {
   const lines = unfold(text);

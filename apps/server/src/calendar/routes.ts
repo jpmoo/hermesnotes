@@ -1,12 +1,88 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { blockTypes, blocks, calendarConverted, calendarFeeds } from "@hermes/db";
+import { blockTypes, blocks, calendarConverted, calendarFeeds, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
-import { eventsInRange, type ParsedEvent } from "./ical.js";
+import { eventsInRange, zoneEvent, type ParsedEvent } from "./ical.js";
+
+type EventLike = { summary: string; description: string; location: string; start: string; end?: string | null };
+type EventType = typeof blockTypes.$inferSelect;
+
+/**
+ * Resolve this user's "event" type. Matched by name case-insensitively (older
+ * accounts may capitalize it), falling back to a built-in non-text type whose
+ * schema carries a datespan but no status — the shape of an event, not a task.
+ */
+async function resolveEventType(userId: string): Promise<EventType> {
+  const ownTypes = await db.select().from(blockTypes).where(eq(blockTypes.ownerId, userId));
+  const type =
+    ownTypes.find((t) => t.name.trim().toLowerCase() === "event") ??
+    ownTypes.find(
+      (t) =>
+        t.builtin &&
+        !t.isText &&
+        !t.propertySchema?.status_field &&
+        (t.propertySchema?.fields ?? []).some((f) => f.type === "datespan"),
+    );
+  if (!type) throw badRequest("No event type found — create an 'event' type first");
+  return type;
+}
+
+/** Build an event block's properties from a feed event, honoring the type's field keys. */
+function eventProperties(type: EventType, ev: EventLike, base: Record<string, unknown> = {}): Record<string, unknown> {
+  const fields = type.propertySchema?.fields ?? [];
+  const spanKey = fields.find((f) => f.type === "datespan")?.key ?? "when";
+  const props: Record<string, unknown> = {
+    ...base,
+    title: ev.summary || "(untitled event)",
+    [spanKey]: { start: ev.start, end: ev.end ?? ev.start },
+  };
+  if (fields.some((f) => f.key === "description")) props.description = ev.description || "";
+  if (fields.some((f) => f.key === "location")) props.location = ev.location || "";
+  return props;
+}
+
+/**
+ * Mirror feed changes into synced blocks. Fetches the target blocks, rebuilds
+ * their properties from the feed instance, and writes only those that actually
+ * changed (so an unchanged feed is a no-op). Feed is the source of truth here.
+ */
+async function applySyncUpdates(userId: string, targets: Map<string, EventLike>): Promise<void> {
+  const ids = [...targets.keys()];
+  const rows = await db
+    .select()
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, ids)));
+  const typeCache = new Map<string, EventType>();
+  for (const row of rows) {
+    const ev = targets.get(row.id);
+    if (!ev || !row.blockTypeId) continue;
+    let type = typeCache.get(row.blockTypeId);
+    if (!type) {
+      const [t] = await db.select().from(blockTypes).where(eq(blockTypes.id, row.blockTypeId)).limit(1);
+      if (!t) continue;
+      type = t;
+      typeCache.set(row.blockTypeId, t);
+    }
+    const base = (row.properties as Record<string, unknown>) ?? {};
+    const nextProps = eventProperties(type, ev, base);
+    if (JSON.stringify(nextProps) === JSON.stringify(base)) continue;
+    const embedSource = computeEmbedSource(type, { content: null, properties: nextProps });
+    await db
+      .update(blocks)
+      .set({
+        properties: nextProps,
+        embedSource,
+        embedSourceHash: null,
+        version: sql`${blocks.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(blocks.id, row.id));
+  }
+}
 
 /** In-memory raw-ICS cache, keyed by feed id. Refetched past the TTL. */
 const CACHE = new Map<string, { fetchedAt: number; text: string }>();
@@ -144,19 +220,40 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       .from(calendarFeeds)
       .where(and(eq(calendarFeeds.ownerId, userId), eq(calendarFeeds.enabled, true)));
 
-    const converted = await db
-      .select({ feedId: calendarConverted.feedId, uid: calendarConverted.uid })
+    // Show every feed event in the user's configured timezone.
+    const [settings] = await db
+      .select({ tz: userSettings.timezone })
+      .from(userSettings)
+      .where(eq(userSettings.userId, userId))
+      .limit(1);
+    const tz = settings?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+    // Sync links: (feed,uid) → block id. Only "sync" conversions have a row;
+    // deleting the block cascades the row away, so the event returns to the feed.
+    const links = await db
+      .select({ feedId: calendarConverted.feedId, uid: calendarConverted.uid, blockId: calendarConverted.blockId })
       .from(calendarConverted)
       .where(eq(calendarConverted.ownerId, userId));
-    const convertedKeys = new Set(converted.map((c) => `${c.feedId}|${c.uid}`));
+    const syncByKey = new Map<string, string>();
+    for (const l of links) if (l.blockId) syncByKey.set(`${l.feedId}|${l.uid}`, l.blockId);
 
+    const nowMs = Date.now();
     const out: Array<ParsedEvent & { feedId: string; feedName: string; color: string }> = [];
+    // blockId → the feed instance the synced event should mirror (nearest to now).
+    const syncTargets = new Map<string, EventLike>();
     for (const feed of feeds) {
       try {
         const text = await icsFor(feed, force);
-        const events = eventsInRange(text, q.start, q.end);
+        const events = eventsInRange(text, q.start, q.end).map((e) => zoneEvent(e, tz));
         for (const ev of events) {
-          if (convertedKeys.has(`${feed.id}|${ev.uid}`)) continue;
+          const linkedBlock = syncByKey.get(`${feed.id}|${ev.uid}`);
+          if (linkedBlock) {
+            // Hidden from the feed; the linked block mirrors the nearest instance.
+            const prev = syncTargets.get(linkedBlock);
+            const dist = (e: EventLike) => Math.abs(new Date(e.start).getTime() - nowMs);
+            if (!prev || dist(ev) < dist(prev)) syncTargets.set(linkedBlock, ev);
+            continue;
+          }
           out.push({ ...ev, feedId: feed.id, feedName: feed.name, color: feed.color });
         }
         await db
@@ -170,13 +267,22 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
           .where(eq(calendarFeeds.id, feed.id));
       }
     }
+
+    // Push feed changes into the synced blocks (feed is the source of truth for
+    // these). Only writes when a value actually changed, so the steady state is
+    // read-only.
+    if (syncTargets.size) await applySyncUpdates(userId, syncTargets);
+
     out.sort((a, b) => a.start.localeCompare(b.start));
     return { events: out };
   });
 
   /**
-   * Convert a feed event into a Hermes "event" block (a happening). Records the
-   * (feed, uid) so the source event disappears from the feed display.
+   * Convert a feed event into a Hermes "event" block. Two modes:
+   *   sync — links the block to the feed event: the block keeps up with feed
+   *          changes, the event is hidden from the feed, and deleting the block
+   *          brings the event back.
+   *   copy — a one-off copy: no link, the feed event stays visible.
    */
   app.post("/calendar/convert", async (req, reply) => {
     const userId = requireUser(req);
@@ -184,6 +290,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       .object({
         feedId: z.string().uuid(),
         uid: z.string().min(1),
+        mode: z.enum(["sync", "copy"]).default("sync"),
         summary: z.string().default(""),
         description: z.string().default(""),
         location: z.string().default(""),
@@ -193,34 +300,8 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(req.body);
 
-    // Resolve this user's "event" type. Match by name case-insensitively
-    // (accounts seeded by older versions may capitalize it), falling back to a
-    // built-in type whose schema carries a datespan — the shape of an event.
-    const ownTypes = await db
-      .select()
-      .from(blockTypes)
-      .where(eq(blockTypes.ownerId, userId));
-    const type =
-      ownTypes.find((t) => t.name.trim().toLowerCase() === "event") ??
-      ownTypes.find(
-        (t) =>
-          t.builtin &&
-          !t.isText &&
-          !t.propertySchema?.status_field && // excludes task (which has a status)
-          (t.propertySchema?.fields ?? []).some((f) => f.type === "datespan"),
-      );
-    if (!type) throw badRequest("No event type found — create an 'event' type first");
-
-    // Map onto the type's actual fields (the datespan key may differ from "when"
-    // on older accounts; title/description/location follow the built-in keys).
-    const fields = type.propertySchema?.fields ?? [];
-    const spanKey = fields.find((f) => f.type === "datespan")?.key ?? "when";
-    const properties: Record<string, unknown> = {
-      title: body.summary || "(untitled event)",
-      [spanKey]: { start: body.start, end: body.end ?? body.start },
-    };
-    if (fields.some((f) => f.key === "description")) properties.description = body.description || "";
-    if (body.location && fields.some((f) => f.key === "location")) properties.location = body.location;
+    const type = await resolveEventType(userId);
+    const properties = eventProperties(type, body);
     const embedSource = computeEmbedSource(type, { content: null, properties });
 
     const created = await db.transaction(async (tx) => {
@@ -236,10 +317,12 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
           blockTypeSchemaVersion: type.schemaVersion,
         })
         .returning({ id: blocks.id });
-      await tx
-        .insert(calendarConverted)
-        .values({ ownerId: userId, feedId: body.feedId, uid: body.uid, blockId: row!.id })
-        .onConflictDoNothing();
+      if (body.mode === "sync") {
+        await tx
+          .insert(calendarConverted)
+          .values({ ownerId: userId, feedId: body.feedId, uid: body.uid, blockId: row!.id, mode: "sync" })
+          .onConflictDoNothing();
+      }
       return row!;
     });
 

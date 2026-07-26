@@ -214,7 +214,9 @@ export const calendarConverted = pgTable("calendar_converted", {
     .references(() => users.id, { onDelete: "cascade" }),
   feedId: uuid("feed_id").references(() => calendarFeeds.id, { onDelete: "cascade" }),
   uid: text("uid").notNull(),
-  blockId: uuid("block_id").references(() => blocks.id, { onDelete: "set null" }),
+  // Deleting the synced block drops this row too, so the feed event reappears.
+  blockId: uuid("block_id").references(() => blocks.id, { onDelete: "cascade" }),
+  mode: text("mode").notNull().default("sync"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -24,3 +24,23 @@ export function useFeedEventConverted(cb: (feedId: string, uid: string) => void)
     };
   }, []);
 }
+
+/** Nudge calendar views to refetch (e.g. a "copy" added a block, feed unchanged). */
+type RefreshListener = () => void;
+const refreshListeners = new Set<RefreshListener>();
+
+export function emitCalendarRefresh(): void {
+  for (const l of [...refreshListeners]) l();
+}
+
+export function useCalendarRefresh(cb: () => void): void {
+  const ref = useRef(cb);
+  ref.current = cb;
+  useEffect(() => {
+    const l: RefreshListener = () => ref.current();
+    refreshListeners.add(l);
+    return () => {
+      refreshListeners.delete(l);
+    };
+  }, []);
+}

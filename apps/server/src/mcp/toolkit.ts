@@ -762,6 +762,152 @@ export function defineTools(api: Api): ToolDef[] {
     }),
   );
 
+  // ---------- general blocks, collections, canvas ----------
+
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const getTypes = () =>
+    api.get<{ id: string; name: string; isText: boolean }[]>("/block-types");
+  const resolveType = async (name?: string) => {
+    const types = await getTypes();
+    if (!name || name.trim().toLowerCase() === "text") {
+      const t = types.find((x) => x.isText);
+      if (!t) throw new Error("No text block type found.");
+      return t;
+    }
+    const n = name.trim().toLowerCase();
+    const t = types.find((x) => x.name.toLowerCase() === n) ?? types.find((x) => x.name.toLowerCase().includes(n));
+    if (!t) throw new Error(`No block type "${name}". Available: ${types.map((x) => x.name).join(", ")}.`);
+    return t;
+  };
+  const resolveBlockId = async (idOrTitle: string): Promise<string> => {
+    const s = idOrTitle.trim();
+    if (UUID.test(s)) return s;
+    const hits = await api.get<{ id: string; label: string }[]>(`/search?q=${encodeURIComponent(s)}`);
+    if (!hits.length) throw new Error(`No block matching "${idOrTitle}".`);
+    return hits[0]!.id;
+  };
+  const resolveCollectionId = async (idOrTitle: string): Promise<string> => {
+    const s = idOrTitle.trim();
+    if (UUID.test(s)) return s;
+    const cols = await api.get<{ id: string; properties: Record<string, unknown> }[]>("/collections");
+    const n = s.toLowerCase();
+    const c =
+      cols.find((x) => String(x.properties.title ?? "").toLowerCase() === n) ??
+      cols.find((x) => String(x.properties.title ?? "").toLowerCase().includes(n));
+    if (!c) throw new Error(`No collection matching "${idOrTitle}".`);
+    return c.id;
+  };
+
+  tool("list_types", "List the block types available (name, and whether it's a plain-text type).", {}, run(async () => {
+    const types = await getTypes();
+    return types.length ? types.map((t) => `- ${t.name}${t.isText ? " (text)" : ""}`).join("\n") : "No types.";
+  }));
+
+  tool(
+    "block_create",
+    "Create a block of ANY type. `type` is a block-type name (omit, or 'text', for a plain note). " +
+      "For text notes pass `content`; for typed blocks pass `title` and any other fields via `fields` " +
+      "(a JSON object of property-key → value, e.g. {\"description\":\"…\",\"location\":\"…\"}). Tags are created as needed.",
+    {
+      type: z.string().optional(),
+      title: z.string().optional(),
+      content: z.string().optional(),
+      fields: z.record(z.unknown()).optional(),
+      tags: z.array(z.string()).optional(),
+    },
+    run(async (a) => {
+      const type = await resolveType(a.type);
+      const body: Record<string, unknown> = { blockTypeId: type.id };
+      if (type.isText) {
+        body.content = a.content ?? a.title ?? "";
+      } else {
+        const props: Record<string, unknown> = { ...(a.fields ?? {}) };
+        if (a.title !== undefined) props.title = a.title;
+        body.properties = props;
+      }
+      const b = await api.post<{ id: string }>("/blocks", body);
+      if (a.tags?.length)
+        await api.put(`/blocks/${b.id}/tags`, { tags: a.tags.map((t) => t.trim().toLowerCase().replace(/^#+/, "")) });
+      return `Created ${type.isText ? "note" : type.name} [${b.id}].`;
+    }),
+  );
+
+  tool("block_delete", "Permanently delete a block (or collection) by id.", { id: z.string() }, run(async (a) => {
+    await api.del(`/blocks/${a.id}`);
+    return `Deleted [${a.id}].`;
+  }));
+
+  tool(
+    "collection_create",
+    "Create a collection. kind: list | document | matrix | table | canvas | kanban | masonry | calendar. " +
+      "Optionally seed it with existing blocks by id or title. (For a laid-out canvas use canvas_create instead.)",
+    {
+      kind: z.enum(["list", "document", "matrix", "table", "canvas", "kanban", "masonry", "calendar"]),
+      title: z.string(),
+      description: z.string().optional(),
+      members: z.array(z.string()).optional(),
+    },
+    run(async (a) => {
+      const c = await api.post<{ id: string }>("/collections", { kind: a.kind, title: a.title, description: a.description });
+      let added = 0;
+      for (const m of a.members ?? []) {
+        try {
+          await api.post(`/collections/${c.id}/members`, { blockId: await resolveBlockId(m) });
+          added++;
+        } catch {
+          /* skip unresolved/duplicate member */
+        }
+      }
+      return `Created ${a.kind} collection "${a.title}" [${c.id}]${added ? ` with ${added} member${added === 1 ? "" : "s"}` : ""}.`;
+    }),
+  );
+
+  tool(
+    "collection_add",
+    "Add an existing block (id or title) to a collection (id or title).",
+    { collection: z.string(), block: z.string() },
+    run(async (a) => {
+      const colId = await resolveCollectionId(a.collection);
+      const id = await resolveBlockId(a.block);
+      await api.post(`/collections/${colId}/members`, { blockId: id });
+      return `Added [${id}] to collection [${colId}].`;
+    }),
+  );
+
+  tool(
+    "canvas_create",
+    "Create a canvas and arrange the given blocks (ids or titles) on it. " +
+      "layout: grid | row | column. connect=true chains the items with arrows in the given order " +
+      "(use this for an ordered flow, e.g. arranging tasks in sequence). Decide the order yourself, " +
+      "then pass items in that order.",
+    {
+      title: z.string(),
+      items: z.array(z.string()).min(1),
+      layout: z.enum(["grid", "row", "column"]).default("grid"),
+      connect: z.boolean().default(false),
+    },
+    run(async (a) => {
+      const ids: string[] = [];
+      for (const it of a.items) ids.push(await resolveBlockId(it));
+      const c = await api.post<{ id: string }>("/collections", { kind: "canvas", title: a.title });
+      const W = 280;
+      const H = 190;
+      const GAP = 60;
+      const n = ids.length;
+      const cols = a.layout === "row" ? n : a.layout === "column" ? 1 : Math.max(1, Math.ceil(Math.sqrt(n)));
+      for (let i = 0; i < n; i++) {
+        const x = (i % cols) * (W + GAP);
+        const y = Math.floor(i / cols) * (H + GAP);
+        await api.post(`/collections/${c.id}/members`, { blockId: ids[i], context: { x, y, w: W, h: H } });
+      }
+      if (a.connect && n > 1) {
+        const edges = ids.slice(0, -1).map((from, i) => ({ from, to: ids[i + 1] }));
+        await api.patch(`/collections/${c.id}`, { canvas_edges: edges });
+      }
+      return `Created canvas "${a.title}" [${c.id}] with ${n} block${n === 1 ? "" : "s"}${a.connect ? ", connected in order" : ""}.`;
+    }),
+  );
+
   return tools;
 }
 

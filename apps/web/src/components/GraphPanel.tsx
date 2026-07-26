@@ -304,6 +304,10 @@ function GraphCanvas({
     const n = nodeById.get(id);
     return n ? (n.id === root ? 9 : n.collection ? 7 : 6) : 6;
   };
+  const colorOf = (id: string) => {
+    const n = nodeById.get(id);
+    return n?.iconColor ?? (n?.collection ? "var(--accent)" : "var(--text-muted)");
+  };
 
   return (
     <div className="graph-canvas" ref={wrapRef} onWheel={onWheel}>
@@ -358,7 +362,7 @@ function GraphCanvas({
             return (
               <g key={i}>
                 <line className="graph-edge" x1={x1} y1={y1} x2={x2} y2={y2} markerEnd="url(#garrow)" />
-                <line className="graph-edge-flow" x1={x1} y1={y1} x2={x2} y2={y2} />
+                <line className="graph-edge-flow" style={{ stroke: colorOf(e.from) }} x1={x1} y1={y1} x2={x2} y2={y2} />
               </g>
             );
           })}

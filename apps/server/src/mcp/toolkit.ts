@@ -58,7 +58,35 @@ function whenConds(ctx: Ctx, when: string): (Condition | FilterGroup)[] {
   }
 }
 
-export function buildTools(server: McpServer, api: Api): void {
+export interface ToolResult {
+  content: { type: "text"; text: string }[];
+  isError?: boolean;
+}
+export interface ToolDef {
+  name: string;
+  description: string;
+  schema: z.ZodRawShape;
+  handler: (args: Record<string, unknown>) => Promise<ToolResult>;
+}
+
+/**
+ * The full Hermes tool surface, bound to one caller's API client. This registry
+ * is transport-agnostic: the MCP adapter (`buildTools`) exposes it to external
+ * agents, and the in-app assistant invokes the same handlers in-process. Define
+ * every capability here exactly once.
+ */
+export function defineTools(api: Api): ToolDef[] {
+  const tools: ToolDef[] = [];
+  // Generic so each handler's `args` is inferred from its zod schema (as the MCP
+  // SDK did); stored type-erased in the registry.
+  const tool = <S extends z.ZodRawShape>(
+    name: string,
+    description: string,
+    schema: S,
+    handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResult>,
+  ) => {
+    tools.push({ name, description, schema, handler: handler as (a: Record<string, unknown>) => Promise<ToolResult> });
+  };
   const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
   const run = <A>(fn: (args: A) => Promise<string>) => {
     return async (args: A) => {
@@ -73,7 +101,7 @@ export function buildTools(server: McpServer, api: Api): void {
 
   // ---------- tasks ----------
 
-  server.tool(
+  tool(
     "task_create",
     "Create a task. Dates are YYYY-MM-DD (optionally with THH:mm). project/projects accept a project title or id — unknown names create the project. Tags are created as needed, and raw @Name mentions in the title/notes create Person blocks if missing.",
     {
@@ -116,7 +144,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "task_find",
     "List/search tasks. All params optional and composable. status: open|done|... (or comma list); when: overdue|today|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id; region: a matrix region/row/column title within that list (e.g. \"Do\").",
     {
@@ -251,7 +279,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "task_info",
     "Get full details for one task by id or (unique) title.",
     { task: z.string().min(1) },
@@ -289,7 +317,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "task_update",
     "Update a task by id or title. Only supplied fields change. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing; unknown project names and new tags are created, and raw @Name mentions create Person blocks if missing.",
     {
@@ -365,7 +393,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "delete_task",
     "Delete a task permanently. Call without confirm first; repeat with confirm=true after the user confirms.",
     { task: z.string().min(1), confirm: z.boolean().optional() },
@@ -381,7 +409,7 @@ export function buildTools(server: McpServer, api: Api): void {
 
   // ---------- projects ----------
 
-  server.tool(
+  tool(
     "project_create",
     "Create a project.",
     { title: z.string().min(1), description: z.string().optional() },
@@ -429,17 +457,17 @@ export function buildTools(server: McpServer, api: Api): void {
     return rows.length ? rows.join("\n") : archived ? "No archived projects." : "No active projects.";
   };
 
-  server.tool("project_list", "List active (non-archived) projects with open-task counts.", {}, run(async () => {
+  tool("project_list", "List active (non-archived) projects with open-task counts.", {}, run(async () => {
     const ctx = await loadContext(api);
     return projectLines(ctx, false);
   }));
 
-  server.tool("project_archived", "List archived projects.", {}, run(async () => {
+  tool("project_archived", "List archived projects.", {}, run(async () => {
     const ctx = await loadContext(api);
     return projectLines(ctx, true);
   }));
 
-  server.tool(
+  tool(
     "project_info",
     "Get a project's details and its tasks, by id or title.",
     { project: z.string().min(1) },
@@ -487,20 +515,20 @@ export function buildTools(server: McpServer, api: Api): void {
     return `${archived ? "Archived" : "Unarchived"} "${title}".`;
   };
 
-  server.tool(
+  tool(
     "project_archive",
     "Archive a project (status if the type has an archived option, otherwise an #archived tag). Two-step confirm.",
     { project: z.string().min(1), confirm: z.boolean().optional() },
     run((a) => setArchived(a.project, true, a.confirm)),
   );
-  server.tool(
+  tool(
     "project_unarchive",
     "Unarchive a project. Two-step confirm.",
     { project: z.string().min(1), confirm: z.boolean().optional() },
     run((a) => setArchived(a.project, false, a.confirm)),
   );
 
-  server.tool(
+  tool(
     "delete_project",
     "Delete a project permanently (tasks are kept; they just lose the link). Two-step confirm.",
     { project: z.string().min(1), confirm: z.boolean().optional() },
@@ -516,7 +544,7 @@ export function buildTools(server: McpServer, api: Api): void {
 
   // ---------- lists & tags ----------
 
-  server.tool("list_lists", "List saved collections (usable as task_find's `list` param).", {}, run(async () => {
+  tool("list_lists", "List saved collections (usable as task_find's `list` param).", {}, run(async () => {
     const cols = await api.get<{ id: string; collectionKind: string; properties: Record<string, unknown> }[]>(
       "/collections",
     );
@@ -529,7 +557,7 @@ export function buildTools(server: McpServer, api: Api): void {
       .join("\n");
   }));
 
-  server.tool("tag_list", "List all tags.", {}, run(async () => {
+  tool("tag_list", "List all tags.", {}, run(async () => {
     const tags = await api.get<{ name: string }[]>("/tags");
     return tags.length ? tags.map((t) => `#${t.name}`).join("\n") : "No tags.";
   }));
@@ -547,7 +575,7 @@ export function buildTools(server: McpServer, api: Api): void {
     return blocks.length;
   };
 
-  server.tool(
+  tool(
     "tag_rename",
     "Rename a tag on every block that has it. Two-step confirm.",
     { old_tag: z.string().min(1), new_tag: z.string().min(1), confirm: z.boolean().optional() },
@@ -560,7 +588,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "tag_delete",
     "Remove a tag from every block that has it. Two-step confirm.",
     { tag: z.string().min(1), confirm: z.boolean().optional() },
@@ -587,7 +615,7 @@ export function buildTools(server: McpServer, api: Api): void {
     semantic: boolean;
   }
 
-  server.tool(
+  tool(
     "search",
     "Search EVERYTHING — every block (notes, tasks, people…) and collection — by literal match " +
       "(title, body, properties) plus semantic similarity, like the app's top-bar search. " +
@@ -610,7 +638,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "block_get",
     "Read one block or collection by id (from search): content, properties, tags, and " +
       "containing collections. Collections also list their members.",
@@ -665,7 +693,7 @@ export function buildTools(server: McpServer, api: Api): void {
     }),
   );
 
-  server.tool(
+  tool(
     "block_update",
     "Update ANY block by id (from search/block_get): note body (content), title, arbitrary " +
       "properties (shallow-merged — keys must match the block type's fields; read the block " +
@@ -733,6 +761,18 @@ export function buildTools(server: McpServer, api: Api): void {
       return changed.length ? `Updated [${b.id}]: ${changed.join(", ")}.` : "Nothing to change.";
     }),
   );
+
+  return tools;
+}
+
+/** MCP adapter: expose the shared tool registry to external agents unchanged. */
+export function buildTools(server: McpServer, api: Api): void {
+  // Our ToolResult is structurally a subset of the SDK's CallToolResult (which
+  // permits extra keys); cast the callback to satisfy the overload.
+  for (const t of defineTools(api)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    server.tool(t.name, t.description, t.schema, t.handler as any);
+  }
 }
 
 interface HermesBlock {

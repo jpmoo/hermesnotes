@@ -170,6 +170,202 @@ label,
   font-size: 12px;
   color: var(--text-faint);
 }
+
+/* ── Right-panel dock (graph / AI) ───────────────────────────── */
+.right-panel.expanded {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.panel-head {
+  flex-shrink: 0;
+}
+.panel-main {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.panel-dock-bars {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.dock-bar {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.dock-bar:hover {
+  border-color: var(--border-strong);
+}
+.dock-bar.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.panel-dock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+.dock-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dock-title {
+  font-family: var(--font-chrome);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dock-content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Graph panel ─────────────────────────────────────────────── */
+.graph-canvas {
+  position: absolute;
+  inset: 0;
+}
+.graph-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--surface-2);
+  border-radius: 8px;
+  touch-action: none;
+  cursor: grab;
+}
+.graph-svg:active {
+  cursor: grabbing;
+}
+.graph-edge {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+.graph-node circle {
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.graph-node.root circle {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+.graph-node:hover circle {
+  stroke: var(--accent);
+}
+.graph-label {
+  fill: var(--text-muted);
+  font-family: var(--font-chrome);
+  font-size: 9px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.graph-node.root .graph-label {
+  fill: var(--text);
+  font-weight: 600;
+}
+.graph-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+}
+.graph-depth-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.graph-depth .seg {
+  padding: 2px 7px;
+  font-size: 12px;
+}
+.graph-loading,
+.graph-trunc {
+  font-size: 11px;
+}
+.graph-zoom {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.graph-zoom .icon-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.graph-empty {
+  padding: 24px 16px;
+  color: var(--text-faint);
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+.graph-note {
+  position: absolute;
+  top: 46%;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  pointer-events: none;
+}
+.ai-panel-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--text-faint);
+}
 .panel-head {
   display: flex;
   align-items: center;
@@ -4529,6 +4725,15 @@ input.cv-add-input {
 }
 .app-shell.mobile.m-info-open .right-panel .panel-body {
   display: block;
+}
+/* The graph/AI dock is a desktop feature for now — the mobile info sheet keeps
+   its simple block flow. */
+.app-shell.mobile .panel-main {
+  display: block;
+}
+.app-shell.mobile .panel-dock-bars,
+.app-shell.mobile .panel-dock-overlay {
+  display: none;
 }
 .app-shell.mobile .right-panel .panel-rail-icon,
 .app-shell.mobile .right-panel .panel-pin {

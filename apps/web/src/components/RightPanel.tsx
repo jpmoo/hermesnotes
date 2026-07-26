@@ -1,8 +1,20 @@
-import { Info, PanelRight, Pin, PinOff } from "lucide-react";
+import { ChevronDown, Info, PanelRight, Pin, PinOff, Share2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePanels } from "../lib/right-panel.tsx";
+import { AIPanel } from "./AIPanel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
 import { FeedEventPane } from "./FeedEventPane.tsx";
+import { GraphPanel } from "./GraphPanel.tsx";
+
+type Dock = "graph" | "ai" | null;
+const readDock = (): Dock => {
+  try {
+    const v = localStorage.getItem("hn.dock");
+    return v === "graph" || v === "ai" ? v : null;
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
@@ -94,6 +106,18 @@ export function RightPanel() {
   const showFeedEvent = selectedFeedEvent !== null;
   const showInfo = selectedBlockId !== null && !showFeedEvent;
 
+  const [dock, setDockRaw] = useState<Dock>(readDock);
+  const setDock = (d: Dock) => {
+    setDockRaw(d);
+    try {
+      localStorage.setItem("hn.dock", d ?? "");
+    } catch {
+      /* ignore */
+    }
+  };
+  const toggleDock = (d: Exclude<Dock, null>) => setDock(dock === d ? null : d);
+  const dockTitle = dock === "graph" ? "Graph" : dock === "ai" ? "AI" : "";
+
   return (
     <aside ref={asideRef} className={`right-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-rail-icon" title="Info">
@@ -117,26 +141,63 @@ export function RightPanel() {
             {rightPinned ? <PinOff size={14} /> : <Pin size={14} />}
           </button>
         </div>
-        <div ref={setSlotEl} />
-        {showFeedEvent && (
-          <FeedEventPane
-            event={selectedFeedEvent}
-            onConverted={() => selectFeedEvent(null)}
-          />
-        )}
-        {showInfo && (
-          <BlockInfoPane
-            blockId={selectedBlockId}
-            titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
-            onSelect={(id) => openBlock(id)}
-            onSelectCollection={(id) => openBlock(id, { collection: true })}
-            onDeleted={clearSelection}
-          />
-        )}
-        <div ref={setBottomSlotEl} />
-        {!hasContent && !showInfo && !showFeedEvent && (
-          <div className="panel-placeholder">Note info &amp; options</div>
-        )}
+        <div className="panel-main">
+        <div className="panel-scroll">
+          <div ref={setSlotEl} />
+          {showFeedEvent && (
+            <FeedEventPane
+              event={selectedFeedEvent}
+              onConverted={() => selectFeedEvent(null)}
+            />
+          )}
+          {showInfo && (
+            <BlockInfoPane
+              blockId={selectedBlockId}
+              titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
+              onSelect={(id) => openBlock(id)}
+              onSelectCollection={(id) => openBlock(id, { collection: true })}
+              onDeleted={clearSelection}
+            />
+          )}
+          <div ref={setBottomSlotEl} />
+          {!hasContent && !showInfo && !showFeedEvent && (
+            <div className="panel-placeholder">
+              Select a block or collection to see and edit information here.
+            </div>
+          )}
+        </div>
+
+          {/* A docked panel takes over the content area when open; the info
+              pane stays mounted behind so clicking a graph node updates it. */}
+          {dock && (
+            <div className="panel-dock-overlay">
+              <div className="dock-head">
+                <span className="dock-title">{dockTitle}</span>
+                <button className="icon-btn" title="Collapse" onClick={() => setDock(null)}>
+                  <ChevronDown size={16} />
+                </button>
+              </div>
+              <div className="dock-content">
+                {dock === "graph" ? <GraphPanel /> : <AIPanel />}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="panel-dock-bars">
+          <button
+            className={`dock-bar${dock === "graph" ? " active" : ""}`}
+            onClick={() => toggleDock("graph")}
+          >
+            <Share2 size={14} /> Graph
+          </button>
+          <button
+            className={`dock-bar${dock === "ai" ? " active" : ""}`}
+            onClick={() => toggleDock("ai")}
+          >
+            <Sparkles size={14} /> AI
+          </button>
+        </div>
       </div>
     </aside>
   );

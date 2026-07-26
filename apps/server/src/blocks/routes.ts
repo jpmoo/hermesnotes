@@ -18,6 +18,7 @@ import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "./embed-source.js";
+import { buildGraph } from "./graph.js";
 
 /** Tag names from `#` mentions: `(tag:<name>)` links anywhere, and — in
  * `rawTexts` (title/plain-text fields, where raw mention syntax is stored) —
@@ -560,6 +561,18 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!row) throw notFound("block");
     return row;
+  });
+
+  /** Connection graph out to N generations (graph panel). */
+  app.get("/blocks/:id/graph", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { depth } = z.object({ depth: z.coerce.number().int().min(1).max(5).default(1) }).parse(req.query);
+    try {
+      return await buildGraph(userId, id, depth);
+    } catch {
+      throw notFound("block");
+    }
   });
 
   /** Info + connections for a block (right-panel info pane). */

@@ -167,6 +167,22 @@ export interface Collection {
   version: number;
 }
 
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: string;
+  iconKey: string | null;
+  iconColor: string | null;
+  collection: boolean;
+  gen: number;
+}
+export interface GraphResult {
+  root: string;
+  nodes: GraphNode[];
+  edges: { a: string; b: string }[];
+  truncated: boolean;
+}
+
 export interface CalendarFeed {
   id: string;
   name: string;

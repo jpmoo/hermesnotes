@@ -75,7 +75,7 @@ export interface ToolDef {
 
 const DESTRUCTIVE_TOOLS = new Set(["delete_task", "delete_project", "block_delete", "tag_delete"]);
 const READONLY_TOOLS = new Set([
-  "search", "block_get", "list_types", "list_lists", "tag_list",
+  "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
   "task_find", "task_info", "project_list", "project_archived", "project_info",
 ]);
 
@@ -915,6 +915,99 @@ export function defineTools(api: Api): ToolDef[] {
         await api.patch(`/collections/${c.id}`, { canvas_edges: edges });
       }
       return `Created canvas "${a.title}" [${c.id}] with ${n} block${n === 1 ? "" : "s"}${a.connect ? ", connected in order" : ""}.`;
+    }),
+  );
+
+  tool(
+    "collection_members",
+    "List the members of a collection (id or title) — their labels and ids, plus the matrix region if placed.",
+    { collection: z.string() },
+    run(async (a) => {
+      const id = await resolveCollectionId(a.collection);
+      const d = await api.get<{
+        collection: { properties: Record<string, unknown> };
+        members: { id: string; properties: Record<string, unknown>; content?: string | null; context?: Record<string, unknown> }[];
+      }>(`/collections/${id}`);
+      if (!d.members.length) return "No members.";
+      const regions = Array.isArray(d.collection.properties.matrix_regions)
+        ? (d.collection.properties.matrix_regions as { title?: string }[])
+        : null;
+      return d.members
+        .map((m) => {
+          const label = String(m.properties.title ?? "") || (m.content ?? "").split("\n")[0] || "Untitled";
+          const r = m.context?.region;
+          const region = regions && r != null ? ` — region "${regions[Number(r)]?.title || r}"` : "";
+          return `- ${label}${region} [${m.id}]`;
+        })
+        .join("\n");
+    }),
+  );
+
+  tool(
+    "collection_remove",
+    "Remove a block (id or title) from a collection (id or title). The block itself is NOT deleted.",
+    { collection: z.string(), block: z.string() },
+    run(async (a) => {
+      const colId = await resolveCollectionId(a.collection);
+      const id = await resolveBlockId(a.block);
+      await api.del(`/collections/${colId}/members/${id}`);
+      return `Removed [${id}] from collection [${colId}].`;
+    }),
+  );
+
+  tool(
+    "matrix_place",
+    "Place a block (id or title) into a named region of a matrix collection — e.g. the \"Do\" quadrant of an " +
+      "Eisenhower matrix. `region` matches the region/quadrant title.",
+    { matrix: z.string(), block: z.string(), region: z.string() },
+    run(async (a) => {
+      const colId = await resolveCollectionId(a.matrix);
+      const d = await api.get<{ collection: { collectionKind: string | null; properties: Record<string, unknown> } }>(
+        `/collections/${colId}`,
+      );
+      if (d.collection.collectionKind !== "matrix") throw new Error(`"${a.matrix}" is not a matrix.`);
+      const regions = (d.collection.properties.matrix_regions as { title?: string }[] | undefined) ?? [];
+      const needle = a.region.trim().toLowerCase();
+      let region = regions.findIndex((r) => String(r.title ?? "").toLowerCase() === needle);
+      if (region < 0) region = regions.findIndex((r) => String(r.title ?? "").toLowerCase().includes(needle));
+      if (region < 0)
+        throw new Error(`No region "${a.region}". Regions: ${regions.map((r) => r.title || "(untitled)").join(", ")}.`);
+      const blockId = await resolveBlockId(a.block);
+      try {
+        await api.post(`/collections/${colId}/members`, { blockId, context: { region } });
+      } catch {
+        await api.patch(`/collections/${colId}/members/${blockId}`, { context: { region } });
+      }
+      return `Placed [${blockId}] in region "${regions[region]?.title || region}" of matrix [${colId}].`;
+    }),
+  );
+
+  tool(
+    "collection_create_smart",
+    "Create a query-fed (smart) collection that auto-includes matching blocks. Filter by `type` (block-type name), " +
+      "`tags`, and/or a text `term`. match: all (default) requires every condition, any requires one.",
+    {
+      kind: z.enum(["list", "document", "matrix", "table", "kanban", "masonry", "calendar"]),
+      title: z.string(),
+      type: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      term: z.string().optional(),
+      match: z.enum(["all", "any"]).default("all"),
+    },
+    run(async (a) => {
+      const items: (Condition | FilterGroup)[] = [];
+      if (a.type) items.push({ kind: "blockType", typeId: (await resolveType(a.type)).id } as Condition);
+      for (const tg of a.tags ?? [])
+        items.push({ kind: "tag", tag: tg.trim().toLowerCase().replace(/^#+/, ""), op: "include" } as Condition);
+      if (a.term) items.push({ kind: "text", value: a.term } as Condition);
+      if (!items.length) throw new Error("Give at least one of type, tags, or term.");
+      const c = await api.post<{ id: string }>("/collections", {
+        kind: a.kind,
+        title: a.title,
+        membershipMode: "smart",
+        filterQuery: group(items, a.match),
+      });
+      return `Created smart ${a.kind} "${a.title}" [${c.id}] (${items.length} condition${items.length === 1 ? "" : "s"}).`;
     }),
   );
 

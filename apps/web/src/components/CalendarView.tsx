@@ -2,6 +2,7 @@ import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { useCalendarRefresh, useFeedEventConverted } from "../lib/calendar-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
@@ -442,6 +443,15 @@ export function CalendarView({
   });
   // A "copy" left the feed unchanged but added a block — refetch matches.
   useCalendarRefresh(() => setQueryTick((t) => t + 1));
+
+  // A deleted block leaves the calendar at once. If it was a synced feed event,
+  // deleting it dropped the link server-side, so refetch feeds to bring the
+  // source event back (and drop any stale optimistic hide).
+  useBlockDeleted((id) => {
+    setMatches((ms) => ms.filter((b) => b.id !== id));
+    setConvertedKeys(new Set());
+    setFeedTick((t) => t + 1);
+  });
 
   // Day → feed events landing on it (multi-day events span every covered day).
   const feedByDay = useMemo(() => {

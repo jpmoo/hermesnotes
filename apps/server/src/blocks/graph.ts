@@ -1,8 +1,9 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { blockTypes, blocks, memberships } from "@hermes/db";
-import type { PropertySchema } from "@hermes/shared";
+import type { FilterQuery, PropertySchema } from "@hermes/shared";
 import { oneLineLabel } from "@hermes/shared";
 import { db } from "../db.js";
+import { runQuery } from "../collections/query.js";
 
 /**
  * Connection graph for the Obsidian-style graph panel. BFS out from a root
@@ -115,6 +116,11 @@ export async function buildGraph(userId: string, rootId: string, depth: number):
     }
   }
 
+  // Membership adjacency (block ↔ collection), covering explicit memberships
+  // AND dynamic smart collections (which store no membership rows — evaluate
+  // their query). Precomputed once so a note links to the collections it's in.
+  const mem = await buildMembership(userId);
+
   const [rootRow] = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.id, rootId), eq(blocks.ownerId, userId))).limit(1);
   if (!rootRow) throw new Error("root not found");
 
@@ -132,7 +138,7 @@ export async function buildGraph(userId: string, rootId: string, depth: number):
   let truncated = false;
   let frontier = [rootId];
   for (let gen = 1; gen <= depth && frontier.length; gen++) {
-    const pairs = await neighborsOf(userId, frontier, canvasAdj, types);
+    const pairs = await neighborsOf(userId, frontier, canvasAdj, types, mem);
     const next: string[] = [];
     for (const { from, node } of pairs) {
       addEdge(from, node.id);
@@ -152,12 +158,69 @@ export async function buildGraph(userId: string, rootId: string, depth: number):
   return { root: rootId, nodes: [...nodes.values()], edges: kept, truncated };
 }
 
+interface Membership {
+  toColls: Map<string, Set<string>>; // block id → collections it belongs to
+  toMembers: Map<string, Set<string>>; // collection id → member block ids
+}
+const SMART_QUERY_CAP = 80; // most dynamic collections to evaluate per graph
+
+/**
+ * Block ↔ collection adjacency across explicit memberships and dynamic smart
+ * collections (whose members come from running their query, not from stored
+ * rows). Bounded so a vault with many smart collections can't stall.
+ */
+async function buildMembership(userId: string): Promise<Membership> {
+  const toColls = new Map<string, Set<string>>();
+  const toMembers = new Map<string, Set<string>>();
+  const add = (blockId: string, collId: string) => {
+    if (!toColls.has(blockId)) toColls.set(blockId, new Set());
+    toColls.get(blockId)!.add(collId);
+    if (!toMembers.has(collId)) toMembers.set(collId, new Set());
+    toMembers.get(collId)!.add(blockId);
+  };
+
+  const collections = await db
+    .select({ id: blocks.id, properties: blocks.properties })
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NOT NULL`));
+  const collIds = collections.map((c) => c.id);
+
+  // Explicit memberships (also covers snapshot smart collections).
+  if (collIds.length) {
+    const rows = await db
+      .select({ blockId: memberships.blockId, collectionId: memberships.collectionId })
+      .from(memberships)
+      .where(inArray(memberships.collectionId, collIds));
+    for (const r of rows) add(r.blockId, r.collectionId);
+  }
+
+  // Dynamic smart collections: members come from the live query.
+  let evaluated = 0;
+  for (const c of collections) {
+    if (evaluated >= SMART_QUERY_CAP) break;
+    const props = (c.properties ?? {}) as Record<string, unknown>;
+    if (props.membership_mode !== "smart") continue;
+    if (props.smart_mode === "snapshot") continue; // materialized above
+    const filter = props.filter_query as FilterQuery | undefined;
+    if (!filter) continue;
+    evaluated++;
+    try {
+      const matches = await runQuery(userId, filter);
+      for (const m of matches) add(m.id, c.id);
+    } catch {
+      /* skip a broken filter */
+    }
+  }
+  return { toColls, toMembers };
+}
+
 /** All neighbors of a frontier set, as {from, neighbor-node} pairs. Batched. */
 async function neighborsOf(
   userId: string,
   frontier: string[],
   canvasAdj: Map<string, Set<string>>,
   types: Map<string, TypeMeta>,
+  mem: Membership,
 ): Promise<{ from: string; node: GraphNode }[]> {
   const front = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.ownerId, userId), inArray(blocks.id, frontier)));
   const frontSet = new Set(frontier);
@@ -216,15 +279,11 @@ async function neighborsOf(
     for (const r of named) for (const from of nameToFrom.get(r.title) ?? []) addOut(from, r.id);
   }
 
-  // Membership edges: collections a frontier block is in, and members of a
-  // frontier collection.
-  const memRows = await db
-    .select({ blockId: memberships.blockId, collectionId: memberships.collectionId })
-    .from(memberships)
-    .where(or(inArray(memberships.blockId, frontier), inArray(memberships.collectionId, frontier)));
-  for (const m of memRows) {
-    if (frontSet.has(m.blockId)) addOut(m.blockId, m.collectionId);
-    if (frontSet.has(m.collectionId)) addOut(m.collectionId, m.blockId);
+  // Membership edges from the precomputed adjacency: collections a frontier
+  // block is in, and members of a frontier collection.
+  for (const fid of frontier) {
+    for (const collId of mem.toColls.get(fid) ?? []) addOut(fid, collId);
+    for (const memberId of mem.toMembers.get(fid) ?? []) addOut(fid, memberId);
   }
 
   // Inbound references: blocks that point at any frontier id via a bare-id

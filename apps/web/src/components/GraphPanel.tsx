@@ -10,6 +10,10 @@ interface Pt {
   vy: number;
 }
 
+type Gesture =
+  | { mode: "pan"; sx: number; sy: number; vx: number; vy: number; moved: boolean }
+  | { mode: "node"; id: string; offX: number; offY: number; tx: number; ty: number; downX: number; downY: number; moved: boolean };
+
 /**
  * Obsidian-style connection graph for the currently selected block. Nodes are
  * the block and its connections out to N generations; a force layout gives the
@@ -76,9 +80,15 @@ function GraphCanvas({
   onPick: (n: GraphNode) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const posRef = useRef<Map<string, Pt>>(new Map());
   const [, setTick] = useState(0);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const gesture = useRef<Gesture | null>(null);
+  const alphaRef = useRef(1);
+  const reheatRef = useRef<(a?: number) => void>(() => {});
 
   const nodes = data?.nodes ?? [];
   const edges = data?.edges ?? [];
@@ -109,16 +119,17 @@ function GraphCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  // Force simulation (cooling), driven by rAF; pins the root at the origin.
+  // Force simulation (cooling), driven by rAF; pins the root at the origin and
+  // whichever node is being dragged. `reheatRef` lets interaction wake it up.
   useEffect(() => {
     if (!nodes.length) return;
     let raf = 0;
-    let alpha = 1;
+    let running = true;
     const K = 78; // ideal edge length
     const step = () => {
+      const a0 = alphaRef.current;
       const pos = posRef.current;
       const arr = nodes.map((n) => pos.get(n.id)!).filter(Boolean);
-      // Repulsion (all pairs).
       for (let i = 0; i < arr.length; i++) {
         for (let j = i + 1; j < arr.length; j++) {
           const a = arr[i]!;
@@ -141,7 +152,6 @@ function GraphCanvas({
           b.vy -= fy;
         }
       }
-      // Spring on edges.
       for (const e of edges) {
         const a = pos.get(e.a);
         const b = pos.get(e.b);
@@ -157,13 +167,12 @@ function GraphCanvas({
         b.vx -= fx;
         b.vy -= fy;
       }
-      // Gravity toward center + integrate.
       for (const n of nodes) {
         const p = pos.get(n.id)!;
         p.vx -= p.x * 0.012;
         p.vy -= p.y * 0.012;
-        p.x += p.vx * alpha * 0.2;
-        p.y += p.vy * alpha * 0.2;
+        p.x += p.vx * a0 * 0.2;
+        p.y += p.vy * a0 * 0.2;
         p.vx *= 0.82;
         p.vy *= 0.82;
       }
@@ -174,54 +183,120 @@ function GraphCanvas({
         r.vx = 0;
         r.vy = 0;
       }
-      alpha *= 0.985;
+      // Pin the dragged node to the cursor.
+      const g = gesture.current;
+      if (g?.mode === "node") {
+        const p = pos.get(g.id);
+        if (p) {
+          p.x = g.tx;
+          p.y = g.ty;
+          p.vx = 0;
+          p.vy = 0;
+        }
+      }
+      alphaRef.current = a0 * 0.985;
       setTick((t) => t + 1);
-      if (alpha > 0.02) raf = requestAnimationFrame(step);
+      const dragging = gesture.current?.mode === "node";
+      if (alphaRef.current > 0.02 || dragging) raf = requestAnimationFrame(step);
+      else running = false;
     };
+    const ensure = () => {
+      if (!running) {
+        running = true;
+        raf = requestAnimationFrame(step);
+      }
+    };
+    reheatRef.current = (a = 0.5) => {
+      alphaRef.current = Math.max(alphaRef.current, a);
+      ensure();
+    };
+    alphaRef.current = 1;
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      running = false;
+      cancelAnimationFrame(raf);
+      reheatRef.current = () => {};
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  // ── Pan / zoom ────────────────────────────────────────────────
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  const pinch = useRef<{ d: number; k: number } | null>(null);
-  const zoomAt = (factor: number, cx?: number, cy?: number) => {
-    const el = wrapRef.current;
-    const rect = el?.getBoundingClientRect();
-    const ox = cx ?? (rect ? rect.width / 2 : 0);
-    const oy = cy ?? (rect ? rect.height / 2 : 0);
+  // ── Pan / zoom / node-drag ────────────────────────────────────
+  const geom = () => {
+    const r = svgRef.current?.getBoundingClientRect();
+    return { r, cx: (r?.width ?? 320) / 2, cy: (r?.height ?? 400) / 2 };
+  };
+  const toGraph = (clientX: number, clientY: number) => {
+    const { r, cx, cy } = geom();
+    const v = viewRef.current;
+    if (!r) return { x: 0, y: 0 };
+    return { x: (clientX - r.left - cx - v.x) / v.k, y: (clientY - r.top - cy - v.y) / v.k };
+  };
+  const zoomAt = (factor: number, ox?: number, oy?: number) => {
+    const { r, cx, cy } = geom();
+    const px = ox ?? cx;
+    const py = oy ?? cy;
+    void r;
     setView((v) => {
       const k = Math.min(4, Math.max(0.2, v.k * factor));
       const s = k / v.k;
-      return { k, x: ox - (ox - v.x) * s, y: oy - (oy - v.y) * s };
+      return { k, x: px - (px - v.x) * s, y: py - (py - v.y) * s };
     });
   };
+  // Trackpad: pinch arrives as ctrl+wheel → zoom; a two-finger swipe → pan.
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const rect = wrapRef.current?.getBoundingClientRect();
-    zoomAt(e.deltaY < 0 ? 1.1 : 0.9, rect ? e.clientX - rect.left : undefined, rect ? e.clientY - rect.top : undefined);
+    const r = svgRef.current?.getBoundingClientRect();
+    if (e.ctrlKey) {
+      zoomAt(Math.exp(-e.deltaY * 0.01), r ? e.clientX - r.left : undefined, r ? e.clientY - r.top : undefined);
+    } else {
+      setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
+    }
   };
   const onPointerDown = (e: React.PointerEvent) => {
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    drag.current = { x: e.clientX - view.x, y: e.clientY - view.y, moved: false };
+    svgRef.current?.setPointerCapture?.(e.pointerId);
+    const nodeEl = (e.target as Element).closest?.("[data-node]");
+    const id = nodeEl?.getAttribute("data-node") ?? "";
+    const p = posRef.current.get(id);
+    if (id && p) {
+      const gp = toGraph(e.clientX, e.clientY);
+      gesture.current = { mode: "node", id, offX: p.x - gp.x, offY: p.y - gp.y, tx: p.x, ty: p.y, downX: e.clientX, downY: e.clientY, moved: false };
+      reheatRef.current(0.6);
+    } else {
+      const v = viewRef.current;
+      gesture.current = { mode: "pan", sx: e.clientX, sy: e.clientY, vx: v.x, vy: v.y, moved: false };
+    }
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const nx = e.clientX - drag.current.x;
-    const ny = e.clientY - drag.current.y;
-    if (Math.abs(e.clientX - drag.current.x - view.x) + Math.abs(e.clientY - drag.current.y - view.y) > 2)
-      drag.current.moved = true;
-    setView((v) => ({ ...v, x: nx, y: ny }));
+    const g = gesture.current;
+    if (!g) return;
+    if (g.mode === "pan") {
+      const dx = e.clientX - g.sx;
+      const dy = e.clientY - g.sy;
+      if (Math.abs(dx) + Math.abs(dy) > 3) g.moved = true;
+      setView((v) => ({ ...v, x: g.vx + dx, y: g.vy + dy }));
+    } else {
+      const gp = toGraph(e.clientX, e.clientY);
+      g.tx = gp.x + g.offX;
+      g.ty = gp.y + g.offY;
+      if (Math.abs(e.clientX - g.downX) + Math.abs(e.clientY - g.downY) > 3) g.moved = true;
+      reheatRef.current(0.3);
+    }
   };
   const onPointerUp = () => {
-    drag.current = null;
+    const g = gesture.current;
+    gesture.current = null;
+    if (g?.mode === "node") {
+      if (!g.moved) {
+        const n = nodeById.get(g.id);
+        if (n) onPick(n);
+      } else {
+        reheatRef.current(0.25); // let neighbors relax after a drag
+      }
+    }
   };
 
+  const { cx, cy } = geom();
   const view0 = { tx: view.x, ty: view.y, k: view.k };
-  const rect = wrapRef.current?.getBoundingClientRect();
-  const cx = (rect?.width ?? 320) / 2;
-  const cy = (rect?.height ?? 400) / 2;
 
   return (
     <div className="graph-canvas" ref={wrapRef} onWheel={onWheel}>
@@ -239,6 +314,7 @@ function GraphCanvas({
       </div>
 
       <svg
+        ref={svgRef}
         className="graph-svg"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -260,13 +336,9 @@ function GraphCanvas({
             return (
               <g
                 key={n.id}
+                data-node={n.id}
                 className={`graph-node${isRoot ? " root" : ""}`}
                 transform={`translate(${p.x}, ${p.y})`}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!drag.current?.moved) onPick(n);
-                }}
               >
                 <circle
                   r={rad}

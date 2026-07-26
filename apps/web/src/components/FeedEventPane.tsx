@@ -86,7 +86,7 @@ export function FeedEventPane({
 
       <button className="primary feed-event-convert" onClick={() => void convert()} disabled={busy}>
         <CalendarPlus size={15} />
-        {busy ? "Converting…" : "Convert to a happening"}
+        {busy ? "Converting…" : "Convert to Hermes event"}
       </button>
       <p className="hint feed-event-convert-hint">
         Creates an event block in Hermes and removes this from the feed.

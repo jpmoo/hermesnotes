@@ -193,21 +193,34 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(req.body);
 
-    // Resolve the built-in "event" type for this user.
-    const [type] = await db
+    // Resolve this user's "event" type. Match by name case-insensitively
+    // (accounts seeded by older versions may capitalize it), falling back to a
+    // built-in type whose schema carries a datespan — the shape of an event.
+    const ownTypes = await db
       .select()
       .from(blockTypes)
-      .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.name, "event")))
-      .limit(1);
-    if (!type) throw badRequest("event block type missing");
+      .where(eq(blockTypes.ownerId, userId));
+    const type =
+      ownTypes.find((t) => t.name.trim().toLowerCase() === "event") ??
+      ownTypes.find(
+        (t) =>
+          t.builtin &&
+          !t.isText &&
+          !t.propertySchema?.status_field && // excludes task (which has a status)
+          (t.propertySchema?.fields ?? []).some((f) => f.type === "datespan"),
+      );
+    if (!type) throw badRequest("No event type found — create an 'event' type first");
 
-    const when = { start: body.start, end: body.end ?? body.start };
+    // Map onto the type's actual fields (the datespan key may differ from "when"
+    // on older accounts; title/description/location follow the built-in keys).
+    const fields = type.propertySchema?.fields ?? [];
+    const spanKey = fields.find((f) => f.type === "datespan")?.key ?? "when";
     const properties: Record<string, unknown> = {
       title: body.summary || "(untitled event)",
-      description: body.description || "",
-      when,
+      [spanKey]: { start: body.start, end: body.end ?? body.start },
     };
-    if (body.location) properties.location = body.location;
+    if (fields.some((f) => f.key === "description")) properties.description = body.description || "";
+    if (body.location && fields.some((f) => f.key === "location")) properties.location = body.location;
     const embedSource = computeEmbedSource(type, { content: null, properties });
 
     const created = await db.transaction(async (tx) => {

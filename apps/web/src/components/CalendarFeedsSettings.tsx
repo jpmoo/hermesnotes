@@ -64,7 +64,7 @@ export function CalendarFeedsSettings() {
       <p className="hint" style={{ marginBottom: 14 }}>
         Subscribe to external calendars (Google, Outlook, iCloud…) by their public
         ICS/secret address. Events appear read-only on calendar views; convert one
-        into a Hermes happening from its detail panel.
+        into a Hermes event from its detail panel.
       </p>
 
       {feeds.length > 0 && (

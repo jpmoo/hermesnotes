@@ -257,7 +257,34 @@ label,
 .graph-edge {
   stroke: var(--border-strong);
   stroke-width: 1;
-  opacity: 0.7;
+  opacity: 0.6;
+}
+.graph-arrow {
+  fill: var(--border-strong);
+}
+/* A dotted pulse flowing along each edge toward its arrowhead (the `to` end). */
+.graph-edge-flow {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: 1.5 9;
+  opacity: 0.85;
+  animation: graph-flow 0.9s linear infinite;
+}
+@keyframes graph-flow {
+  from {
+    stroke-dashoffset: 10.5;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-edge-flow {
+    animation: none;
+    opacity: 0.4;
+  }
 }
 .graph-node circle {
   stroke: var(--surface);

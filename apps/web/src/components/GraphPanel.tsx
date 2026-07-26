@@ -153,8 +153,8 @@ function GraphCanvas({
         }
       }
       for (const e of edges) {
-        const a = pos.get(e.a);
-        const b = pos.get(e.b);
+        const a = pos.get(e.from);
+        const b = pos.get(e.to);
         if (!a || !b) continue;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
@@ -231,23 +231,26 @@ function GraphCanvas({
     if (!r) return { x: 0, y: 0 };
     return { x: (clientX - r.left - cx - v.x) / v.k, y: (clientY - r.top - cy - v.y) / v.k };
   };
-  const zoomAt = (factor: number, ox?: number, oy?: number) => {
-    const { r, cx, cy } = geom();
-    const px = ox ?? cx;
-    const py = oy ?? cy;
-    void r;
+  // Zoom around a focus point expressed relative to the transform center
+  // (i.e. cursor − center); default (0,0) zooms around the middle.
+  const zoomAt = (factor: number, fx = 0, fy = 0) => {
     setView((v) => {
       const k = Math.min(4, Math.max(0.2, v.k * factor));
       const s = k / v.k;
-      return { k, x: px - (px - v.x) * s, y: py - (py - v.y) * s };
+      return { k, x: fx - (fx - v.x) * s, y: fy - (fy - v.y) * s };
     });
+  };
+  // The cursor position relative to the transform center, for cursor-anchored zoom.
+  const focusOf = (clientX: number, clientY: number): [number, number] => {
+    const { r, cx, cy } = geom();
+    if (!r) return [0, 0];
+    return [clientX - r.left - cx, clientY - r.top - cy];
   };
   // Trackpad: pinch arrives as ctrl+wheel → zoom; a two-finger swipe → pan.
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const r = svgRef.current?.getBoundingClientRect();
     if (e.ctrlKey) {
-      zoomAt(Math.exp(-e.deltaY * 0.01), r ? e.clientX - r.left : undefined, r ? e.clientY - r.top : undefined);
+      zoomAt(Math.exp(-e.deltaY * 0.01), ...focusOf(e.clientX, e.clientY));
     } else {
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     }
@@ -297,6 +300,10 @@ function GraphCanvas({
 
   const { cx, cy } = geom();
   const view0 = { tx: view.x, ty: view.y, k: view.k };
+  const radOf = (id: string) => {
+    const n = nodeById.get(id);
+    return n ? (n.id === root ? 9 : n.collection ? 7 : 6) : 6;
+  };
 
   return (
     <div className="graph-canvas" ref={wrapRef} onWheel={onWheel}>
@@ -321,12 +328,39 @@ function GraphCanvas({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
       >
+        <defs>
+          <marker
+            id="garrow"
+            viewBox="0 0 8 8"
+            markerWidth="8"
+            markerHeight="8"
+            refX="7"
+            refY="4"
+            orient="auto"
+          >
+            <path className="graph-arrow" d="M0,0 L8,4 L0,8 z" />
+          </marker>
+        </defs>
         <g transform={`translate(${cx + view0.tx}, ${cy + view0.ty}) scale(${view0.k})`}>
           {edges.map((e, i) => {
-            const a = posRef.current.get(e.a);
-            const b = posRef.current.get(e.b);
+            const a = posRef.current.get(e.from);
+            const b = posRef.current.get(e.to);
             if (!a || !b) return null;
-            return <line key={i} className="graph-edge" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const len = Math.hypot(dx, dy) || 1;
+            const ux = dx / len;
+            const uy = dy / len;
+            const x1 = a.x + ux * (radOf(e.from) + 1);
+            const y1 = a.y + uy * (radOf(e.from) + 1);
+            const x2 = b.x - ux * (radOf(e.to) + 5);
+            const y2 = b.y - uy * (radOf(e.to) + 5);
+            return (
+              <g key={i}>
+                <line className="graph-edge" x1={x1} y1={y1} x2={x2} y2={y2} markerEnd="url(#garrow)" />
+                <line className="graph-edge-flow" x1={x1} y1={y1} x2={x2} y2={y2} />
+              </g>
+            );
           })}
           {nodes.map((n) => {
             const p = posRef.current.get(n.id);

@@ -179,7 +179,7 @@ export interface GraphNode {
 export interface GraphResult {
   root: string;
   nodes: GraphNode[];
-  edges: { a: string; b: string }[];
+  edges: { from: string; to: string }[];
   truncated: boolean;
 }
 

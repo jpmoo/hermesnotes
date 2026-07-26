@@ -23,8 +23,8 @@ export interface GraphNode {
   gen: number;
 }
 export interface GraphEdge {
-  a: string;
-  b: string;
+  from: string;
+  to: string;
 }
 export interface GraphResult {
   root: string;
@@ -127,34 +127,40 @@ export async function buildGraph(userId: string, rootId: string, depth: number):
   const nodes = new Map<string, GraphNode>([[rootId, nodeFrom(rootRow, 0, types)]]);
   const edgeSet = new Set<string>();
   const edges: GraphEdge[] = [];
-  const addEdge = (a: string, b: string) => {
-    if (a === b) return;
-    const k = a < b ? `${a}|${b}` : `${b}|${a}`;
+  const addEdge = (from: string, to: string) => {
+    if (from === to) return;
+    const k = `${from}>${to}`;
     if (edgeSet.has(k)) return;
     edgeSet.add(k);
-    edges.push({ a, b });
+    edges.push({ from, to });
   };
 
   let truncated = false;
   let frontier = [rootId];
   for (let gen = 1; gen <= depth && frontier.length; gen++) {
-    const pairs = await neighborsOf(userId, frontier, canvasAdj, types, mem);
-    const next: string[] = [];
-    for (const { from, node } of pairs) {
-      addEdge(from, node.id);
-      if (nodes.has(node.id)) continue;
-      if (nodes.size >= NODE_CAP) {
-        truncated = true;
-        continue;
+    const { edges: found, meta } = await neighborsOf(userId, frontier, canvasAdj, types, mem);
+    const next = new Set<string>();
+    for (const e of found) {
+      addEdge(e.from, e.to);
+      // Add whichever endpoint(s) we haven't placed yet.
+      for (const id of [e.from, e.to]) {
+        if (nodes.has(id)) continue;
+        if (nodes.size >= NODE_CAP) {
+          truncated = true;
+          continue;
+        }
+        const m = meta.get(id);
+        if (m) {
+          nodes.set(id, { ...m, gen });
+          next.add(id);
+        }
       }
-      nodes.set(node.id, { ...node, gen });
-      next.push(node.id);
     }
-    frontier = next;
+    frontier = [...next];
   }
 
   // Only keep edges whose endpoints both made the node cut.
-  const kept = edges.filter((e) => nodes.has(e.a) && nodes.has(e.b));
+  const kept = edges.filter((e) => nodes.has(e.from) && nodes.has(e.to));
   return { root: rootId, nodes: [...nodes.values()], edges: kept, truncated };
 }
 
@@ -221,7 +227,7 @@ async function neighborsOf(
   canvasAdj: Map<string, Set<string>>,
   types: Map<string, TypeMeta>,
   mem: Membership,
-): Promise<{ from: string; node: GraphNode }[]> {
+): Promise<{ edges: GraphEdge[]; meta: Map<string, GraphNode> }> {
   const front = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.ownerId, userId), inArray(blocks.id, frontier)));
   const frontSet = new Set(frontier);
 
@@ -318,27 +324,33 @@ async function neighborsOf(
     }
   }
 
-  // Fetch metadata for every discovered neighbor id (that isn't a frontier row
-  // we already have), then emit {from, node} pairs.
-  const targetIds = new Set<string>();
-  for (const set of out.values()) for (const id of set) targetIds.add(id);
+  // Metadata for every id that appears in an edge — both endpoints, so inbound
+  // ("linked from") blocks get placed too, not just outbound targets.
   const known = new Map<string, Row>(front.map((r) => [r.id, r]));
-  const missing = [...targetIds].filter((id) => !known.has(id));
-  if (missing.length) {
-    for (let i = 0; i < missing.length; i += 300) {
-      const chunk = missing.slice(i, i + 300);
-      const rows = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.ownerId, userId), inArray(blocks.id, chunk)));
-      for (const r of rows) known.set(r.id, r);
-    }
+  for (const row of inbound) known.set(row.id, row);
+  const involved = new Set<string>();
+  for (const [from, set] of out) {
+    involved.add(from);
+    for (const id of set) involved.add(id);
+  }
+  const missing = [...involved].filter((id) => !known.has(id));
+  for (let i = 0; i < missing.length; i += 300) {
+    const chunk = missing.slice(i, i + 300);
+    if (!chunk.length) break;
+    const rows = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.ownerId, userId), inArray(blocks.id, chunk)));
+    for (const r of rows) known.set(r.id, r);
   }
 
-  const pairs: { from: string; node: GraphNode }[] = [];
+  const meta = new Map<string, GraphNode>();
+  for (const id of involved) {
+    const row = known.get(id);
+    if (row) meta.set(id, nodeFrom(row, 0, types));
+  }
+  const edgesOut: GraphEdge[] = [];
   for (const [from, set] of out) {
     for (const to of set) {
-      const row = known.get(to);
-      if (!row) continue; // dangling / cross-owner id
-      pairs.push({ from, node: nodeFrom(row, 0, types) });
+      if (meta.has(from) && meta.has(to)) edgesOut.push({ from, to });
     }
   }
-  return pairs;
+  return { edges: edgesOut, meta };
 }

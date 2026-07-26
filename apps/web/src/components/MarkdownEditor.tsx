@@ -85,7 +85,14 @@ export function MarkdownEditor({
     content: value,
     autofocus: autofocus ? "end" : false,
     editorProps: {
-      attributes: { class: "note-editor" },
+      attributes: {
+        class: "note-editor",
+        autocomplete: "off",
+        autocorrect: "off",
+        autocapitalize: "off",
+        "data-1p-ignore": "true",
+        "data-lpignore": "true",
+      },
       // Mentions (block:/tag:) navigate via their chip; plain web links open in
       // a new tab. Intercept at mousedown: a click would first move the
       // selection, the active-line swap would turn the block into raw source,

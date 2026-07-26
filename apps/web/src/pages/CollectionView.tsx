@@ -270,6 +270,11 @@ export function CollectionView() {
           className="collection-title"
           value={titleVal}
           placeholder="Untitled list"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          data-1p-ignore="true"
+          data-lpignore="true"
           onFocus={() => selectBlock(id, { collection: true })}
           onChange={(e) => saveTitle(e.target.value)}
         />

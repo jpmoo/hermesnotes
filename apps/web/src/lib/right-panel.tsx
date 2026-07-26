@@ -68,11 +68,12 @@ const recentKey = (e: RecentEntry) =>
       : `${e.kind === "collection" ? "c" : "b"}:${e.id}`;
 
 const Ctx = createContext<PanelsApi | null>(null);
-const readBool = (k: string) => {
+const readBool = (k: string, dflt = false) => {
   try {
-    return localStorage.getItem(k) === "1";
+    const v = localStorage.getItem(k);
+    return v === null ? dflt : v === "1";
   } catch {
-    return false;
+    return dflt;
   }
 };
 const readRecents = (k: string): RecentEntry[] => {
@@ -99,7 +100,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [bottomSlotEl, setBottomSlotEl] = useState<HTMLElement | null>(null);
   const [hasContent, setHasContent] = useState(false);
   const [leftPinned, setLeftRaw] = useState(() => readBool("hn.pin.left"));
-  const [rightPinned, setRightRaw] = useState(() => readBool("hn.pin.right"));
+  // New users start with the right (info) panel pinned open.
+  const [rightPinned, setRightRaw] = useState(() => readBool("hn.pin.right", true));
 
   const [nav, setNav] = useState<{ stack: NavEntry[]; pos: number }>({ stack: [], pos: -1 });
   const [selectedFeedEvent, setSelectedFeedEvent] = useState<FeedEvent | null>(null);

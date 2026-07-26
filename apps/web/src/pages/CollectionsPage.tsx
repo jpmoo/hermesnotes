@@ -100,6 +100,7 @@ export function CollectionsPage() {
       <div className="sort-bar">
         <input
           type="text"
+          autoComplete="off"
           placeholder="Name contains…"
           value={q}
           onChange={(e) => setQ(e.target.value)}

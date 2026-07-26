@@ -88,12 +88,13 @@ export function FieldInput({
       return (
         <input
           type="number"
+          autoComplete="off"
           value={str}
           onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
         />
       );
     case "url":
-      return <input type="url" value={str} onChange={(e) => onChange(e.target.value)} />;
+      return <input type="url" autoComplete="off" value={str} onChange={(e) => onChange(e.target.value)} />;
     case "reference":
       return <ReferenceInput refTypeId={field.refTypeId} value={value} onChange={onChange} />;
     case "select":

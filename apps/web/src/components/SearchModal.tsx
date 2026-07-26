@@ -119,6 +119,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
             ref={inputRef}
             className="gs-input"
             placeholder="Search everything…"
+            autoComplete="off"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}

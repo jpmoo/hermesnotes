@@ -139,6 +139,35 @@ export function App() {
       .catch(() => setUnreachable(true));
   }, []);
 
+  // Disable browser / password-manager autofill dropdowns on text-entry fields
+  // app-wide — they pop up unprompted as you type. Password and email fields are
+  // left alone so a password manager still works on the sign-in screen.
+  useEffect(() => {
+    const SKIP = new Set([
+      "password", "email", "checkbox", "radio", "range", "file", "color", "hidden", "submit", "button",
+    ]);
+    const harden = (input: HTMLInputElement) => {
+      const type = (input.getAttribute("type") || "text").toLowerCase();
+      if (SKIP.has(type)) return;
+      if (!input.hasAttribute("autocomplete")) input.setAttribute("autocomplete", "off");
+      input.setAttribute("autocorrect", "off");
+      input.setAttribute("autocapitalize", "off");
+      input.setAttribute("data-1p-ignore", "true");
+      input.setAttribute("data-lpignore", "true");
+    };
+    const process = (node: Node) => {
+      if (!(node instanceof HTMLElement)) return;
+      if (node instanceof HTMLInputElement) harden(node);
+      node.querySelectorAll?.("input").forEach((el) => harden(el as HTMLInputElement));
+    };
+    process(document.body);
+    const obs = new MutationObserver((muts) => {
+      for (const m of muts) m.addedNodes.forEach(process);
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
+
   if (unreachable) return <div className="auth-wrap chrome">Cannot reach the server.</div>;
   if (!status) return <div className="auth-wrap chrome">Loading…</div>;
   if (!status.configured) return <SetupPage onDone={() => window.location.reload()} />;

@@ -33,6 +33,7 @@ export function TagEditor({ blockId, refresh = 0 }: { blockId: string; refresh?:
       <input
         className="tag-input"
         placeholder="+ tag"
+        autoComplete="off"
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => {

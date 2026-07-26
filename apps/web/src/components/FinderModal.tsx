@@ -53,6 +53,7 @@ export function FinderModal({
         <input
           type="text"
           placeholder="Search your blocks…"
+          autoComplete="off"
           value={q}
           autoFocus
           onChange={(e) => setQ(e.target.value)}

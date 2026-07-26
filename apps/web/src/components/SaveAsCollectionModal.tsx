@@ -57,7 +57,7 @@ export function SaveAsCollectionModal({
 
         <label className="field">
           <span>Name</span>
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+          <input type="text" autoComplete="off" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
         </label>
 
         <div className="field">

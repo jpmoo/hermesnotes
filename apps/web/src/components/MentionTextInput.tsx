@@ -135,7 +135,17 @@ export function MentionTextInput({
       Mentions.configure({ handlers }),
     ],
     content: { type: "doc", content: parseLine(value) },
-    editorProps: { attributes: { class: "mention-line" } },
+    // Suppress browser / password-manager autofill dropdowns on the editable.
+    editorProps: {
+      attributes: {
+        class: "mention-line",
+        autocomplete: "off",
+        autocorrect: "off",
+        autocapitalize: "off",
+        "data-1p-ignore": "true",
+        "data-lpignore": "true",
+      },
+    },
     onFocus: () => onFocus?.(),
     onUpdate: ({ editor }) => {
       const s = serializeLine(editor.state.doc);

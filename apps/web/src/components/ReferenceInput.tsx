@@ -152,6 +152,11 @@ export function ReferenceInput({
           className="ref-chip-input"
           value={query}
           placeholder={ids.length ? "Add…" : "Search…"}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          data-1p-ignore="true"
+          data-lpignore="true"
           onFocus={() => setOpen(true)}
           onChange={(e) => setQuery(e.target.value)}
         />

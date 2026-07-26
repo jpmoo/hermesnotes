@@ -7,10 +7,17 @@ import { env } from "../env.js";
 import { badRequest } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { Api, type ApiAuth } from "../mcp/api.js";
-import { runAgent } from "./agent.js";
+import { runAgent, runConfirmed } from "./agent.js";
 
 export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
+
+  const apiFor = (req: Parameters<typeof requireUser>[0]): Api => {
+    const authHeader = req.headers.authorization;
+    const auth: ApiAuth =
+      authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : { cookie: req.headers.cookie ?? "" };
+    return new Api(`http://127.0.0.1:${env.PORT}/api`, auth);
+  };
 
   /**
    * Run the in-app assistant. The tool calls it makes act as the requester —
@@ -36,17 +43,24 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
     if (!settings.model)
       throw badRequest("No inference model set. Choose a tool-capable model (e.g. llama3.1, qwen2.5) in Settings.");
 
-    const authHeader = req.headers.authorization;
-    const auth: ApiAuth =
-      authHeader?.startsWith("Bearer ") ? authHeader.slice(7).trim() : { cookie: req.headers.cookie ?? "" };
-    const api = new Api(`http://127.0.0.1:${env.PORT}/api`, auth);
-
     const result = await runAgent({
       url: settings.url,
       model: settings.model,
-      api,
+      api: apiFor(req),
       messages: body.messages,
+      confirmDestructive: true,
     });
     return result;
+  });
+
+  /** Execute the destructive calls the user just approved in the panel. */
+  app.post("/assistant/confirm", async (req) => {
+    requireUser(req);
+    const body = z
+      .object({
+        calls: z.array(z.object({ tool: z.string(), args: z.unknown() })).min(1),
+      })
+      .parse(req.body);
+    return runConfirmed({ api: apiFor(req), calls: body.calls });
   });
 }

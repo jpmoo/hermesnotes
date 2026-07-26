@@ -35,9 +35,15 @@ export interface AgentStep {
   result: string;
   ok: boolean;
 }
+export interface PendingCall {
+  tool: string;
+  args?: unknown;
+}
 export interface AgentResult {
   reply: string;
   steps: AgentStep[];
+  /** Destructive calls the agent wants to make, awaiting the user's confirmation. */
+  pending?: PendingCall[];
 }
 
 /** Convert the shared tool registry into Ollama's function-tool format. */
@@ -81,13 +87,37 @@ async function ollamaChat(
 
 const MAX_STEPS = 8;
 
-/** Run the agent loop until the model stops calling tools (or the step cap). */
+const normArgs = (raw: unknown): unknown => {
+  if (typeof raw !== "string") return raw ?? {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+};
+
+/** Execute one tool by name against the registry, returning a step. */
+async function execTool(byName: Map<string, ToolDef>, name: string, args: unknown): Promise<AgentStep> {
+  const def = byName.get(name);
+  if (!def) return { tool: name, args, result: `Unknown tool "${name}".`, ok: false };
+  try {
+    const parsed = z.object(def.schema).parse(args ?? {});
+    const r = await def.handler(parsed);
+    return { tool: name, args, result: r.content.map((c) => c.text).join("\n"), ok: !r.isError };
+  } catch (e) {
+    return { tool: name, args, result: `Error: ${e instanceof Error ? e.message : String(e)}`, ok: false };
+  }
+}
+
+/** Run the agent loop until the model stops calling tools (or the step cap).
+ *  When `confirmDestructive`, destructive tool calls are not executed — they're
+ *  returned as `pending` for the user to approve, and the loop stops there. */
 export async function runAgent(opts: {
   url: string;
   model: string;
   api: Api;
   messages: { role: "user" | "assistant"; content: string }[];
-  onStep?: (step: AgentStep) => void;
+  confirmDestructive?: boolean;
 }): Promise<AgentResult> {
   const registry = defineTools(opts.api);
   const byName = new Map(registry.map((t) => [t.name, t]));
@@ -102,36 +132,33 @@ export async function runAgent(opts: {
     const calls = msg.tool_calls ?? [];
     if (!calls.length) return { reply: msg.content?.trim() || "", steps };
 
+    const pending: PendingCall[] = [];
     for (const call of calls) {
       const name = call.function?.name ?? "";
-      let args: unknown = call.function?.arguments ?? {};
-      if (typeof args === "string") {
-        try {
-          args = JSON.parse(args);
-        } catch {
-          /* leave as string; validation will report it */
-        }
+      const args = normArgs(call.function?.arguments);
+      if (opts.confirmDestructive && byName.get(name)?.destructive) {
+        pending.push({ tool: name, args });
+        continue; // hold for user approval
       }
-      const def = byName.get(name);
-      let result: string;
-      let ok = false;
-      if (!def) {
-        result = `Unknown tool "${name}".`;
-      } else {
-        try {
-          const parsed = z.object(def.schema).parse(args ?? {});
-          const r = await def.handler(parsed);
-          result = r.content.map((c) => c.text).join("\n");
-          ok = !r.isError;
-        } catch (e) {
-          result = `Error: ${e instanceof Error ? e.message : String(e)}`;
-        }
-      }
-      const step: AgentStep = { tool: name, args, result, ok };
+      const step = await execTool(byName, name, args);
       steps.push(step);
-      opts.onStep?.(step);
-      messages.push({ role: "tool", content: result });
+      messages.push({ role: "tool", content: step.result });
     }
+    if (pending.length) return { reply: msg.content?.trim() || "", steps, pending };
   }
   return { reply: "I stopped after several steps — ask me to continue if needed.", steps };
+}
+
+/** Execute a set of user-confirmed calls (destructive tools only). */
+export async function runConfirmed(opts: { api: Api; calls: PendingCall[] }): Promise<{ steps: AgentStep[] }> {
+  const byName = new Map(defineTools(opts.api).map((t) => [t.name, t]));
+  const steps: AgentStep[] = [];
+  for (const c of opts.calls) {
+    if (!byName.get(c.tool)?.destructive) {
+      steps.push({ tool: c.tool, args: c.args, result: "Refused: only destructive tools run through confirm.", ok: false });
+      continue;
+    }
+    steps.push(await execTool(byName, c.tool, c.args));
+  }
+  return { steps };
 }

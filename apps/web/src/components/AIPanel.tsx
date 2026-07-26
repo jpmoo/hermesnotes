@@ -1,11 +1,13 @@
-import { ArrowUp, Sparkles, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowUp, Sparkles, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type AgentReply, type AgentStep } from "../api.ts";
+import { api, ApiError, type AgentReply, type AgentStep, type PendingCall } from "../api.ts";
 
 interface Msg {
   role: "user" | "assistant";
   content: string;
   steps?: AgentStep[];
+  pending?: PendingCall[];
+  resolved?: boolean;
 }
 
 /**
@@ -36,9 +38,32 @@ export function AIPanel() {
       const res = await api.post<AgentReply>("/assistant/chat", {
         messages: history.map((m) => ({ role: m.role, content: m.content })),
       });
-      setMsgs((m) => [...m, { role: "assistant", content: res.reply, steps: res.steps }]);
+      setMsgs((m) => [
+        ...m,
+        { role: "assistant", content: res.reply, steps: res.steps, pending: res.pending },
+      ]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "The assistant is unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolvePending = async (idx: number, approve: boolean) => {
+    const pending = msgs[idx]?.pending;
+    if (!pending) return;
+    setMsgs((m) => m.map((x, i) => (i === idx ? { ...x, resolved: true } : x)));
+    if (!approve) {
+      setMsgs((m) => [...m, { role: "assistant", content: "Okay — cancelled, nothing was deleted." }]);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ steps: AgentStep[] }>("/assistant/confirm", { calls: pending });
+      setMsgs((m) => [...m, { role: "assistant", content: "Done.", steps: res.steps }]);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "Couldn't complete that.");
     } finally {
       setBusy(false);
     }
@@ -79,6 +104,29 @@ export function AIPanel() {
               </div>
             )}
             {m.content && <div className="ai-bubble">{m.content}</div>}
+            {m.pending && m.pending.length > 0 && !m.resolved && (
+              <div className="ai-confirm">
+                <div className="ai-confirm-head">
+                  <AlertTriangle size={14} />
+                  <span>Confirm {m.pending.length === 1 ? "this action" : "these actions"}</span>
+                </div>
+                {m.pending.map((p, j) => (
+                  <div key={j} className="ai-confirm-item">
+                    <Wrench size={12} />
+                    <span className="ai-step-name">{p.tool}</span>
+                    <span className="ai-step-result">{summarizeArgs(p.args)}</span>
+                  </div>
+                ))}
+                <div className="ai-confirm-actions">
+                  <button className="danger" onClick={() => void resolvePending(i, true)} disabled={busy}>
+                    Confirm
+                  </button>
+                  <button className="ghost" onClick={() => void resolvePending(i, false)} disabled={busy}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {busy && (
@@ -114,4 +162,11 @@ export function AIPanel() {
 function firstLine(s: string): string {
   const line = s.split("\n")[0] ?? "";
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
+}
+
+function summarizeArgs(args: unknown): string {
+  if (!args || typeof args !== "object") return "";
+  const parts = Object.entries(args as Record<string, unknown>).map(([k, v]) => `${k}: ${String(v)}`);
+  const s = parts.join(", ");
+  return s.length > 60 ? `${s.slice(0, 59)}…` : s;
 }

@@ -67,7 +67,17 @@ export interface ToolDef {
   description: string;
   schema: z.ZodRawShape;
   handler: (args: Record<string, unknown>) => Promise<ToolResult>;
+  /** Permanently deletes data — clients should confirm before running. */
+  destructive?: boolean;
+  /** Read-only (no writes) — safe to run without confirmation. */
+  readOnly?: boolean;
 }
+
+const DESTRUCTIVE_TOOLS = new Set(["delete_task", "delete_project", "block_delete", "tag_delete"]);
+const READONLY_TOOLS = new Set([
+  "search", "block_get", "list_types", "list_lists", "tag_list",
+  "task_find", "task_info", "project_list", "project_archived", "project_info",
+]);
 
 /**
  * The full Hermes tool surface, bound to one caller's API client. This registry
@@ -908,16 +918,26 @@ export function defineTools(api: Api): ToolDef[] {
     }),
   );
 
+  for (const t of tools) {
+    t.destructive = DESTRUCTIVE_TOOLS.has(t.name);
+    t.readOnly = READONLY_TOOLS.has(t.name);
+  }
   return tools;
 }
 
-/** MCP adapter: expose the shared tool registry to external agents unchanged. */
+/** MCP adapter: expose the shared tool registry to external agents, tagging
+ *  destructive/read-only tools so MCP clients gate them natively. */
 export function buildTools(server: McpServer, api: Api): void {
-  // Our ToolResult is structurally a subset of the SDK's CallToolResult (which
-  // permits extra keys); cast the callback to satisfy the overload.
   for (const t of defineTools(api)) {
+    const annotations = {
+      title: t.name,
+      ...(t.destructive ? { destructiveHint: true } : {}),
+      ...(t.readOnly ? { readOnlyHint: true } : {}),
+    };
+    // Our ToolResult is structurally a subset of the SDK's CallToolResult (which
+    // permits extra keys); cast the callback to satisfy the overload.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    server.tool(t.name, t.description, t.schema, t.handler as any);
+    server.tool(t.name, t.description, t.schema, annotations, t.handler as any);
   }
 }
 

@@ -189,9 +189,14 @@ export interface AgentStep {
   result: string;
   ok: boolean;
 }
+export interface PendingCall {
+  tool: string;
+  args?: unknown;
+}
 export interface AgentReply {
   reply: string;
   steps: AgentStep[];
+  pending?: PendingCall[];
 }
 
 export interface CalendarFeed {

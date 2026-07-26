@@ -496,6 +496,42 @@ label,
     opacity: 1;
   }
 }
+.ai-confirm {
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 92%;
+}
+.ai-confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.ai-confirm-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.ai-confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.ai-confirm-actions button {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+}
 .ai-error {
   font-size: 12px;
   color: var(--danger);

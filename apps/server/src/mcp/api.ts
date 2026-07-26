@@ -8,16 +8,29 @@ export class ApiError extends Error {
   }
 }
 
+/** Auth to forward on loopback calls: a bearer access key, or a browser cookie. */
+export type ApiAuth = string | { cookie: string };
+
 export class Api {
   constructor(
     private base: string,
-    private token: string,
+    private auth: ApiAuth,
   ) {}
+
+  private get secret(): string {
+    return typeof this.auth === "string" ? this.auth : this.auth.cookie;
+  }
+  private authHeader(): Record<string, string> {
+    return typeof this.auth === "string"
+      ? { Authorization: `Bearer ${this.auth}` }
+      : { Cookie: this.auth.cookie };
+  }
 
   /** Stable per-user cache key (not the raw secret). */
   get cacheKey(): string {
+    const s = this.secret;
     let h = 0;
-    for (let i = 0; i < this.token.length; i++) h = (h * 31 + this.token.charCodeAt(i)) | 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return String(h);
   }
 
@@ -25,7 +38,7 @@ export class Api {
     const res = await fetch(this.base + path, {
       method,
       headers: {
-        Authorization: `Bearer ${this.token}`,
+        ...this.authHeader(),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

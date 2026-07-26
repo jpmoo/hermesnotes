@@ -22,6 +22,7 @@ import { todayRoutes } from "./today/routes.js";
 import { attachmentRoutes } from "./attachments/routes.js";
 import { bannerRoutes } from "./banners/routes.js";
 import { calendarRoutes } from "./calendar/routes.js";
+import { assistantRoutes } from "./assistant/routes.js";
 import { setupRoutes } from "./setup/routes.js";
 import { backupRoutes } from "./backup/routes.js";
 
@@ -76,6 +77,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(attachmentRoutes, { prefix: "/api" });
   await app.register(bannerRoutes, { prefix: "/api" });
   await app.register(calendarRoutes, { prefix: "/api" });
+  await app.register(assistantRoutes, { prefix: "/api" });
   await app.register(blockRoutes, { prefix: "/api" });
   await app.register(mcpRoutes); // /mcp — no /api prefix
   await app.register(oauthRoutes); // /oauth/*, /.well-known/* — no /api prefix

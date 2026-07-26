@@ -183,6 +183,17 @@ export interface GraphResult {
   truncated: boolean;
 }
 
+export interface AgentStep {
+  tool: string;
+  args: unknown;
+  result: string;
+  ok: boolean;
+}
+export interface AgentReply {
+  reply: string;
+  steps: AgentStep[];
+}
+
 export interface CalendarFeed {
   id: string;
   name: string;

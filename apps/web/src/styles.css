@@ -198,7 +198,14 @@ label,
   min-height: 0;
   overflow-y: auto;
 }
-.panel-dock-bars {
+.panel-scroll.hidden {
+  display: none;
+}
+.panel-tabview {
+  position: absolute;
+  inset: 0;
+}
+.panel-tabs {
   flex-shrink: 0;
   display: flex;
   gap: 8px;
@@ -206,7 +213,7 @@ label,
   margin-top: 10px;
   border-top: 1px solid var(--border);
 }
-.dock-bar {
+.panel-tab {
   flex: 1;
   display: inline-flex;
   align-items: center;
@@ -220,40 +227,13 @@ label,
   font-size: 12px;
   cursor: pointer;
 }
-.dock-bar:hover {
+.panel-tab:hover {
   border-color: var(--border-strong);
 }
-.dock-bar.active {
+.panel-tab.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-}
-.panel-dock-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-}
-.dock-head {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 8px;
-  margin-bottom: 6px;
-  border-bottom: 1px solid var(--border);
-}
-.dock-title {
-  font-family: var(--font-chrome);
-  font-size: 13px;
-  font-weight: 600;
-}
-.dock-content {
-  position: relative;
-  flex: 1;
-  min-height: 0;
 }
 
 /* ── Graph panel ─────────────────────────────────────────────── */
@@ -4726,13 +4706,16 @@ input.cv-add-input {
 .app-shell.mobile.m-info-open .right-panel .panel-body {
   display: block;
 }
-/* The graph/AI dock is a desktop feature for now — the mobile info sheet keeps
-   its simple block flow. */
+/* Graph/AI tabs are a desktop feature for now — the mobile info sheet always
+   shows the info content and hides the tab bar. */
 .app-shell.mobile .panel-main {
   display: block;
 }
-.app-shell.mobile .panel-dock-bars,
-.app-shell.mobile .panel-dock-overlay {
+.app-shell.mobile .panel-scroll.hidden {
+  display: block;
+}
+.app-shell.mobile .panel-tabs,
+.app-shell.mobile .panel-tabview {
   display: none;
 }
 .app-shell.mobile .right-panel .panel-rail-icon,

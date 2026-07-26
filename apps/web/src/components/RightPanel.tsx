@@ -1,4 +1,4 @@
-import { ChevronDown, Info, PanelRight, Pin, PinOff, Share2, Sparkles } from "lucide-react";
+import { Info, PanelRight, Pin, PinOff, Share2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AIPanel } from "./AIPanel.tsx";
@@ -6,13 +6,13 @@ import { BlockInfoPane } from "./BlockInfoPane.tsx";
 import { FeedEventPane } from "./FeedEventPane.tsx";
 import { GraphPanel } from "./GraphPanel.tsx";
 
-type Dock = "graph" | "ai" | null;
-const readDock = (): Dock => {
+type Tab = "info" | "graph" | "ai";
+const readTab = (): Tab => {
   try {
-    const v = localStorage.getItem("hn.dock");
-    return v === "graph" || v === "ai" ? v : null;
+    const v = localStorage.getItem("hn.panel.tab");
+    return v === "graph" || v === "ai" ? v : "info";
   } catch {
-    return null;
+    return "info";
   }
 };
 
@@ -106,17 +106,16 @@ export function RightPanel() {
   const showFeedEvent = selectedFeedEvent !== null;
   const showInfo = selectedBlockId !== null && !showFeedEvent;
 
-  const [dock, setDockRaw] = useState<Dock>(readDock);
-  const setDock = (d: Dock) => {
-    setDockRaw(d);
+  const [tab, setTabRaw] = useState<Tab>(readTab);
+  const setTab = (t: Tab) => {
+    setTabRaw(t);
     try {
-      localStorage.setItem("hn.dock", d ?? "");
+      localStorage.setItem("hn.panel.tab", t);
     } catch {
       /* ignore */
     }
   };
-  const toggleDock = (d: Exclude<Dock, null>) => setDock(dock === d ? null : d);
-  const dockTitle = dock === "graph" ? "Graph" : dock === "ai" ? "AI" : "";
+  const tabTitle = tab === "graph" ? "Graph" : tab === "ai" ? "AI" : "Info";
 
   return (
     <aside ref={asideRef} className={`right-panel${expanded ? " expanded" : ""}`}>
@@ -125,7 +124,7 @@ export function RightPanel() {
       </div>
       <div className="panel-body">
         <div className="panel-head">
-          <span className="panel-title">Info</span>
+          <span className="panel-title">{tabTitle}</span>
           <button
             className="icon-btn panel-pin"
             title={rightPinned ? "Unpin panel" : "Pin panel open"}
@@ -141,60 +140,51 @@ export function RightPanel() {
             {rightPinned ? <PinOff size={14} /> : <Pin size={14} />}
           </button>
         </div>
+
         <div className="panel-main">
-        <div className="panel-scroll">
-          <div ref={setSlotEl} />
-          {showFeedEvent && (
-            <FeedEventPane
-              event={selectedFeedEvent}
-              onConverted={() => selectFeedEvent(null)}
-            />
+          {/* Info content stays mounted (pages portal into its slots); other
+              tabs just hide it. */}
+          <div className={`panel-scroll${tab === "info" ? "" : " hidden"}`}>
+            <div ref={setSlotEl} />
+            {showFeedEvent && (
+              <FeedEventPane event={selectedFeedEvent} onConverted={() => selectFeedEvent(null)} />
+            )}
+            {showInfo && (
+              <BlockInfoPane
+                blockId={selectedBlockId}
+                titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
+                onSelect={(id) => openBlock(id)}
+                onSelectCollection={(id) => openBlock(id, { collection: true })}
+                onDeleted={clearSelection}
+              />
+            )}
+            <div ref={setBottomSlotEl} />
+            {!hasContent && !showInfo && !showFeedEvent && (
+              <div className="panel-placeholder">
+                Select a block or collection to see and edit information here.
+              </div>
+            )}
+          </div>
+          {tab === "graph" && (
+            <div className="panel-tabview">
+              <GraphPanel />
+            </div>
           )}
-          {showInfo && (
-            <BlockInfoPane
-              blockId={selectedBlockId}
-              titleOverride={selectedToday ? `Daily Note for ${fmtLongDate(selectedToday)}` : undefined}
-              onSelect={(id) => openBlock(id)}
-              onSelectCollection={(id) => openBlock(id, { collection: true })}
-              onDeleted={clearSelection}
-            />
-          )}
-          <div ref={setBottomSlotEl} />
-          {!hasContent && !showInfo && !showFeedEvent && (
-            <div className="panel-placeholder">
-              Select a block or collection to see and edit information here.
+          {tab === "ai" && (
+            <div className="panel-tabview">
+              <AIPanel />
             </div>
           )}
         </div>
 
-          {/* A docked panel takes over the content area when open; the info
-              pane stays mounted behind so clicking a graph node updates it. */}
-          {dock && (
-            <div className="panel-dock-overlay">
-              <div className="dock-head">
-                <span className="dock-title">{dockTitle}</span>
-                <button className="icon-btn" title="Collapse" onClick={() => setDock(null)}>
-                  <ChevronDown size={16} />
-                </button>
-              </div>
-              <div className="dock-content">
-                {dock === "graph" ? <GraphPanel /> : <AIPanel />}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="panel-dock-bars">
-          <button
-            className={`dock-bar${dock === "graph" ? " active" : ""}`}
-            onClick={() => toggleDock("graph")}
-          >
+        <div className="panel-tabs">
+          <button className={`panel-tab${tab === "info" ? " active" : ""}`} onClick={() => setTab("info")}>
+            <Info size={14} /> Info
+          </button>
+          <button className={`panel-tab${tab === "graph" ? " active" : ""}`} onClick={() => setTab("graph")}>
             <Share2 size={14} /> Graph
           </button>
-          <button
-            className={`dock-bar${dock === "ai" ? " active" : ""}`}
-            onClick={() => toggleDock("ai")}
-          >
+          <button className={`panel-tab${tab === "ai" ? " active" : ""}`} onClick={() => setTab("ai")}>
             <Sparkles size={14} /> AI
           </button>
         </div>

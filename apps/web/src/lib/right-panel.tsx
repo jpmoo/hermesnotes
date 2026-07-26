@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import type { FeedEvent } from "../api.ts";
 
 /**
  * Shared panel state: the right panel's content slot, pin state, and the global
@@ -24,6 +25,8 @@ interface PanelsApi {
   selectedIsCollection: boolean;
   selectedToday: string | null; // the Today-page date this selection represents, if any
   selectedPage: RailPage | null; // a rail page (All blocks / Collections / Favorites), if current
+  selectedFeedEvent: FeedEvent | null; // a read-only calendar-feed event, if current
+  selectFeedEvent: (ev: FeedEvent | null) => void; // show a feed event in the info panel
   selectBlock: (id: string, opts?: { collection?: boolean }) => void; // log an interaction (no route change)
   selectToday: (date: string, noteId: string) => void; // log the Today page for a date
   selectPage: (page: RailPage) => void; // log a rail page as the current location
@@ -99,6 +102,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [rightPinned, setRightRaw] = useState(() => readBool("hn.pin.right"));
 
   const [nav, setNav] = useState<{ stack: NavEntry[]; pos: number }>({ stack: [], pos: -1 });
+  const [selectedFeedEvent, setSelectedFeedEvent] = useState<FeedEvent | null>(null);
   const [recents, setRecents] = useState<RecentEntry[]>(() => readRecents("hn.recents"));
   const [infoTick, setInfoTick] = useState(0);
   const refreshInfo = () => setInfoTick((t) => t + 1);
@@ -154,6 +158,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   // Log an entity as current: append to the history (dropping any forward
   // entries), unless it already is current.
   const append = (entry: NavEntry) => {
+    setSelectedFeedEvent(null); // selecting an entity supersedes a feed event
     setNav((n) => {
       const curEntry = n.pos >= 0 ? n.stack[n.pos] : undefined;
       if (curEntry && sameEntity(curEntry, entry)) return n;
@@ -175,7 +180,11 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     append(entry);
     navigate(pageOf(entry));
   };
-  const clearSelection = () => setNav({ stack: [], pos: -1 });
+  const selectFeedEvent = (ev: FeedEvent | null) => setSelectedFeedEvent(ev);
+  const clearSelection = () => {
+    setSelectedFeedEvent(null);
+    setNav({ stack: [], pos: -1 });
+  };
   const back = () => {
     if (nav.pos > 0) {
       const target = nav.stack[nav.pos - 1]!;
@@ -207,6 +216,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       selectedIsCollection,
       selectedToday,
       selectedPage,
+      selectedFeedEvent,
+      selectFeedEvent,
       selectBlock,
       selectToday,
       selectPage,
@@ -221,7 +232,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       refreshInfo,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, recents, infoTick],
+    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, selectedFeedEvent, recents, infoTick],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

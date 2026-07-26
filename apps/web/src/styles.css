@@ -4040,6 +4040,208 @@ input.cv-add-input {
   flex-shrink: 0;
 }
 
+/* Read-only calendar-feed events: tinted by their feed color, with a solid
+   left color bar to set them apart from editable Hermes cards. */
+.cal-feed-chip {
+  background: color-mix(in srgb, var(--feed-color) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--feed-color) 32%, var(--border));
+  border-left: 3px solid var(--feed-color);
+  padding-left: 6px;
+}
+.cal-feed-chip:hover {
+  background: color-mix(in srgb, var(--feed-color) 20%, var(--surface));
+  border-color: color-mix(in srgb, var(--feed-color) 45%, var(--border));
+}
+.cal-feed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cal-feed-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Per-feed show/hide toggles in the calendar toolbar. */
+.cal-feed-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -2px 0 10px;
+}
+.cal-feed-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  background: color-mix(in srgb, var(--feed-color) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--feed-color) 32%, var(--border));
+}
+.cal-feed-toggle:hover {
+  background: color-mix(in srgb, var(--feed-color) 20%, var(--surface));
+}
+.cal-feed-toggle.off {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.cal-feed-toggle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cal-feed-toggle.off .cal-feed-toggle-dot {
+  opacity: 0.4;
+}
+
+/* ── Calendar feeds settings ─────────────────────────────────── */
+.cal-feed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.cal-feed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.cal-feed-swatches {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.cal-feed-swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.cal-feed-swatch.active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--surface) inset;
+}
+.cal-feed-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.cal-feed-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.cal-feed-url {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-feed-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 2px;
+}
+.cal-feed-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cal-feed-add-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cal-feed-add-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Feed event detail (info panel) ──────────────────────────── */
+.feed-event-pane {
+  padding: 4px 2px;
+}
+.feed-event-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.feed-event-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 5px;
+  flex-shrink: 0;
+}
+.feed-event-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.25;
+}
+.feed-event-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.feed-event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+.feed-event-row svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.feed-event-source {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.feed-event-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  margin: 0 0 16px;
+}
+.feed-event-convert {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  justify-content: center;
+}
+.feed-event-convert-hint {
+  margin: 8px 0 0;
+  text-align: center;
+}
+
 /* ── Phone layout ────────────────────────────────────────────────
    Rail becomes a drop-down menu; the right panel becomes an Info sheet.
    Both stay mounted (slots/plumbing intact) — this only reshapes them. */

@@ -1,7 +1,8 @@
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
+import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
+import { useFeedEventConverted } from "../lib/calendar-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -156,6 +157,51 @@ function Chip({
   );
 }
 
+/** Days (YYYY-MM-DD) a feed event lands on, from its start through its end. */
+function feedEventDays(ev: FeedEvent): string[] {
+  const s = ev.start.slice(0, 10);
+  const e = (ev.end ?? ev.start).slice(0, 10);
+  if (!s) return [];
+  if (e <= s) return [s];
+  const out: string[] = [];
+  const d = new Date(`${s}T00:00`);
+  for (let i = 0; i < 366; i++) {
+    const k = ymd(d);
+    out.push(k);
+    if (k === e) break;
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+const fmtTime = (v: string) => {
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+};
+
+/** A read-only calendar-feed event chip, colored by its feed. */
+function FeedChip({ event }: { event: FeedEvent }) {
+  const { selectFeedEvent } = usePanels();
+  const time = event.allDay ? "" : fmtTime(event.start);
+  return (
+    <div
+      className="cal-chip cal-feed-chip"
+      style={{ ["--feed-color" as string]: event.color }}
+      title={`${event.summary} — ${event.feedName}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        selectFeedEvent(event);
+      }}
+    >
+      <span className="cal-feed-dot" style={{ background: event.color }} />
+      {time && <span className="cal-feed-time">{time}</span>}
+      <span className="cal-chip-label">{event.summary || "(untitled)"}</span>
+    </div>
+  );
+}
+
 export function CalendarView({
   collection,
   members,
@@ -187,6 +233,31 @@ export function CalendarView({
   const [anchor, setAnchor] = useState(() => ymd(new Date()));
   const [matches, setMatches] = useState<Block[]>([]);
   const [queryTick, setQueryTick] = useState(0);
+  const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
+  const [convertedKeys, setConvertedKeys] = useState<Set<string>>(new Set());
+  const [feedTick, setFeedTick] = useState(0);
+  const [feeds, setFeeds] = useState<CalendarFeed[]>([]);
+  const hiddenKey = `hn.cal.hidden.${collection.id}`;
+  const [hiddenFeeds, setHiddenFeeds] = useState<Set<string>>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(hiddenKey) || "[]") as unknown;
+      return new Set(Array.isArray(raw) ? (raw as string[]) : []);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleFeed = (id: string) =>
+    setHiddenFeeds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(hiddenKey, JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
 
   useEffect(() => {
     if (!isSmart) {
@@ -225,6 +296,56 @@ export function CalendarView({
     const gridStart = addDays(first, -first.getDay());
     return Array.from({ length: 42 }, (_, i) => ymd(addDays(gridStart, i)));
   }, [view, anchor]);
+
+  const rangeStart = days[0]!;
+  const rangeEnd = days[days.length - 1]!;
+
+  // Subscribed calendar-feed events overlapping the visible range (read-only).
+  useEffect(() => {
+    let alive = true;
+    void api
+      .get<{ events: FeedEvent[] }>(`/calendar/events?start=${rangeStart}&end=${rangeEnd}`)
+      .then((r) => alive && setFeedEvents(r.events))
+      .catch(() => alive && setFeedEvents([]));
+    return () => {
+      alive = false;
+    };
+  }, [rangeStart, rangeEnd, feedTick]);
+
+  // Subscribed feeds (for the show/hide toggles). Only enabled feeds produce
+  // events, so those are the only ones worth toggling.
+  useEffect(() => {
+    let alive = true;
+    void api
+      .get<CalendarFeed[]>("/calendar/feeds")
+      .then((r) => alive && setFeeds(r.filter((f) => f.enabled)))
+      .catch(() => alive && setFeeds([]));
+    return () => {
+      alive = false;
+    };
+  }, [feedTick]);
+
+  // A feed event converted from the info panel disappears from the feed: drop
+  // it optimistically, then refetch to reconcile.
+  useFeedEventConverted((feedId, uid) => {
+    setConvertedKeys((prev) => new Set(prev).add(`${feedId}|${uid}`));
+    setFeedTick((t) => t + 1);
+  });
+
+  // Day → feed events landing on it (multi-day events span every covered day).
+  const feedByDay = useMemo(() => {
+    const visible = new Set(days);
+    const map = new Map<string, FeedEvent[]>();
+    for (const ev of feedEvents) {
+      if (convertedKeys.has(`${ev.feedId}|${ev.uid}`)) continue;
+      if (hiddenFeeds.has(ev.feedId)) continue;
+      for (const d of feedEventDays(ev)) {
+        if (!visible.has(d)) continue;
+        map.set(d, [...(map.get(d) ?? []), ev]);
+      }
+    }
+    return map;
+  }, [feedEvents, convertedKeys, hiddenFeeds, days]);
 
   // Source blocks: smart → live query matches; else the explicit members.
   const source = useMemo<Item[]>(() => {
@@ -283,6 +404,7 @@ export function CalendarView({
   const cols = view === "day3" ? 3 : 7;
   const dayCell = (d: string) => {
     const items = byDay.get(d) ?? [];
+    const feedItems = feedByDay.get(d) ?? [];
     const dd = new Date(`${d}T00:00`);
     return (
       <div key={d} className={`cal-cell${d === today ? " today" : ""}${d === anchor && view !== "month" ? " anchor" : ""}`}>
@@ -299,6 +421,9 @@ export function CalendarView({
         <div className="cal-cell-body">
           {items.map((it) => (
             <Chip key={it.id} item={it} types={types} onStatus={onStatus} />
+          ))}
+          {feedItems.map((ev) => (
+            <FeedChip key={`${ev.feedId}:${ev.uid}:${ev.start}`} event={ev} />
           ))}
         </div>
       </div>
@@ -336,6 +461,26 @@ export function CalendarView({
         <span className="cal-range">{rangeLabel}</span>
         {!isSmart && <span className="hint">Calendars are query-fed — give this collection a query.</span>}
       </div>
+
+      {feeds.length > 0 && (
+        <div className="cal-feed-toggles" onClick={(e) => e.stopPropagation()}>
+          {feeds.map((f) => {
+            const hidden = hiddenFeeds.has(f.id);
+            return (
+              <button
+                key={f.id}
+                className={`cal-feed-toggle${hidden ? " off" : ""}`}
+                style={{ ["--feed-color" as string]: f.color }}
+                title={hidden ? `Show ${f.name}` : `Hide ${f.name}`}
+                onClick={() => toggleFeed(f.id)}
+              >
+                <span className="cal-feed-toggle-dot" style={{ background: f.color }} />
+                {f.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {view !== "day3" && (
         <div className="cal-dow-row" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>

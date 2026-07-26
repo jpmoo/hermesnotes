@@ -3,6 +3,7 @@ import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
 import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
+import { CalendarFeedsSettings } from "../components/CalendarFeedsSettings.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -361,6 +362,9 @@ export function SettingsPage() {
 
       <div style={{ marginTop: 24 }}>
         <BackgroundSettings />
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <CalendarFeedsSettings />
       </div>
       <div style={{ marginTop: 24 }}>
         <AccessKeys />

@@ -2,6 +2,7 @@ import { Info, PanelRight, Pin, PinOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
+import { FeedEventPane } from "./FeedEventPane.tsx";
 
 /**
  * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
@@ -23,6 +24,8 @@ export function RightPanel() {
     hasContent,
     selectedBlockId,
     selectedToday,
+    selectedFeedEvent,
+    selectFeedEvent,
     openBlock,
     clearSelection,
   } = usePanels();
@@ -88,12 +91,13 @@ export function RightPanel() {
   }, []);
 
   const expanded = rightPinned || over || holdOpen;
-  const showInfo = selectedBlockId !== null;
+  const showFeedEvent = selectedFeedEvent !== null;
+  const showInfo = selectedBlockId !== null && !showFeedEvent;
 
   return (
     <aside ref={asideRef} className={`right-panel${expanded ? " expanded" : ""}`}>
       <div className="panel-rail-icon" title="Info">
-        {hasContent || showInfo ? <Info size={18} /> : <PanelRight size={18} />}
+        {hasContent || showInfo || showFeedEvent ? <Info size={18} /> : <PanelRight size={18} />}
       </div>
       <div className="panel-body">
         <div className="panel-head">
@@ -114,6 +118,12 @@ export function RightPanel() {
           </button>
         </div>
         <div ref={setSlotEl} />
+        {showFeedEvent && (
+          <FeedEventPane
+            event={selectedFeedEvent}
+            onConverted={() => selectFeedEvent(null)}
+          />
+        )}
         {showInfo && (
           <BlockInfoPane
             blockId={selectedBlockId}
@@ -124,7 +134,9 @@ export function RightPanel() {
           />
         )}
         <div ref={setBottomSlotEl} />
-        {!hasContent && !showInfo && <div className="panel-placeholder">Note info &amp; options</div>}
+        {!hasContent && !showInfo && !showFeedEvent && (
+          <div className="panel-placeholder">Note info &amp; options</div>
+        )}
       </div>
     </aside>
   );

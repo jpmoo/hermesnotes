@@ -190,6 +190,34 @@ export const banners = pgTable("banners", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** External calendar subscriptions (ICS URLs). Events are fetched live, not stored. */
+export const calendarFeeds = pgTable("calendar_feeds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  color: text("color").notNull().default("#6b7cff"),
+  enabled: boolean("enabled").notNull().default(true),
+  lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  sort: integer("sort").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Feed events promoted to Hermes blocks — filtered out of the feed thereafter. */
+export const calendarConverted = pgTable("calendar_converted", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  feedId: uuid("feed_id").references(() => calendarFeeds.id, { onDelete: "cascade" }),
+  uid: text("uid").notNull(),
+  blockId: uuid("block_id").references(() => blocks.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const attachments = pgTable(
   "attachments",
   {

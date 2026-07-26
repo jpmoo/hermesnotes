@@ -167,6 +167,31 @@ export interface Collection {
   version: number;
 }
 
+export interface CalendarFeed {
+  id: string;
+  name: string;
+  url: string;
+  color: string;
+  enabled: boolean;
+  lastFetchedAt: string | null;
+  lastError: string | null;
+  sort: number;
+}
+
+/** A read-only event pulled from a subscribed calendar feed. */
+export interface FeedEvent {
+  uid: string;
+  summary: string;
+  description: string;
+  location: string;
+  start: string; // YYYY-MM-DD (all-day) or ISO datetime
+  end: string | null;
+  allDay: boolean;
+  feedId: string;
+  feedName: string;
+  color: string;
+}
+
 export interface Member {
   membershipId: string;
   position: string;

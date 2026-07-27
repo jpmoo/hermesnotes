@@ -17,6 +17,7 @@ import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronDown, ChevronUp, Settings2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
+import { useAnyBlockChange } from "../lib/block-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -498,6 +499,11 @@ export function MatrixView({
   const [candidates, setCandidates] = useState<Item[]>([]);
   const [matches, setMatches] = useState<Block[]>([]); // smart: full query matches
   const [queryTick, setQueryTick] = useState(0); // bump to re-run the query
+  // A block edited anywhere (e.g. the info pane) may fall in/out of the query,
+  // so re-run it — this is what drops a completed task's chip without a reload.
+  useAnyBlockChange(() => {
+    if (isSmart) setQueryTick((t) => t + 1);
+  });
   const [active, setActive] = useState<Item | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 

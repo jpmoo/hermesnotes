@@ -56,6 +56,23 @@ export function useBlockChanged(blockId: string, cb: () => void): void {
   }, [blockId]);
 }
 
+/**
+ * Fires whenever ANY block changes anywhere (own edits included) — for surfaces
+ * whose membership can shift out from under them, e.g. a smart collection or
+ * matrix that must re-run its query when a member is edited out of eligibility.
+ */
+export function useAnyBlockChange(cb: (blockId: string) => void): void {
+  const ref = useRef(cb);
+  ref.current = cb;
+  useEffect(() => {
+    const l: Listener = (id) => ref.current(id);
+    listeners.add(l);
+    return () => {
+      listeners.delete(l);
+    };
+  }, []);
+}
+
 /** Unique origin token for one mounted editing surface. */
 export function useBlockOrigin(): string {
   const ref = useRef<string>();

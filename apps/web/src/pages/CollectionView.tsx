@@ -32,7 +32,7 @@ import { ListItem, type ListFormat as Format } from "../components/ListItem.tsx"
 import { QueryPanel } from "../components/QueryPanel.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TableView } from "../components/TableView.tsx";
-import { useBlockDeleted } from "../lib/block-events.ts";
+import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useSetRouteBanner } from "../lib/route-banner.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
@@ -133,6 +133,16 @@ export function CollectionView() {
   const isCanvas = collection?.collectionKind === "canvas";
   const isCalendar = collection?.collectionKind === "calendar";
   const filterQuery: unknown = collection?.properties.filter_query;
+
+  // An edit anywhere (e.g. the info pane) can move a block in/out of a live
+  // query, so re-run it. Dynamic smart lists + matrices re-evaluate; snapshots
+  // stay frozen until an explicit refresh. Debounced against rapid typing.
+  const reloadTimer = useRef<ReturnType<typeof setTimeout>>();
+  useAnyBlockChange(() => {
+    if (!(isDynamic || isMatrix)) return;
+    clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => void load(), 350);
+  });
 
   // Reorder a member (manual list order), persisted as membership order.
   const moveMember = (activeId: string, overId: string) => {

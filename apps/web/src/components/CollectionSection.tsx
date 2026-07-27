@@ -7,14 +7,16 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Maximize2, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
-import { useBlockDeleted } from "../lib/block-events.ts";
+import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { BlockCard } from "./BlockCard.tsx";
+import { CalendarView } from "./CalendarView.tsx";
+import { CanvasView } from "./CanvasView.tsx";
 import { ListItem, type ListFormat } from "./ListItem.tsx";
 import { MatrixView } from "./MatrixView.tsx";
 import { TableView } from "./TableView.tsx";
@@ -193,6 +195,19 @@ export function CollectionSection({
     setState((s) => (s ? { ...s, members: fn(s.members) } : s));
   useBlockDeleted((bid) => setMembers((m) => m.filter((x) => x.id !== bid)));
 
+  // Re-run a live query when any block is edited (e.g. from the info pane), so
+  // an embedded smart list/matrix drops members that no longer match. Snapshots
+  // stay put until refreshed. Matrix embeds also re-filter internally.
+  const props = state?.collection.properties as Record<string, unknown> | undefined;
+  const isDynamicSmart =
+    props?.membership_mode === "smart" && ((props?.smart_mode as string) ?? "dynamic") === "dynamic";
+  const reloadTimer = useRef<ReturnType<typeof setTimeout>>();
+  useAnyBlockChange(() => {
+    if (!isDynamicSmart && state?.collection.collectionKind !== "matrix") return;
+    clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(load, 350);
+  });
+
   if (!state) return null;
   const kind = state.collection.collectionKind;
   const typeById = new Map(types.map((t) => [t.id, t]));
@@ -212,6 +227,12 @@ export function CollectionSection({
       {kind === "matrix" ? (
         <div className="matrix-embed">
           <MatrixView collection={state.collection} members={state.members} types={types} onChanged={load} />
+        </div>
+      ) : kind === "calendar" ? (
+        <CalendarView collection={state.collection} members={state.members} types={types} onChanged={load} />
+      ) : kind === "canvas" ? (
+        <div className="canvas-area">
+          <CanvasView collection={state.collection} members={state.members} types={types} onChanged={load} />
         </div>
       ) : kind === "table" ? (
         <TableView

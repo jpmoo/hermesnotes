@@ -1,7 +1,8 @@
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -469,7 +470,13 @@ export function MatrixView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection, count, regionsKey]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // Mouse drags on a small move; touch needs a short press-and-hold so a quick
+  // swipe still scrolls the drawer/regions (the old lone PointerSensor never
+  // activated on touch — the browser scrolled before the 5px threshold).
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+  );
 
   // Status-type fields available for binding (union across types, by key).
   const bindable = useMemo(() => {

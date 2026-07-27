@@ -5195,6 +5195,15 @@ input.cv-add-input {
 .blk-collapsed:hover {
   border-color: var(--border-strong);
 }
+/* Live status icon in a collapsed row: align like the static type icon, with a
+   subtle hover to signal it's clickable. */
+.blk-collapsed-status {
+  padding: 0;
+  border-radius: 6px;
+}
+.blk-collapsed-status:hover {
+  background: var(--surface-2);
+}
 .blk-collapsed-title {
   min-width: 0;
   overflow: hidden;

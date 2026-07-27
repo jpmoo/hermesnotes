@@ -10,6 +10,7 @@ import {
   Flag,
   ListFilter,
   Folder,
+  Grid3x3,
   Heart,
   Inbox,
   Layers,
@@ -41,8 +42,10 @@ import { useEffect, useReducer } from "react";
 const CURATED: Record<string, LucideIcon> = {
   "check-square": CheckSquare,
   calendar: Calendar,
+  "calendar-days": CalendarDays,
   table: Table,
   "layout-grid": LayoutGrid,
+  "grid-3x3": Grid3x3,
   list: List,
   "file-text": FileText,
   type: Type,
@@ -155,7 +158,7 @@ export function CollectionIcon({
     : canvas
     ? Workflow
     : matrix
-    ? LayoutGrid
+    ? Grid3x3
     : table
       ? Table
       : document

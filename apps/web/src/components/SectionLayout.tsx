@@ -124,6 +124,7 @@ function AddMenu({
                 matrix={c.collectionKind === "matrix"}
                 table={c.collectionKind === "table"}
                 canvas={c.collectionKind === "canvas"}
+                calendar={c.collectionKind === "calendar"}
                 smart={c.properties.membership_mode === "smart"}
                 color={(c.properties.icon_color as string) ?? null}
                 size={15}

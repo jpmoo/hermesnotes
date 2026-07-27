@@ -461,6 +461,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         matrix: r.collectionKind === "matrix",
         table: r.collectionKind === "table",
         canvas: r.collectionKind === "canvas",
+        calendar: r.collectionKind === "calendar",
         smart: props?.membership_mode === "smart",
         semantic,
       };

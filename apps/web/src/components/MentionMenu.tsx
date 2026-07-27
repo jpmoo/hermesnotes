@@ -70,6 +70,7 @@ export function MentionMenu({
             kanban: "kanban",
             masonry: "layout-grid",
             canvas: "workflow",
+            calendar: "calendar-days",
           };
           opts = rows
             .filter((r) => r.blockTypeId !== personType?.id)

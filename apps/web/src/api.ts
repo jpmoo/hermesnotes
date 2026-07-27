@@ -154,6 +154,7 @@ export interface SearchHit {
   matrix: boolean;
   table: boolean;
   canvas: boolean;
+  calendar: boolean;
   smart: boolean;
   semantic: boolean;
 }

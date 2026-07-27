@@ -51,7 +51,7 @@ export function MentionChip({ node }: NodeViewProps) {
   const staticId = href.startsWith("block:") ? href.slice(6) : "";
   const [icon, setIcon] = useState<Icon | null>(null);
   const [collection, setCollection] = useState(false);
-  const [collectionMeta, setCollectionMeta] = useState<{ document: boolean; matrix: boolean; table: boolean; canvas: boolean; smart: boolean }>();
+  const [collectionMeta, setCollectionMeta] = useState<{ document: boolean; matrix: boolean; table: boolean; canvas: boolean; calendar: boolean; smart: boolean }>();
   // person: mentions resolve to an id by title; bare |id chips fetch a label.
   const [resolvedId, setResolvedId] = useState("");
   const [fetchedLabel, setFetchedLabel] = useState("");
@@ -79,6 +79,7 @@ export function MentionChip({ node }: NodeViewProps) {
           matrix: b.collectionKind === "matrix",
           table: b.collectionKind === "table",
           canvas: b.collectionKind === "canvas",
+          calendar: b.collectionKind === "calendar",
           smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
         });
         return;
@@ -120,7 +121,7 @@ export function MentionChip({ node }: NodeViewProps) {
       {isTag ? (
         <Hash size={13} />
       ) : collection ? (
-        <CollectionIcon document={collectionMeta?.document} matrix={collectionMeta?.matrix} table={collectionMeta?.table} canvas={collectionMeta?.canvas} smart={collectionMeta?.smart} size={13} />
+        <CollectionIcon document={collectionMeta?.document} matrix={collectionMeta?.matrix} table={collectionMeta?.table} canvas={collectionMeta?.canvas} calendar={collectionMeta?.calendar} smart={collectionMeta?.smart} size={13} />
       ) : (
         <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
       )}

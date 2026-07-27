@@ -93,6 +93,7 @@ export function SearchModal({ onClose }: { onClose: () => void }) {
             matrix={h.matrix}
             table={h.table}
             canvas={h.canvas}
+            calendar={h.calendar}
             smart={h.smart}
             size={14}
           />

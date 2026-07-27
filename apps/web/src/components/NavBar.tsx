@@ -16,6 +16,7 @@ interface RecentInfo {
   matrix?: boolean;
   table?: boolean;
   canvas?: boolean;
+  calendar?: boolean;
   smart?: boolean;
 }
 
@@ -35,6 +36,7 @@ const getInfo = (id: string) =>
           matrix: b.collectionKind === "matrix",
           table: b.collectionKind === "table",
           canvas: b.collectionKind === "canvas",
+          calendar: b.collectionKind === "calendar",
           smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
         }))
         .catch(() => ({ label: "(unknown)", blockTypeId: null })),
@@ -124,7 +126,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    <CollectionIcon document={it?.document} matrix={it?.matrix} table={it?.table} canvas={it?.canvas} smart={it?.smart} size={14} />
+                    <CollectionIcon document={it?.document} matrix={it?.matrix} table={it?.table} canvas={it?.canvas} calendar={it?.calendar} smart={it?.smart} size={14} />
                     <span className="recent-label">{it?.label ?? "…"}</span>
                   </button>
                 );

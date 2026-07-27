@@ -1948,14 +1948,19 @@ input.li-text:focus {
   display: grid;
   gap: 12px;
   margin-bottom: 16px;
+  /* Each region sizes to its own content — a sparse region stays short even
+     next to a full one in the same row. */
+  align-items: start;
 }
 .matrix-region {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
   padding: 10px 12px;
-  /* Fixed height (Short/Medium/Tall in region settings); content scrolls. */
-  height: var(--region-h, 280px);
+  /* Grow with content up to the cap (Short/Medium/Tall in region settings),
+     then scroll inside — a sparse region stays short. */
+  min-height: 120px;
+  max-height: var(--region-h, 280px);
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -4821,6 +4826,36 @@ input.cv-add-input {
 /* ── Phone layout ────────────────────────────────────────────────
    Rail becomes a drop-down menu; the right panel becomes an Info sheet.
    Both stay mounted (slots/plumbing intact) — this only reshapes them. */
+/* ── Matrix on mobile ────────────────────────────────────────── */
+/* Pin the drawer to the very bottom of the screen (it floated above, docked to
+   the short page content). */
+.app-shell.mobile .matrix-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  border-radius: 12px 12px 0 0;
+  z-index: 60;
+}
+/* Let a card's title wrap to two lines so it's readable in narrow columns —
+   dates drop to their own line beneath it. */
+.app-shell.mobile .matrix-chip .chip-row {
+  flex-wrap: wrap;
+}
+.app-shell.mobile .matrix-chip .chip-label {
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.25;
+}
+.app-shell.mobile .matrix-chip .chip-dates {
+  flex-basis: 100%;
+  margin: 2px 0 0 22px;
+}
+
 .mobile-bar {
   display: none;
 }

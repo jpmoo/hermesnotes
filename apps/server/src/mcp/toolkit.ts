@@ -193,19 +193,17 @@ export function defineTools(api: Api): ToolDef[] {
         const isSmart = cprops.membership_mode === "smart";
         const bindKey = typeof cprops.matrix_bind_property === "string" ? cprops.matrix_bind_property : "";
 
-        // Matrix in a bound/date mode places live query MATCHES, not members.
-        const matches =
-          isMatrix && isSmart && bindKey
+        // The cards the board actually shows are those matching the collection's
+        // query — a placed card the query no longer matches (e.g. a completed
+        // task) is hidden even though its membership row stays.
+        const matched =
+          cprops.filter_query != null
             ? await api.post<HermesBlock[]>("/blocks/query", { filterQuery: cprops.filter_query })
-            : null;
-        let pool: (HermesBlock & { context?: Record<string, unknown> })[];
-        if (matches) pool = matches;
-        else if (isMatrix && isSmart) {
-          // Custom-grid smart matrix: visible cards are members the query still matches.
-          const live = await api.post<HermesBlock[]>("/blocks/query", { filterQuery: cprops.filter_query });
-          const liveIds = new Set(live.map((b) => b.id));
-          pool = d.members.filter((m) => liveIds.has(m.id));
-        } else pool = d.members;
+            : [];
+        const liveIds = new Set(matched.map((b) => b.id));
+        // Bound/date matrices place live matches by value; others use memberships.
+        let pool: (HermesBlock & { context?: Record<string, unknown> })[] =
+          isMatrix && isSmart && bindKey ? matched : d.members;
 
         if (a.region) {
           if (!isMatrix) throw new Error(`"${scopeLabel}" is not a matrix — region only applies to matrices.`);
@@ -241,6 +239,9 @@ export function defineTools(api: Api): ToolDef[] {
           }
           scopeLabel += ` › ${a.region}`;
         }
+        // Mirror the board: drop placements the collection's query no longer
+        // matches (so region results never include e.g. completed tasks).
+        if (isMatrix && cprops.filter_query != null) pool = pool.filter((m) => liveIds.has(m.id));
         scopeIds = new Set(pool.filter((m) => m.blockTypeId === ctx.taskTypeId).map((m) => m.id));
         if (!scopeIds.size) return `No tasks in "${scopeLabel}".`;
         if (!otherFilters) {

@@ -20,7 +20,7 @@ import { ChevronDown, ChevronUp, GripVertical, SlidersHorizontal } from "lucide-
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
-import { BlockIcon } from "./icons.tsx";
+import { StatusIcon } from "../components/StatusIcon.tsx";
 import { usePanels } from "./right-panel.tsx";
 import { useIsMobile } from "./useIsMobile.ts";
 
@@ -32,6 +32,7 @@ interface Viewable {
   content: string | null;
   createdAt: string;
   updatedAt: string;
+  version?: number;
 }
 
 type SortKey = "alpha" | "created" | "edited" | `prop:${string}`;
@@ -104,18 +105,30 @@ function MasonryCard({ blockId, render }: { blockId: string; render: (compact: b
   );
 }
 
-/** Constant-size chip: type icon + a slice of the title (or first sentence).
- * Clicking selects the block into the info panel — no navigation. */
+/** Constant-size chip: status/type icon + a slice of the title. Clicking selects
+ * the block into the info panel; the status glyph stays interactive. A div (not
+ * a button) so the status button isn't nested inside another button. */
 function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | undefined; grip?: ReactNode }) {
   const { selectBlock } = usePanels();
-  const isText = !type || type.isText;
   const text = oneLineText(item.properties, item.content);
   return (
-    <button className="bv-chip" title={text} onClick={() => selectBlock(item.id)}>
+    <div
+      className="bv-chip"
+      role="button"
+      tabIndex={0}
+      title={text}
+      onClick={() => selectBlock(item.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          selectBlock(item.id);
+        }
+      }}
+    >
       {grip}
-      <BlockIcon iconKey={isText ? "type" : type?.iconKey} color={isText ? null : type?.iconColor} size={15} />
+      <StatusIcon block={item} type={type} size={15} className="bv-chip-status" />
       <span className="bv-chip-text">{text || <span className="li-empty">Empty</span>}</span>
-    </button>
+    </div>
   );
 }
 

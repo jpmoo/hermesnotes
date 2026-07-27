@@ -3907,6 +3907,14 @@ input.matrix-axis-y::placeholder {
   display: grid;
   gap: 8px;
 }
+.bv-chip-status {
+  padding: 0;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.bv-chip-status:hover {
+  background: var(--surface);
+}
 .bv-chip {
   display: inline-flex;
   align-items: center;

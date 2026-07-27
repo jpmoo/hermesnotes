@@ -32,7 +32,8 @@ export function CollectionsPage() {
 
   // Right-panel filter facets.
   const [q, setQ] = useState("");
-  const [kinds, setKinds] = useState<Set<string>>(new Set());
+  // Every kind selected on arrival; deselecting all shows nothing.
+  const [kinds, setKinds] = useState<Set<string>>(() => new Set(KINDS.map((k) => k.key)));
   const [membership, setMembership] = useState<"" | "smart" | "manual">("");
 
   const load = () =>
@@ -68,7 +69,7 @@ export function CollectionsPage() {
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return collections.filter((c) => {
-      if (kinds.size && !kinds.has(c.collectionKind ?? "")) return false;
+      if (!kinds.has(c.collectionKind ?? "")) return false;
       const isSmart = c.properties.membership_mode === "smart";
       if (membership === "smart" && !isSmart) return false;
       if (membership === "manual" && isSmart) return false;

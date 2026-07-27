@@ -982,9 +982,10 @@ button.nav-link:hover {
 }
 
 .main {
+  --main-pad-b: 80px;
   grid-column: 2;
   overflow-y: auto;
-  padding: 28px 32px 80px;
+  padding: 28px 32px var(--main-pad-b);
   /* Reserve gutter on both edges so the right-side scrollbar doesn't shift
      content left (which made the left margin look narrower than the right). */
   scrollbar-gutter: stable both-edges;
@@ -2063,6 +2064,12 @@ input.region-title:focus {
 .region-body .matrix-chip {
   background: rgba(255, 255, 255, 0.6);
 }
+/* Desktop task cards run a touch tall — trim the vertical padding. Mobile keeps
+   its roomier padding for two-line labels. */
+.app-shell:not(.mobile) .region-body .matrix-chip {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
 /* An overdue due-date: prominent, white on red. */
 .overdue-pill {
   display: inline-block;
@@ -2314,7 +2321,10 @@ input.matrix-axis-y::placeholder {
 .matrix-drawer {
   position: sticky;
   bottom: 0;
-  margin: 0 -4px;
+  /* Negative bottom margin cancels .main's bottom padding so the sticky drawer
+     reaches the true viewport bottom instead of parking a padding's-worth above
+     it. Embedded (.matrix-embed) and mobile reset margin, so they're unaffected. */
+  margin: 0 -4px calc(-1 * var(--main-pad-b, 80px));
   background: var(--surface);
   border: 1px solid var(--border);
   border-bottom: none;

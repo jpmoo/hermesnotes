@@ -2607,6 +2607,11 @@ input.matrix-axis-y::placeholder {
 .today-section {
   margin-bottom: 26px;
 }
+/* A little breathing room between the date title and the first section title
+   (Scratchpad) on the Today page. */
+.page-head + .today-section {
+  margin-top: 14px;
+}
 .today-h {
   font-size: 13px;
   font-weight: 600;

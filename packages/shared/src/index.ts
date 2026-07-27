@@ -15,6 +15,7 @@ export interface IconSpec {
 /** Default icon seeds for known v1 block types (doc §10), seeded per-user. */
 export const DEFAULT_TYPE_ICONS: Record<string, string> = {
   task: "check-square",
+  project: "clipboard",
   event: "calendar",
   table: "table",
   kanban: "kanban",

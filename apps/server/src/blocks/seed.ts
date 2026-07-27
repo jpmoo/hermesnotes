@@ -11,6 +11,7 @@ interface SeedType {
   isText: boolean;
   builtin: boolean;
   propertySchema: PropertySchema | null;
+  iconColor?: string | null;
 }
 
 /**
@@ -79,6 +80,18 @@ const SEED_TYPES: SeedType[] = [
     },
   },
   {
+    name: "project",
+    isText: false,
+    builtin: true,
+    iconColor: "#e8833a",
+    propertySchema: {
+      fields: [
+        { key: "title", type: "text", order: 0, includeEmbed: true, locked: true },
+        { key: "description", label: "About", type: "longtext", order: 1, includeEmbed: true, locked: true },
+      ],
+    },
+  },
+  {
     name: "event",
     isText: false,
     builtin: true,
@@ -139,6 +152,7 @@ export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<voi
         builtin: t.builtin,
         propertySchema: t.propertySchema,
         iconKey: DEFAULT_TYPE_ICONS[t.name] ?? null,
+        iconColor: t.iconColor ?? null,
         iconSource: "lucide" as const,
       })),
     )

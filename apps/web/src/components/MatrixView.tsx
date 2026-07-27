@@ -21,9 +21,16 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 
+type RegionSize = "short" | "medium" | "tall";
+const REGION_HEIGHTS: Record<RegionSize, number> = { short: 224, medium: 280, tall: 350 };
+const regionHeight = (size?: string): number =>
+  REGION_HEIGHTS[(size as RegionSize) in REGION_HEIGHTS ? (size as RegionSize) : "medium"];
+
 interface RegionDef {
   title: string;
   color: string | null;
+  // Fixed rendered height (renders full even when not filled; content scrolls).
+  size?: RegionSize;
   // Region actions (custom grids): tag added on enter / removed on leave, and
   // a status applied to the card's own status field on enter.
   tag?: string;
@@ -300,6 +307,7 @@ function RegionCell({
   index,
   title,
   color,
+  size,
   editable,
   items,
   onTitle,
@@ -313,6 +321,7 @@ function RegionCell({
   index: number;
   title: string;
   color: string | null;
+  size?: RegionSize;
   editable: boolean;
   items: Item[];
   onTitle?: (index: number, title: string) => void;
@@ -328,7 +337,7 @@ function RegionCell({
     <div
       ref={drop.setNodeRef}
       className={`matrix-region${drop.isOver ? " over" : ""}${color ? " colored" : ""}`}
-      style={color ? { background: color, borderColor: color } : undefined}
+      style={{ height: regionHeight(size), ...(color ? { background: color, borderColor: color } : {}) }}
       onClick={onInteract}
     >
       <div className="region-head">
@@ -432,13 +441,6 @@ export function MatrixView({
   const selectCollection = () => selectBlock(collection.id, { collection: true });
 
   const props = collection.properties;
-  // Fixed region height (all regions), settable in region settings. Short is 75%
-  // of the base; each step up is +25%. Regions scroll rather than grow.
-  const REGION_H: Record<string, number> = { short: 224, medium: 280, tall: 350 };
-  const regionSize = ["short", "medium", "tall"].includes(String(props.region_size))
-    ? String(props.region_size)
-    : "medium";
-  const regionH = REGION_H[regionSize];
   const isSmart = props.membership_mode === "smart";
   const bindKey = typeof props.matrix_bind_property === "string" ? props.matrix_bind_property : "";
   const dateMode = isSmart && (DATE_KEYS as readonly string[]).includes(bindKey);
@@ -874,8 +876,9 @@ export function MatrixView({
 
   const onStatus = (item: Item, field: FieldDef, next: string) => patchBlockProps(item, field.key, next);
 
-  const setRegionSize = (size: string) => {
-    void api.patch(`/collections/${collection.id}`, { region_size: size }).then(() => onChanged());
+  const setRegionSize = (index: number, size: RegionSize) => {
+    const next = regions.map((r, i) => (i === index ? { ...r, size } : r));
+    void api.patch(`/collections/${collection.id}`, { [regionsKey]: next }).then(() => onChanged());
   };
 
   const onDragStart = (e: DragStartEvent) => {
@@ -993,7 +996,7 @@ export function MatrixView({
     if (!canExpand && drawerOpen) setDrawerOpen(false);
   }, [canExpand, drawerOpen]);
   const gridCols = bound ? boundOptions.length || 1 : cols;
-  const regionList: { title: string; color: string | null }[] = bound
+  const regionList: { title: string; color: string | null; size?: RegionSize }[] = bound
     ? boundOptions.map((o) => ({
         title: o,
         color: boundField?.optionColors?.[o] ?? null,
@@ -1202,16 +1205,14 @@ export function MatrixView({
               onFocus={selectCollection}
               onChange={(e) => saveAxis("x", e.target.value)}
             />
-            <div
-              className="matrix-grid"
-              style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`, ["--region-h" as string]: `${regionH}px` }}
-            >
+            <div className="matrix-grid" style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
               {regionList.map((def, i) => (
                 <RegionCell
                   key={i}
                   index={i}
                   title={def.title}
                   color={def.color}
+                  size={def.size}
                   editable={!bound}
                   items={placement.map.get(i) ?? []}
                   onTitle={onTitle}
@@ -1318,13 +1319,13 @@ export function MatrixView({
               Region actions{regions[actionsEdit]?.title ? ` — ${regions[actionsEdit]!.title}` : ""}
             </h2>
             <div className="field">
-              <span className="field-label">Region height (all regions)</span>
+              <span className="field-label">Region height</span>
               <span className="segmented">
                 {(["short", "medium", "tall"] as const).map((s) => (
                   <button
                     key={s}
-                    className={`seg${regionSize === s ? " active" : ""}`}
-                    onClick={() => setRegionSize(s)}
+                    className={`seg${(regions[actionsEdit]?.size ?? "medium") === s ? " active" : ""}`}
+                    onClick={() => setRegionSize(actionsEdit, s)}
                   >
                     {pretty(s)}
                   </button>

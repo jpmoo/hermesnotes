@@ -1957,10 +1957,8 @@ input.li-text:focus {
   border-radius: var(--radius-card);
   background: var(--surface);
   padding: 10px 12px;
-  /* Grow with content up to the cap (Short/Medium/Tall in region settings),
-     then scroll inside — a sparse region stays short. */
-  min-height: 120px;
-  max-height: var(--region-h, 280px);
+  /* Fixed height per region (Short/Medium/Tall in region settings) — renders
+     full even when not filled; content scrolls. Height is set inline. */
   min-width: 0;
   display: flex;
   flex-direction: column;

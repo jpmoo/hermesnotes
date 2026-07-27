@@ -49,6 +49,7 @@ const SEED_TYPES: SeedType[] = [
           endLabel: "Due",
         },
         { key: "recurrence", label: "Recurrence", type: "recurrence", order: 4, includeEmbed: false, locked: true },
+        { key: "project", label: "Project", type: "reference", order: 5, includeEmbed: false, locked: true },
         {
           key: "status",
           type: "status",
@@ -141,6 +142,13 @@ const SEED_TYPES: SeedType[] = [
   },
 ];
 
+/** Which type each built-in reference field points at, keyed "<type>.<fieldKey>". */
+const REF_TARGETS: Record<string, string> = {
+  "organization.parent": "organization",
+  "person.organization": "organization",
+  "task.project": "project",
+};
+
 export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<void> {
   const inserted = await db
     .insert(blockTypes)
@@ -158,18 +166,19 @@ export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<voi
     )
     .returning({ id: blockTypes.id, name: blockTypes.name });
 
-  // Wire the person/organization reference fields to the organization type.
-  const orgId = inserted.find((t) => t.name === "organization")?.id;
-  if (!orgId) return;
+  // Wire each built-in reference field to its target type now that ids exist.
+  const idByName = new Map(inserted.map((t) => [t.name, t.id]));
   for (const t of SEED_TYPES) {
-    if ((t.name !== "person" && t.name !== "organization") || !t.propertySchema) continue;
-    const typeId = inserted.find((i) => i.name === t.name)?.id;
+    if (!t.propertySchema?.fields.some((f) => f.type === "reference")) continue;
+    const typeId = idByName.get(t.name);
     if (!typeId) continue;
     const schema: PropertySchema = {
       ...t.propertySchema,
-      fields: t.propertySchema.fields.map((f) =>
-        f.type === "reference" ? { ...f, refTypeId: orgId } : f,
-      ),
+      fields: t.propertySchema.fields.map((f) => {
+        if (f.type !== "reference") return f;
+        const target = idByName.get(REF_TARGETS[`${t.name}.${f.key}`] ?? "");
+        return target ? { ...f, refTypeId: target } : f;
+      }),
     };
     await db.update(blockTypes).set({ propertySchema: schema }).where(eq(blockTypes.id, typeId));
   }

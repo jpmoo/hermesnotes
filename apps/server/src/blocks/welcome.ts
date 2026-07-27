@@ -12,16 +12,17 @@ Everything here is a **block** — notes, tasks, events, people, projects, even 
 
 - **Click a block** to open it in the right **panel**, which has three tabs: **Info** (edit it in place, see its connections, star it ★ for **Favorites**), **Graph** (a live map of what it links to), and **AI**.
 - **AI assistant** (AI tab): ask in plain language to find, create, or organize anything — it uses the same tools you do, and remembers the conversation across sessions (clear it anytime). Point it at an Ollama model in **Settings** first.
-- The left rail is your home base: **New…** (a block of any type, or a collection), **Search**, **Today**, **Favorites**, **All blocks**, **Collections**, and **Types**. Each row is colorable — hover it and use the ⋮ menu.
+- The left rail is your home base: **New…** (a block of any type, or a collection), **Search**, **Today**, **Favorites**, **All blocks**, **Collections**, **Types**, and **Archive**. Each row is colorable — hover it and use the ⋮ menu.
 - **Today** is your daily note — a per-day scratchpad with a calendar to jump between days. Pin collections or notes onto it as sections, scoped to **just today**, **today and future days**, or **all dailies**.
 - **Tasks & Projects** are built in. Give a task a **Project** to group your work; the project then shows everything linked to it.
+- **Archiving replaces deleting.** Archive any block (from its card, or ask the AI) to tuck it out of every view — it isn't gone, and its collection memberships stay put. Find archived blocks under **Archive** in the rail, where you can **unarchive** them back into place or delete them for good. Optionally auto-archive completed tasks after a set number of days in **Settings**.
 - In any text box — even titles — type **@** to mention a person, **#** to tag, and **|** to link any block. Picks become chips that open in the panel; mention a person who doesn't exist yet and they're created for you. Rename a person or tag and every reference updates.
 - Select text in any long field and **right-click → extract to a new block** — the selection becomes its own block, linked back from where it was.
 - **Search** (rail) lists keyword **Matches** and semantic **Similar** results — describing what you want in your own words works too.
 - Subscribe to external **calendars** (ICS) in Settings — their events show in **Today** and any **Calendar** collection.
 - On a **phone**, the rail becomes a drop-down and the panel a tab — everything's still here, just reshaped.
 
-Delete this note whenever you're done with it.`;
+Archive this note whenever you're done with it — it moves to the **Archive**, not gone (unarchive or delete it there).`;
 
 const COLLECTIONS_NOTE = `# Collections, briefly
 
@@ -44,6 +45,7 @@ const CHECKLIST_ITEMS = [
   "Create a Project, then make a task and link it to that project",
   "Open All blocks, build a filter in the right panel, and Save as collection",
   "Create a Matrix collection and drag a few tasks into its regions",
+  "Archive a block from its card, find it under Archive in the rail, then unarchive it",
   "Try a Search from the rail — compare the keyword Matches with the Similar (semantic) results",
 ];
 

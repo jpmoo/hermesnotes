@@ -188,6 +188,21 @@ export function CollectionView() {
       setRefreshing(false);
     }
   };
+  // The Smart pill + refresh: shown in the header for most kinds, but folded into
+  // the matrix's own dims row so a matrix keeps a single toolbar line.
+  const smartControls = (
+    <>
+      <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
+      <button
+        className="icon-btn"
+        title={!isDynamic && !isMatrix ? "Refresh from query" : "Re-run the query"}
+        disabled={refreshing}
+        onClick={() => void refresh()}
+      >
+        <RefreshCw size={15} className={refreshing ? "hn-spin" : undefined} />
+      </button>
+    </>
+  );
 
   // Right panel: query editor for smart collections (and canvases — their
   // query feeds the field), the section tool for documents, table tools.
@@ -291,6 +306,7 @@ export function CollectionView() {
         {!banner && <BannerAddButton className="page-head-add" onAdded={setBanner} />}
       </div>
 
+      {!isMatrix && (
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
         {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && (
           <div className="segmented">
@@ -341,19 +357,7 @@ export function CollectionView() {
           </div>
         )}
 
-        {isSmart && (
-          <>
-            <span className="pill">{isMatrix ? "Smart" : isDynamic ? "Smart · dynamic" : "Smart · snapshot"}</span>
-            <button
-              className="icon-btn"
-              title={!isDynamic && !isMatrix ? "Refresh from query" : "Re-run the query"}
-              disabled={refreshing}
-              onClick={() => void refresh()}
-            >
-              <RefreshCw size={15} className={refreshing ? "hn-spin" : undefined} />
-            </button>
-          </>
-        )}
+        {isSmart && !isMatrix && smartControls}
 
         {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && format !== "blocks" && members.length > 0 && (
           <button
@@ -369,11 +373,18 @@ export function CollectionView() {
           </button>
         )}
       </div>
+      )}
 
       {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && members.length > 0 && sortBar}
 
       {isMatrix ? (
-        <MatrixView collection={collection} members={members} types={types} onChanged={() => void load()} />
+        <MatrixView
+          collection={collection}
+          members={members}
+          types={types}
+          onChanged={() => void load()}
+          header={isSmart ? smartControls : undefined}
+        />
       ) : isCalendar ? (
         <CalendarView collection={collection} members={members} types={types} onChanged={() => void load()} />
       ) : isCanvas ? (

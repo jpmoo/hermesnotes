@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronDown, ChevronUp, Settings2, X } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { useAnyBlockChange } from "../lib/block-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
@@ -448,11 +448,14 @@ export function MatrixView({
   members,
   types,
   onChanged,
+  header,
 }: {
   collection: Collection;
   members: Member[];
   types: BlockType[];
   onChanged: () => void;
+  /** Extra controls (e.g. the Smart pill + refresh) shown inline in the dims row. */
+  header?: ReactNode;
 }) {
   typesStore = types;
   typesSubs.forEach((f) => f());
@@ -1033,6 +1036,7 @@ export function MatrixView({
   return (
     <DndContext sensors={sensors} collisionDetection={matrixCollision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="row" style={{ margin: "0 0 12px", gap: 14, flexWrap: "wrap" }}>
+        {header}
         {!bound && !dateMode && (
           <>
             <span className="cols-ctl">

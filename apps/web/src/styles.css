@@ -4105,6 +4105,12 @@ input.matrix-axis-y::placeholder {
   background: var(--surface);
   border-color: var(--border);
 }
+/* An ephemeral note is a solid sticky, not a typed-block field — its textarea
+   shows the note's opaque color, never the translucent-white field surface (so
+   the canvas never shows through). Overrides `.cv-node.cv-shaded textarea`. */
+.cv-node.cv-shaded .cv-note-text {
+  background: transparent;
+}
 
 /* The embedded card sheds its chrome — the node box is the chrome. */
 .cv-node .card {

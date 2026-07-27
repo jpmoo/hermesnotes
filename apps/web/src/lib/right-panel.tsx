@@ -44,7 +44,7 @@ interface PanelsApi {
   refreshInfo: () => void;
 }
 
-export type RailPage = "blocks" | "collections" | "favorites";
+export type RailPage = "blocks" | "collections" | "favorites" | "archive";
 
 // A history entry. `today` marks a Today page (routes to /today/<date>; `id` is
 // then the day's note, used for the info pane). `page` marks a rail page.

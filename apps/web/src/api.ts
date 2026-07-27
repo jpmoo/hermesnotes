@@ -64,6 +64,7 @@ export interface Block {
   embeddedAt: string | null;
   embedPending: boolean;
   version: number;
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -75,6 +76,7 @@ export interface Settings {
   inferenceModel: string | null;
   defaultSimilarity: number;
   timezone: string | null;
+  autoarchiveDoneDays: number | null;
   connected: boolean;
 }
 

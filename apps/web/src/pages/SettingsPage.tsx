@@ -49,6 +49,7 @@ export function SettingsPage() {
   const [inferenceModel, setInferenceModel] = useState("");
   const [similarity, setSimilarity] = useState(0.75);
   const [timezone, setTimezone] = useState("");
+  const [autoDays, setAutoDays] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "connect" | "save" | "prefs" | "backup" | "backup-run">(null);
@@ -118,6 +119,7 @@ export function SettingsPage() {
       setInferenceModel(s.inferenceModel ?? "");
       setSimilarity(s.defaultSimilarity ?? 0.75);
       setTimezone(s.timezone ?? "");
+      setAutoDays(s.autoarchiveDoneDays ?? 0);
     });
   }, []);
 
@@ -171,6 +173,7 @@ export function SettingsPage() {
       const res = await api.put<Settings>("/settings", {
         defaultSimilarity: similarity,
         timezone: timezone || null,
+        autoarchiveDoneDays: autoDays > 0 ? autoDays : null,
       });
       setSettings(res);
       setStatus("Preferences saved.");
@@ -351,6 +354,26 @@ export function SettingsPage() {
             ))}
           </datalist>
           <span className="hint">Sets the day boundary for the Today sheet's activity list.</span>
+        </label>
+
+        <label className="field" style={{ marginTop: 16 }}>
+          <span>Auto-archive completed tasks</span>
+          <div className="row" style={{ gap: 8, alignItems: "center" }}>
+            <span className="hint">After</span>
+            <input
+              type="number"
+              min={0}
+              max={3650}
+              value={autoDays}
+              style={{ width: 90 }}
+              onChange={(e) => setAutoDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))}
+            />
+            <span className="hint">days done (0 = off)</span>
+          </div>
+          <span className="hint">
+            A daily job archives tasks that have been marked done for this many days. They move to the
+            Archive, not deleted.
+          </span>
         </label>
 
         <div className="row" style={{ marginTop: 12 }}>

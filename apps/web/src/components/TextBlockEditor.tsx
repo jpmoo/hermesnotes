@@ -28,6 +28,7 @@ export function TextBlockEditor({
   canDelete = true,
   compact = false,
   hideBanner = false,
+  archived = false,
 }: {
   block: Block;
   type?: BlockType;
@@ -38,6 +39,8 @@ export function TextBlockEditor({
   compact?: boolean;
   /** Suppress banner UI entirely (e.g. the Today scratchpad). */
   hideBanner?: boolean;
+  /** In the Archive view: offer Unarchive + permanent Delete instead of Archive. */
+  archived?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -147,6 +150,16 @@ export function TextBlockEditor({
     [],
   );
 
+  const archive = async () => {
+    await api.post(`/blocks/${block.id}/archive`, {});
+    emitBlockDeleted(block.id);
+    onDeleted(block.id);
+  };
+  const unarchive = async () => {
+    await api.post(`/blocks/${block.id}/unarchive`, {});
+    emitBlockDeleted(block.id);
+    onDeleted(block.id);
+  };
   const remove = async () => {
     await api.del(`/blocks/${block.id}`);
     emitBlockDeleted(block.id);
@@ -227,11 +240,21 @@ export function TextBlockEditor({
         {saveState === "saving" && <span>saving…</span>}
         {saveState === "error" && <span className="error">save failed</span>}
         <span style={{ flex: 1 }} />
-        {canDelete && (
-          <button className="ghost" onClick={() => setConfirmOpen(true)}>
-            Delete
-          </button>
-        )}
+        {canDelete &&
+          (archived ? (
+            <>
+              <button className="ghost" onClick={() => void unarchive()}>
+                Unarchive
+              </button>
+              <button className="danger" onClick={() => setConfirmOpen(true)}>
+                Delete
+              </button>
+            </>
+          ) : (
+            <button className="ghost" onClick={() => void archive()}>
+              Archive
+            </button>
+          ))}
       </div>
 
       {canDelete && (

@@ -60,6 +60,7 @@ export function TypedBlockCard({
   onDeleted,
   onChange,
   compact = false,
+  archived = false,
 }: {
   block: Block;
   type: BlockType;
@@ -67,6 +68,8 @@ export function TypedBlockCard({
   onDeleted: (id: string) => void;
   onChange?: (patch: { properties?: Record<string, unknown>; content?: string | null }) => void;
   compact?: boolean;
+  /** In the Archive view: offer Unarchive + permanent Delete instead of Archive. */
+  archived?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -127,6 +130,18 @@ export function TypedBlockCard({
     }, 700);
   };
 
+  // Archive replaces deletion in normal views (reversible); the block drops out
+  // of the current list via the same delete event.
+  const archive = async () => {
+    await api.post(`/blocks/${block.id}/archive`, {});
+    emitBlockDeleted(block.id);
+    onDeleted(block.id);
+  };
+  const unarchive = async () => {
+    await api.post(`/blocks/${block.id}/unarchive`, {});
+    emitBlockDeleted(block.id);
+    onDeleted(block.id);
+  };
   const remove = async () => {
     await api.del(`/blocks/${block.id}`);
     emitBlockDeleted(block.id);
@@ -214,9 +229,20 @@ export function TypedBlockCard({
         {saveState === "saving" && <span>saving…</span>}
         {saveState === "error" && <span className="error">save failed</span>}
         <span style={{ flex: 1 }} />
-        <button className="ghost" onClick={() => setConfirmOpen(true)}>
-          Delete
-        </button>
+        {archived ? (
+          <>
+            <button className="ghost" onClick={() => void unarchive()}>
+              Unarchive
+            </button>
+            <button className="danger" onClick={() => setConfirmOpen(true)}>
+              Delete
+            </button>
+          </>
+        ) : (
+          <button className="ghost" onClick={() => void archive()}>
+            Archive
+          </button>
+        )}
       </div>
 
       <ConfirmDialog

@@ -1,4 +1,5 @@
 import {
+  Archive,
   CalendarDays,
   Layers,
   Library,
@@ -45,6 +46,7 @@ const FAVORITES_KEY = "favorites_colors";
 const ALLBLOCKS_KEY = "allblocks_colors";
 const COLLECTIONS_KEY = "collections_colors";
 const TYPES_KEY = "types_colors";
+const ARCHIVE_KEY = "archive_colors";
 
 /**
  * Left navigation. Auto-hides to a 56px icon rail. Hovering an empty area of the
@@ -252,6 +254,8 @@ export function Sidebar() {
       {colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks")}
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
       {colorRow(TYPES_KEY, "/types", false, Shapes, "Types")}
+      <div className="nav-divider" />
+      {colorRow(ARCHIVE_KEY, "/archive", false, Archive, "Archive")}
 
       {/* Utilities stay anchored at the very bottom, grouped together. */}
       <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />

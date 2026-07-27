@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Layers, Library, Star } from "lucide-react";
+import { Archive, CalendarDays, ChevronLeft, ChevronRight, Clock, Layers, Library, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
@@ -84,6 +84,7 @@ function RecentsMenu() {
                   blocks: { icon: <Layers size={14} />, label: "All blocks" },
                   collections: { icon: <Library size={14} />, label: "Collections" },
                   favorites: { icon: <Star size={14} />, label: "Favorites" },
+                  archive: { icon: <Archive size={14} />, label: "Archive" },
                 }[e.page];
                 return (
                   <button

@@ -10,6 +10,7 @@ export function BlockCard({
   onDeleted,
   compact = false,
   textCollapsed,
+  archived = false,
 }: {
   block: Block;
   type: BlockType | undefined;
@@ -19,6 +20,8 @@ export function BlockCard({
   /** Text notes: show the one-line preview only when actually collapsed —
    * masonry's compact flag alone keeps the full body visible. */
   textCollapsed?: boolean;
+  /** Archive view: cards offer Unarchive + permanent Delete instead of Archive. */
+  archived?: boolean;
 }) {
   if (type && !type.isText) {
     return (
@@ -28,6 +31,7 @@ export function BlockCard({
         onConflict={onConflict}
         onDeleted={onDeleted}
         compact={compact}
+        archived={archived}
       />
     );
   }
@@ -38,6 +42,7 @@ export function BlockCard({
       onConflict={onConflict}
       onDeleted={onDeleted}
       compact={textCollapsed ?? compact}
+      archived={archived}
     />
   );
 }

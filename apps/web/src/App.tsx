@@ -16,6 +16,7 @@ import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
 import { AllBlocksPage } from "./pages/AllBlocksPage.tsx";
+import { ArchivePage } from "./pages/ArchivePage.tsx";
 import { FavoritesPage } from "./pages/FavoritesPage.tsx";
 import { BlockPage } from "./pages/BlockPage.tsx";
 import { TodayPage } from "./pages/TodayPage.tsx";
@@ -54,6 +55,7 @@ function sectionKey(path: string): string | null {
   if (path.startsWith("/today")) return "today_colors";
   if (path.startsWith("/blocks")) return "allblocks_colors";
   if (path.startsWith("/collections")) return "collections_colors";
+  if (path.startsWith("/archive")) return "archive_colors";
   return null;
 }
 
@@ -127,6 +129,7 @@ function Shell() {
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionView />} />
             <Route path="/types" element={<TypesPage />} />
+            <Route path="/archive" element={<ArchivePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

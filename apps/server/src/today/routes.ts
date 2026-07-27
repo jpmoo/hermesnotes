@@ -1,7 +1,24 @@
-import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { normalizeTodayLayout, todayLayoutSchema, type PropertySchema } from "@hermes/shared";
+import {
+  addToDefaults,
+  composeTodayLayout,
+  customTodaySectionSchema,
+  normalizeDefaultLayout,
+  normalizeTodayLayout,
+  rangeCovers,
+  removeFromDefaults,
+  sectionKey,
+  STANDARD_TODAY_SECTIONS,
+  todayLayoutSchema,
+  todayScopeSchema,
+  type CustomTodaySection,
+  type DefaultTodayLayout,
+  type PropertySchema,
+  type StandardTodaySection,
+  type TodayLayout,
+} from "@hermes/shared";
 import { blocks, blockTypes, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
@@ -93,6 +110,96 @@ function isRelevant(
   return false;
 }
 
+/** Where the cross-day ("all Dailies" / "today-forward") default layout lives. */
+const DEFAULT_PREF_KEY = "today_default";
+
+async function loadDefaults(userId: string): Promise<DefaultTodayLayout> {
+  const [row] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  return normalizeDefaultLayout((row?.preferences ?? {})[DEFAULT_PREF_KEY]);
+}
+
+async function saveDefaults(userId: string, defaults: DefaultTodayLayout): Promise<void> {
+  const [row] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const next = { ...(row?.preferences ?? {}), [DEFAULT_PREF_KEY]: defaults };
+  await db
+    .update(userSettings)
+    .set({ preferences: next, updatedAt: new Date() })
+    .where(eq(userSettings.userId, userId));
+}
+
+/** A note's stored per-day layout + the global sections it suppresses. */
+function noteLayoutState(note: { properties: unknown }): { layout: TodayLayout; suppress: string[] } {
+  const props = (note.properties ?? {}) as Record<string, unknown>;
+  const suppress = Array.isArray(props.layout_suppress)
+    ? (props.layout_suppress as unknown[]).filter((k): k is string => typeof k === "string")
+    : [];
+  return { layout: normalizeTodayLayout(props.layout), suppress };
+}
+
+async function writeNoteLayout(
+  userId: string,
+  note: { id: string; properties: unknown },
+  patch: { layout?: TodayLayout; suppress?: string[] },
+): Promise<void> {
+  const props = (note.properties ?? {}) as Record<string, unknown>;
+  const nextProps: Record<string, unknown> = { ...props };
+  if (patch.layout) nextProps.layout = normalizeTodayLayout(patch.layout);
+  if (patch.suppress) nextProps.layout_suppress = [...new Set(patch.suppress)];
+  await db
+    .update(blocks)
+    .set({ properties: nextProps, version: sql`${blocks.version} + 1`, updatedAt: new Date() })
+    .where(and(eq(blocks.id, note.id), eq(blocks.ownerId, userId)));
+}
+
+/** Insert a custom section into a per-day layout just after its anchor (no-op
+ * if already present). */
+function insertAfter(
+  layout: TodayLayout,
+  section: CustomTodaySection,
+  after: StandardTodaySection,
+): TodayLayout {
+  const key = sectionKey(section);
+  if (layout.some((s) => sectionKey(s) === key)) return layout;
+  const at = layout.findIndex((s) => s.t === after);
+  const next = [...layout];
+  next.splice(at < 0 ? next.length : at + 1, 0, section);
+  return next;
+}
+
+/** Human labels for the given block/collection ids (title, else first content
+ * line, else "Untitled"). */
+async function labelsFor(userId: string, ids: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!ids.length) return map;
+  const rows = await db
+    .select({ id: blocks.id, content: blocks.content, properties: blocks.properties })
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, ids)));
+  for (const r of rows) {
+    const title = (r.properties as Record<string, unknown>)?.title;
+    const label =
+      (typeof title === "string" && title.trim()) ||
+      (r.content ?? "").split("\n")[0]?.trim() ||
+      "Untitled";
+    map.set(r.id, label);
+  }
+  return map;
+}
+
+const STD_LABELS: Record<StandardTodaySection, string> = {
+  scratchpad: "Scratchpad",
+  relevant: "Relevant today",
+  activity: "Activity",
+};
+
 export async function todayRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -168,22 +275,140 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       ),
     );
 
-    const layout = normalizeTodayLayout((note.properties as Record<string, unknown>).layout);
+    const { layout: dayLayout, suppress } = noteLayoutState(note);
+    const defaults = await loadDefaults(userId);
+    const layout = composeTodayLayout(dayLayout, suppress, defaults, date);
     return { note, relevant, activity, layout };
   });
 
-  /** Persist the ordered section layout for a date's Today sheet. */
+  /** Persist the ordered section layout for a date's Today sheet. Sections that
+   * belong to a covering default are NOT written into the day's own storage
+   * (composition re-injects them), so a plain reorder can't silently pin a
+   * global "all Dailies" section to a single day. */
   app.put("/today/:date/layout", async (req) => {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
     const { layout } = z.object({ layout: todayLayoutSchema }).parse(req.body);
     const note = await findOrCreateNote(userId, date);
-    const normalized = normalizeTodayLayout(layout);
-    const nextProps = { ...(note.properties as Record<string, unknown>), layout: normalized };
-    await db
-      .update(blocks)
-      .set({ properties: nextProps, version: sql`${blocks.version} + 1`, updatedAt: new Date() })
-      .where(and(eq(blocks.id, note.id), eq(blocks.ownerId, userId)));
-    return { layout: normalized };
+    const defaults = await loadDefaults(userId);
+    const covered = new Set(
+      defaults.filter((e) => rangeCovers(e, date)).map((e) => sectionKey(e.section)),
+    );
+    const dayOnly = normalizeTodayLayout(layout).filter(
+      (s) => (s.t !== "collection" && s.t !== "block") || !covered.has(sectionKey(s)),
+    );
+    await writeNoteLayout(userId, note, { layout: dayOnly });
+    return { layout: composeTodayLayout(dayOnly, noteLayoutState(note).suppress, defaults, date) };
+  });
+
+  /** Inspect the cross-day default layout (the "all Dailies" entries). */
+  app.get("/today/default", async (req) => {
+    const userId = requireUser(req);
+    return { default: await loadDefaults(userId) };
+  });
+
+  /** The composed layout for a date, each section tagged with its source and
+   * (for defaults) its scope/range — the read behind the today_layout_get MCP
+   * tool. */
+  app.get("/today/:date/layout", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    const note = await findOrCreateNote(userId, date);
+    const { layout: dayLayout, suppress } = noteLayoutState(note);
+    const defaults = await loadDefaults(userId);
+    const composed = composeTodayLayout(dayLayout, suppress, defaults, date);
+    const daySet = new Set(dayLayout.map(sectionKey));
+
+    const ids = composed
+      .filter((s): s is Extract<typeof s, { id: string }> => s.t === "collection" || s.t === "block")
+      .map((s) => s.id);
+    const labels = await labelsFor(userId, ids);
+
+    const sections = composed.map((s) => {
+      if (s.t !== "collection" && s.t !== "block") {
+        return { t: s.t, label: STD_LABELS[s.t], source: "standard" as const };
+      }
+      const key = sectionKey(s);
+      const def = defaults.find((e) => sectionKey(e.section) === key && rangeCovers(e, date));
+      const scope = def
+        ? def.from == null && def.until == null
+          ? ("all" as const)
+          : def.until == null
+            ? ("today_forward" as const)
+            : ("range" as const)
+        : null;
+      return {
+        t: s.t,
+        id: s.id,
+        label: labels.get(s.id) ?? "Untitled",
+        source: daySet.has(key) ? ("day" as const) : ("default" as const),
+        scope,
+        range: def ? { from: def.from, until: def.until } : undefined,
+      };
+    });
+    return { date, sections };
+  });
+
+  const addBody = z.object({
+    section: customTodaySectionSchema,
+    after: z.enum(STANDARD_TODAY_SECTIONS).default("scratchpad"),
+    scope: todayScopeSchema.default("today"),
+  });
+
+  /** Add a collection/note section to a date's sheet at the given scope. */
+  app.post("/today/:date/layout/add", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    const { section, after, scope } = addBody.parse(req.body);
+    const note = await findOrCreateNote(userId, date);
+    const state = noteLayoutState(note);
+    const key = sectionKey(section);
+    // Adding always un-hides the section for this day.
+    const suppress = state.suppress.filter((k) => k !== key);
+
+    if (scope === "today") {
+      await writeNoteLayout(userId, note, { layout: insertAfter(state.layout, section, after), suppress });
+    } else {
+      const defaults = addToDefaults(await loadDefaults(userId), section, after, scope, date);
+      await saveDefaults(userId, defaults);
+      if (suppress.length !== state.suppress.length) await writeNoteLayout(userId, note, { suppress });
+    }
+    const defaults = await loadDefaults(userId);
+    return { layout: composeTodayLayout(noteLayoutState(note).layout, suppress, defaults, date) };
+  });
+
+  const removeBody = z.object({
+    section: customTodaySectionSchema,
+    scope: todayScopeSchema.default("today"),
+  });
+
+  /** Remove a section from a date's sheet at the given scope. */
+  app.post("/today/:date/layout/remove", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    const { section, scope } = removeBody.parse(req.body);
+    const note = await findOrCreateNote(userId, date);
+    const state = noteLayoutState(note);
+    const key = sectionKey(section);
+    const dayLocal = state.layout.some((s) => sectionKey(s) === key);
+    const defaults = await loadDefaults(userId);
+    const covered = defaults.some((e) => sectionKey(e.section) === key && rangeCovers(e, date));
+
+    if (scope === "today") {
+      // Drop a day-local add; suppress a covering default for just this day.
+      const layout = dayLocal ? state.layout.filter((s) => sectionKey(s) !== key) : undefined;
+      const suppress = covered ? [...state.suppress, key] : undefined;
+      if (layout || suppress) await writeNoteLayout(userId, note, { layout, suppress });
+    } else {
+      // Cross-day: prune the default, and also drop today's day-local copy.
+      await saveDefaults(userId, removeFromDefaults(defaults, key, scope, date));
+      if (dayLocal) {
+        await writeNoteLayout(userId, note, {
+          layout: state.layout.filter((s) => sectionKey(s) !== key),
+        });
+      }
+    }
+    const fresh = noteLayoutState(await findOrCreateNote(userId, date));
+    return { layout: composeTodayLayout(fresh.layout, fresh.suppress, await loadDefaults(userId), date) };
   });
 }

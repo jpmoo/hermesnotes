@@ -77,7 +77,7 @@ export interface ToolDef {
 const DESTRUCTIVE_TOOLS = new Set(["delete_task", "delete_project", "block_delete", "tag_delete"]);
 const READONLY_TOOLS = new Set([
   "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
-  "task_find", "task_info", "project_list", "project_archived", "project_info",
+  "task_find", "task_info", "project_list", "project_archived", "project_info", "today_layout_get",
 ]);
 
 /**
@@ -1035,6 +1035,134 @@ export function defineTools(api: Api): ToolDef[] {
         filterQuery: group(items, a.match),
       });
       return `Created smart ${a.kind} "${a.title}" [${c.id}] (${items.length} condition${items.length === 1 ? "" : "s"}).`;
+    }),
+  );
+
+  // ---------- today sheet layout ----------
+
+  const todayISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  // A canvas/table/etc. is a collection; anything else resolves as a note block.
+  const resolveSection = async (
+    item: string,
+    as?: "collection" | "note",
+  ): Promise<{ t: "collection" | "block"; id: string }> => {
+    const s = item.trim();
+    if (as === "collection") return { t: "collection", id: await resolveCollectionId(s) };
+    if (as === "note") return { t: "block", id: await resolveBlockId(s) };
+    const cols = await api.get<{ id: string; properties: Record<string, unknown> }[]>("/collections");
+    const n = s.toLowerCase();
+    const col = UUID.test(s)
+      ? cols.find((c) => c.id === s)
+      : cols.find((c) => String(c.properties.title ?? "").toLowerCase() === n) ??
+        cols.find((c) => String(c.properties.title ?? "").toLowerCase().includes(n));
+    return col ? { t: "collection", id: col.id } : { t: "block", id: await resolveBlockId(s) };
+  };
+  const scopePhrase = (scope: string, date: string) =>
+    scope === "all"
+      ? "on all Dailies (past, present, and future)"
+      : scope === "today_forward"
+        ? `on ${date} and all future Dailies`
+        : `on ${date}`;
+
+  interface LayoutSection {
+    t: string;
+    id?: string;
+    label: string;
+    source: "standard" | "day" | "default";
+    scope?: "all" | "today_forward" | "range" | null;
+    range?: { from: string | null; until: string | null };
+  }
+
+  tool(
+    "today_layout_get",
+    "Show the section layout of a Today sheet (which collections/notes are pinned, and whether each is just this day or on all Dailies). date defaults to today (YYYY-MM-DD).",
+    { date: z.string().optional() },
+    run(async (a) => {
+      const date = a.date?.trim() || todayISO();
+      const { sections } = await api.get<{ sections: LayoutSection[] }>(`/today/${date}/layout`);
+      const lines = sections.map((s) => {
+        if (s.source === "standard") return `- ${s.label} (standard)`;
+        const kind = s.t === "collection" ? "collection" : "note";
+        const scope =
+          s.scope === "all"
+            ? " — on all Dailies"
+            : s.scope === "today_forward"
+              ? ` — from ${s.range?.from} onward`
+              : s.scope === "range"
+                ? ` — ${s.range?.from ?? "…"} to ${s.range?.until}`
+                : " — this day only";
+        return `- ${s.label} (${kind})${scope} [${s.id}]`;
+      });
+      return `Today sheet ${date}:\n${lines.join("\n")}`;
+    }),
+  );
+
+  tool(
+    "today_layout_add",
+    "Pin a collection (canvas/table/…) or note as a section on a Today sheet. `after` anchors it just below a standard section (scratchpad | relevant | activity; default scratchpad). `scope`: today (this day only, default), today_forward (this day and all future Dailies), or all (every Daily past/present/future). date defaults to today.",
+    {
+      item: z.string().min(1),
+      as: z.enum(["collection", "note"]).optional(),
+      after: z.enum(["scratchpad", "relevant", "activity"]).default("scratchpad"),
+      scope: z.enum(["today", "today_forward", "all"]).default("today"),
+      date: z.string().optional(),
+    },
+    run(async (a) => {
+      const date = a.date?.trim() || todayISO();
+      const section = await resolveSection(a.item, a.as);
+      await api.post(`/today/${date}/layout/add`, { section, after: a.after, scope: a.scope });
+      return `Added "${a.item}" below ${a.after} ${scopePhrase(a.scope, date)}.`;
+    }),
+  );
+
+  tool(
+    "today_layout_remove",
+    "Remove a pinned collection/note section from a Today sheet. `scope`: today (just this day — hides an all-Dailies section only here, default), today_forward (this day and all future Dailies), or all (remove from every Daily). date defaults to today.",
+    {
+      item: z.string().min(1),
+      as: z.enum(["collection", "note"]).optional(),
+      scope: z.enum(["today", "today_forward", "all"]).default("today"),
+      date: z.string().optional(),
+    },
+    run(async (a) => {
+      const date = a.date?.trim() || todayISO();
+      const section = await resolveSection(a.item, a.as);
+      await api.post(`/today/${date}/layout/remove`, { section, scope: a.scope });
+      return `Removed "${a.item}" ${scopePhrase(a.scope, date)}.`;
+    }),
+  );
+
+  tool(
+    "today_layout_move",
+    "Reorder this day's own sections (standard sections and day-only pins). Place `item` right after `after` (a section title/id, or a standard section name); omit `after` to move it to the top. Sections that come from all-Dailies defaults are anchored under a standard section and can't be moved here. date defaults to today.",
+    { item: z.string().min(1), after: z.string().optional(), date: z.string().optional() },
+    run(async (a) => {
+      const date = a.date?.trim() || todayISO();
+      const { sections } = await api.get<{ sections: LayoutSection[] }>(`/today/${date}/layout`);
+      const keyOf = (s: LayoutSection) => (s.t === "collection" || s.t === "block" ? `${s.t}:${s.id}` : s.t);
+      // Day-owned sections only (defaults are anchored, not reorderable here).
+      const owned = sections.filter((s) => s.source !== "default");
+      const target = await resolveSection(a.item).catch(() => null);
+      const itemKey = target ? `${target.t}:${target.id}` : a.item.trim().toLowerCase();
+      const idx = owned.findIndex((s) => keyOf(s) === itemKey || s.label.toLowerCase() === a.item.trim().toLowerCase());
+      if (idx < 0) throw new Error(`"${a.item}" isn't a movable section on ${date}.`);
+      const [moved] = owned.splice(idx, 1);
+      let at = 0;
+      if (a.after) {
+        const aft = a.after.trim().toLowerCase();
+        const afterTarget = await resolveSection(a.after).catch(() => null);
+        const afterKey = afterTarget ? `${afterTarget.t}:${afterTarget.id}` : aft;
+        const ai = owned.findIndex((s) => keyOf(s) === afterKey || s.t === aft || s.label.toLowerCase() === aft);
+        if (ai < 0) throw new Error(`Can't find section "${a.after}" to place after.`);
+        at = ai + 1;
+      }
+      owned.splice(at, 0, moved!);
+      const layout = owned.map((s) => (s.t === "collection" || s.t === "block" ? { t: s.t, id: s.id } : { t: s.t }));
+      await api.put(`/today/${date}/layout`, { layout });
+      return `Moved "${moved!.label}"${a.after ? ` after ${a.after}` : " to the top"} on ${date}.`;
     }),
   );
 

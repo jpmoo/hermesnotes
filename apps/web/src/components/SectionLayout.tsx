@@ -10,6 +10,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Lock, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { TodayScope } from "@hermes/shared";
 import { api, type BlockSearchResult, type BlockType, type Collection } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
@@ -18,6 +19,37 @@ export interface SectionEntry {
   id: string;
   label: string;
   removable: boolean;
+}
+
+const SCOPES: { key: TodayScope; label: string }[] = [
+  { key: "today", label: "Just today" },
+  { key: "today_forward", label: "Today & future days" },
+  { key: "all", label: "All dailies (past, present, future)" },
+];
+
+/** The today/today-forward/all chooser shown before a scoped add or remove. */
+function ScopeMenu({
+  title,
+  onPick,
+  onClose,
+}: {
+  title: string;
+  onPick: (scope: TodayScope) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="sec-scope-menu">
+      <div className="sec-scope-title">{title}</div>
+      {SCOPES.map((s) => (
+        <button key={s.key} className="menu-item" onClick={() => onPick(s.key)}>
+          {s.label}
+        </button>
+      ))}
+      <button className="menu-item sec-scope-cancel" onClick={onClose}>
+        Cancel
+      </button>
+    </div>
+  );
 }
 
 function Row({
@@ -180,6 +212,7 @@ export function SectionLayout({
   entries,
   canReorder,
   canModify,
+  scoped = false,
   onMove,
   onRemove,
   onAddCollection,
@@ -188,17 +221,39 @@ export function SectionLayout({
   entries: SectionEntry[];
   canReorder: boolean;
   canModify: boolean;
+  /** Today sheets add/remove at a temporal scope (today | today+future | all);
+   * documents don't — they just add/remove the one section. */
+  scoped?: boolean;
   onMove: (activeId: string, overId: string) => void;
-  onRemove: (id: string) => void;
-  onAddCollection: (id: string) => void;
-  onAddNote: (id: string) => void;
+  onRemove: (id: string, scope?: TodayScope) => void;
+  onAddCollection: (id: string, scope?: TodayScope) => void;
+  onAddNote: (id: string, scope?: TodayScope) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [pendingAdd, setPendingAdd] = useState<{ kind: "collection" | "note"; id: string } | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (over && active.id !== over.id) onMove(String(active.id), String(over.id));
+  };
+
+  const handleRemove = (id: string) => (scoped ? setPendingRemove(id) : onRemove(id));
+  const handleAdd = (kind: "collection" | "note", id: string) => {
+    if (scoped) setPendingAdd({ kind, id });
+    else if (kind === "collection") onAddCollection(id);
+    else onAddNote(id);
+  };
+  const commitAdd = (scope: TodayScope) => {
+    if (!pendingAdd) return;
+    if (pendingAdd.kind === "collection") onAddCollection(pendingAdd.id, scope);
+    else onAddNote(pendingAdd.id, scope);
+    setPendingAdd(null);
+  };
+  const commitRemove = (scope: TodayScope) => {
+    if (pendingRemove) onRemove(pendingRemove, scope);
+    setPendingRemove(null);
   };
 
   return (
@@ -211,25 +266,31 @@ export function SectionLayout({
               entry={s}
               canReorder={canReorder}
               canModify={canModify}
-              onRemove={onRemove}
+              onRemove={handleRemove}
             />
           ))}
         </SortableContext>
       </DndContext>
 
-      {canModify &&
-        (adding ? (
+      {pendingRemove ? (
+        <ScopeMenu title="Remove section from…" onPick={commitRemove} onClose={() => setPendingRemove(null)} />
+      ) : pendingAdd ? (
+        <ScopeMenu title="Add section to…" onPick={commitAdd} onClose={() => setPendingAdd(null)} />
+      ) : canModify ? (
+        adding ? (
           <AddMenu
-            onAddCollection={onAddCollection}
-            onAddNote={onAddNote}
+            onAddCollection={(id) => handleAdd("collection", id)}
+            onAddNote={(id) => handleAdd("note", id)}
             onClose={() => setAdding(false)}
           />
         ) : (
           <button className="ghost sec-add-btn" onClick={() => setAdding(true)}>
             <Plus size={14} /> Add section
           </button>
-        ))}
-      {!canModify && <div className="hint sec-note">Sections follow the query — reorder disabled.</div>}
+        )
+      ) : (
+        <div className="hint sec-note">Sections follow the query — reorder disabled.</div>
+      )}
     </div>
   );
 }

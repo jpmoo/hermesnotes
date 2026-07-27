@@ -1,4 +1,4 @@
-import type { TodayLayout, TodaySection } from "@hermes/shared";
+import type { TodayLayout, TodayScope, TodaySection } from "@hermes/shared";
 import { CalendarDays, Maximize2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -138,14 +138,30 @@ export function TodayPage() {
     if (moved) arr.splice(to, 0, moved);
     saveLayout(arr);
   };
-  const onRemove = (id: string) => saveLayout(layout.filter((s) => idOf(s) !== id));
-  const onAddCollection = (cid: string) => {
-    if (!layout.some((s) => s.t === "collection" && s.id === cid))
-      saveLayout([...layout, { t: "collection", id: cid }]);
+  // Today add/remove carry a temporal scope; the server applies it (per-day
+  // layout, the cross-day default, or a per-day suppression) and returns the
+  // recomposed sheet, so we reload after.
+  const scopedSection = (id: string): { t: "collection" | "block"; id: string } | null => {
+    const i = id.indexOf(":");
+    const t = id.slice(0, i);
+    return i > 0 && (t === "collection" || t === "block") ? { t, id: id.slice(i + 1) } : null;
   };
-  const onAddNote = (bid: string) => {
-    if (!layout.some((s) => s.t === "block" && s.id === bid))
-      saveLayout([...layout, { t: "block", id: bid }]);
+  const onRemove = (id: string, scope?: TodayScope) => {
+    const section = scopedSection(id);
+    if (!scope || !section) return saveLayout(layout.filter((s) => idOf(s) !== id));
+    void api.post(`/today/${date}/layout/remove`, { section, scope }).then(load).catch(() => {});
+  };
+  const onAddCollection = (cid: string, scope: TodayScope = "today") => {
+    void api
+      .post(`/today/${date}/layout/add`, { section: { t: "collection", id: cid }, scope })
+      .then(load)
+      .catch(() => {});
+  };
+  const onAddNote = (bid: string, scope: TodayScope = "today") => {
+    void api
+      .post(`/today/${date}/layout/add`, { section: { t: "block", id: bid }, scope })
+      .then(load)
+      .catch(() => {});
   };
 
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
@@ -330,6 +346,7 @@ export function TodayPage() {
               entries={entries}
               canReorder
               canModify
+              scoped
               onMove={onMove}
               onRemove={onRemove}
               onAddCollection={onAddCollection}

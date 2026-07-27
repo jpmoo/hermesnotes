@@ -3003,6 +3003,26 @@ input.matrix-axis-y::placeholder {
   border-radius: 10px;
   background: var(--surface);
 }
+.sec-scope-menu {
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sec-scope-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 8px 4px;
+}
+.sec-scope-menu .sec-scope-cancel {
+  color: var(--text-muted);
+  margin-top: 2px;
+  border-top: 1px solid var(--border);
+}
 .sec-add-head {
   display: flex;
   align-items: center;

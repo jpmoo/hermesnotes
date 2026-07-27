@@ -195,6 +195,12 @@ function Chip({
     id: `${item.member ? "m" : "c"}:${item.id}`,
     data: item as unknown as Record<string, unknown>,
   });
+  // Also a drop target, so dragging a card onto another reorders it there.
+  const chipDrop = useDroppable({ id: `chip:${item.id}`, data: item as unknown as Record<string, unknown> });
+  const setRef = (el: HTMLElement | null) => {
+    drag.setNodeRef(el);
+    chipDrop.setNodeRef(el);
+  };
   const t = item.blockTypeId ? types.find((x) => x.id === item.blockTypeId) : undefined;
   const statusField = item.props && onStatus ? statusFieldOf(t) : null;
   const status = statusField ? String(item.props?.[statusField.key] ?? "") : "";
@@ -210,10 +216,10 @@ function Chip({
 
   return (
     <div
-      ref={drag.setNodeRef}
+      ref={setRef}
       {...drag.attributes}
       {...drag.listeners}
-      className={`matrix-chip${drag.isDragging ? " dragging" : ""}`}
+      className={`matrix-chip${drag.isDragging ? " dragging" : ""}${chipDrop.isOver ? " chip-over" : ""}`}
       onClick={(e) => {
         e.stopPropagation();
         selectBlock(item.id);
@@ -231,8 +237,8 @@ function Chip({
             }}
           >
             <BlockIcon
-              iconKey={statusField.optionIcons?.[status] ?? t?.iconKey}
-              color={statusField.optionColors?.[status] ?? t?.iconColor}
+              iconKey={statusField.optionIcons?.[status] || t?.iconKey}
+              color={statusField.optionColors?.[status] || t?.iconColor}
               size={15}
             />
           </button>
@@ -426,6 +432,13 @@ export function MatrixView({
   const selectCollection = () => selectBlock(collection.id, { collection: true });
 
   const props = collection.properties;
+  // Fixed region height (all regions), settable in region settings. Short is 75%
+  // of the base; each step up is +25%. Regions scroll rather than grow.
+  const REGION_H: Record<string, number> = { short: 224, medium: 280, tall: 350 };
+  const regionSize = ["short", "medium", "tall"].includes(String(props.region_size))
+    ? String(props.region_size)
+    : "medium";
+  const regionH = REGION_H[regionSize];
   const isSmart = props.membership_mode === "smart";
   const bindKey = typeof props.matrix_bind_property === "string" ? props.matrix_bind_property : "";
   const dateMode = isSmart && (DATE_KEYS as readonly string[]).includes(bindKey);
@@ -861,6 +874,10 @@ export function MatrixView({
 
   const onStatus = (item: Item, field: FieldDef, next: string) => patchBlockProps(item, field.key, next);
 
+  const setRegionSize = (size: string) => {
+    void api.patch(`/collections/${collection.id}`, { region_size: size }).then(() => onChanged());
+  };
+
   const onDragStart = (e: DragStartEvent) => {
     setActive((e.active.data.current as unknown as Item) ?? null);
   };
@@ -881,6 +898,43 @@ export function MatrixView({
           .then(async () => {
             await applyRegionLeave(item, prev);
             await applyRegionEnter(item, row);
+            onChanged();
+            refreshInfo();
+            setQueryTick((t) => t + 1);
+          });
+      }
+      return;
+    }
+    // Dropped onto another card → reorder there (and move region if different).
+    if (over.startsWith("chip:")) {
+      if (bound) return; // bound matrices order by status value, not manually
+      const targetId = over.slice(5);
+      if (targetId === item.id) return;
+      const targetRegion = regionOf(targetId);
+      if (targetRegion == null) return;
+      const m = members.find((x) => x.id === item.id);
+      if (item.member) {
+        const prev = regionOf(item.id);
+        void api
+          .patch(`/collections/${collection.id}/members/${item.id}`, {
+            context: { ...(m?.context ?? {}), region: targetRegion },
+            beforeId: targetId,
+          })
+          .then(async () => {
+            if (prev !== targetRegion) {
+              await applyRegionLeave(item, prev);
+              await applyRegionEnter(item, targetRegion);
+            }
+            onChanged();
+            refreshInfo();
+            setQueryTick((t) => t + 1);
+          });
+      } else {
+        void api
+          .post(`/collections/${collection.id}/members`, { blockId: item.id, context: { region: targetRegion } })
+          .then(async () => {
+            await api.patch(`/collections/${collection.id}/members/${item.id}`, { beforeId: targetId }).catch(() => {});
+            await applyRegionEnter(item, targetRegion);
             onChanged();
             refreshInfo();
             setQueryTick((t) => t + 1);
@@ -1148,7 +1202,10 @@ export function MatrixView({
               onFocus={selectCollection}
               onChange={(e) => saveAxis("x", e.target.value)}
             />
-            <div className="matrix-grid" style={{ gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}>
+            <div
+              className="matrix-grid"
+              style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`, ["--region-h" as string]: `${regionH}px` }}
+            >
               {regionList.map((def, i) => (
                 <RegionCell
                   key={i}
@@ -1260,6 +1317,20 @@ export function MatrixView({
             <h2 className="modal-title">
               Region actions{regions[actionsEdit]?.title ? ` — ${regions[actionsEdit]!.title}` : ""}
             </h2>
+            <div className="field">
+              <span className="field-label">Region height (all regions)</span>
+              <span className="segmented">
+                {(["short", "medium", "tall"] as const).map((s) => (
+                  <button
+                    key={s}
+                    className={`seg${regionSize === s ? " active" : ""}`}
+                    onClick={() => setRegionSize(s)}
+                  >
+                    {pretty(s)}
+                  </button>
+                ))}
+              </span>
+            </div>
             <label className="field">
               <span>Tag</span>
               <input

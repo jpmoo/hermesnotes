@@ -412,6 +412,13 @@ label,
 .ai-msg.ai-user {
   align-items: flex-end;
 }
+.ai-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 4px 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
 .ai-bubble {
   padding: 8px 11px;
   border-radius: 12px;
@@ -1093,6 +1100,13 @@ button.nav-link:hover {
   /* Reserve gutter on both edges so the right-side scrollbar doesn't shift
      content left (which made the left margin look narrower than the right). */
   scrollbar-gutter: stable both-edges;
+}
+/* A full-page matrix's drawer is sticky to the viewport bottom, but a sticky
+   element can't sit inside its scroll container's bottom padding — so zero that
+   padding on matrix pages (the drawer is the bottom-most element anyway). Scoped
+   to exclude embedded matrices, whose drawer scrolls inline and keeps the pad. */
+.main:has(.matrix-drawer):not(:has(.matrix-embed)) {
+  --main-pad-b: 0px;
 }
 .main-inner {
   max-width: none;

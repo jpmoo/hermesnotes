@@ -206,6 +206,10 @@ export function useBlockView<T extends Viewable>(
   const manualAvailable = Boolean(externalManual) || Boolean(opts.scope);
   const manualKey = opts.scope ? `hn.bv.manual.${opts.scope}` : "";
   const orderKey = opts.scope ? `hn.bv.order.${opts.scope}` : "";
+  // View mode + column counts persist per scope (e.g. each type on the Types
+  // page keeps its own), falling back to the shared key when no scope is given.
+  const scopeSfx = opts.scope ? `.${opts.scope}` : "";
+  const viewKey = VIEW_KEY + scopeSfx;
   const vs = opts.viewState;
 
   const [levels, setLevels] = useState<SortLevel[]>(() => (vs?.initial?.sort as SortLevel[]) ?? []);
@@ -230,7 +234,7 @@ export function useBlockView<T extends Viewable>(
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     const iv = vs?.initial?.viewMode;
     if (iv === "block" || iv === "masonry" || iv === "chips") return iv;
-    const v = readLS(VIEW_KEY);
+    const v = readLS(viewKey);
     return v === "masonry" || v === "chips" ? v : "block";
   });
 
@@ -258,8 +262,8 @@ export function useBlockView<T extends Viewable>(
   }
   const isMobile = useIsMobile();
   // Columns persist separately for mobile vs desktop; phones may go to 1.
-  const colsKey = isMobile ? `${COLS_KEY}.m` : COLS_KEY;
-  const chipColsKey = isMobile ? `${CHIP_COLS_KEY}.m` : CHIP_COLS_KEY;
+  const colsKey = (isMobile ? `${COLS_KEY}.m` : COLS_KEY) + scopeSfx;
+  const chipColsKey = (isMobile ? `${CHIP_COLS_KEY}.m` : CHIP_COLS_KEY) + scopeSfx;
   const clampCols = (n: number) =>
     isMobile ? Math.min(3, Math.max(1, n || 1)) : Math.min(4, Math.max(2, n || 3));
   const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(colsKey))));
@@ -283,7 +287,7 @@ export function useBlockView<T extends Viewable>(
 
   const setViewMode = (v: ViewMode) => {
     setViewModeState(v);
-    writeLS(VIEW_KEY, v);
+    writeLS(viewKey, v);
     reportVS({ viewMode: v });
   };
   const setColumns = (n: number) => {

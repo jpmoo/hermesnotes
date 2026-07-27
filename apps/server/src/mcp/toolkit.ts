@@ -926,14 +926,24 @@ export function defineTools(api: Api): ToolDef[] {
     run(async (a) => {
       const id = await resolveCollectionId(a.collection);
       const d = await api.get<{
-        collection: { properties: Record<string, unknown> };
+        collection: { collectionKind: string | null; properties: Record<string, unknown> };
         members: { id: string; properties: Record<string, unknown>; content?: string | null; context?: Record<string, unknown> }[];
       }>(`/collections/${id}`);
-      if (!d.members.length) return "No members.";
+      let members = d.members;
+      // A matrix stores explicit placements but only shows the ones its query
+      // still matches (the board hides the rest). Mirror that here so members
+      // reflect the collection's own criteria — not a hardcoded status.
+      const filter = d.collection.properties.filter_query;
+      if (d.collection.collectionKind === "matrix" && filter != null) {
+        const live = await api.post<{ id: string }[]>("/blocks/query", { filterQuery: filter });
+        const liveIds = new Set(live.map((b) => b.id));
+        members = members.filter((m) => liveIds.has(m.id));
+      }
+      if (!members.length) return "No members.";
       const regions = Array.isArray(d.collection.properties.matrix_regions)
         ? (d.collection.properties.matrix_regions as { title?: string }[])
         : null;
-      return d.members
+      return members
         .map((m) => {
           const label = String(m.properties.title ?? "") || (m.content ?? "").split("\n")[0] || "Untitled";
           const r = m.context?.region;

@@ -11,6 +11,8 @@ export class ApiError extends Error {
 /** Auth to forward on loopback calls: a bearer access key, or a browser cookie. */
 export type ApiAuth = string | { cookie: string };
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 export class Api {
   constructor(
     private base: string,
@@ -35,14 +37,25 @@ export class Api {
   }
 
   private async req<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await fetch(this.base + path, {
-      method,
-      headers: {
-        ...this.authHeader(),
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
+    // Always time-bounded: these are loopback calls made in sequence by the
+    // agent loop, so one hung request would otherwise pin the connection
+    // (and its DB handle) indefinitely.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(this.base + path, {
+        method,
+        headers: {
+          ...this.authHeader(),
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     const text = await res.text();
     if (!res.ok) throw new ApiError(res.status, text.slice(0, 500));
     return (text ? JSON.parse(text) : undefined) as T;

@@ -99,7 +99,18 @@ const blockView = {
   updatedAt: blocks.updatedAt,
 };
 
-const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/**
+ * A real calendar date, not just the right shape. `GET /today/:date` lazily
+ * creates the day's note, so a loose pattern let a read verb mint rows for
+ * ~10^8 impossible strings ("0000-00-00", "9999-99-99").
+ */
+const DATE = z.string().refine((s) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number) as [number, number, number];
+  if (y < 1970 || y > 2200 || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}, "invalid calendar date");
 
 /** Date portion of a "YYYY-MM-DD[THH:mm]" value, or null. */
 function dateOf(v: unknown): string | null {

@@ -74,6 +74,11 @@ export interface ToolDef {
   readOnly?: boolean;
 }
 
+/** Tool args that become URL segments/params must be shape-checked here: an
+ * unvalidated string would be interpolated into a loopback request path. */
+const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
+const HEX_COLOR = z.string().regex(/^#[0-9a-fA-F]{3,8}$/, "color must be a hex value like #fdf3d8");
+
 const DESTRUCTIVE_TOOLS = new Set(["delete_task", "delete_project", "block_delete", "tag_delete"]);
 const READONLY_TOOLS = new Set([
   "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
@@ -941,10 +946,13 @@ export function defineTools(api: Api): ToolDef[] {
     "Add an ephemeral sticky note directly onto a canvas — free-floating text that lives ONLY on the canvas as decoration. This is NOT a Hermes block/note: it has no id, doesn't show up in search or collections, and can't be linked. Use this (not block_create) whenever asked to jot a note, label, caption, or comment ON a canvas. `canvas` is the canvas collection (id or title); optional x/y are canvas coordinates and `color` is a hex background.",
     {
       canvas: z.string(),
-      text: z.string().min(1),
-      x: z.number().optional(),
-      y: z.number().optional(),
-      color: z.string().optional(),
+      text: z.string().min(1).max(10_000),
+      x: z.number().finite().optional(),
+      y: z.number().finite().optional(),
+      // Hex only: this lands in a CSS `background`, where a value like
+      // `url(https://evil/x.png)` would fire an outbound request (a read
+      // receipt) the moment the canvas renders.
+      color: HEX_COLOR.optional(),
     },
     run(async (a) => {
       const id = await resolveCollectionId(a.canvas);
@@ -1115,7 +1123,7 @@ export function defineTools(api: Api): ToolDef[] {
   tool(
     "today_layout_get",
     "Show the section layout of a Today sheet (which collections/notes are pinned, and whether each is just this day or on all Dailies). date defaults to today (YYYY-MM-DD).",
-    { date: z.string().optional() },
+    { date: ISO_DATE.optional() },
     run(async (a) => {
       const date = a.date?.trim() || todayISO();
       const { sections } = await api.get<{ sections: LayoutSection[] }>(`/today/${date}/layout`);
@@ -1144,7 +1152,7 @@ export function defineTools(api: Api): ToolDef[] {
       as: z.enum(["collection", "note"]).optional(),
       after: z.enum(["scratchpad", "relevant", "activity"]).default("scratchpad"),
       scope: z.enum(["today", "today_forward", "all"]).default("today"),
-      date: z.string().optional(),
+      date: ISO_DATE.optional(),
     },
     run(async (a) => {
       const date = a.date?.trim() || todayISO();
@@ -1161,7 +1169,7 @@ export function defineTools(api: Api): ToolDef[] {
       item: z.string().min(1),
       as: z.enum(["collection", "note"]).optional(),
       scope: z.enum(["today", "today_forward", "all"]).default("today"),
-      date: z.string().optional(),
+      date: ISO_DATE.optional(),
     },
     run(async (a) => {
       const date = a.date?.trim() || todayISO();
@@ -1174,7 +1182,7 @@ export function defineTools(api: Api): ToolDef[] {
   tool(
     "today_layout_move",
     "Reorder this day's own sections (standard sections and day-only pins). Place `item` right after `after` (a section title/id, or a standard section name); omit `after` to move it to the top. Sections that come from all-Dailies defaults are anchored under a standard section and can't be moved here. date defaults to today.",
-    { item: z.string().min(1), after: z.string().optional(), date: z.string().optional() },
+    { item: z.string().min(1), after: z.string().optional(), date: ISO_DATE.optional() },
     run(async (a) => {
       const date = a.date?.trim() || todayISO();
       const { sections } = await api.get<{ sections: LayoutSection[] }>(`/today/${date}/layout`);
@@ -1205,7 +1213,7 @@ export function defineTools(api: Api): ToolDef[] {
   tool(
     "calendar_events",
     "The user's actual schedule for a day or range: their subscribed calendar FEED events (Google/Outlook/iCloud/school ICS) merged with their Hermes 'event' blocks, in time order. Use this for ANY question about the calendar, schedule, meetings, availability, or 'what's on today' — task_find and today_layout_get do NOT include calendar events, so never assume the calendar is clear without calling this. Dates are YYYY-MM-DD: pass `date` for one day, `start`+`end` for a range, or omit for today.",
-    { date: z.string().optional(), start: z.string().optional(), end: z.string().optional() },
+    { date: ISO_DATE.optional(), start: ISO_DATE.optional(), end: ISO_DATE.optional() },
     run(async (a) => {
       let start = a.date ?? a.start ?? "";
       let end = a.date ?? a.end ?? "";
@@ -1215,11 +1223,21 @@ export function defineTools(api: Api): ToolDef[] {
         if (!start) start = today;
         if (!end) end = start;
       }
+      if (end < start) [start, end] = [end, start];
 
-      // Feed events (already excludes ones converted to Hermes blocks).
+      // Feed events (already excludes ones converted to Hermes blocks). A failure
+      // here must NOT look like an empty calendar — reporting "no events" when we
+      // simply couldn't read the feeds is exactly how the assistant ends up
+      // telling the user their day is clear when it isn't.
+      let feedFailed: string | null = null;
       const feed = await api
-        .get<{ events: CalFeedEvent[] }>(`/calendar/events?start=${start}&end=${end}`)
-        .catch(() => ({ events: [] as CalFeedEvent[] }));
+        .get<{ events: CalFeedEvent[] }>(
+          `/calendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+        )
+        .catch((e: unknown) => {
+          feedFailed = e instanceof Error ? e.message : String(e);
+          return { events: [] as CalFeedEvent[] };
+        });
       const events: CalItem[] = feed.events.map((e) => ({
         start: e.start,
         allDay: e.allDay,
@@ -1256,7 +1274,13 @@ export function defineTools(api: Api): ToolDef[] {
         }
       }
 
-      if (!events.length) return `No calendar events ${start === end ? `on ${start}` : `from ${start} to ${end}`}.`;
+      const range = start === end ? `on ${start}` : `from ${start} to ${end}`;
+      if (feedFailed)
+        throw new Error(
+          `Could not read the calendar feeds (${feedFailed}). Their events are MISSING from this result, so do ` +
+            `not tell the user their calendar is clear — say the feeds couldn't be read and retry.`,
+        );
+      if (!events.length) return `No calendar events ${range}.`;
       events.sort((x, y) => x.start.localeCompare(y.start));
       const multiDay = start !== end;
       const line = (e: CalItem) => {

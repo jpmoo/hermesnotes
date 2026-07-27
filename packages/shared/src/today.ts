@@ -22,7 +22,10 @@ export const todaySectionSchema = z.union([
 ]);
 export type TodaySection = z.infer<typeof todaySectionSchema>;
 
-export const todayLayoutSchema = z.array(todaySectionSchema);
+/** Capped: these arrays are persisted into JSONB and replayed on every render,
+ * so an unbounded list is slow-burn bloat on the note and on every Today load. */
+export const MAX_TODAY_SECTIONS = 100;
+export const todayLayoutSchema = z.array(todaySectionSchema).max(MAX_TODAY_SECTIONS);
 export type TodayLayout = z.infer<typeof todayLayoutSchema>;
 
 /** Stable key for a section: standard sections key on their name, custom ones
@@ -54,7 +57,7 @@ export const defaultTodayEntrySchema = z.object({
 });
 export type DefaultTodayEntry = z.infer<typeof defaultTodayEntrySchema>;
 
-export const defaultTodayLayoutSchema = z.array(defaultTodayEntrySchema);
+export const defaultTodayLayoutSchema = z.array(defaultTodayEntrySchema).max(MAX_TODAY_SECTIONS);
 export type DefaultTodayLayout = z.infer<typeof defaultTodayLayoutSchema>;
 
 /** The temporal scope of an add/remove: this day, this day onward, or every day. */
@@ -95,6 +98,7 @@ export function normalizeDefaultLayout(value: unknown): DefaultTodayLayout {
   for (const raw of value) {
     const parsed = defaultTodayEntrySchema.safeParse(raw);
     if (parsed.success) out.push(parsed.data);
+    if (out.length >= MAX_TODAY_SECTIONS) break; // defensive: bound a bloated row
   }
   return coalesceDefaults(out);
 }
@@ -174,7 +178,11 @@ export function addToDefaults(
   date: string,
 ): DefaultTodayLayout {
   const from = scope === "all" ? null : date;
-  return coalesceDefaults([...defaults, { section, from, until: null, after }]);
+  const next = coalesceDefaults([...defaults, { section, from, until: null, after }]);
+  // Adding an already-present section coalesces (no growth); a genuinely new one
+  // past the cap is refused rather than silently unbounded.
+  if (next.length > MAX_TODAY_SECTIONS) throw new Error(`Too many pinned sections (max ${MAX_TODAY_SECTIONS}).`);
+  return next;
 }
 
 /**

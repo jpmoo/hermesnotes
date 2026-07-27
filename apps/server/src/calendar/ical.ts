@@ -86,8 +86,17 @@ const WINDOWS_TZ: Record<string, string> = {
   "Romance Standard Time": "Europe/Paris",
 };
 
-/** ms by which `tz`'s wall clock leads UTC at the given instant. */
-function tzOffsetMs(instant: number, tz: string): number {
+/**
+ * Cached zone formatters. Constructing an Intl.DateTimeFormat is expensive and
+ * a feed can carry tens of thousands of events, all naming the same handful of
+ * zones — building one per event made parsing a large feed block the event loop
+ * for seconds. Keyed by zone; a feed can only ever add as many entries as there
+ * are distinct TZIDs it names, and an invalid zone throws before being cached.
+ */
+const ZONE_FMT = new Map<string, Intl.DateTimeFormat>();
+function zoneFormatter(tz: string): Intl.DateTimeFormat {
+  const hit = ZONE_FMT.get(tz);
+  if (hit) return hit;
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     hourCycle: "h23",
@@ -98,6 +107,14 @@ function tzOffsetMs(instant: number, tz: string): number {
     minute: "2-digit",
     second: "2-digit",
   });
+  // Bound the cache: a hostile feed could otherwise name unlimited valid zones.
+  if (ZONE_FMT.size < 500) ZONE_FMT.set(tz, dtf);
+  return dtf;
+}
+
+/** ms by which `tz`'s wall clock leads UTC at the given instant. */
+function tzOffsetMs(instant: number, tz: string): number {
+  const dtf = zoneFormatter(tz);
   const p: Record<string, number> = {};
   for (const part of dtf.formatToParts(new Date(instant)))
     if (part.type !== "literal") p[part.type] = Number(part.value);
@@ -135,7 +152,10 @@ function parseDateValue(value: string, params: Record<string, string>): { ms: nu
   // A zone-qualified wall time (not UTC-marked, not all-day): resolve the zone.
   if (!isDate && !z && params.TZID) {
     const raw = params.TZID.replace(/^"|"$/g, ""); // strip DQUOTEs if present
-    const tz = WINDOWS_TZ[raw] ?? raw;
+    // Own-property lookup only: a TZID of `constructor`/`toString`/`__proto__`
+    // would otherwise resolve up the prototype chain to a function.
+    const mapped = Object.prototype.hasOwnProperty.call(WINDOWS_TZ, raw) ? WINDOWS_TZ[raw] : undefined;
+    const tz = mapped ?? raw;
     const ms = zonedWallToMs(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], tz);
     if (ms != null) return { ms, allDay: false };
   }

@@ -60,7 +60,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post("/assistant/chat", async (req) => {
     const userId = requireUser(req);
-    const body = z.object({ message: z.string().min(1) }).parse(req.body);
+    const body = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
     const { url, model } = await requireModel(userId);
 
     await appendMessage(userId, "user", body.message);
@@ -86,9 +86,11 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   /** Execute the destructive calls the user just approved in the panel. */
   app.post("/assistant/confirm", async (req) => {
     const userId = requireUser(req);
+    // Capped: runConfirmed executes these sequentially as loopback HTTP calls,
+    // so an unbounded array turns one request into thousands of self-requests.
     const body = z
       .object({
-        calls: z.array(z.object({ tool: z.string(), args: z.unknown() })).min(1),
+        calls: z.array(z.object({ tool: z.string(), args: z.unknown() })).min(1).max(25),
       })
       .parse(req.body);
     const result = await runConfirmed({ api: apiFor(req), calls: body.calls });

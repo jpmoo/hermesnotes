@@ -53,6 +53,39 @@ export async function buildApp(): Promise<FastifyInstance> {
     return reply.code(500).send({ error: "internal error" });
   });
 
+  /**
+   * Security headers. The CSP is deliberately egress-focused: `img-src` and
+   * `connect-src` are what stop an injected remote image (or a CSS `url(...)`)
+   * from becoming a zero-click channel for smuggling data out of a page that
+   * renders assistant- and calendar-feed-derived content.
+   *
+   * `script-src 'self'` is safe here — the production build emits no inline
+   * scripts and the app loads no cross-origin assets (both verified against
+   * apps/web/dist). `style-src` keeps 'unsafe-inline' because editor libraries
+   * inject <style> elements at runtime.
+   */
+  app.addHook("onSend", async (_req, reply) => {
+    reply.header(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob:",
+        "font-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join("; "),
+    );
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Cross-Origin-Opener-Policy", "same-origin");
+  });
+
   // Gate only the API before setup. Static assets and the SPA shell must always
   // load so the browser can render the setup wizard itself.
   app.addHook("onRequest", async (req, reply) => {
@@ -61,6 +94,33 @@ export async function buildApp(): Promise<FastifyInstance> {
     if (path.startsWith("/api/setup")) return; // setup always reachable
     if (!isDbReady()) {
       return reply.code(503).send({ error: "setup_required" });
+    }
+  });
+
+  /**
+   * Throttle credential endpoints. Registration is open and the instance is
+   * internet-facing, so unlimited attempts meant unlimited password guessing.
+   * Fixed-window counter per client IP — dependency-free and good enough to
+   * turn brute force into a non-starter without inconveniencing a real user.
+   */
+  const hits = new Map<string, { n: number; resetAt: number }>();
+  const RL_WINDOW_MS = 15 * 60 * 1000;
+  const RL_MAX = 20;
+  app.addHook("onRequest", async (req, reply) => {
+    const path = req.url.split("?")[0] ?? "";
+    if (path !== "/api/auth/login" && path !== "/api/auth/register") return;
+    const now = Date.now();
+    if (hits.size > 10_000) for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
+    const key = req.ip;
+    const cur = hits.get(key);
+    if (!cur || cur.resetAt <= now) {
+      hits.set(key, { n: 1, resetAt: now + RL_WINDOW_MS });
+      return;
+    }
+    cur.n += 1;
+    if (cur.n > RL_MAX) {
+      reply.header("Retry-After", String(Math.ceil((cur.resetAt - now) / 1000)));
+      return reply.code(429).send({ error: "too many attempts — try again later" });
     }
   });
 

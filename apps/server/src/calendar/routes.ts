@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { isIP, isIPv4 } from "node:net";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -88,20 +90,98 @@ async function applySyncUpdates(userId: string, targets: Map<string, EventLike>)
 const CACHE = new Map<string, { fetchedAt: number; text: string }>();
 const TTL_MS = 10 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15000;
+/** Hard cap on a feed body. Parsing is synchronous, so an unbounded document
+ * would block the event loop; 5 MB is far above any real calendar. */
+const MAX_ICS_BYTES = 5 * 1024 * 1024;
+/** Bound the cache so N feeds can't pin unbounded heap forever. */
+const MAX_CACHE_ENTRIES = 200;
+const MAX_REDIRECTS = 5;
+
+/** True for addresses that must never be reachable from a user-supplied feed
+ * URL: loopback, private, link-local (incl. cloud metadata), CGNAT, multicast. */
+function isBlockedIp(ip: string): boolean {
+  const v4 = ip.startsWith("::ffff:") ? ip.slice(7) : ip; // IPv4-mapped IPv6
+  if (isIPv4(v4)) {
+    const [a = 0, b = 0] = v4.split(".").map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true; // link-local + 169.254.169.254
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a === 192 && b === 0) return true;
+    if (a === 198 && (b === 18 || b === 19) ) return true;
+    if (a >= 224) return true; // multicast + reserved
+    return false;
+  }
+  const s = ip.toLowerCase();
+  if (s === "::" || s === "::1") return true;
+  return /^(fc|fd|fe8|fe9|fea|feb)/.test(s); // ULA + link-local
+}
+
+/** Resolve a URL's host and reject it if it points anywhere internal. Applied
+ * per redirect hop — an allowlist checked only at save time would be bypassed
+ * by a redirect (and re-resolving each hop also blunts DNS rebinding). */
+async function assertPublicUrl(raw: string): Promise<URL> {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error("invalid feed URL");
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("feed URL must be http(s)");
+  const host = u.hostname.replace(/^\[|\]$/g, "");
+  const addrs = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
+  if (!addrs.length) throw new Error("feed host did not resolve");
+  for (const a of addrs) if (isBlockedIp(a.address)) throw new Error("feed URL resolves to a non-public address");
+  return u;
+}
+
+/** Read a response body, aborting past MAX_ICS_BYTES. */
+async function readCapped(res: Response): Promise<string> {
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > MAX_ICS_BYTES) throw new Error("feed too large");
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > MAX_ICS_BYTES) {
+      await reader.cancel().catch(() => {});
+      throw new Error("feed too large");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
 
 async function fetchIcs(url: string): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     // Some providers publish webcal:// URLs — same content over https.
-    const httpUrl = url.replace(/^webcal:\/\//i, "https://");
-    const res = await fetch(httpUrl, {
-      signal: controller.signal,
-      headers: { "User-Agent": "HermesNotes/1.0", Accept: "text/calendar, text/plain, */*" },
-      redirect: "follow",
-    });
-    if (!res.ok) throw new Error(`feed responded ${res.status}`);
-    return await res.text();
+    let next = url.replace(/^webcal:\/\//i, "https://");
+    // Follow redirects by hand so every hop is re-validated against the
+    // internal-address rules above.
+    for (let hop = 0; ; hop++) {
+      const target = await assertPublicUrl(next);
+      const res = await fetch(target, {
+        signal: controller.signal,
+        headers: { "User-Agent": "HermesNotes/1.0", Accept: "text/calendar, text/plain, */*" },
+        redirect: "manual",
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        if (!loc) throw new Error(`feed responded ${res.status}`);
+        if (hop >= MAX_REDIRECTS) throw new Error("too many redirects");
+        next = new URL(loc, target).toString();
+        continue;
+      }
+      if (!res.ok) throw new Error(`feed responded ${res.status}`);
+      return await readCapped(res);
+    }
   } finally {
     clearTimeout(timer);
   }
@@ -112,6 +192,11 @@ async function icsFor(feed: { id: string; url: string }, force: boolean): Promis
   const hit = CACHE.get(feed.id);
   if (!force && hit && Date.now() - hit.fetchedAt < TTL_MS) return hit.text;
   const text = await fetchIcs(feed.url);
+  // Evict the oldest entry once the cache is full (Map preserves insertion order).
+  if (!CACHE.has(feed.id) && CACHE.size >= MAX_CACHE_ENTRIES) {
+    const oldest = CACHE.keys().next().value;
+    if (oldest) CACHE.delete(oldest);
+  }
   CACHE.set(feed.id, { fetchedAt: Date.now(), text });
   return text;
 }
@@ -299,6 +384,15 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
         allDay: z.boolean().default(false),
       })
       .parse(req.body);
+
+    // The feed must be the caller's own — otherwise a user could create link
+    // rows referencing someone else's feed id.
+    const [feed] = await db
+      .select({ id: calendarFeeds.id })
+      .from(calendarFeeds)
+      .where(and(eq(calendarFeeds.id, body.feedId), eq(calendarFeeds.ownerId, userId)))
+      .limit(1);
+    if (!feed) throw notFound("calendar feed");
 
     const type = await resolveEventType(userId);
     const properties = eventProperties(type, body);

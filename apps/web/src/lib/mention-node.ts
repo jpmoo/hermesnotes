@@ -54,13 +54,28 @@ export const MentionNode = Node.create({
     return {
       markdown: {
         serialize(state: { write: (s: string) => void }, node: { attrs: { label: string; href: string } }) {
-          state.write(`[${node.attrs.label}](${node.attrs.href})`);
+          state.write(`[${escapeLabel(node.attrs.label)}](${node.attrs.href})`);
         },
         parse: {},
       },
     };
   },
 });
+
+/**
+ * Make a label safe inside `[...]`. An unescaped `]` would close the link early
+ * — so a label like `x](https://evil)` would serialize into a *different*,
+ * attacker-chosen link on the next parse — and a raw newline breaks the link
+ * apart entirely (multi-line selections are the norm for extract-to-block).
+ */
+function escapeLabel(label: string): string {
+  return String(label ?? "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\s*\n\s*/g, " ")
+    .trim();
+}
 
 /**
  * Convert markdown-parsed link marks whose href is `block:`/`tag:` into mention

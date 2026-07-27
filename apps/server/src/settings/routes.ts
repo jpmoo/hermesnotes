@@ -66,6 +66,18 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.post("/settings/ollama/models", async (req) => {
     const userId = requireUser(req);
     const parsed = z.object({ ollamaUrl: z.string().url().optional() }).parse(req.body ?? {});
+    // Probing an arbitrary URL is an SSRF primitive (the response status comes
+    // back to the caller, making it a scanner), so only the admin — who already
+    // owns this instance-wide setting — may supply one. Everyone else is limited
+    // to the stored URL.
+    if (parsed.ollamaUrl !== undefined) {
+      const [me] = await db
+        .select({ isAdmin: users.isAdmin })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!me?.isAdmin) throw forbidden("Ollama settings are managed by the admin");
+    }
     let url = parsed.ollamaUrl;
     if (!url) {
       const [row] = await db

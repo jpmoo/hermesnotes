@@ -1,12 +1,15 @@
 import {
+  closestCenter,
   DndContext,
   DragOverlay,
   MouseSensor,
+  pointerWithin,
   TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -25,6 +28,18 @@ type RegionSize = "short" | "medium" | "tall";
 const REGION_HEIGHTS: Record<RegionSize, number> = { short: 224, medium: 280, tall: 350 };
 const regionHeight = (size?: string): number =>
   REGION_HEIGHTS[(size as RegionSize) in REGION_HEIGHTS ? (size as RegionSize) : "medium"];
+
+// Pointer-based collision so the droppable UNDER the cursor wins (reliable
+// reordering even when a big chip overlaps several drop zones); falls back to
+// nearest-center when the pointer is outside every droppable.
+const matrixCollision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args);
+  if (!hits.length) return closestCenter(args);
+  // A card (chip:) and its region both contain the pointer — prefer the card so
+  // dropping onto it reorders, rather than falling back to region placement.
+  const chip = hits.find((h) => String(h.id).startsWith("chip:"));
+  return chip ? [chip] : hits;
+};
 
 interface RegionDef {
   title: string;
@@ -202,8 +217,14 @@ function Chip({
     id: `${item.member ? "m" : "c"}:${item.id}`,
     data: item as unknown as Record<string, unknown>,
   });
-  // Also a drop target, so dragging a card onto another reorders it there.
-  const chipDrop = useDroppable({ id: `chip:${item.id}`, data: item as unknown as Record<string, unknown> });
+  // Also a drop target, so dragging a card onto another reorders it there. The
+  // card's own drop zone is disabled while it's the one being dragged, so it
+  // can't target itself (which would cancel the reorder).
+  const chipDrop = useDroppable({
+    id: `chip:${item.id}`,
+    disabled: drag.isDragging,
+    data: item as unknown as Record<string, unknown>,
+  });
   const setRef = (el: HTMLElement | null) => {
     drag.setNodeRef(el);
     chipDrop.setNodeRef(el);
@@ -1004,7 +1025,7 @@ export function MatrixView({
     : regions;
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={matrixCollision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="row" style={{ margin: "0 0 12px", gap: 14, flexWrap: "wrap" }}>
         {!bound && !dateMode && (
           <>

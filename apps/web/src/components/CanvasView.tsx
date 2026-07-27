@@ -111,6 +111,15 @@ const OUT: Record<Side, { x: number; y: number }> = {
   e: { x: 1, y: 0 },
 };
 
+/** The side of `a` that faces `b`'s center. Used as a fallback for edges that
+ * arrive without explicit sides (e.g. canvas_create over MCP, which only knows
+ * from/to), so a bare {from,to} edge still routes sensibly instead of crashing. */
+function facingSide(a: Rect, b: Rect): Side {
+  const dx = b.x + b.w / 2 - (a.x + a.w / 2);
+  const dy = b.y + b.h / 2 - (a.y + a.h / 2);
+  return Math.abs(dx) / a.w > Math.abs(dy) / a.h ? (dx > 0 ? "e" : "w") : dy > 0 ? "s" : "n";
+}
+
 const overlaps = (a: Rect, b: Rect) =>
   a.x < b.x + b.w + 24 && a.x + a.w + 24 > b.x && a.y < b.y + b.h + 24 && a.y + a.h + 24 > b.y;
 
@@ -237,7 +246,12 @@ export function CanvasView({
     Array.isArray(props.canvas_notes) ? (props.canvas_notes as CanvasNote[]) : [],
   );
   const [edges, setEdges] = useState<CanvasEdge[]>(() =>
-    Array.isArray(props.canvas_edges) ? (props.canvas_edges as CanvasEdge[]) : [],
+    Array.isArray(props.canvas_edges)
+      ? // Edges from canvas_create (MCP) are bare {from,to}; backfill an id so
+        // edge selection/patching keys correctly. Missing sides are resolved
+        // geometrically at render time (see edgePath).
+        (props.canvas_edges as CanvasEdge[]).map((e) => (e.id ? e : { ...e, id: uid() }))
+      : [],
   );
   const [regions, setRegions] = useState<CanvasRegion[]>(() =>
     Array.isArray(props.canvas_regions) ? (props.canvas_regions as CanvasRegion[]) : [],
@@ -957,11 +971,13 @@ export function CanvasView({
     const fr = rectOf(e.from);
     const tr = rectOf(e.to);
     if (!fr || !tr) return null;
-    const a = anchor(fr, e.fromSide);
-    const b = anchor(tr, e.toSide);
+    const fromSide = e.fromSide ?? facingSide(fr, tr);
+    const toSide = e.toSide ?? facingSide(tr, fr);
+    const a = anchor(fr, fromSide);
+    const b = anchor(tr, toSide);
     const ext = 46;
-    const c1 = { x: a.x + OUT[e.fromSide].x * ext, y: a.y + OUT[e.fromSide].y * ext };
-    const c2 = { x: b.x + OUT[e.toSide].x * ext, y: b.y + OUT[e.toSide].y * ext };
+    const c1 = { x: a.x + OUT[fromSide].x * ext, y: a.y + OUT[fromSide].y * ext };
+    const c2 = { x: b.x + OUT[toSide].x * ext, y: b.y + OUT[toSide].y * ext };
     return {
       d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,
       mid: { x: (a.x + b.x) / 2 + (c1.x + c2.x - a.x - b.x) * 0.19, y: (a.y + b.y) / 2 + (c1.y + c2.y - a.y - b.y) * 0.19 },

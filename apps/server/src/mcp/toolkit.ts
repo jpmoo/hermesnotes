@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { randomUUID } from "node:crypto";
 import type { Condition, FilterGroup } from "@hermes/shared";
 import { z } from "zod";
 import { Api, ApiError } from "./api.js";
@@ -906,13 +907,28 @@ export function defineTools(api: Api): ToolDef[] {
       const GAP = 60;
       const n = ids.length;
       const cols = a.layout === "row" ? n : a.layout === "column" ? 1 : Math.max(1, Math.ceil(Math.sqrt(n)));
+      const pos = (i: number) => ({ x: (i % cols) * (W + GAP), y: Math.floor(i / cols) * (H + GAP) });
       for (let i = 0; i < n; i++) {
-        const x = (i % cols) * (W + GAP);
-        const y = Math.floor(i / cols) * (H + GAP);
-        await api.post(`/collections/${c.id}/members`, { blockId: ids[i], context: { x, y, w: W, h: H } });
+        const p = pos(i);
+        await api.post(`/collections/${c.id}/members`, { blockId: ids[i], context: { x: p.x, y: p.y, w: W, h: H } });
       }
       if (a.connect && n > 1) {
-        const edges = ids.slice(0, -1).map((from, i) => ({ from, to: ids[i + 1] }));
+        // Emit fully-formed edges (id + facing sides + arrow/live) so the canvas
+        // renderer can draw them; a bare {from,to} would crash the view.
+        const edges = ids.slice(0, -1).map((from, i) => {
+          const to = ids[i + 1];
+          const pf = pos(i);
+          const pt = pos(i + 1);
+          const horizontal = Math.abs(pt.x - pf.x) >= Math.abs(pt.y - pf.y);
+          const [fromSide, toSide] = horizontal
+            ? pt.x >= pf.x
+              ? ["e", "w"]
+              : ["w", "e"]
+            : pt.y >= pf.y
+              ? ["s", "n"]
+              : ["n", "s"];
+          return { id: randomUUID(), from, to, fromSide, toSide, arrow: "forward", live: true };
+        });
         await api.patch(`/collections/${c.id}`, { canvas_edges: edges });
       }
       return `Created canvas "${a.title}" [${c.id}] with ${n} block${n === 1 ? "" : "s"}${a.connect ? ", connected in order" : ""}.`;

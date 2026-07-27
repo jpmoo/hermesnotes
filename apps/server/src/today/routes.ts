@@ -25,6 +25,20 @@ import { badRequest } from "../lib/errors.js";
 import { zonedDayRange } from "../lib/timezone.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 
+/** The behind-the-scenes label for a date's scratchpad note, e.g. "Monday, July
+ * 27, 2026 - Scratchpad". Shown wherever the block surfaces as a label (search,
+ * cards, canvas/collection embeds) — but NOT on the Today sheet itself, which
+ * renders the scratchpad under its own fixed heading. */
+function scratchpadTitle(date: string): string {
+  const label = new Date(`${date}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  return `${label} - Scratchpad`;
+}
+
 /** Find (or lazily create) the hidden scratchpad note for a date. If duplicate
  * notes exist for a date (e.g. a first-visit create race), prefer the one with
  * content, then the oldest — deterministically, so a day's note never "vanishes"
@@ -36,7 +50,19 @@ async function findOrCreateNote(userId: string, date: string) {
     .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>'today_note' = ${date}`))
     .orderBy(sql`COALESCE(${blocks.content}, '') <> '' DESC`, blocks.createdAt)
     .limit(1);
-  if (existing) return existing;
+  if (existing) {
+    // Backfill the title on notes created before scratchpads were titled.
+    const props = (existing.properties ?? {}) as Record<string, unknown>;
+    if (!props.title) {
+      const nextProps = { ...props, title: scratchpadTitle(date) };
+      await db
+        .update(blocks)
+        .set({ properties: nextProps })
+        .where(and(eq(blocks.id, existing.id), eq(blocks.ownerId, userId)));
+      return { ...existing, properties: nextProps };
+    }
+    return existing;
+  }
   // Look up by the isText flag, not the (user-renameable) type name.
   const [textType] = await db
     .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
@@ -51,7 +77,7 @@ async function findOrCreateNote(userId: string, date: string) {
       ownerId: userId,
       blockTypeId: textType.id,
       content: "",
-      properties: { today_note: date },
+      properties: { today_note: date, title: scratchpadTitle(date) },
       embedSource: "",
       embedSourceHash: null,
       blockTypeSchemaVersion: textType.schemaVersion,

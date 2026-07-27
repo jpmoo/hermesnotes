@@ -78,6 +78,7 @@ const DESTRUCTIVE_TOOLS = new Set(["delete_task", "delete_project", "block_delet
 const READONLY_TOOLS = new Set([
   "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
   "task_find", "task_info", "project_list", "project_archived", "project_info", "today_layout_get",
+  "calendar_events",
 ]);
 
 /**
@@ -1201,11 +1202,132 @@ export function defineTools(api: Api): ToolDef[] {
     }),
   );
 
+  tool(
+    "calendar_events",
+    "The user's actual schedule for a day or range: their subscribed calendar FEED events (Google/Outlook/iCloud/school ICS) merged with their Hermes 'event' blocks, in time order. Use this for ANY question about the calendar, schedule, meetings, availability, or 'what's on today' — task_find and today_layout_get do NOT include calendar events, so never assume the calendar is clear without calling this. Dates are YYYY-MM-DD: pass `date` for one day, `start`+`end` for a range, or omit for today.",
+    { date: z.string().optional(), start: z.string().optional(), end: z.string().optional() },
+    run(async (a) => {
+      let start = a.date ?? a.start ?? "";
+      let end = a.date ?? a.end ?? "";
+      if (!start || !end) {
+        const s = await api.get<{ timezone: string | null }>("/settings").catch(() => ({ timezone: null }));
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: s.timezone || "UTC" }).format(new Date());
+        if (!start) start = today;
+        if (!end) end = start;
+      }
+
+      // Feed events (already excludes ones converted to Hermes blocks).
+      const feed = await api
+        .get<{ events: CalFeedEvent[] }>(`/calendar/events?start=${start}&end=${end}`)
+        .catch(() => ({ events: [] as CalFeedEvent[] }));
+      const events: CalItem[] = feed.events.map((e) => ({
+        start: e.start,
+        allDay: e.allDay,
+        title: e.summary || "Untitled",
+        location: e.location || "",
+        source: e.feedName || "feed",
+      }));
+
+      // Hermes 'event' blocks whose date/datespan overlaps the range.
+      const types = await api
+        .get<{ id: string; name: string; propertySchema?: { fields: { key: string; type: string }[] } | null }[]>(
+          "/block-types",
+        )
+        .catch(() => []);
+      const eventType = types.find((t) => t.name.trim().toLowerCase() === "event");
+      if (eventType) {
+        const dateFields = (eventType.propertySchema?.fields ?? []).filter(
+          (f) => f.type === "date" || f.type === "datetime" || f.type === "datespan",
+        );
+        const rows = await api.get<HermesBlock[]>(`/blocks/of-type/${eventType.id}`).catch(() => []);
+        for (const b of rows) {
+          const props = b.properties as Record<string, unknown>;
+          const r = eventDates(props, dateFields);
+          if (r && r.startDay <= end && r.endDay >= start) {
+            events.push({
+              start: r.startRaw,
+              allDay: !/T\d/.test(r.startRaw),
+              title: String(props.title ?? "Untitled"),
+              location: typeof props.location === "string" ? props.location : "",
+              source: "event",
+              id: b.id,
+            });
+          }
+        }
+      }
+
+      if (!events.length) return `No calendar events ${start === end ? `on ${start}` : `from ${start} to ${end}`}.`;
+      events.sort((x, y) => x.start.localeCompare(y.start));
+      const multiDay = start !== end;
+      const line = (e: CalItem) => {
+        const date = multiDay ? `${e.start.slice(0, 10)} ` : "";
+        const time = e.allDay ? "all day" : fmtEventTime(e.start);
+        const loc = e.location ? ` @ ${e.location}` : "";
+        const id = e.id ? ` (${e.id})` : "";
+        return `- ${date}${time} — ${e.title}${loc} [${e.source}]${id}`;
+      };
+      return `Calendar ${start === end ? start : `${start} → ${end}`}:\n${events.map(line).join("\n")}`;
+    }),
+  );
+
   for (const t of tools) {
     t.destructive = DESTRUCTIVE_TOOLS.has(t.name);
     t.readOnly = READONLY_TOOLS.has(t.name);
   }
   return tools;
+}
+
+interface CalFeedEvent {
+  summary: string;
+  location: string;
+  start: string;
+  end: string | null;
+  allDay: boolean;
+  feedName: string;
+}
+interface CalItem {
+  start: string;
+  allDay: boolean;
+  title: string;
+  location: string;
+  source: string;
+  id?: string;
+}
+
+/** YYYY-MM-DD portion of a date/datetime string, or null. */
+function calDay(v: unknown): string | null {
+  if (typeof v !== "string" || !v) return null;
+  const d = v.split("T")[0] ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
+/** The date range an event block covers, from its first populated date field. */
+function eventDates(
+  props: Record<string, unknown>,
+  dateFields: { key: string; type: string }[],
+): { startDay: string; endDay: string; startRaw: string } | null {
+  for (const f of dateFields) {
+    const v = props[f.key];
+    if (f.type === "datespan" && v && typeof v === "object") {
+      const span = v as { start?: unknown; end?: unknown };
+      const s = calDay(span.start);
+      if (s) return { startDay: s, endDay: calDay(span.end) ?? s, startRaw: String(span.start) };
+    } else if (typeof v === "string") {
+      const s = calDay(v);
+      if (s) return { startDay: s, endDay: s, startRaw: v };
+    }
+  }
+  return null;
+}
+
+/** "9:00 AM" from a wall-clock/ISO string; empty if it has no time. */
+function fmtEventTime(s: string): string {
+  const m = s.match(/T(\d{2}):(\d{2})/);
+  if (!m) return "all day";
+  let h = Number(m[1]);
+  const ap = h < 12 ? "AM" : "PM";
+  h = h % 12 || 12;
+  return `${h}:${m[2]} ${ap}`;
 }
 
 /** MCP adapter: expose the shared tool registry to external agents, tagging

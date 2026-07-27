@@ -84,16 +84,13 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // Top-level collections (not nested inside another collection).
   app.get("/collections", async (req) => {
     const userId = requireUser(req);
+    // Every collection, including ones nested inside a document — they're still
+    // real collections and must be resolvable (e.g. a matrix embedded in a
+    // dashboard, searched by MCP `list`/`region`).
     return db
       .select(collectionView)
       .from(blocks)
-      .where(
-        and(
-          eq(blocks.ownerId, userId),
-          sql`${blocks.collectionKind} IS NOT NULL`,
-          sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id})`,
-        ),
-      )
+      .where(and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NOT NULL`))
       .orderBy(sql`${blocks.updatedAt} DESC`);
   });
 

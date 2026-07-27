@@ -68,27 +68,79 @@ function unescapeText(v: string): string {
     .replace(/\\\\/g, "\\");
 }
 
+/** Common Windows/Outlook TZID names → IANA. Microsoft (Office 365, Exchange)
+ * feeds label DTSTART with these instead of IANA zones. */
+const WINDOWS_TZ: Record<string, string> = {
+  "Eastern Standard Time": "America/New_York",
+  "Central Standard Time": "America/Chicago",
+  "Mountain Standard Time": "America/Denver",
+  "US Mountain Standard Time": "America/Phoenix",
+  "Pacific Standard Time": "America/Los_Angeles",
+  "Atlantic Standard Time": "America/Halifax",
+  "Alaskan Standard Time": "America/Anchorage",
+  "Hawaiian Standard Time": "Pacific/Honolulu",
+  "UTC": "UTC",
+  "GMT Standard Time": "Europe/London",
+  "W. Europe Standard Time": "Europe/Berlin",
+  "Central Europe Standard Time": "Europe/Budapest",
+  "Romance Standard Time": "Europe/Paris",
+};
+
+/** ms by which `tz`'s wall clock leads UTC at the given instant. */
+function tzOffsetMs(instant: number, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const p: Record<string, number> = {};
+  for (const part of dtf.formatToParts(new Date(instant)))
+    if (part.type !== "literal") p[part.type] = Number(part.value);
+  return Date.UTC(p.year!, p.month! - 1, p.day!, p.hour! % 24, p.minute!, p.second!) - instant;
+}
+
+/** Convert a wall-clock time expressed in `tz` to a UTC epoch (ms). Two passes
+ * so instants near a DST transition still resolve. Null if `tz` is unknown. */
+function zonedWallToMs(y: number, mo: number, d: number, hh: number, mm: number, ss: number, tz: string): number | null {
+  try {
+    const naive = Date.UTC(y, mo - 1, d, hh, mm, ss);
+    const utc1 = naive - tzOffsetMs(naive, tz);
+    return naive - tzOffsetMs(utc1, tz);
+  } catch {
+    return null; // Intl throws RangeError on an unrecognized zone
+  }
+}
+
 /**
  * Parse a DTSTART/DTEND value into { ms, allDay }. Handles:
- *   20260125           (DATE, all-day)
- *   20260125T133000Z   (UTC)
- *   20260125T133000    (floating / local — treated as UTC to stay stable)
- * TZID params are not resolved to their zone (no tz database); floating times
- * are read as UTC, which keeps day placement correct for most feeds.
+ *   20260125                              (DATE, all-day)
+ *   20260125T133000Z                      (UTC)
+ *   20260125T133000 + TZID=America/...    (wall time in a named zone)
+ *   20260125T133000                       (floating — treated as UTC to stay stable)
+ * TZID (IANA or Windows name) is resolved to its zone so timed events land at
+ * the right instant; unknown zones and floating times fall back to UTC.
  */
 function parseDateValue(value: string, params: Record<string, string>): { ms: number; allDay: boolean } | null {
   const isDate = params.VALUE === "DATE" || /^\d{8}$/.test(value);
   const m = value.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
   if (!m) return null;
-  const [, y, mo, d, hh, mm, ss] = m;
-  const ms = Date.UTC(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    hh ? Number(hh) : 0,
-    mm ? Number(mm) : 0,
-    ss ? Number(ss) : 0,
-  );
+  const [, y, mo, d, hh, mm, ss, z] = m;
+  const nums = [Number(y), Number(mo), Number(d), Number(hh ?? 0), Number(mm ?? 0), Number(ss ?? 0)] as const;
+
+  // A zone-qualified wall time (not UTC-marked, not all-day): resolve the zone.
+  if (!isDate && !z && params.TZID) {
+    const raw = params.TZID.replace(/^"|"$/g, ""); // strip DQUOTEs if present
+    const tz = WINDOWS_TZ[raw] ?? raw;
+    const ms = zonedWallToMs(nums[0], nums[1], nums[2], nums[3], nums[4], nums[5], tz);
+    if (ms != null) return { ms, allDay: false };
+  }
+
+  const ms = Date.UTC(nums[0], nums[1] - 1, nums[2], nums[3], nums[4], nums[5]);
   return { ms, allDay: isDate };
 }
 

@@ -6,6 +6,7 @@ import { api, type Block, type BlockType } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
+import { useCollapse } from "../components/CollapsibleCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -58,16 +59,12 @@ export function AllBlocksPage() {
 
   const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "allblocks" });
 
-  // Per-card collapse (block view only; masonry cards are already compact).
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const allCollapsed = blocks.length > 0 && blocks.every((b) => collapsed.has(b.id));
-  const toggleCard = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // Per-card collapse (block view only; masonry cards are already compact),
+  // persisted so the page keeps its state across navigation and reloads.
+  const { collapsed, toggle: toggleCard, allCollapsed, toggleAll } = useCollapse(
+    blocks.map((b) => b.id),
+    "allblocks",
+  );
 
   return (
     <>
@@ -97,10 +94,7 @@ export function AllBlocksPage() {
           Save as collection
         </button>
         {viewMode !== "chips" && (
-          <button
-            className="ghost"
-            onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(blocks.map((b) => b.id)))}
-          >
+          <button className="ghost" onClick={toggleAll}>
             {allCollapsed ? "Expand all" : "Collapse all"}
           </button>
         )}

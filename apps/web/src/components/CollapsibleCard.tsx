@@ -4,18 +4,41 @@ import type { Block, BlockType } from "../api.ts";
 import { BlockCard } from "./BlockCard.tsx";
 import { CollapsedRow } from "./CollapsedRow.tsx";
 
-/** Per-list collapse state: which card ids are collapsed, with all-toggle. */
-export function useCollapse(ids: string[]) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+/**
+ * Per-list collapse state: which card ids are collapsed, with all-toggle. When a
+ * `scope` is given, the collapsed set persists in localStorage under that key, so
+ * a page keeps its expand/collapse state across navigation and reloads.
+ */
+export function useCollapse(ids: string[], scope?: string) {
+  const key = scope ? `hn.collapse.${scope}` : null;
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    if (!key) return new Set();
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const write = (next: Set<string>) => {
+    if (key) {
+      try {
+        localStorage.setItem(key, JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+    }
+    return next;
+  };
   const toggle = (id: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return next;
+      return write(next);
     });
   const allCollapsed = ids.length > 0 && ids.every((id) => collapsed.has(id));
-  const toggleAll = () => setCollapsed(allCollapsed ? new Set() : new Set(ids));
+  const toggleAll = () => setCollapsed(() => write(allCollapsed ? new Set() : new Set(ids)));
   return { collapsed, toggle, allCollapsed, toggleAll };
 }
 

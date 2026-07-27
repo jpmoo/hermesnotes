@@ -6,6 +6,7 @@ import { api, type Block, type BlockType } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
+import { useCollapse } from "../components/CollapsibleCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
 import { emptyGroup } from "../lib/filter.ts";
@@ -59,15 +60,10 @@ export function ArchivePage() {
 
   const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "archive" });
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const allCollapsed = blocks.length > 0 && blocks.every((b) => collapsed.has(b.id));
-  const toggleCard = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const { collapsed, toggle: toggleCard, allCollapsed, toggleAll } = useCollapse(
+    blocks.map((b) => b.id),
+    "archive",
+  );
 
   return (
     <>
@@ -90,10 +86,7 @@ export function ArchivePage() {
 
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
         {viewMode !== "chips" && blocks.length > 0 && (
-          <button
-            className="ghost"
-            onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(blocks.map((b) => b.id)))}
-          >
+          <button className="ghost" onClick={toggleAll}>
             {allCollapsed ? "Expand all" : "Collapse all"}
           </button>
         )}

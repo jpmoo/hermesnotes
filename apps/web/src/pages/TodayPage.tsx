@@ -166,8 +166,8 @@ export function TodayPage() {
 
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
   const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
-  const relevantCollapse = useCollapse((sheet?.relevant ?? []).map((b) => b.id));
-  const activityCollapse = useCollapse((sheet?.activity ?? []).map((b) => b.id));
+  const relevantCollapse = useCollapse((sheet?.relevant ?? []).map((b) => b.id), "today-relevant");
+  const activityCollapse = useCollapse((sheet?.activity ?? []).map((b) => b.id), "today-activity");
   const cardWith =
     (col: ReturnType<typeof useCollapse>) => (b: Block, compact: boolean) => (
       <CollapsibleCard

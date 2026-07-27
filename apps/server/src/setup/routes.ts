@@ -3,7 +3,7 @@ import { count } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, isDbReady } from "../db.js";
-import { saveDatabaseUrl } from "../config.js";
+import { getAllowRegistration, saveDatabaseUrl } from "../config.js";
 import { conflict } from "../lib/errors.js";
 import { provisionDatabase } from "./pg-admin.js";
 
@@ -32,13 +32,16 @@ const setupBody = z.object({
 export async function setupRoutes(app: FastifyInstance): Promise<void> {
   // Reports what the first-run wizard still needs. Always available.
   app.get("/setup/status", async () => {
-    if (!isDbReady()) return { configured: false, hasUsers: false };
+    if (!isDbReady()) return { configured: false, hasUsers: false, allowRegistration: true };
     try {
       const [row] = await db.select({ c: count() }).from(users);
-      return { configured: true, hasUsers: Number(row?.c ?? 0) > 0 };
+      const hasUsers = Number(row?.c ?? 0) > 0;
+      // Registration is open when the admin allows it, and always before the
+      // first account exists (so the instance can be bootstrapped).
+      return { configured: true, hasUsers, allowRegistration: getAllowRegistration() || !hasUsers };
     } catch {
       // DB configured but not migrated yet — treat as needing setup completion.
-      return { configured: false, hasUsers: false };
+      return { configured: false, hasUsers: false, allowRegistration: true };
     }
   });
 

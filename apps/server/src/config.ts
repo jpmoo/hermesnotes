@@ -15,6 +15,8 @@ interface PersistedConfig {
   databaseUrl?: string;
   authSecret?: string;
   backup?: BackupConfig;
+  /** Whether anyone can self-register. The first account always may (bootstrap). */
+  allowRegistration?: boolean;
 }
 
 /** Nightly pg_dump settings (admin-editable; instance-wide). */
@@ -35,7 +37,9 @@ export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", ".."
 const configPath =
   process.env.HERMES_CONFIG_PATH ?? join(repoRoot, "data", "hermes.config.json");
 
-let state: { databaseUrl?: string; authSecret: string; backup: BackupConfig } | null = null;
+let state:
+  | { databaseUrl?: string; authSecret: string; backup: BackupConfig; allowRegistration: boolean }
+  | null = null;
 
 async function readFileConfig(): Promise<PersistedConfig> {
   try {
@@ -48,7 +52,11 @@ async function readFileConfig(): Promise<PersistedConfig> {
 async function persist(): Promise<void> {
   if (!state) return;
   await mkdir(dirname(configPath), { recursive: true });
-  const out: PersistedConfig = { authSecret: state.authSecret, backup: state.backup };
+  const out: PersistedConfig = {
+    authSecret: state.authSecret,
+    backup: state.backup,
+    allowRegistration: state.allowRegistration,
+  };
   if (state.databaseUrl) out.databaseUrl = state.databaseUrl;
   await writeFile(configPath, JSON.stringify(out, null, 2), { mode: 0o600 });
 }
@@ -58,7 +66,12 @@ export async function initConfig(): Promise<void> {
   const file = await readFileConfig();
   const authSecret = env.AUTH_SECRET ?? file.authSecret ?? randomBytes(48).toString("base64");
   const databaseUrl = env.DATABASE_URL ?? file.databaseUrl;
-  state = { databaseUrl, authSecret, backup: { ...DEFAULT_BACKUP, ...file.backup } };
+  state = {
+    databaseUrl,
+    authSecret,
+    backup: { ...DEFAULT_BACKUP, ...file.backup },
+    allowRegistration: file.allowRegistration ?? true,
+  };
 
   // Persist a freshly generated secret (or newly-adopted file state).
   if (!env.AUTH_SECRET && file.authSecret !== authSecret) await persist();
@@ -83,6 +96,16 @@ export function getBackupConfig(): BackupConfig {
 export async function saveBackupConfig(next: BackupConfig): Promise<void> {
   if (!state) throw new Error("config not initialized");
   state.backup = next;
+  await persist();
+}
+
+export function getAllowRegistration(): boolean {
+  return state?.allowRegistration ?? true;
+}
+
+export async function saveAllowRegistration(next: boolean): Promise<void> {
+  if (!state) throw new Error("config not initialized");
+  state.allowRegistration = next;
   await persist();
 }
 

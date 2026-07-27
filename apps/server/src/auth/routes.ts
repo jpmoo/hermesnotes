@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { apiTokens, users, userSettings } from "@hermes/db";
 import { db } from "../db.js";
-import { badRequest, conflict, unauthorized } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, unauthorized } from "../lib/errors.js";
+import { getAllowRegistration } from "../config.js";
 import { generateToken, sha256 } from "../lib/hash.js";
 import { seedBlockTypes } from "../blocks/seed.js";
 import { seedWelcomeContent } from "../blocks/welcome.js";
@@ -32,6 +33,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // Open self-serve signup.
   app.post("/auth/register", async (req, reply) => {
     const { email, password, displayName } = credentials.parse(req.body);
+    // The first account always may register (bootstrap); after that, honour the
+    // admin's public-registration toggle.
+    if (!getAllowRegistration()) {
+      const [row] = await db.select({ c: sql<number>`count(*)::int` }).from(users);
+      if (Number(row?.c ?? 0) > 0) throw forbidden("registration is disabled");
+    }
     const existing = await db
       .select({ id: users.id })
       .from(users)

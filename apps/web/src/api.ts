@@ -243,6 +243,17 @@ export interface Member {
 export interface SetupStatus {
   configured: boolean;
   hasUsers: boolean;
+  allowRegistration: boolean;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  isAdmin: boolean;
+  createdAt: string;
+  blockCount: number;
+  protected: boolean;
 }
 
 export interface AccessKey {

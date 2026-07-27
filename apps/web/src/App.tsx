@@ -23,11 +23,17 @@ import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
 import { TypesPage } from "./pages/TypesPage.tsx";
 
-function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "register" }) {
+function ConfiguredApp({
+  defaultAuthMode,
+  allowRegistration,
+}: {
+  defaultAuthMode: "login" | "register";
+  allowRegistration: boolean;
+}) {
   const { user, loading } = useAuth();
 
   if (loading) return <div className="auth-wrap chrome">Loading…</div>;
-  if (!user) return <AuthPage defaultMode={defaultAuthMode} />;
+  if (!user) return <AuthPage defaultMode={defaultAuthMode} allowRegistration={allowRegistration} />;
 
   return (
     <PreferencesProvider>
@@ -175,5 +181,10 @@ export function App() {
   if (!status) return <div className="auth-wrap chrome">Loading…</div>;
   if (!status.configured) return <SetupPage onDone={() => window.location.reload()} />;
 
-  return <ConfiguredApp defaultAuthMode={status.hasUsers ? "login" : "register"} />;
+  return (
+    <ConfiguredApp
+      defaultAuthMode={status.hasUsers ? "login" : "register"}
+      allowRegistration={status.allowRegistration}
+    />
+  );
 }

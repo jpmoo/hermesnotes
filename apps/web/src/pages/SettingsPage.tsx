@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
 import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
 import { CalendarFeedsSettings } from "../components/CalendarFeedsSettings.tsx";
+import { UserManagement } from "../components/UserManagement.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -314,6 +315,8 @@ export function SettingsPage() {
               </>
             )}
           </div>
+
+          <UserManagement />
         </>
       )}
 

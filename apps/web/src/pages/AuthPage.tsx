@@ -2,9 +2,15 @@ import { useState, type FormEvent } from "react";
 import { ApiError } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 
-export function AuthPage({ defaultMode = "login" }: { defaultMode?: "login" | "register" }) {
+export function AuthPage({
+  defaultMode = "login",
+  allowRegistration = true,
+}: {
+  defaultMode?: "login" | "register";
+  allowRegistration?: boolean;
+}) {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">(defaultMode);
+  const [mode, setMode] = useState<"login" | "register">(allowRegistration ? defaultMode : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -64,18 +70,20 @@ export function AuthPage({ defaultMode = "login" }: { defaultMode?: "login" | "r
         <button className="primary" type="submit" disabled={busy} style={{ width: "100%" }}>
           {busy ? "…" : mode === "login" ? "Sign in" : "Create account"}
         </button>
-        <div style={{ marginTop: 14, textAlign: "center" }}>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              setMode(mode === "login" ? "register" : "login");
-              setError(null);
-            }}
-          >
-            {mode === "login" ? "Need an account? Sign up" : "Have an account? Sign in"}
-          </button>
-        </div>
+        {(allowRegistration || mode === "register") && (
+          <div style={{ marginTop: 14, textAlign: "center" }}>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                setMode(mode === "login" ? "register" : "login");
+                setError(null);
+              }}
+            >
+              {mode === "login" ? "Need an account? Sign up" : "Have an account? Sign in"}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

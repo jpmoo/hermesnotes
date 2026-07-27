@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowUp, Sparkles, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type AgentReply, type AgentStep, type PendingCall } from "../api.ts";
+import { Markdown } from "./Markdown.tsx";
 
 interface Msg {
   role: "user" | "assistant";
@@ -103,7 +104,11 @@ export function AIPanel() {
                 ))}
               </div>
             )}
-            {m.content && <div className="ai-bubble">{m.content}</div>}
+            {m.content && (
+              <div className="ai-bubble">
+                {m.role === "assistant" ? <Markdown>{m.content}</Markdown> : m.content}
+              </div>
+            )}
             {m.pending && m.pending.length > 0 && !m.resolved && (
               <div className="ai-confirm">
                 <div className="ai-confirm-head">

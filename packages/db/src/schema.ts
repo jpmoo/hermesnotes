@@ -61,6 +61,9 @@ export const userSettings = pgTable("user_settings", {
   defaultSimilarity: real("default_similarity").notNull().default(0.75),
   // IANA timezone (e.g. "America/New_York") for day boundaries; null = server local.
   timezone: text("timezone"),
+  // Auto-archive completed tasks this many days after they were marked done.
+  // Null or 0 = off. A daily job (like backups) runs the sweep.
+  autoarchiveDoneDays: integer("autoarchive_done_days"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -102,6 +105,9 @@ export const blocks = pgTable("blocks", {
   embeddedAt: timestamp("embedded_at", { withTimezone: true }),
   blockTypeSchemaVersion: integer("block_type_schema_version").notNull().default(1),
   version: integer("version").notNull().default(1),
+  // When set, the block is archived: hidden from every normal query and only
+  // visible on the Archive page. Never set for collections. Null = active.
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

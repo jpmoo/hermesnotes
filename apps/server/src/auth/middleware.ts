@@ -9,6 +9,8 @@ import { readSession, SESSION_COOKIE } from "./session.js";
 declare module "fastify" {
   interface FastifyRequest {
     userId?: string;
+    /** How the request authenticated: a browser session, or a bearer API key. */
+    authKind?: "cookie" | "bearer";
   }
 }
 
@@ -29,6 +31,7 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
       .limit(1);
     if (row) {
       req.userId = row.ownerId;
+      req.authKind = "bearer";
       // best-effort last-used stamp; don't block the request on it
       void db
         .update(apiTokens)
@@ -45,6 +48,7 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
   const userId = readSession(cookie);
   if (userId) {
     req.userId = userId;
+    req.authKind = "cookie";
     return;
   }
 

@@ -228,7 +228,7 @@ async function neighborsOf(
   types: Map<string, TypeMeta>,
   mem: Membership,
 ): Promise<{ edges: GraphEdge[]; meta: Map<string, GraphNode> }> {
-  const front = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.ownerId, userId), inArray(blocks.id, frontier)));
+  const front = await db.select(ROW_COLS).from(blocks).where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NULL`, inArray(blocks.id, frontier)));
   const frontSet = new Set(frontier);
 
   // from-id → set of target ids (deduped), plus @name lookups to resolve.
@@ -280,7 +280,7 @@ async function neighborsOf(
     const named = await db
       .select({ id: blocks.id, title: sql<string>`lower(${blocks.properties}->>'title')` })
       .from(blocks)
-      .where(and(eq(blocks.ownerId, userId), sql`lower(${blocks.properties}->>'title') IN (${sql.join([...nameToFrom.keys()].map((n) => sql`${n}`), sql`, `)})`))
+      .where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NULL`, sql`lower(${blocks.properties}->>'title') IN (${sql.join([...nameToFrom.keys()].map((n) => sql`${n}`), sql`, `)})`))
       .limit(200);
     for (const r of named) for (const from of nameToFrom.get(r.title) ?? []) addOut(from, r.id);
   }
@@ -306,7 +306,7 @@ async function neighborsOf(
   const inbound = await db
     .select(ROW_COLS)
     .from(blocks)
-    .where(and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS DISTINCT FROM 'canvas'`, or(...conds)))
+    .where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NULL`, sql`${blocks.collectionKind} IS DISTINCT FROM 'canvas'`, or(...conds)))
     .limit(200);
   for (const row of inbound) {
     if (frontSet.has(row.id)) continue;

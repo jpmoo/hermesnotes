@@ -244,7 +244,9 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       })
       .from(memberships)
       .innerJoin(blocks, eq(blocks.id, memberships.blockId))
-      .where(eq(memberships.collectionId, id))
+      // Archived members stay in the collection (membership untouched) but are
+      // hidden until unarchived.
+      .where(and(eq(memberships.collectionId, id), sql`${blocks.archivedAt} IS NULL`))
       .orderBy(asc(memberships.position));
 
     return { collection, members };

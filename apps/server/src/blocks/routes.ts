@@ -15,7 +15,7 @@ import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSett
 import { db } from "../db.js";
 import { runQuery, semanticIds } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
-import { badRequest, conflict, notFound } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "./embed-source.js";
 import { buildGraph } from "./graph.js";
@@ -253,9 +253,34 @@ const blockView = {
   embeddedAt: blocks.embeddedAt,
   embedPending: sql<boolean>`(${blocks.embedSourceHash} IS NULL AND ${blocks.embedSource} IS NOT NULL)`,
   version: blocks.version,
+  archivedAt: blocks.archivedAt,
   createdAt: blocks.createdAt,
   updatedAt: blocks.updatedAt,
 };
+
+/** Reusable predicate: the block is active (not archived). */
+const notArchived = sql`${blocks.archivedAt} IS NULL`;
+
+/**
+ * Stamp `done_at` when a block's status crosses into a complete value, and clear
+ * it when it leaves — so auto-archive can measure "how long has this been done".
+ * Returns the same object when nothing changes.
+ */
+function stampDoneAt(
+  schema: PropertySchema | null | undefined,
+  prev: Record<string, unknown>,
+  next: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!schema?.status_field) return next;
+  const wasDone = isComplete(schema, prev);
+  const nowDone = isComplete(schema, next);
+  if (nowDone && !wasDone) return { ...next, done_at: new Date().toISOString() };
+  if (!nowDone && next.done_at != null) {
+    const { done_at: _drop, ...rest } = next;
+    return rest;
+  }
+  return next;
+}
 
 export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -315,6 +340,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
           sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          notArchived,
           // no parent (not a member of any collection)
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id})`,
           // no children (not a collection with members)
@@ -338,10 +364,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post("/blocks/query", async (req) => {
     const userId = requireUser(req);
-    const { filterQuery } = z
-      .object({ filterQuery: filterQuerySchema.optional() })
+    const { filterQuery, archived } = z
+      .object({ filterQuery: filterQuerySchema.optional(), archived: z.boolean().optional() })
       .parse(req.body ?? {});
-    const matched = await runQuery(userId, normalizeFilter(filterQuery));
+    const matched = await runQuery(userId, normalizeFilter(filterQuery), archived ?? false);
     return matched.map((b) => ({
       id: b.id,
       blockTypeId: b.blockTypeId,
@@ -371,6 +397,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       eq(blocks.blockTypeId, typeId),
       sql`${blocks.collectionKind} IS NULL`,
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      notArchived,
     ];
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;
@@ -403,6 +430,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       eq(blocks.ownerId, userId),
       eq(blocks.blockTypeId, typeId),
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      notArchived,
     ];
     if (q && q.trim()) {
       const like = `%${q.trim()}%`;
@@ -473,6 +501,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(
         and(
           eq(blocks.ownerId, userId),
+          notArchived,
           sql`(${blocks.properties}::text ILIKE ${like} OR ${blocks.content} ILIKE ${like})`,
         ),
       )
@@ -494,7 +523,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       const srows = await db
         .select(cols)
         .from(blocks)
-        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, fresh)))
+        .where(and(eq(blocks.ownerId, userId), notArchived, inArray(blocks.id, fresh)))
         .orderBy(desc(blocks.updatedAt))
         .limit(10);
       semantic = srows.map((r) => toHit(r, true));
@@ -516,6 +545,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const filters = [
       eq(blocks.ownerId, userId),
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      notArchived,
     ];
     if (!includeCollections) filters.push(sql`${blocks.collectionKind} IS NULL`);
     if (typeId) filters.push(eq(blocks.blockTypeId, typeId));
@@ -687,6 +717,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         .where(
           and(
             eq(blocks.ownerId, userId),
+            notArchived,
             sql`${blocks.id} <> ${id}`,
             sql`lower(${blocks.properties}->>'title') IN (${sql.join(
               [...atNames].map((n) => sql`${n}`),
@@ -714,7 +745,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           collectionKind: blocks.collectionKind,
         })
         .from(blocks)
-        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(outIds)])));
+        .where(and(eq(blocks.ownerId, userId), notArchived, inArray(blocks.id, [...new Set(outIds)])));
     }
 
     // References in (other blocks that reference this one via a property value
@@ -732,6 +763,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(
         and(
           eq(blocks.ownerId, userId),
+          notArchived,
           sql`${blocks.id} <> ${id}`,
           or(
             // Bare-id property references — but not a daily note's layout list
@@ -792,7 +824,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           collectionKind: blocks.collectionKind,
         })
         .from(blocks)
-        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(touching.map((t) => t.otherId))])));
+        .where(and(eq(blocks.ownerId, userId), notArchived, inArray(blocks.id, [...new Set(touching.map((t) => t.otherId))])));
     }
 
     // Resolve type icons for every connected block in one query.
@@ -901,7 +933,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const nextContent = type.isText ? body.content ?? current.content ?? "" : current.content;
     // Text blocks now carry fields too (their body is `content`; other fields
     // live in properties), so both kinds may update properties.
-    const nextProps = body.properties ?? current.properties;
+    const nextProps = stampDoneAt(
+      type.propertySchema,
+      (current.properties ?? {}) as Record<string, unknown>,
+      (body.properties ?? current.properties ?? {}) as Record<string, unknown>,
+    );
     const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
     const hash = sha256(embedSource);
 
@@ -1075,14 +1111,57 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     return { tags: clean };
   });
 
-  app.delete("/blocks/:id", async (req) => {
+  /** Archive a block: hide it from every normal view (still openable by id, and
+   * reversible). Collections are never archivable. */
+  app.post("/blocks/:id/archive", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const res = await db
-      .delete(blocks)
+    const [block] = await db
+      .select({ collectionKind: blocks.collectionKind })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!block) throw notFound("block");
+    if (block.collectionKind) throw badRequest("collections can't be archived");
+    await db
+      .update(blocks)
+      .set({ archivedAt: new Date(), version: sql`${blocks.version} + 1` })
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
+    return { ok: true };
+  });
+
+  /** Restore an archived block — it reappears everywhere it was (memberships and
+   * positions were never touched). */
+  app.post("/blocks/:id/unarchive", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const [gone] = await db
+      .update(blocks)
+      .set({ archivedAt: null, version: sql`${blocks.version} + 1` })
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .returning({ id: blocks.id });
-    if (!res.length) throw notFound("block");
+    if (!gone) throw notFound("block");
+    return { ok: true };
+  });
+
+  /** Permanent delete. Only an already-archived block may be hard-deleted, so
+   * the sole path to real deletion is via the Archive screen — enforced here at
+   * the route, not just in the UI/MCP, so it holds for direct API callers too. */
+  app.delete("/blocks/:id", async (req) => {
+    const userId = requireUser(req);
+    // Irreversible deletion is a browser-session-only action: an API/bearer key
+    // (i.e. an AI agent, which can be prompt-injected) can archive but never
+    // hard-delete. Humans delete from the Archive screen over a cookie session.
+    if (req.authKind !== "cookie") throw forbidden("hard delete requires a browser session");
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const [block] = await db
+      .select({ archivedAt: blocks.archivedAt })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!block) throw notFound("block");
+    if (!block.archivedAt) throw badRequest("archive the block before deleting it");
+    await db.delete(blocks).where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
     return { ok: true };
   });
 }

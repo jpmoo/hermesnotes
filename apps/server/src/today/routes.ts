@@ -278,6 +278,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
           sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          sql`${blocks.archivedAt} IS NULL`,
           or(
             and(gte(blocks.createdAt, start), lt(blocks.createdAt, end)),
             and(gte(blocks.updatedAt, start), lt(blocks.updatedAt, end)),
@@ -301,6 +302,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
           sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          sql`${blocks.archivedAt} IS NULL`,
         ),
       )
       .limit(2000);

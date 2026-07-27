@@ -135,8 +135,14 @@ function collectSemantic(g: FilterGroup, out: Condition[]): void {
   }
 }
 
-/** Run a smart-collection filter (a group tree), returning matching blocks. */
-export async function runQuery(userId: string, filter: FilterQuery): Promise<QueriedBlock[]> {
+/** Run a smart-collection filter (a group tree), returning matching blocks.
+ * `archived` flips the whole query to the Archive view (archived blocks only);
+ * every normal caller leaves it false. */
+export async function runQuery(
+  userId: string,
+  filter: FilterQuery,
+  archived = false,
+): Promise<QueriedBlock[]> {
   const root = normalizeFilter(filter);
   const semConds: Condition[] = [];
   collectSemantic(root, semConds);
@@ -152,6 +158,10 @@ export async function runQuery(userId: string, filter: FilterQuery): Promise<Que
     sql`${blocks.collectionKind} IS NULL`,
     // Today scratchpad notes are hidden from all general queries.
     sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+    // Archived blocks never appear in a normal query (smart collections, task
+    // tools, All blocks, graph membership all flow through here); the Archive
+    // page inverts this to show only archived ones.
+    archived ? sql`${blocks.archivedAt} IS NOT NULL` : sql`${blocks.archivedAt} IS NULL`,
   );
   const combined = groupSql(root, sem, new Date());
 

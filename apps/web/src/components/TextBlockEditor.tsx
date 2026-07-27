@@ -43,7 +43,7 @@ export function TextBlockEditor({
   archived?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirm, setConfirm] = useState<null | "archive" | "unarchive" | "delete">(null);
   const [tagsRefresh, setTagsRefresh] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
@@ -150,6 +150,10 @@ export function TextBlockEditor({
     [],
   );
 
+  // The block's own state wins over the page hint (an archived note opened in
+  // the info pane must still offer Unarchive).
+  const isArchived = archived || block.archivedAt != null;
+
   const archive = async () => {
     await api.post(`/blocks/${block.id}/archive`, {});
     emitBlockDeleted(block.id);
@@ -241,17 +245,17 @@ export function TextBlockEditor({
         {saveState === "error" && <span className="error">save failed</span>}
         <span style={{ flex: 1 }} />
         {canDelete &&
-          (archived ? (
+          (isArchived ? (
             <>
-              <button className="ghost" onClick={() => void unarchive()}>
+              <button className="ghost" onClick={() => setConfirm("unarchive")}>
                 Unarchive
               </button>
-              <button className="danger" onClick={() => setConfirmOpen(true)}>
+              <button className="danger" onClick={() => setConfirm("delete")}>
                 Delete
               </button>
             </>
           ) : (
-            <button className="ghost" onClick={() => void archive()}>
+            <button className="ghost" onClick={() => setConfirm("archive")}>
               Archive
             </button>
           ))}
@@ -259,14 +263,30 @@ export function TextBlockEditor({
 
       {canDelete && (
         <ConfirmDialog
-          open={confirmOpen}
-          title="Delete this note?"
-          message="This permanently removes the block and its embedding. This can't be undone."
-          confirmLabel="Delete"
-          onCancel={() => setConfirmOpen(false)}
+          open={confirm !== null}
+          title={
+            confirm === "archive"
+              ? "Archive this note?"
+              : confirm === "unarchive"
+                ? "Unarchive this note?"
+                : "Delete this note?"
+          }
+          message={
+            confirm === "archive"
+              ? "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
+              : confirm === "unarchive"
+                ? "It'll return to every view it was in."
+                : "This permanently removes the block and its embedding. This can't be undone."
+          }
+          confirmLabel={confirm === "archive" ? "Archive" : confirm === "unarchive" ? "Unarchive" : "Delete"}
+          danger={confirm === "delete"}
+          onCancel={() => setConfirm(null)}
           onConfirm={() => {
-            setConfirmOpen(false);
-            void remove();
+            const action = confirm;
+            setConfirm(null);
+            if (action === "archive") void archive();
+            else if (action === "unarchive") void unarchive();
+            else if (action === "delete") void remove();
           }}
         />
       )}

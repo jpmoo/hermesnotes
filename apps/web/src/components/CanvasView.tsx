@@ -75,6 +75,9 @@ const DEFAULT_W = 280;
 const DEFAULT_H = 190;
 const NOTE_W = 200;
 const NOTE_H = 120;
+// Ephemeral notes are opaque sticky notes — post-it yellow by default so one
+// never renders see-through (a note created without a color still gets this).
+const NOTE_COLOR = "#fdf3d8";
 const MIN_W = 140;
 const MIN_H = 80;
 const NODE_COLORS = ["#ffffff", "#fdf3d8", "#e7f1e4", "#e3edf5", "#f5e3e7", "#ece5f6", "#eef4f6"];
@@ -243,7 +246,11 @@ export function CanvasView({
   // Local position overrides (during + after drags) layered over member context.
   const [local, setLocal] = useState<Record<string, NodeCtx>>({});
   const [notes, setNotes] = useState<CanvasNote[]>(() =>
-    Array.isArray(props.canvas_notes) ? (props.canvas_notes as CanvasNote[]) : [],
+    Array.isArray(props.canvas_notes)
+      ? // Backfill a color on any note lacking one (e.g. an older AI-created
+        // note) so it renders as a solid sticky, never transparent.
+        (props.canvas_notes as CanvasNote[]).map((n) => ({ ...n, color: n.color || NOTE_COLOR }))
+      : [],
   );
   const [edges, setEdges] = useState<CanvasEdge[]>(() =>
     Array.isArray(props.canvas_edges)
@@ -931,7 +938,7 @@ export function CanvasView({
   const addNote = (at?: { x: number; y: number }) => {
     const c = at ?? viewCenter();
     const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, NOTE_W, NOTE_H, allRects());
-    saveNotes([...notes, { id: `n:${uid()}`, ...spot, w: NOTE_W, h: NOTE_H, text: "", color: "#fdf3d8" }]);
+    saveNotes([...notes, { id: `n:${uid()}`, ...spot, w: NOTE_W, h: NOTE_H, text: "", color: NOTE_COLOR }]);
   };
 
   const convertNote = async (note: CanvasNote, type: BlockType) => {

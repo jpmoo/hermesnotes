@@ -936,6 +936,41 @@ export function defineTools(api: Api): ToolDef[] {
   );
 
   tool(
+    "canvas_note_add",
+    "Add an ephemeral sticky note directly onto a canvas — free-floating text that lives ONLY on the canvas as decoration. This is NOT a Hermes block/note: it has no id, doesn't show up in search or collections, and can't be linked. Use this (not block_create) whenever asked to jot a note, label, caption, or comment ON a canvas. `canvas` is the canvas collection (id or title); optional x/y are canvas coordinates and `color` is a hex background.",
+    {
+      canvas: z.string(),
+      text: z.string().min(1),
+      x: z.number().optional(),
+      y: z.number().optional(),
+      color: z.string().optional(),
+    },
+    run(async (a) => {
+      const id = await resolveCollectionId(a.canvas);
+      const d = await api.get<{
+        collection: { collectionKind: string | null; properties: Record<string, unknown> };
+      }>(`/collections/${id}`);
+      if (d.collection.collectionKind !== "canvas") throw new Error(`"${a.canvas}" is not a canvas.`);
+      const notes = Array.isArray(d.collection.properties.canvas_notes)
+        ? (d.collection.properties.canvas_notes as Record<string, unknown>[])
+        : [];
+      // Cascade unspecified notes diagonally so they don't stack exactly.
+      const step = (notes.length % 6) * 36;
+      const note = {
+        id: `n:${randomUUID()}`,
+        x: a.x ?? 40 + step,
+        y: a.y ?? 40 + step,
+        w: 200,
+        h: 120,
+        text: a.text,
+        color: a.color ?? "#fdf3d8",
+      };
+      await api.patch(`/collections/${id}`, { canvas_notes: [...notes, note] });
+      return `Added a sticky note to canvas "${a.canvas}".`;
+    }),
+  );
+
+  tool(
     "collection_members",
     "List the members of a collection (id or title) — their labels and ids, plus the matrix region if placed.",
     { collection: z.string() },

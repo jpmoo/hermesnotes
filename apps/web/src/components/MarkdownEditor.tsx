@@ -4,7 +4,8 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { api, type Attachment } from "../api.ts";
+import { api, type Attachment, type Block, type BlockType } from "../api.ts";
+import { BlockIcon } from "../lib/icons.tsx";
 import { IMG_SMALL, MdImage } from "../lib/image-node.ts";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -49,6 +50,9 @@ export function MarkdownEditor({
   const [imgMenu, setImgMenu] = useState<Attachment[] | null>(null);
   const [markdown, setMarkdown] = useState(value);
   const [sug, setSug] = useState<MentionState | null>(null);
+  const [extract, setExtract] = useState<
+    { x: number; y: number; from: number; to: number; text: string; types: BlockType[] } | null
+  >(null);
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const lastEmit = useRef(value);
@@ -191,10 +195,62 @@ export function MarkdownEditor({
     autosize();
   };
 
+  // Right-click on a selection → offer to extract it into a new block.
+  const onContextMenu = (e: React.MouseEvent) => {
+    if (!editor || mode !== "live") return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const text = editor.state.doc.textBetween(from, to, "\n").trim();
+    if (!text) return;
+    e.preventDefault();
+    void api
+      .get<BlockType[]>("/block-types")
+      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, text, types }))
+      .catch(() => {});
+  };
+
+  // Create a new block of `type` from the selected text, then replace the
+  // selection with a block: mention whose label is the original text — saving
+  // registers it as an outgoing link. New block: title = first line, body = all.
+  const extractTo = async (type: BlockType) => {
+    if (!extract || !editor) return;
+    const { from, to, text } = extract;
+    setExtract(null);
+    const firstLine = text.split("\n")[0]!.trim() || "Untitled";
+    const hasDescription = type.propertySchema?.fields.some((f) => f.key === "description");
+    const body = type.isText
+      ? { content: text }
+      : { properties: hasDescription ? { title: firstLine, description: text } : { title: text } };
+    try {
+      const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
+      const mention = editor.state.schema.nodes.mention;
+      if (!mention) return;
+      const tr = editor.state.tr.replaceWith(from, to, mention.create({ href: `block:${b.id}`, label: text }));
+      editor.view.dispatch(tr);
+      editor.view.focus();
+    } catch {
+      /* creation failed; selection left untouched */
+    }
+  };
+
+  useEffect(() => {
+    if (!extract) return;
+    const close = () => setExtract(null);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExtract(null);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [extract]);
+
   return (
     <div className="md-editor">
       {mode === "live" ? (
-        <EditorContent editor={editor} />
+        <div onContextMenu={onContextMenu}>
+          <EditorContent editor={editor} />
+        </div>
       ) : (
         <textarea
           ref={taRef}
@@ -258,6 +314,35 @@ export function MarkdownEditor({
         </span>
       )}
       {sug && <MentionMenu state={sug} keydown={keydown} onClose={() => setSug(null)} />}
+
+      {extract && (
+        <div
+          className="menu extract-menu"
+          style={{
+            position: "fixed",
+            left: extract.x,
+            top: extract.y,
+            right: "auto",
+            bottom: "auto",
+            zIndex: 1000,
+            maxHeight: 320,
+            overflowY: "auto",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="hint" style={{ padding: "6px 10px" }}>
+            Extract selection to a new…
+          </div>
+          {[...extract.types]
+            .sort((a, b) => (a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1))
+            .map((t) => (
+              <button key={t.id} className="menu-item type-item" onClick={() => void extractTo(t)}>
+                <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.isText ? null : t.iconColor} size={16} />
+                <span style={{ textTransform: "capitalize" }}>{t.name}</span>
+              </button>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -47,6 +47,10 @@ export function TextBlockEditor({
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const propsTimer = useRef<ReturnType<typeof setTimeout>>();
+  // Latest not-yet-saved edits, so a pending debounce can be flushed on unmount
+  // (leaving the note before the 700ms fired must not drop the change).
+  const pendingContent = useRef<string | null>(null);
+  const pendingProps = useRef<Record<string, unknown> | null>(null);
   const { selectBlock } = usePanels();
 
   // Cross-surface sync. The markdown editor owns its content, so foreign
@@ -92,25 +96,53 @@ export function TextBlockEditor({
   const updateField = (key: string, value: unknown) => {
     const next = { ...props, [key]: value };
     setProps(next);
+    pendingProps.current = next;
     if (propsTimer.current) clearTimeout(propsTimer.current);
     propsTimer.current = setTimeout(() => {
+      pendingProps.current = null;
       void patch({ properties: next });
       onChange?.({ properties: next });
     }, 700);
   };
 
   const scheduleSave = (value: string) => {
+    pendingContent.current = value;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
+      pendingContent.current = null;
       void patch({ content: value });
       onChange?.({ content: value });
     }, 700);
   };
 
+  // Flush any pending debounced save immediately (used on unmount). Held in a
+  // ref so the unmount cleanup always calls the latest closure/values.
+  const flushSaves = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = undefined;
+    }
+    if (propsTimer.current) {
+      clearTimeout(propsTimer.current);
+      propsTimer.current = undefined;
+    }
+    if (pendingContent.current != null) {
+      const v = pendingContent.current;
+      pendingContent.current = null;
+      void patch({ content: v });
+    }
+    if (pendingProps.current != null) {
+      const p = pendingProps.current;
+      pendingProps.current = null;
+      void patch({ properties: p });
+    }
+  };
+  const flushRef = useRef(flushSaves);
+  flushRef.current = flushSaves;
+
   useEffect(
     () => () => {
-      if (timer.current) clearTimeout(timer.current);
-      if (propsTimer.current) clearTimeout(propsTimer.current);
+      flushRef.current();
     },
     [],
   );

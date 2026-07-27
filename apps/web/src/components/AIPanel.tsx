@@ -1,84 +1,52 @@
-import { AlertTriangle, ArrowUp, Sparkles, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowUp, Sparkles, Trash2, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, type AgentReply, type AgentStep, type PendingCall } from "../api.ts";
+import { useAssistant } from "../lib/assistant.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { Markdown } from "./Markdown.tsx";
 
-interface Msg {
-  role: "user" | "assistant";
-  content: string;
-  steps?: AgentStep[];
-  pending?: PendingCall[];
-  resolved?: boolean;
-}
-
 /**
- * In-app AI assistant: a chat that drives the shared tool registry through the
- * server-side agent loop (POST /assistant/chat). Each turn sends the running
- * history and renders the reply plus the tool calls the agent made.
+ * In-app AI assistant: a thin view over the shell-level AssistantProvider, which
+ * persists the conversation server-side and keeps a running turn alive across
+ * tab switches. This component only owns the composer text and scroll position.
  */
 export function AIPanel() {
-  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const { msgs, busy, error, send, resolvePending, clear } = useAssistant();
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [msgs, busy]);
 
-  const send = async () => {
+  const submit = () => {
     const text = input.trim();
     if (!text || busy) return;
-    setError(null);
-    const history: Msg[] = [...msgs, { role: "user", content: text }];
-    setMsgs(history);
     setInput("");
-    setBusy(true);
-    try {
-      const res = await api.post<AgentReply>("/assistant/chat", {
-        messages: history.map((m) => ({ role: m.role, content: m.content })),
-      });
-      setMsgs((m) => [
-        ...m,
-        { role: "assistant", content: res.reply, steps: res.steps, pending: res.pending },
-      ]);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "The assistant is unavailable.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const resolvePending = async (idx: number, approve: boolean) => {
-    const pending = msgs[idx]?.pending;
-    if (!pending) return;
-    setMsgs((m) => m.map((x, i) => (i === idx ? { ...x, resolved: true } : x)));
-    if (!approve) {
-      setMsgs((m) => [...m, { role: "assistant", content: "Okay — cancelled, nothing was deleted." }]);
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.post<{ steps: AgentStep[] }>("/assistant/confirm", { calls: pending });
-      setMsgs((m) => [...m, { role: "assistant", content: "Done.", steps: res.steps }]);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "Couldn't complete that.");
-    } finally {
-      setBusy(false);
-    }
+    void send(text);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void send();
+      submit();
     }
   };
 
   return (
     <div className="ai-panel">
+      {msgs.length > 0 && (
+        <div className="ai-toolbar">
+          <button
+            className="icon-btn"
+            title="Clear conversation"
+            onClick={() => setConfirmClear(true)}
+            disabled={busy}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      )}
       <div className="ai-thread" ref={threadRef}>
         {msgs.length === 0 && (
           <div className="ai-empty">
@@ -151,15 +119,27 @@ export function AIPanel() {
           className="ai-input"
           placeholder="Ask the assistant…"
           value={input}
-          rows={1}
+          rows={3}
           autoComplete="off"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button className="icon-btn ai-send" title="Send" disabled={busy || !input.trim()} onClick={() => void send()}>
+        <button className="icon-btn ai-send" title="Send" disabled={busy || !input.trim()} onClick={submit}>
           <ArrowUp size={16} />
         </button>
       </div>
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear conversation?"
+        message="This permanently deletes the whole assistant conversation and resets its memory. This can't be undone."
+        confirmLabel="Clear"
+        onConfirm={() => {
+          setConfirmClear(false);
+          void clear();
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
 }

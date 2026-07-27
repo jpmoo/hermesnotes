@@ -1,4 +1,5 @@
 import {
+  bigserial,
   boolean,
   customType,
   integer,
@@ -237,3 +238,26 @@ export const attachments = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
 );
+
+/** Persisted AI-assistant conversation — one ongoing thread per user, with the
+ * occasional 'summary' row condensing older turns near the context limit. */
+export const assistantMessages = pgTable("assistant_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  seq: bigserial("seq", { mode: "number" }).notNull(),
+  role: text("role").notNull(),
+  kind: text("kind").notNull().default("message"),
+  content: text("content").notNull().default(""),
+  steps: jsonb("steps").$type<AgentStep[] | null>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A tool call the assistant made during a turn (mirrors the agent's AgentStep). */
+export interface AgentStep {
+  tool: string;
+  args: unknown;
+  result: string;
+  ok: boolean;
+}

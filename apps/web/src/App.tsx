@@ -10,6 +10,7 @@ import { useIsMobile } from "./lib/useIsMobile.ts";
 import { MobileBar } from "./components/MobileBar.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
+import { AssistantProvider } from "./lib/assistant.tsx";
 import { PreferencesProvider, usePreferences } from "./lib/preferences.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
@@ -31,9 +32,11 @@ function ConfiguredApp({ defaultAuthMode }: { defaultAuthMode: "login" | "regist
   return (
     <PreferencesProvider>
       <PanelsProvider>
-        <RouteBannerProvider>
-          <Shell />
-        </RouteBannerProvider>
+        <AssistantProvider>
+          <RouteBannerProvider>
+            <Shell />
+          </RouteBannerProvider>
+        </AssistantProvider>
       </PanelsProvider>
     </PreferencesProvider>
   );

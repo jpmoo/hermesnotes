@@ -44,6 +44,8 @@ export interface AgentResult {
   steps: AgentStep[];
   /** Destructive calls the agent wants to make, awaiting the user's confirmation. */
   pending?: PendingCall[];
+  /** Actual prompt tokens the model reported for the final turn (for context mgmt). */
+  promptTokens?: number;
 }
 
 /** Convert the shared tool registry into Ollama's function-tool format. */
@@ -63,7 +65,8 @@ async function ollamaChat(
   model: string,
   messages: OllamaMessage[],
   tools: ReturnType<typeof toOllamaTools>,
-): Promise<OllamaMessage> {
+  numCtx?: number,
+): Promise<{ message: OllamaMessage; promptTokens: number }> {
   const base = url.replace(/\/+$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
@@ -71,18 +74,76 @@ async function ollamaChat(
     const res = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, tools, stream: false }),
+      body: JSON.stringify({
+        model,
+        messages,
+        tools,
+        stream: false,
+        ...(numCtx ? { options: { num_ctx: numCtx } } : {}),
+      }),
       signal: controller.signal,
     });
     if (!res.ok) {
       const body = (await res.text()).slice(0, 400);
       throw new Error(`Ollama /api/chat ${res.status}: ${body}`);
     }
-    const json = (await res.json()) as { message?: OllamaMessage };
-    return json.message ?? { role: "assistant", content: "" };
+    const json = (await res.json()) as { message?: OllamaMessage; prompt_eval_count?: number };
+    return { message: json.message ?? { role: "assistant", content: "" }, promptTokens: json.prompt_eval_count ?? 0 };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * The model's maximum context window (tokens), read from Ollama's /api/show
+ * `model_info` (the `*.context_length` field). Falls back to 8192 when the
+ * field is absent or the call fails, so context management always has a number.
+ */
+export async function fetchModelContext(url: string, model: string): Promise<number> {
+  const base = url.replace(/\/+$/, "");
+  try {
+    const res = await fetch(`${base}/api/show`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+    if (!res.ok) return 8192;
+    const json = (await res.json()) as { model_info?: Record<string, unknown> };
+    const info = json.model_info ?? {};
+    const key = Object.keys(info).find((k) => k.endsWith(".context_length"));
+    const val = key ? Number(info[key]) : NaN;
+    return Number.isFinite(val) && val > 0 ? val : 8192;
+  } catch {
+    return 8192;
+  }
+}
+
+/** Condense a run of older turns into a compact third-person summary that
+ * preserves ids, decisions, and open threads, for use as rolling context. */
+export async function summarizeConversation(
+  url: string,
+  model: string,
+  turns: { role: string; content: string }[],
+  numCtx?: number,
+): Promise<string> {
+  const transcript = turns.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
+  const { message } = await ollamaChat(
+    url,
+    model,
+    [
+      {
+        role: "system",
+        content:
+          "Summarize the following assistant/user conversation into a concise briefing that preserves any " +
+          "block/collection ids, decisions made, tasks/canvases created, and unresolved threads. Write it so a " +
+          "fresh assistant could continue seamlessly. Prose or bullets, no preamble.",
+      },
+      { role: "user", content: transcript },
+    ],
+    [],
+    numCtx,
+  );
+  return message.content?.trim() || "";
 }
 
 const MAX_STEPS = 8;
@@ -118,6 +179,7 @@ export async function runAgent(opts: {
   api: Api;
   messages: { role: "user" | "assistant"; content: string }[];
   confirmDestructive?: boolean;
+  numCtx?: number;
 }): Promise<AgentResult> {
   const registry = defineTools(opts.api);
   const byName = new Map(registry.map((t) => [t.name, t]));
@@ -125,12 +187,14 @@ export async function runAgent(opts: {
 
   const messages: OllamaMessage[] = [{ role: "system", content: SYSTEM }, ...opts.messages];
   const steps: AgentStep[] = [];
+  let promptTokens = 0;
 
   for (let i = 0; i < MAX_STEPS; i++) {
-    const msg = await ollamaChat(opts.url, opts.model, messages, tools);
+    const { message: msg, promptTokens: pt } = await ollamaChat(opts.url, opts.model, messages, tools, opts.numCtx);
+    promptTokens = pt || promptTokens;
     messages.push(msg);
     const calls = msg.tool_calls ?? [];
-    if (!calls.length) return { reply: msg.content?.trim() || "", steps };
+    if (!calls.length) return { reply: msg.content?.trim() || "", steps, promptTokens };
 
     const pending: PendingCall[] = [];
     for (const call of calls) {
@@ -144,9 +208,9 @@ export async function runAgent(opts: {
       steps.push(step);
       messages.push({ role: "tool", content: step.result });
     }
-    if (pending.length) return { reply: msg.content?.trim() || "", steps, pending };
+    if (pending.length) return { reply: msg.content?.trim() || "", steps, pending, promptTokens };
   }
-  return { reply: "I stopped after several steps — ask me to continue if needed.", steps };
+  return { reply: "I stopped after several steps — ask me to continue if needed.", steps, promptTokens };
 }
 
 /** Execute a set of user-confirmed calls (destructive tools only). */

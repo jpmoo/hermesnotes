@@ -79,7 +79,9 @@ export interface ToolDef {
 const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
 const HEX_COLOR = z.string().regex(/^#[0-9a-fA-F]{3,8}$/, "color must be a hex value like #fdf3d8");
 
-const DESTRUCTIVE_TOOLS = new Set(["delete_task", "delete_project", "block_delete", "tag_delete"]);
+// Archiving is reversible, so those tools aren't destructive. Only hard-deletes
+// are (tags here; blocks can no longer be deleted via MCP at all).
+const DESTRUCTIVE_TOOLS = new Set(["tag_delete"]);
 const READONLY_TOOLS = new Set([
   "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
   "task_find", "task_info", "project_list", "project_archived", "project_info", "today_layout_get",
@@ -412,16 +414,15 @@ export function defineTools(api: Api): ToolDef[] {
   );
 
   tool(
-    "delete_task",
-    "Delete a task permanently. Call without confirm first; repeat with confirm=true after the user confirms.",
-    { task: z.string().min(1), confirm: z.boolean().optional() },
+    "task_archive",
+    "Archive a task: hide it from every normal view and query. Reversible — it stays exactly where it was and comes back on unarchive (block_unarchive). This replaces deletion; blocks can only be permanently deleted by the user from the Archive screen.",
+    { task: z.string().min(1) },
     run(async (a) => {
       const ctx = await loadContext(api);
       const b = await resolveTask(api, ctx, a.task);
       const title = String((b.properties as Record<string, unknown>).title ?? b.id);
-      if (!a.confirm) return `This will permanently delete "${title}". Call again with confirm=true.`;
-      await api.del(`/blocks/${b.id}`);
-      return `Deleted "${title}".`;
+      await api.post(`/blocks/${b.id}/archive`, {});
+      return `Archived "${title}" [${b.id}].`;
     }),
   );
 
@@ -546,19 +547,8 @@ export function defineTools(api: Api): ToolDef[] {
     run((a) => setArchived(a.project, false, a.confirm)),
   );
 
-  tool(
-    "delete_project",
-    "Delete a project permanently (tasks are kept; they just lose the link). Two-step confirm.",
-    { project: z.string().min(1), confirm: z.boolean().optional() },
-    run(async (a) => {
-      const ctx = await loadContext(api);
-      const proj = await resolveProject(api, ctx, a.project);
-      const title = String((proj.properties as Record<string, unknown>).title ?? proj.id);
-      if (!a.confirm) return `This will permanently delete project "${title}". Call again with confirm=true.`;
-      await api.del(`/blocks/${proj.id}`);
-      return `Deleted project "${title}".`;
-    }),
-  );
+  // (A project is a block — archive one with block_archive. There is no
+  // hard-delete tool; only the user can permanently delete, from the Archive.)
 
   // ---------- lists & tags ----------
 
@@ -850,10 +840,26 @@ export function defineTools(api: Api): ToolDef[] {
     }),
   );
 
-  tool("block_delete", "Permanently delete a block (or collection) by id.", { id: z.string() }, run(async (a) => {
-    await api.del(`/blocks/${a.id}`);
-    return `Deleted [${a.id}].`;
-  }));
+  tool(
+    "block_archive",
+    "Archive a block (id or title): hide it from every normal view and query. Reversible via block_unarchive — memberships and positions are preserved, so it returns exactly where it was. This replaces deletion; there is no delete tool. Collections can't be archived.",
+    { block: z.string().min(1) },
+    run(async (a) => {
+      const id = await resolveBlockId(a.block);
+      await api.post(`/blocks/${id}/archive`, {});
+      return `Archived [${id}].`;
+    }),
+  );
+
+  tool(
+    "block_unarchive",
+    "Restore an archived block by id — it reappears everywhere it was. (Pass the id; archived blocks aren't found by title search.)",
+    { id: z.string().uuid() },
+    run(async (a) => {
+      await api.post(`/blocks/${a.id}/unarchive`, {});
+      return `Unarchived [${a.id}].`;
+    }),
+  );
 
   tool(
     "collection_create",

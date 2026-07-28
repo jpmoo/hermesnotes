@@ -1,4 +1,4 @@
-import { Archive, CheckCircle2, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
+import { Archive, CheckCircle2, ChevronRight, ExternalLink, ListChecks, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -105,7 +105,7 @@ export function ReviewPage() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const { bottomSlotEl, setHasContent } = usePanels();
+  const { slotEl, bottomSlotEl, setHasContent } = usePanels();
 
   // Distinguish "still loading" from "load failed" so a failure shows an error
   // (and a retry) instead of a permanent spinner.
@@ -240,6 +240,17 @@ export function ReviewPage() {
       ) : (
         <div className="hint">Add your first step in the panel on the right.</div>
       )}
+
+      {slotEl &&
+        createPortal(
+          <div className="info-title">
+            <ListChecks size={18} />
+            <span className="info-title-text">
+              Weekly Review{state.task?.due ? ` · Week Ending ${fmtLong(state.task.due)}` : ""}
+            </span>
+          </div>,
+          slotEl,
+        )}
 
       {bottomSlotEl &&
         createPortal(

@@ -282,6 +282,110 @@ function stampDoneAt(
   return next;
 }
 
+/**
+ * After a hard-delete, clean the references that FK cascade can't reach because
+ * they live in JSONB, not FK columns: canvas edges/regions, today-layout
+ * sections, the cross-day today_default, and weekly-review step links. (Textual
+ * `block:<id>` links in bodies are left to degrade gracefully at render time.)
+ */
+async function scrubDanglingRefs(userId: string, id: string): Promise<void> {
+  // Canvas edges + region memberships on every canvas the user owns.
+  const canvases = await db
+    .select({ id: blocks.id, properties: blocks.properties })
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), eq(blocks.collectionKind, "canvas")));
+  for (const c of canvases) {
+    const p = (c.properties ?? {}) as Record<string, unknown>;
+    const edges = Array.isArray(p.canvas_edges) ? (p.canvas_edges as { from?: string; to?: string }[]) : [];
+    const regions = Array.isArray(p.canvas_regions)
+      ? (p.canvas_regions as { memberIds?: string[] }[])
+      : [];
+    const nextEdges = edges.filter((e) => e.from !== id && e.to !== id);
+    const nextRegions = regions.map((r) =>
+      Array.isArray(r.memberIds) ? { ...r, memberIds: r.memberIds.filter((m) => m !== id) } : r,
+    );
+    if (nextEdges.length !== edges.length || JSON.stringify(nextRegions) !== JSON.stringify(regions)) {
+      await db
+        .update(blocks)
+        .set({
+          properties: { ...p, canvas_edges: nextEdges, canvas_regions: nextRegions },
+          version: sql`${blocks.version} + 1`,
+        })
+        .where(and(eq(blocks.id, c.id), eq(blocks.ownerId, userId)));
+    }
+  }
+
+  // Today-layout sections on daily notes (a custom section is { t, id }).
+  const notes = await db
+    .select({ id: blocks.id, properties: blocks.properties })
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), sql`jsonb_exists(${blocks.properties}, 'layout')`));
+  for (const n of notes) {
+    const p = (n.properties ?? {}) as Record<string, unknown>;
+    const layout = Array.isArray(p.layout) ? (p.layout as unknown[]) : [];
+    const next = layout.filter((s) => !(s && typeof s === "object" && (s as { id?: string }).id === id));
+    if (next.length !== layout.length) {
+      await db
+        .update(blocks)
+        .set({ properties: { ...p, layout: next }, version: sql`${blocks.version} + 1` })
+        .where(and(eq(blocks.id, n.id), eq(blocks.ownerId, userId)));
+    }
+  }
+
+  // Cross-day today_default + weekly-review step links in user settings.
+  const [settings] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  if (settings) {
+    const prefs = { ...(settings.preferences ?? {}) } as Record<string, unknown>;
+    let changed = false;
+    if (Array.isArray(prefs.today_default)) {
+      const arr = prefs.today_default as { section?: { id?: string } }[];
+      const kept = arr.filter((e) => e?.section?.id !== id);
+      if (kept.length !== arr.length) {
+        prefs.today_default = kept;
+        changed = true;
+      }
+    }
+    const wr = prefs.weekly_review as
+      | {
+          steps?: { id: string; link?: { id?: string } | null }[];
+          cycle?: { extraSteps?: { id: string; link?: { id?: string } | null }[]; doneStepIds?: string[] };
+        }
+      | undefined;
+    if (wr) {
+      const removed = new Set<string>();
+      const dropLinked = (steps?: { id: string; link?: { id?: string } | null }[]) => {
+        if (!Array.isArray(steps)) return steps;
+        const kept = steps.filter((s) => {
+          if (s.link?.id === id) {
+            removed.add(s.id);
+            return false;
+          }
+          return true;
+        });
+        if (kept.length !== steps.length) changed = true;
+        return kept;
+      };
+      wr.steps = dropLinked(wr.steps);
+      if (wr.cycle) {
+        wr.cycle.extraSteps = dropLinked(wr.cycle.extraSteps);
+        if (removed.size && Array.isArray(wr.cycle.doneStepIds)) {
+          const kept = wr.cycle.doneStepIds.filter((sid) => !removed.has(sid));
+          if (kept.length !== wr.cycle.doneStepIds.length) {
+            wr.cycle.doneStepIds = kept;
+            changed = true;
+          }
+        }
+      }
+    }
+    if (changed)
+      await db.update(userSettings).set({ preferences: prefs }).where(eq(userSettings.userId, userId));
+  }
+}
+
 export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -1248,6 +1352,8 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     if (!block) throw notFound("block");
     if (!block.archivedAt) throw badRequest("archive the block before deleting it");
     await db.delete(blocks).where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
+    // FK-backed relations cascade; JSON-stored references don't — scrub those.
+    await scrubDanglingRefs(userId, id);
     return { ok: true };
   });
 }

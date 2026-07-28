@@ -71,6 +71,24 @@ export type FilterQuery = FilterGroup;
 
 export const emptyGroup = (): FilterGroup => ({ kind: "group", match: "all", items: [] });
 
+/**
+ * Reserved sentinel "block type" for querying Daily Notes. Daily notes have no
+ * real block type (they're text blocks carrying a `today_note` date) and are
+ * hidden from every normal query — so selecting this in a smart-collection query
+ * both matches daily notes and lifts that hide filter. It's a valid UUID so it
+ * passes the blockType condition schema unchanged.
+ */
+export const DAILY_NOTE_TYPE_ID = "da110000-0000-4000-8000-000000000000";
+
+/** Whether a filter tree references the Daily Note sentinel type anywhere. */
+export function filterUsesDailyNotes(g: FilterGroup): boolean {
+  return g.items.some((it) =>
+    it.kind === "group"
+      ? filterUsesDailyNotes(it)
+      : it.kind === "blockType" && it.typeId === DAILY_NOTE_TYPE_ID,
+  );
+}
+
 /** Accept either the group shape or the legacy {match, conditions[]} shape. */
 export function normalizeFilter(value: unknown): FilterGroup {
   if (value && typeof value === "object") {

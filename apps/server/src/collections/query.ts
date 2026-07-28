@@ -10,6 +10,8 @@ import {
 } from "@hermes/db";
 import { EMBEDDING_INDEX_DIM } from "@hermes/db/schema";
 import {
+  DAILY_NOTE_TYPE_ID,
+  filterUsesDailyNotes,
   normalizeFilter,
   resolveDateToken,
   userLocalNow,
@@ -62,7 +64,10 @@ export async function semanticIds(userId: string, value: string, floor: number):
 function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): SQL {
   switch (c.kind) {
     case "blockType":
-      return eq(blocks.blockTypeId, c.typeId);
+      // The Daily Note sentinel isn't a real type — match by the today_note marker.
+      return c.typeId === DAILY_NOTE_TYPE_ID
+        ? sql`jsonb_exists(${blocks.properties}, 'today_note')`
+        : eq(blocks.blockTypeId, c.typeId);
     case "created": {
       const d = new Date(resolveDateToken(c.date, now));
       return c.op === "before" ? lt(blocks.createdAt, d) : gt(blocks.createdAt, d);
@@ -154,18 +159,22 @@ export async function runQuery(
     }),
   );
 
-  const scope = and(
+  const scopeConds: SQL[] = [
     eq(blocks.ownerId, userId),
     sql`${blocks.collectionKind} IS NULL`,
-    // Today scratchpad notes and weekly-review reflections are system blocks —
-    // hidden from all general queries (All blocks, smart collections, tools).
-    sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+    // Weekly-review reflections are system blocks — always hidden.
     sql`NOT jsonb_exists(${blocks.properties}, 'review_reflection')`,
     // Archived blocks never appear in a normal query (smart collections, task
     // tools, All blocks, graph membership all flow through here); the Archive
     // page inverts this to show only archived ones.
     archived ? sql`${blocks.archivedAt} IS NOT NULL` : sql`${blocks.archivedAt} IS NULL`,
-  );
+  ];
+  // Today scratchpad notes are also system blocks and normally hidden — UNLESS
+  // the query explicitly opts in via the Daily Note type.
+  if (!filterUsesDailyNotes(root)) {
+    scopeConds.push(sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`);
+  }
+  const scope = and(...scopeConds);
   // Relative-date tokens resolve against the requester's timezone, not the box's.
   const [tzRow] = await db
     .select({ tz: userSettings.timezone })

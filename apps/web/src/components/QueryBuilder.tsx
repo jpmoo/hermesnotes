@@ -1,7 +1,24 @@
-import type { Condition, FieldDef, FilterGroup, PropertyOp } from "@hermes/shared";
+import { DAILY_NOTE_TYPE_ID, type Condition, type FieldDef, type FilterGroup, type PropertyOp } from "@hermes/shared";
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
+
+/** Synthetic "type" so a query can target Daily Notes (which have no real block
+ *  type). Selecting it matches today_note blocks and lifts the hide filter. */
+const DAILY_NOTE_TYPE: BlockType = {
+  id: DAILY_NOTE_TYPE_ID,
+  name: "Daily Note",
+  iconKey: "calendar-days",
+  iconColor: null,
+  iconSource: "lucide",
+  showIcon: true,
+  propertySchema: {
+    fields: [{ key: "today_note", label: "Date", type: "date", order: 0, includeEmbed: false }],
+  },
+  schemaVersion: 0,
+  isText: true,
+  builtin: true,
+};
 import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -533,11 +550,14 @@ export function QueryBuilder({
 }) {
   const [count, setCount] = useState<number | null>(null);
 
+  // Daily Note is offered everywhere alongside the real types.
+  const allTypes = useMemo(() => [...types, DAILY_NOTE_TYPE], [types]);
+
   // Fields available to "Field" conditions = union of the selected types' fields.
   const typeIds = new Set<string>();
   collectTypeIds(value, typeIds);
   const byKey = new Map<string, FieldDef>();
-  for (const t of types) {
+  for (const t of allTypes) {
     if (typeIds.has(t.id) && t.propertySchema) {
       for (const f of t.propertySchema.fields) if (!byKey.has(f.key)) byKey.set(f.key, f);
     }
@@ -580,7 +600,7 @@ export function QueryBuilder({
       <GroupEditor
         group={value}
         onChange={onChange}
-        types={types}
+        types={allTypes}
         tags={tags}
         fields={fields}
         isRoot

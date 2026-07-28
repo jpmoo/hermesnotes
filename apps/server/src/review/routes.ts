@@ -254,11 +254,10 @@ async function buildState(userId: string) {
   if (wr.dueWeekday === null) return { configured: false as const };
 
   const task = await resolveTaskType(userId);
-  let active = await findActiveReviewTask(userId, task);
-  if (!active) {
-    await provisionReviewTask(userId, wr, timezone);
-    active = await findActiveReviewTask(userId, task);
-  }
+  // Do NOT provision here: a read must be side-effect-free, and two concurrent
+  // GETs (tabs, live-sync) both seeing no active task would each insert one.
+  // Provisioning happens only on the explicit config save (find-or-update).
+  const active = await findActiveReviewTask(userId, task);
   const props = (active?.properties ?? {}) as Record<string, unknown>;
   const schema = task.propertySchema;
   const statusKey = schema?.status_field ?? "status";

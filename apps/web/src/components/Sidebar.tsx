@@ -17,8 +17,9 @@ import {
   Sun,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { normalizeRail, RAIL_LAYOUT_PREF_KEY, type RailButtonId } from "@hermes/shared";
 import { api, type Block, type BlockType } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -203,6 +204,86 @@ export function Sidebar() {
     );
   };
 
+  /** One rail button by id — reuses the existing colorRow / actionRow helpers. */
+  const renderButton = (id: RailButtonId): ReactNode => {
+    switch (id) {
+      case "new":
+        return actionRow(
+          NEW_KEY,
+          Plus,
+          "New…",
+          () => setPlusOpen((o) => !o),
+          plusOpen ? (
+            <div className="menu" style={{ left: 8, right: "auto", top: "100%" }}>
+              {orderedTypes.map((t) => (
+                <button key={t.id} className="menu-item type-item" onClick={() => void createBlock(t)}>
+                  <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
+                  <span style={{ textTransform: "capitalize" }}>{t.name}</span>
+                </button>
+              ))}
+              <button
+                className="menu-item"
+                onClick={() => {
+                  setPlusOpen(false);
+                  setNewCollection(true);
+                }}
+              >
+                Collection…
+              </button>
+            </div>
+          ) : undefined,
+          "sidebar-plus",
+        );
+      case "search":
+        return actionRow(SEARCH_KEY, Search, "Search", () => setSearchOpen(true));
+      case "today":
+        return colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today");
+      case "favorites":
+        return colorRow(FAVORITES_KEY, "/favorites", false, Star, "Favorites");
+      case "blocks":
+        return colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks");
+      case "collections":
+        return colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections");
+      case "types":
+        return colorRow(TYPES_KEY, "/types", false, Shapes, "Types");
+      case "review":
+        // Only appears once a review day is configured.
+        return reviewConfigured ? colorRow(REVIEW_KEY, "/review", false, ListChecks, "Weekly Review") : null;
+      case "archive":
+        return colorRow(ARCHIVE_KEY, "/archive", false, Archive, "Archive");
+    }
+  };
+
+  // Build the rail from the saved layout: skip hidden/unavailable buttons and
+  // collapse leading or consecutive divider lines (e.g. when a gated button
+  // between two lines is absent).
+  const layout = normalizeRail(prefs[RAIL_LAYOUT_PREF_KEY]);
+  const body: ReactNode[] = [];
+  let lastWasLine = false;
+  layout.forEach((item, i) => {
+    if (item.kind === "line") {
+      if (lastWasLine || body.length === 0) return;
+      body.push(<div key={`i${i}`} className="nav-divider" />);
+      lastWasLine = true;
+      return;
+    }
+    if (item.kind === "flex") {
+      body.push(<div key={`i${i}`} className="spacer" />);
+      lastWasLine = false;
+      return;
+    }
+    if (item.kind === "gap") {
+      body.push(<div key={`i${i}`} className="rail-gap" />);
+      lastWasLine = false;
+      return;
+    }
+    if (item.hidden) return;
+    const el = renderButton(item.id);
+    if (!el) return;
+    body.push(<Fragment key={`i${i}`}>{el}</Fragment>);
+    lastWasLine = false;
+  });
+
   return (
     <aside className={`sidebar${expanded ? " expanded" : ""}`} onMouseLeave={collapse}>
       <div className="sidebar-head">
@@ -223,70 +304,31 @@ export function Sidebar() {
         </button>
       </div>
 
-      {actionRow(
-        NEW_KEY,
-        Plus,
-        "New…",
-        () => setPlusOpen((o) => !o),
-        plusOpen ? (
-          <div className="menu" style={{ left: 8, right: "auto", top: "100%" }}>
-            {orderedTypes.map((t) => (
-              <button key={t.id} className="menu-item type-item" onClick={() => void createBlock(t)}>
-                <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.iconColor} size={16} />
-                <span style={{ textTransform: "capitalize" }}>{t.name}</span>
-              </button>
-            ))}
-            <button
-              className="menu-item"
-              onClick={() => {
-                setPlusOpen(false);
-                setNewCollection(true);
-              }}
-            >
-              Collection…
-            </button>
-          </div>
-        ) : undefined,
-        "sidebar-plus",
-      )}
-      {actionRow(SEARCH_KEY, Search, "Search", () => setSearchOpen(true))}
-      <div className="nav-divider" />
+      {/* The customizable middle — buttons + dividers, in the user's order. */}
+      <div className="rail-scroll" onMouseEnter={armOpen} onMouseLeave={cancelOpen}>
+        {body}
+      </div>
 
-      {colorRow(TODAY_KEY, "/today", false, CalendarDays, "Today")}
-      <div className="nav-divider" />
-      {colorRow(FAVORITES_KEY, "/favorites", false, Star, "Favorites")}
-      <div className="nav-divider" />
-      {colorRow(ALLBLOCKS_KEY, "/blocks", false, Layers, "All blocks")}
-      {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
-      {colorRow(TYPES_KEY, "/types", false, Shapes, "Types")}
-      <div className="nav-divider" />
-      {reviewConfigured && (
-        <>
-          {colorRow(REVIEW_KEY, "/review", false, ListChecks, "Weekly Review")}
-          <div className="nav-divider" />
-        </>
-      )}
-      {colorRow(ARCHIVE_KEY, "/archive", false, Archive, "Archive")}
-
-      {/* Utilities stay anchored at the very bottom, grouped together. */}
-      <div className="spacer" onMouseEnter={armOpen} onMouseLeave={cancelOpen} />
-      <div className="nav-divider" />
-      <button
-        className="nav-link"
-        title={theme === "dark" ? "Switch to light" : "Switch to dark"}
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      >
-        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-        <span className="label">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
-      </button>
-      <NavLink to="/settings" className="nav-link" title="Settings">
-        <Settings size={18} />
-        <span className="label">Settings</span>
-      </NavLink>
-      <button className="nav-link signout" onClick={() => void logout()} title="Sign out">
-        <LogOut size={16} />
-        <span className="label">Sign out</span>
-      </button>
+      {/* Utilities stay anchored at the very bottom (fixed, not customizable). */}
+      <div className="rail-bottom">
+        <div className="nav-divider" />
+        <button
+          className="nav-link"
+          title={theme === "dark" ? "Switch to light" : "Switch to dark"}
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        >
+          {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          <span className="label">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+        </button>
+        <NavLink to="/settings" className="nav-link" title="Settings">
+          <Settings size={18} />
+          <span className="label">Settings</span>
+        </NavLink>
+        <button className="nav-link signout" onClick={() => void logout()} title="Sign out">
+          <LogOut size={16} />
+          <span className="label">Sign out</span>
+        </button>
+      </div>
 
       {newCollection && <CreateCollectionModal onClose={() => setNewCollection(false)} />}
       {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}

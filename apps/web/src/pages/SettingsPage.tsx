@@ -4,6 +4,7 @@ import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
 import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
+import { RailEditor } from "../components/RailEditor.tsx";
 import { CalendarFeedsSettings } from "../components/CalendarFeedsSettings.tsx";
 import { UserManagement } from "../components/UserManagement.tsx";
 import { WeeklyReviewSettings } from "../components/WeeklyReviewSettings.tsx";
@@ -474,7 +475,14 @@ export function SettingsPage() {
       )}
 
       {tab === "review" && <WeeklyReviewSettings />}
-      {tab === "appearance" && <BackgroundSettings />}
+      {tab === "appearance" && (
+        <>
+          <BackgroundSettings />
+          <div style={{ marginTop: 24 }}>
+            <RailEditor />
+          </div>
+        </>
+      )}
       {tab === "calendar" && <CalendarFeedsSettings />}
       {tab === "access" && <AccessKeys />}
 

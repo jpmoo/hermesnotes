@@ -4,6 +4,7 @@ export * from "./display.js";
 export * from "./today.js";
 export * from "./recurrence.js";
 export * from "./weekly-review.js";
+export * from "./rail.js";
 
 /** Icon metadata (doc §10). */
 export interface IconSpec {

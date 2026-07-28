@@ -4198,6 +4198,20 @@ input.matrix-axis-y::placeholder {
   fill: none;
   pointer-events: none;
 }
+/* Derived "existing connection" overlay arrows — non-interactive, slightly soft. */
+.cv-edge-link {
+  opacity: 0.8;
+}
+.cv-showlinks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cv-showlinks input {
+  width: auto;
+}
 .cv-edge-hit {
   fill: none;
   stroke: transparent;

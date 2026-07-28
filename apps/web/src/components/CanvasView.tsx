@@ -263,6 +263,10 @@ export function CanvasView({
   const [regions, setRegions] = useState<CanvasRegion[]>(() =>
     Array.isArray(props.canvas_regions) ? (props.canvas_regions as CanvasRegion[]) : [],
   );
+  // "Show existing connections": overlay a solid directional arrow between any
+  // two boxes whose underlying blocks already link (persisted per-canvas).
+  const [showLinks, setShowLinks] = useState<boolean>(() => props.canvas_show_links === true);
+  const [linkPairs, setLinkPairs] = useState<{ from: string; to: string }[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -304,6 +308,43 @@ export function CanvasView({
   };
   const patchRegion = (id: string, patch: Partial<CanvasRegion>) =>
     saveRegions(regions.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  const toggleShowLinks = () => {
+    const next = !showLinks;
+    setShowLinks(next);
+    persistProps({ canvas_show_links: next });
+  };
+  // Fetch the directed links among the current member set (re-scans on add).
+  useEffect(() => {
+    if (!showLinks) {
+      setLinkPairs([]);
+      return;
+    }
+    const ids = members.map((m) => m.id);
+    if (ids.length < 2) {
+      setLinkPairs([]);
+      return;
+    }
+    let cancelled = false;
+    void api
+      .post<{ pairs: { from: string; to: string }[] }>("/blocks/links", { ids })
+      .then((r) => !cancelled && setLinkPairs(r.pairs))
+      .catch(() => !cancelled && setLinkPairs([]));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLinks, members]);
+  // Pairs already joined by a user-drawn (live) edge — don't double-draw them.
+  const drawnPairs = useMemo(() => {
+    const s = new Set<string>();
+    for (const e of edges) {
+      if (e.live === false || e.from.startsWith("n:") || e.to.startsWith("n:")) continue;
+      s.add(`${e.from} ${e.to}`);
+      s.add(`${e.to} ${e.from}`);
+    }
+    return s;
+  }, [edges]);
 
   const rectOf = (id: string): Rect | null => {
     if (id.startsWith("n:")) {
@@ -1099,6 +1140,17 @@ export function CanvasView({
                 <path d="M 0 0 L 10 5 L 0 10 z" fill={e.color ?? "#5f6b74"} />
               </marker>
             ))}
+            <marker
+              id="cv-arrow-link"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#5fa4b5" />
+            </marker>
           </defs>
           {edges.map((e) => {
             const p = edgePath(e);
@@ -1133,6 +1185,26 @@ export function CanvasView({
               </g>
             );
           })}
+          {showLinks &&
+            linkPairs.map((pr) => {
+              // Skip a pair the user has already drawn an edge for, and any pair
+              // whose endpoints aren't both on the canvas.
+              if (drawnPairs.has(`${pr.from} ${pr.to}`)) return null;
+              if (!rectOf(pr.from) || !rectOf(pr.to)) return null;
+              // Reuse the edge geometry with no explicit sides (facingSide picks).
+              const p = edgePath({ id: "lk", from: pr.from, to: pr.to, arrow: "forward" } as unknown as CanvasEdge);
+              if (!p) return null;
+              return (
+                <path
+                  key={`lk-${pr.from}-${pr.to}`}
+                  d={p.d}
+                  className="cv-edge cv-edge-link"
+                  stroke="#5fa4b5"
+                  strokeWidth={2}
+                  markerEnd="url(#cv-arrow-link)"
+                />
+              );
+            })}
           {linking &&
             (() => {
               const fr = rectOf(linking.from);
@@ -1416,6 +1488,15 @@ export function CanvasView({
         selectedBlockId === cid &&
         createPortal(
           <>
+            <div className="panel-divider" />
+            <div className="panel-h">Connections</div>
+            <label className="cv-showlinks">
+              <input type="checkbox" checked={showLinks} onChange={toggleShowLinks} />
+              <span>Show existing connections</span>
+            </label>
+            <p className="hint" style={{ margin: "4px 0 0" }}>
+              Draws an arrow between boxes whose blocks already link to each other.
+            </p>
             <div className="panel-divider" />
             <div className="panel-h">Add by query</div>
             <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />

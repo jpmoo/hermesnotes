@@ -999,6 +999,66 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     return { ...updated, recurred, tagsChanged };
   });
 
+  /**
+   * Directed links AMONG a given set of blocks — backs the canvas "show existing
+   * connections" overlay. Returns `{ from, to }` pairs where `from` links to
+   * `to` and both ids are in the set: reference-field values, `block:<id>` /
+   * `|<id>` markdown links, and `@Name` mentions resolved by title. User-drawn
+   * canvas edges are deliberately NOT included (those are already visible).
+   */
+  app.post("/blocks/links", async (req) => {
+    const userId = requireUser(req);
+    const { ids } = z.object({ ids: z.array(z.string().uuid()).max(500) }).parse(req.body);
+    if (ids.length < 2) return { pairs: [] };
+    const rows = await db
+      .select({ id: blocks.id, content: blocks.content, properties: blocks.properties })
+      .from(blocks)
+      .where(and(eq(blocks.ownerId, userId), notArchived, inArray(blocks.id, ids)));
+    const memberIds = new Set(rows.map((r) => r.id));
+    const titleToId = new Map<string, string>();
+    for (const r of rows) {
+      const title = (r.properties as Record<string, unknown>)?.title;
+      const t = typeof title === "string" ? title.trim().toLowerCase() : "";
+      if (t && !titleToId.has(t)) titleToId.set(t, r.id);
+    }
+    const linkRe = /block:([0-9a-fA-F-]{36})|\|([0-9a-fA-F-]{36})/g;
+    const atRe = /(^|\s)@([A-Za-z0-9][\w-]*)/g;
+    const pairs: { from: string; to: string }[] = [];
+    const seen = new Set<string>();
+    const add = (from: string, to: string) => {
+      if (from === to || !memberIds.has(to)) return;
+      const k = `${from} ${to}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      pairs.push({ from, to });
+    };
+    for (const r of rows) {
+      const props = (r.properties ?? {}) as Record<string, unknown>;
+      const strings = [r.content ?? "", ...Object.values(props).map((v) => (typeof v === "string" ? v : ""))];
+      for (const text of strings) {
+        let m: RegExpExecArray | null;
+        linkRe.lastIndex = 0;
+        while ((m = linkRe.exec(text)) !== null) {
+          const t = m[1] ?? m[2];
+          if (t) add(r.id, t);
+        }
+        atRe.lastIndex = 0;
+        let a: RegExpExecArray | null;
+        while ((a = atRe.exec(text)) !== null) {
+          if (!a[2]) continue;
+          const id = titleToId.get(a[2].replace(/_/g, " ").toLowerCase());
+          if (id) add(r.id, id);
+        }
+      }
+      // Bare-id property values cover reference fields without needing schema.
+      for (const v of Object.values(props)) {
+        if (typeof v === "string" && memberIds.has(v)) add(r.id, v);
+        else if (Array.isArray(v)) for (const x of v) if (typeof x === "string" && memberIds.has(x)) add(r.id, x);
+      }
+    }
+    return { pairs };
+  });
+
   // ── Tags ─────────────────────────────────────────────────────
   app.get("/tags", async (req) => {
     const userId = requireUser(req);

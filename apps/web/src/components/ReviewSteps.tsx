@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckSquare, GripVertical, Link2, Plus, Square, X } from "lucide-react";
+import { CheckSquare, GripVertical, Link2, Pencil, Plus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type BlockSearchResult, type BlockType, type Collection } from "../api.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -178,6 +178,7 @@ function Row({
   onSelect,
   onToggleDone,
   onRemove,
+  onEdit,
 }: {
   step: ReviewStepView;
   current: boolean;
@@ -185,10 +186,51 @@ function Row({
   onSelect: (id: string) => void;
   onToggleDone: (id: string, done: boolean) => void;
   onRemove: (id: string) => void;
+  onEdit: (id: string, patch: { description: string; link: ReviewLink | null; scope: "template" | "cycle" }) => void;
 }) {
   const sortable = useSortable({ id: step.id });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
+  const [editing, setEditing] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [description, setDescription] = useState(step.description);
+  const [link, setLink] = useState<ReviewLink | null>(step.link);
+  const [scope, setScope] = useState<"template" | "cycle">(step.template ? "template" : "cycle");
+
+  if (editing) {
+    return (
+      <div ref={sortable.setNodeRef} style={style} className="review-addform">
+        <StepFields
+          description={description}
+          setDescription={setDescription}
+          link={link}
+          setLink={setLink}
+          initialLabel={step.label ?? undefined}
+        />
+        <label className="field">
+          <span>Applies to</span>
+          <select value={scope} onChange={(e) => setScope(e.target.value as "template" | "cycle")}>
+            <option value="template">This and all future reviews</option>
+            <option value="cycle">This review only</option>
+          </select>
+        </label>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="primary"
+            type="button"
+            onClick={() => {
+              onEdit(step.id, { description: description.trim(), link, scope });
+              setEditing(false);
+            }}
+          >
+            Save
+          </button>
+          <button className="ghost" type="button" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={sortable.setNodeRef} style={style} className={`sec-row review-step-row${current ? " current" : ""}`}>
@@ -207,13 +249,20 @@ function Row({
         {step.link && <Link2 size={11} className="review-step-linkicon" />}
         {stepLabel(step)}
       </button>
+      <button className="icon-btn sec-remove" title="Edit step" onClick={() => setEditing(true)}>
+        <Pencil size={12} />
+      </button>
       <button className="icon-btn sec-remove" title="Remove step" onClick={() => setConfirmDel(true)}>
         <X size={13} />
       </button>
       <ConfirmDialog
         open={confirmDel}
         title="Remove step?"
-        message="This removes the step from the review. It can't be undone (re-add it if needed)."
+        message={
+          step.template
+            ? "This step is part of every review — removing it affects this and all future reviews. Re-add it if needed."
+            : "This step was added for this review only — removing it affects just this review."
+        }
         confirmLabel="Remove"
         onConfirm={() => {
           setConfirmDel(false);
@@ -265,6 +314,7 @@ export function ReviewSteps({
   onToggleDone,
   onReorder,
   onRemove,
+  onEdit,
   onAdd,
 }: {
   steps: ReviewStepView[];
@@ -276,6 +326,7 @@ export function ReviewSteps({
   onToggleDone: (id: string, done: boolean) => void;
   onReorder: (ids: string[]) => void;
   onRemove: (id: string) => void;
+  onEdit: (id: string, patch: { description: string; link: ReviewLink | null; scope: "template" | "cycle" }) => void;
   onAdd: (step: NewStep) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -305,6 +356,7 @@ export function ReviewSteps({
               onSelect={onSelect}
               onToggleDone={onToggleDone}
               onRemove={onRemove}
+              onEdit={onEdit}
             />
           ))}
         </SortableContext>

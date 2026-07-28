@@ -370,23 +370,49 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     return buildState(userId);
   });
 
-  /** Edit a step's description/link (template or this-cycle). */
+  /** Edit a step's description/link, and optionally move it between the template
+   *  ("all future reviews") and this cycle's extras ("this review only"). */
   app.patch("/review/steps/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string() }).parse(req.params);
     const body = z
-      .object({ description: z.string().max(4000).optional(), link: reviewLinkSchema.nullable().optional() })
+      .object({
+        description: z.string().max(4000).optional(),
+        link: reviewLinkSchema.nullable().optional(),
+        scope: z.enum(["template", "cycle"]).optional(),
+      })
       .parse(req.body);
     const { wr } = await loadState(userId);
-    const patch = (s: ReviewStep): ReviewStep =>
-      s.id === id
-        ? { ...s, ...(body.description !== undefined ? { description: body.description } : {}), ...(body.link !== undefined ? { link: body.link } : {}) }
-        : s;
-    const next: WeeklyReview = {
-      ...wr,
-      steps: wr.steps.map(patch),
-      cycle: { ...wr.cycle, extras: wr.cycle.extras.map(patch) },
+
+    const inTemplate = wr.steps.find((s) => s.id === id);
+    const existing = inTemplate ?? wr.cycle.extras.find((s) => s.id === id);
+    if (!existing) throw badRequest("No such review step.");
+    const updated: ReviewStep = {
+      ...existing,
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.link !== undefined ? { link: body.link } : {}),
     };
+    const currentScope: "template" | "cycle" = inTemplate ? "template" : "cycle";
+    const targetScope = body.scope ?? currentScope;
+
+    let next: WeeklyReview;
+    if (targetScope === currentScope) {
+      // Patch in place — preserve position.
+      next = {
+        ...wr,
+        steps: wr.steps.map((s) => (s.id === id ? updated : s)),
+        cycle: { ...wr.cycle, extras: wr.cycle.extras.map((s) => (s.id === id ? updated : s)) },
+      };
+    } else {
+      // Move to the other list (keeps its id, so done/order references stay valid).
+      const steps = wr.steps.filter((s) => s.id !== id);
+      const extras = wr.cycle.extras.filter((s) => s.id !== id);
+      next = {
+        ...wr,
+        steps: targetScope === "template" ? [...steps, updated] : steps,
+        cycle: { ...wr.cycle, extras: targetScope === "cycle" ? [...extras, updated] : extras },
+      };
+    }
     await saveWeeklyReview(userId, next);
     return buildState(userId);
   });

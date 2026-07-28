@@ -270,6 +270,7 @@ export function ReviewPage() {
               onToggleDone={(id, done) => void toggleDone(id, done)}
               onReorder={(ids) => mutate(reviewApi.reorder(ids))}
               onRemove={(id) => mutate(reviewApi.removeStep(id))}
+              onEdit={(id, patch) => mutate(reviewApi.editStep(id, patch))}
               onAdd={(step) => mutate(reviewApi.addStep(step))}
             />
           </>,

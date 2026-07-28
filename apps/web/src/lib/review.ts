@@ -43,8 +43,10 @@ export const reviewApi = {
   config: (dueWeekday: number | null, availableDaysPrior: number) =>
     api.put<ReviewState>("/review/config", { dueWeekday, availableDaysPrior }),
   addStep: (step: NewStep) => api.post<ReviewState>("/review/steps", step),
-  editStep: (id: string, patch: { description?: string; link?: ReviewLink | null }) =>
-    api.patch<ReviewState>(`/review/steps/${id}`, patch),
+  editStep: (
+    id: string,
+    patch: { description?: string; link?: ReviewLink | null; scope?: "template" | "cycle" },
+  ) => api.patch<ReviewState>(`/review/steps/${id}`, patch),
   removeStep: (id: string) => api.del<ReviewState>(`/review/steps/${id}`),
   reorder: (ids: string[]) => api.put<ReviewState>("/review/steps/order", { ids }),
   setDone: (id: string, done: boolean) => api.post<ReviewState>(`/review/steps/${id}/done`, { done }),

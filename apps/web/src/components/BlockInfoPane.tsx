@@ -216,9 +216,11 @@ export function BlockInfoPane({
     live(info.linkedFrom).length +
     live(canvasConns).length +
     tags.length;
-  const showConnTabs = archivedCount > 0 || deletedLinks.length > 0;
-  const tab = showConnTabs ? connTab : "active";
   const noConnections = activeCount === 0 && archivedCount === 0 && deletedLinks.length === 0;
+  // Always offer the three tabs when the block has any connection at all, so the
+  // Active/Archived/Deleted split is discoverable even when a bucket is empty.
+  const showConnTabs = !noConnections;
+  const tab = showConnTabs ? connTab : "active";
 
   const fav = isFavorite(blockId);
   return (
@@ -319,30 +321,30 @@ export function BlockInfoPane({
                   className={`conn-tab${tab === "active" ? " active" : ""}`}
                   onClick={() => setConnTab("active")}
                 >
-                  Active{activeCount > 0 ? ` · ${activeCount}` : ""}
+                  Active · {activeCount}
                 </button>
-                {archivedCount > 0 && (
-                  <button
-                    className={`conn-tab${tab === "archived" ? " active" : ""}`}
-                    onClick={() => setConnTab("archived")}
-                  >
-                    Archived · {archivedCount}
-                  </button>
-                )}
-                {deletedLinks.length > 0 && (
-                  <button
-                    className={`conn-tab${tab === "deleted" ? " active" : ""}`}
-                    onClick={() => setConnTab("deleted")}
-                  >
-                    Deleted · {deletedLinks.length}
-                  </button>
-                )}
+                <button
+                  className={`conn-tab${tab === "archived" ? " active" : ""}`}
+                  onClick={() => setConnTab("archived")}
+                >
+                  Archived · {archivedCount}
+                </button>
+                <button
+                  className={`conn-tab${tab === "deleted" ? " active" : ""}`}
+                  onClick={() => setConnTab("deleted")}
+                >
+                  Deleted · {deletedLinks.length}
+                </button>
               </div>
             )}
 
             {tab === "deleted" ? (
               <div className="info-conn">
-                <div className="info-conn-label">No longer exists</div>
+                {deletedLinks.length === 0 ? (
+                  <div className="hint">No deleted connections.</div>
+                ) : (
+                  <div className="info-conn-label">No longer exists</div>
+                )}
                 {deletedLinks.map((d) => (
                   <div key={d.id} className="info-conn-item deleted">
                     <span className="info-conn-text">Deleted item · {d.id.slice(0, 8)}</span>
@@ -358,6 +360,12 @@ export function BlockInfoPane({
               </div>
             ) : (
               <>
+                {tab === "active" && activeCount === 0 && (
+                  <div className="hint">No active connections.</div>
+                )}
+                {tab === "archived" && archivedCount === 0 && (
+                  <div className="hint">No archived connections.</div>
+                )}
                 <ConnGroup
                   label="In collection"
                   items={tab === "archived" ? gone(info.inCollections) : live(info.inCollections)}

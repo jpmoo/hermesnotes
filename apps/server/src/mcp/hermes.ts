@@ -1,4 +1,4 @@
-import type { Condition, FilterGroup } from "@hermes/shared";
+import { userLocalNow, type Condition, type FilterGroup } from "@hermes/shared";
 import type { Api } from "./api.js";
 
 /**
@@ -19,6 +19,7 @@ export interface Ctx {
   projectStatusKey: string | null;
   projectArchivedValue: string | null;
   projectDefaultStatus: string | null;
+  timezone: string | null; // user's IANA zone, for the OVERDUE cutoff (null = server local)
 }
 
 interface FieldDef {
@@ -70,6 +71,14 @@ export async function loadContext(api: Api): Promise<Ctx> {
   if (!project) throw new Error("No type named 'project' exists. Create one in the app first.");
   const person = types.find((t) => lower(t.name) === "person");
 
+  // The user's timezone drives the OVERDUE cutoff, so it matches the calendar
+  // day the query filter (userLocalNow) resolves against. Best-effort: a missing
+  // settings row just falls back to server-local.
+  const timezone = await api
+    .get<{ timezone: string | null }>("/settings")
+    .then((s) => s.timezone)
+    .catch(() => null);
+
   const refField = schema.fields.find((f) => f.type === "reference" && f.refTypeId === project.id);
 
   const projSchema = project.propertySchema;
@@ -89,6 +98,7 @@ export async function loadContext(api: Api): Promise<Ctx> {
     projectStatusKey: archivedOpt ? projStatusKey : null,
     projectArchivedValue: archivedOpt,
     projectDefaultStatus: projSchema?.default_value ?? null,
+    timezone,
   };
   cache.set(api.cacheKey, { ctx, at: Date.now() });
   return ctx;
@@ -182,8 +192,8 @@ export function fmtDate(v: string): string {
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
-const todayStr = () => {
-  const d = new Date();
+const todayStr = (tz: string | null) => {
+  const d = userLocalNow(tz);
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 
@@ -195,7 +205,7 @@ export function fmtTaskLine(ctx: Ctx, b: HermesBlock): string {
   const bits: string[] = [];
   if (span.end) {
     const overdue =
-      !ctx.completeValues.includes(status) && span.end.slice(0, 10) < todayStr() ? " OVERDUE" : "";
+      !ctx.completeValues.includes(status) && span.end.slice(0, 10) < todayStr(ctx.timezone) ? " OVERDUE" : "";
     bits.push(`due ${fmtDate(span.end)}${overdue}`);
   }
   if (span.start) bits.push(`from ${fmtDate(span.start)}`);

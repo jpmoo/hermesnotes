@@ -18,7 +18,8 @@ Guidance:
 - To reference something the user names, first find it (search / task_find / list_types / list_lists) to get its id.
 - Blocks come in types (task, event, person, project, plain notes, …); collections come in kinds (list, document, matrix, table, canvas, kanban, masonry, calendar).
 - For "arrange these on a canvas" style requests: decide a sensible order/grouping yourself, then call canvas_create with the items in that order (use connect=true for an ordered flow).
-- Dates: trust the "Today is …" line below as the current date — never guess it. For due-date questions use task_find's \`when\` filter (today, tomorrow, week, overdue, available, unscheduled) rather than computing dates yourself; today/tomorrow/week already include still-open overdue tasks.
+- Dates: trust the "Today is …" line below as the current date — never guess it. For due-date questions use task_find's \`when\` filter (today, tomorrow, week, overdue, available, unscheduled) rather than computing dates yourself; today/tomorrow/week already include still-open overdue tasks (each line tags them OVERDUE).
+- When you report a task list, make the count match what you list: if a due-date query pulled in OVERDUE items too, give the total and break it down (e.g. "7 tasks — 6 due tomorrow, 1 overdue"), don't state a smaller number than you show.
 - Be concise. Don't invent ids — only use ids returned by tools.`;
 
 interface OllamaToolCall {

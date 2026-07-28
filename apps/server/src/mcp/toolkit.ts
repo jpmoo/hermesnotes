@@ -39,13 +39,16 @@ function whenConds(ctx: Ctx, when: string): (Condition | FilterGroup)[] {
   switch (when) {
     case "overdue":
       return [prop(end, "lt", "today"), ...openConds(ctx)];
+    // "Due by <day>" is cumulative: everything still open that's due that day OR
+    // already overdue. `end < <the next day>` captures both, and — because a
+    // datetime like `2026-07-28T09:00` sorts after the bare date `2026-07-28` —
+    // comparing against the NEXT day's date also sweeps in same-day timed tasks.
     case "today":
     case "due_today":
-      // `contains` matches both date-only and datetime values for the day.
-      return [prop(end, "contains", "today"), ...openConds(ctx)];
+      return [prop(end, "lt", "today+1"), ...openConds(ctx)];
     case "tomorrow":
     case "due_tomorrow":
-      return [prop(end, "contains", "today+1"), ...openConds(ctx)];
+      return [prop(end, "lt", "today+2"), ...openConds(ctx)];
     case "week":
     case "due_week":
       return [prop(end, "lt", "today+7"), ...openConds(ctx)];

@@ -1,3 +1,4 @@
+import { CalendarDays, KeyRound, Palette, Settings2, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
@@ -38,9 +39,32 @@ const TIMEZONES: string[] = (() => {
   }
 })();
 
+type SettingsTab = "general" | "appearance" | "calendar" | "access" | "admin";
+
+const readSettingsTab = (isAdmin: boolean): SettingsTab => {
+  try {
+    const v = localStorage.getItem("hn.settings.tab");
+    if (v === "appearance" || v === "calendar" || v === "access") return v;
+    if (v === "admin" && isAdmin) return "admin";
+  } catch {
+    /* ignore */
+  }
+  return "general";
+};
+
 export function SettingsPage() {
   const { user } = useAuth();
   const isAdmin = Boolean(user?.isAdmin);
+
+  const [tab, setTabRaw] = useState<SettingsTab>(() => readSettingsTab(isAdmin));
+  const setTab = (t: SettingsTab) => {
+    setTabRaw(t);
+    try {
+      localStorage.setItem("hn.settings.tab", t);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const [settings, setSettings] = useState<Settings | null>(null);
   const [url, setUrl] = useState("");
@@ -188,12 +212,32 @@ export function SettingsPage() {
     ? models.map((m) => m.name)
     : [embedModel, inferenceModel].filter(Boolean);
 
+  const tabs: { key: SettingsTab; label: string; Icon: typeof Settings2; admin?: boolean }[] = [
+    { key: "general", label: "General", Icon: Settings2 },
+    { key: "appearance", label: "Appearance", Icon: Palette },
+    { key: "calendar", label: "Calendar", Icon: CalendarDays },
+    { key: "access", label: "Access Keys", Icon: KeyRound },
+    ...(isAdmin ? [{ key: "admin" as const, label: "Admin", Icon: ShieldAlert, admin: true }] : []),
+  ];
+
   return (
     <>
       <h1 className="page-title">Settings</h1>
       <p className="page-sub">Preferences are stored per-account.</p>
 
-      {isAdmin && (
+      <div className="settings-tabs">
+        {tabs.map(({ key, label, Icon, admin }) => (
+          <button
+            key={key}
+            className={`settings-tab${admin ? " admin" : ""}${tab === key ? " active" : ""}`}
+            onClick={() => setTab(key)}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "admin" && isAdmin && (
         <>
           <div className="card">
             <label className="field">
@@ -323,7 +367,8 @@ export function SettingsPage() {
         </>
       )}
 
-      <div className="card" style={{ marginTop: isAdmin ? 24 : 0 }}>
+      {tab === "general" && (
+      <div className="card">
         <label className="field">
           <span>Default similarity threshold — {similarity.toFixed(2)}</span>
           <input
@@ -382,19 +427,14 @@ export function SettingsPage() {
           </button>
         </div>
       </div>
+      )}
+
+      {tab === "appearance" && <BackgroundSettings />}
+      {tab === "calendar" && <CalendarFeedsSettings />}
+      {tab === "access" && <AccessKeys />}
 
       {status && <div className="hint" style={{ marginTop: 10 }}>{status}</div>}
       {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}
-
-      <div style={{ marginTop: 24 }}>
-        <BackgroundSettings />
-      </div>
-      <div style={{ marginTop: 24 }}>
-        <CalendarFeedsSettings />
-      </div>
-      <div style={{ marginTop: 24 }}>
-        <AccessKeys />
-      </div>
     </>
   );
 }

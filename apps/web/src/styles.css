@@ -236,6 +236,47 @@ label,
   color: #fff;
 }
 
+/* ── Settings page tabs (top-of-page, mirrors the info-panel tabs) ─ */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 20px;
+}
+.settings-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-tab:hover {
+  border-color: var(--border-strong);
+}
+.settings-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+/* Admin-only group is set apart (destructive/instance-wide settings live here). */
+.settings-tab.admin {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+}
+.settings-tab.admin:hover {
+  border-color: var(--danger);
+}
+.settings-tab.admin.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* ── Graph panel ─────────────────────────────────────────────── */
 .graph-canvas {
   position: absolute;

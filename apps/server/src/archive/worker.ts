@@ -58,6 +58,38 @@ export async function runAutoArchive(): Promise<number> {
   return archived;
 }
 
+/**
+ * Archive every active, completed task for one user right now — no age cutoff.
+ * Backs the "Archive now" settings action (skip waiting for the daily sweep).
+ * Returns how many were archived.
+ */
+export async function runArchiveNowForUser(userId: string): Promise<number> {
+  const types = await db
+    .select({ id: blockTypes.id, schema: blockTypes.propertySchema })
+    .from(blockTypes)
+    .where(eq(blockTypes.ownerId, userId));
+  const schemaById = new Map(types.map((t) => [t.id, t.schema]));
+  const rows = await db
+    .select({ id: blocks.id, blockTypeId: blocks.blockTypeId, properties: blocks.properties })
+    .from(blocks)
+    .where(and(eq(blocks.ownerId, userId), isNull(blocks.archivedAt), sql`${blocks.collectionKind} IS NULL`));
+  const toArchive = rows
+    .filter((r) => {
+      const schema = r.blockTypeId ? schemaById.get(r.blockTypeId) : null;
+      return schema ? isComplete(schema, r.properties as Record<string, unknown>) : false;
+    })
+    .map((r) => r.id);
+  let archived = 0;
+  for (const id of toArchive) {
+    await db
+      .update(blocks)
+      .set({ archivedAt: new Date(), version: sql`${blocks.version} + 1` })
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId), isNull(blocks.archivedAt)));
+    archived++;
+  }
+  return archived;
+}
+
 /** Daily auto-archive worker. Fires once per calendar day (server local). */
 export function startAutoArchiveWorker(log: FastifyBaseLogger): () => void {
   let stopped = false;

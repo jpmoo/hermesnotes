@@ -77,7 +77,9 @@ export function SettingsPage() {
   const [autoDays, setAutoDays] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "connect" | "save" | "prefs" | "backup" | "backup-run">(null);
+  const [busy, setBusy] = useState<
+    null | "connect" | "save" | "prefs" | "backup" | "backup-run" | "archive-now"
+  >(null);
 
   const [backup, setBackup] = useState<BackupSettings | null>(null);
   const [backupFiles, setBackupFiles] = useState<BackupFileInfo[]>([]);
@@ -185,6 +187,24 @@ export function SettingsPage() {
       );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "could not save");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const archiveNow = async () => {
+    setBusy("archive-now");
+    setError(null);
+    setStatus(null);
+    try {
+      const r = await api.post<{ archived: number }>("/settings/archive-completed", {});
+      setStatus(
+        r.archived > 0
+          ? `Archived ${r.archived} completed task${r.archived > 1 ? "s" : ""}.`
+          : "No completed tasks to archive.",
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "could not archive");
     } finally {
       setBusy(null);
     }
@@ -423,9 +443,12 @@ export function SettingsPage() {
           </span>
         </label>
 
-        <div className="row" style={{ marginTop: 12 }}>
+        <div className="row" style={{ marginTop: 12, gap: 12 }}>
           <button className="primary" onClick={() => void savePrefs()} disabled={busy !== null}>
             {busy === "prefs" ? "Saving…" : "Save preferences"}
+          </button>
+          <button onClick={() => void archiveNow()} disabled={busy !== null} title="Archive all completed tasks now">
+            {busy === "archive-now" ? "Archiving…" : "Archive completed now"}
           </button>
         </div>
       </div>

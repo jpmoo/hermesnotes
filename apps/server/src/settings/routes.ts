@@ -7,6 +7,7 @@ import { db } from "../db.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { listModels, probeDimension } from "../ollama/client.js";
+import { runArchiveNowForUser } from "../archive/worker.js";
 
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -40,6 +41,13 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(userSettings.userId, userId))
       .limit(1);
     return { preferences: row?.preferences ?? {} };
+  });
+
+  /** Archive every completed task right now (the daily sweep on demand). */
+  app.post("/settings/archive-completed", async (req) => {
+    const userId = requireUser(req);
+    const archived = await runArchiveNowForUser(userId);
+    return { archived };
   });
 
   /** Shallow-merge a patch into the stored UI preferences. */

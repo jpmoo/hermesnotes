@@ -2,9 +2,11 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError, type BlockType } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { TypeBlockList } from "../components/TypeBlockList.tsx";
 import { TypeEditor } from "../components/TypeEditor.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 
 type EditorState = { mode: "new" } | { mode: "edit"; type: BlockType } | null;
 
@@ -15,6 +17,7 @@ export function TypesPage() {
   const [deleting, setDeleting] = useState<BlockType | null>(null);
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const { banner, setBanner } = usePreferences();
 
   const load = () =>
     api
@@ -57,7 +60,15 @@ export function TypesPage() {
 
   return (
     <>
-      <h1 className="page-title">Block types</h1>
+      {(banner("types") as BannerValue | null) && (
+        <Banner value={banner("types") as BannerValue} editable onChange={(v) => setBanner("types", v)} />
+      )}
+      <div className="page-head">
+        <h1 className="page-title">Block types</h1>
+        {!banner("types") && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("types", v)} />
+        )}
+      </div>
       <p className="page-sub">Define a type's icon and its fields (the editing form + embedding).</p>
 
       <div className="row" style={{ marginBottom: 18, gap: 12 }}>

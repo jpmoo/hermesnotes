@@ -7,7 +7,9 @@ import { BlockCard } from "../components/BlockCard.tsx";
 import { CollectionSection } from "../components/CollectionSection.tsx";
 import { ReviewSteps } from "../components/ReviewSteps.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockChanged } from "../lib/block-events.ts";
 import { resolveRef, type RefStatus } from "../lib/resolve-ref.ts";
 import { reviewApi, WEEKDAYS, type ReviewState, type ReviewStepView } from "../lib/review.ts";
@@ -106,6 +108,7 @@ export function ReviewPage() {
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const { slotEl, bottomSlotEl, setHasContent, selectPage } = usePanels();
+  const { banner, setBanner } = usePreferences();
 
   // Distinguish "still loading" from "load failed" so a failure shows an error
   // (and a retry) instead of a permanent spinner.
@@ -203,16 +206,24 @@ export function ReviewPage() {
 
   return (
     <div className="review-page">
+      {(banner("review") as BannerValue | null) && (
+        <Banner value={banner("review") as BannerValue} editable onChange={(v) => setBanner("review", v)} />
+      )}
       <div className="review-head">
         <h1 className="page-title">Weekly Review</h1>
-        {state.open && !taskDone && state.task && (
-          <button
-            className="primary review-markdone"
-            onClick={() => void completeTask(state.task!.id, state.statusKey, state.doneValue)}
-          >
-            <CheckCircle2 size={16} /> Mark review done
-          </button>
-        )}
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          {!banner("review") && (
+            <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("review", v)} />
+          )}
+          {state.open && !taskDone && state.task && (
+            <button
+              className="primary review-markdone"
+              onClick={() => void completeTask(state.task!.id, state.statusKey, state.doneValue)}
+            >
+              <CheckCircle2 size={16} /> Mark review done
+            </button>
+          )}
+        </div>
       </div>
       <p className="page-sub">
         Due {state.task?.due ? fmtLong(state.task.due) : WEEKDAYS[state.dueWeekday]}

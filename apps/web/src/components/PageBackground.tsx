@@ -11,6 +11,8 @@ function bannerKeyForPath(path: string): string | null {
   if (path.startsWith("/favorites")) return "favorites";
   if (path.startsWith("/blocks")) return "blocks";
   if (path === "/collections") return "collections";
+  if (path.startsWith("/types")) return "types";
+  if (path.startsWith("/review")) return "review";
   return null;
 }
 

@@ -3502,6 +3502,26 @@ input.matrix-axis-y::placeholder {
 .info-conn-item svg {
   flex: 0 0 auto;
 }
+.info-conn-item.archived .info-conn-text {
+  color: var(--text-muted);
+}
+/* Shared small marker for a reference whose target is archived or deleted. */
+.ref-badge {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.ref-badge.missing {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+}
 .info-conn-text {
   min-width: 0;
   overflow: hidden;

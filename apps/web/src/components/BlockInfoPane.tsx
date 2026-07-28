@@ -47,12 +47,13 @@ function ConnGroup({
         ) : (
           <button
             key={it.id}
-            className="info-conn-item"
-            title={it.label}
+            className={`info-conn-item${it.archived ? " archived" : ""}`}
+            title={it.archived ? `${it.label} — archived` : it.label}
             onClick={() => onSelect(it.id)}
           >
             <BlockIcon iconKey={it.iconKey} color={it.iconColor} size={14} />
             <span className="info-conn-text">{it.label}</span>
+            {it.archived && <span className="ref-badge">archived</span>}
           </button>
         ),
       )}

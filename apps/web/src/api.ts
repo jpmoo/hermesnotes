@@ -131,6 +131,7 @@ export interface ConnRef {
   id: string;
   label: string;
   today?: string; // set when the connection is a daily note (its date)
+  archived?: boolean; // target is archived (still resolvable, shown marked)
   iconKey: string | null;
   iconColor: string | null;
 }

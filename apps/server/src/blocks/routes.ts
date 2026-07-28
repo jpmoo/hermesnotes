@@ -734,8 +734,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       content: string | null;
       blockTypeId: string | null;
       collectionKind: string | null;
+      archivedAt: Date | null;
     }[] = [];
     if (outIds.length) {
+      // Archived targets are kept (and flagged) rather than dropped — a link that
+      // silently vanishes when its target is archived is more confusing than one
+      // shown marked "archived".
       linkRows = await db
         .select({
           id: blocks.id,
@@ -743,9 +747,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           content: blocks.content,
           blockTypeId: blocks.blockTypeId,
           collectionKind: blocks.collectionKind,
+          archivedAt: blocks.archivedAt,
         })
         .from(blocks)
-        .where(and(eq(blocks.ownerId, userId), notArchived, inArray(blocks.id, [...new Set(outIds)])));
+        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(outIds)])));
     }
 
     // References in (other blocks that reference this one via a property value
@@ -758,12 +763,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         content: blocks.content,
         blockTypeId: blocks.blockTypeId,
         collectionKind: blocks.collectionKind,
+        archivedAt: blocks.archivedAt,
       })
       .from(blocks)
       .where(
         and(
           eq(blocks.ownerId, userId),
-          notArchived,
           sql`${blocks.id} <> ${id}`,
           or(
             // Bare-id property references — but not a daily note's layout list
@@ -822,9 +827,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           content: blocks.content,
           blockTypeId: blocks.blockTypeId,
           collectionKind: blocks.collectionKind,
+          archivedAt: blocks.archivedAt,
         })
         .from(blocks)
-        .where(and(eq(blocks.ownerId, userId), notArchived, inArray(blocks.id, [...new Set(touching.map((t) => t.otherId))])));
+        .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, [...new Set(touching.map((t) => t.otherId))])));
     }
 
     // Resolve type icons for every connected block in one query.
@@ -854,6 +860,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       content: string | null;
       blockTypeId: string | null;
       collectionKind: string | null;
+      archivedAt?: Date | null;
     }) => {
       const p = r.properties as Record<string, unknown>;
       const today = typeof p?.today_note === "string" ? (p.today_note as string) : undefined;
@@ -861,6 +868,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         id: r.id,
         label: labelOf(r.properties, r.content),
         today,
+        ...(r.archivedAt ? { archived: true as const } : {}),
         ...typeIconOf(r, typeMap),
       };
     };

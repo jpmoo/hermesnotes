@@ -41,6 +41,15 @@ function StepContent({ step, types }: { step: ReviewStepView; types: BlockType[]
     return <CollectionSection collectionId={step.link.id} types={types} host="review" />;
   }
   if (ref === "loading") return <div className="hint">Loading…</div>;
+  if (ref.status === "error")
+    return (
+      <div className="hint">
+        Couldn't load this block.{" "}
+        <button className="ghost" onClick={reload}>
+          Retry
+        </button>
+      </div>
+    );
   if (ref.status === "missing" || !ref.block) {
     return (
       <div className="ref-missing">

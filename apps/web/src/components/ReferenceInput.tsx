@@ -73,6 +73,11 @@ export function ReferenceInput({
       if (fetched.current.has(id)) return;
       fetched.current.add(id);
       void resolveRef(id).then(({ status, block }) => {
+        if (status === "error") {
+          // Transient failure — don't label it deleted; let it retry next render.
+          fetched.current.delete(id);
+          return;
+        }
         if (status === "missing" || !block) {
           setLabels((l) => ({ ...l, [id]: "(deleted)" }));
           setRefStatus((s) => ({ ...s, [id]: "missing" }));

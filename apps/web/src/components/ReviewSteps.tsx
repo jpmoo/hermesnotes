@@ -115,7 +115,7 @@ function LinkPicker({
         </>
       )}
       {mode === "collection" && (
-        <div className="menu review-linkmenu">
+        <div className="review-linkmenu">
           {collections.map((c) => (
             <button
               key={c.id}

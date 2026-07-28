@@ -56,6 +56,7 @@ function NoteSection({
   useEffect(reload, [reload]);
   const { openBlock } = usePanels();
   if (ref === "loading") return null;
+  if (ref.status === "error") return null; // transient — hide, retries on next reload
   if (ref.status === "missing" || !ref.block) {
     return (
       <section className="today-section note-embed">

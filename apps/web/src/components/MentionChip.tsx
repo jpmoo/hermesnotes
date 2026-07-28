@@ -1,7 +1,7 @@
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { Hash } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type Block, type BlockType } from "../api.ts";
+import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -12,9 +12,18 @@ const blockCache = new Map<string, Promise<Block | null>>();
 const personCache = new Map<string, Promise<Block | null>>();
 
 const getTypes = () => (typesPromise ??= api.get<BlockType[]>("/block-types").catch(() => []));
-const getBlock = (id: string) =>
-  blockCache.get(id) ??
-  blockCache.set(id, api.get<Block>(`/blocks/${id}`).catch(() => null)).get(id)!;
+const getBlock = (id: string) => {
+  const hit = blockCache.get(id);
+  if (hit) return hit;
+  const p = api.get<Block>(`/blocks/${id}`).catch((e) => {
+    // Only a real 404 is a permanent "dead" cache; a transient failure is
+    // evicted so a later render can retry (not stuck as a broken chip).
+    if (!(e instanceof ApiError && e.status === 404)) blockCache.delete(id);
+    return null;
+  });
+  blockCache.set(id, p);
+  return p;
+};
 /** Resolve an `@name` mention: exact-title match (underscores = spaces). */
 const getByName = (name: string) => {
   const key = name.toLowerCase();

@@ -349,38 +349,10 @@ async function scrubDanglingRefs(userId: string, id: string): Promise<void> {
         changed = true;
       }
     }
-    const wr = prefs.weekly_review as
-      | {
-          steps?: { id: string; link?: { id?: string } | null }[];
-          cycle?: { extraSteps?: { id: string; link?: { id?: string } | null }[]; doneStepIds?: string[] };
-        }
-      | undefined;
-    if (wr) {
-      const removed = new Set<string>();
-      const dropLinked = (steps?: { id: string; link?: { id?: string } | null }[]) => {
-        if (!Array.isArray(steps)) return steps;
-        const kept = steps.filter((s) => {
-          if (s.link?.id === id) {
-            removed.add(s.id);
-            return false;
-          }
-          return true;
-        });
-        if (kept.length !== steps.length) changed = true;
-        return kept;
-      };
-      wr.steps = dropLinked(wr.steps);
-      if (wr.cycle) {
-        wr.cycle.extraSteps = dropLinked(wr.cycle.extraSteps);
-        if (removed.size && Array.isArray(wr.cycle.doneStepIds)) {
-          const kept = wr.cycle.doneStepIds.filter((sid) => !removed.has(sid));
-          if (kept.length !== wr.cycle.doneStepIds.length) {
-            wr.cycle.doneStepIds = kept;
-            changed = true;
-          }
-        }
-      }
-    }
+    // Weekly-review step links are deliberately NOT scrubbed: a step carries a
+    // user-authored description, so a dead link is left to degrade at render
+    // (the review page shows a "no longer exists — remove or relink" placeholder)
+    // rather than silently deleting the step.
     if (changed)
       await db.update(userSettings).set({ preferences: prefs }).where(eq(userSettings.userId, userId));
   }

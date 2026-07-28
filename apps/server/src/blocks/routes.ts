@@ -1117,12 +1117,30 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const [block] = await db
-      .select({ collectionKind: blocks.collectionKind })
+      .select({
+        collectionKind: blocks.collectionKind,
+        blockTypeId: blocks.blockTypeId,
+        properties: blocks.properties,
+      })
       .from(blocks)
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .limit(1);
     if (!block) throw notFound("block");
     if (block.collectionKind) throw badRequest("collections can't be archived");
+    // The "Do weekly review" task can't be filed away half-finished: it stays
+    // archivable only once its status is explicitly "done" (not the broader
+    // complete set — a "wont_do" review shouldn't be archivable either).
+    const props = (block.properties ?? {}) as Record<string, unknown>;
+    if (props.weekly_review === true && block.blockTypeId) {
+      const [type] = await db
+        .select({ propertySchema: blockTypes.propertySchema })
+        .from(blockTypes)
+        .where(and(eq(blockTypes.id, block.blockTypeId), eq(blockTypes.ownerId, userId)))
+        .limit(1);
+      const statusKey = type?.propertySchema?.status_field;
+      if (!statusKey || props[statusKey] !== "done")
+        throw badRequest("Finish the weekly review (mark it done) before archiving it.");
+    }
     await db
       .update(blocks)
       .set({ archivedAt: new Date(), version: sql`${blocks.version} + 1` })

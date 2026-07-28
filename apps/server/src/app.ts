@@ -19,6 +19,7 @@ import { oauthRoutes } from "./auth/oauth.js";
 import { blockTypeRoutes } from "./blocks/block-types-routes.js";
 import { collectionRoutes } from "./collections/routes.js";
 import { todayRoutes } from "./today/routes.js";
+import { reviewRoutes } from "./review/routes.js";
 import { attachmentRoutes } from "./attachments/routes.js";
 import { bannerRoutes } from "./banners/routes.js";
 import { calendarRoutes } from "./calendar/routes.js";
@@ -155,6 +156,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(blockTypeRoutes, { prefix: "/api" });
   await app.register(collectionRoutes, { prefix: "/api" });
   await app.register(todayRoutes, { prefix: "/api" });
+  await app.register(reviewRoutes, { prefix: "/api" });
   await app.register(attachmentRoutes, { prefix: "/api" });
   await app.register(bannerRoutes, { prefix: "/api" });
   await app.register(calendarRoutes, { prefix: "/api" });

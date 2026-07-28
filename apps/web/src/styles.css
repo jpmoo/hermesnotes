@@ -1563,6 +1563,10 @@ input.typed-title:focus {
   box-shadow: none;
   background: transparent;
 }
+/* Node titles read smaller on the canvas than in a full card. */
+.cv-node input.typed-title {
+  font-size: 13px;
+}
 /* Compact (masonry) text-note header: icon + truncated first line. */
 .text-head-title {
   flex: 1;

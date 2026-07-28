@@ -1,8 +1,11 @@
+import { createReadStream } from "node:fs";
+import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { getBackupConfig, saveBackupConfig } from "../config.js";
+import { notFound } from "../lib/errors.js";
 import { authenticate, requireAdmin } from "../auth/middleware.js";
-import { getLastResult, listBackups, runBackup } from "./service.js";
+import { backupsDir, getLastResult, listBackups, runBackup } from "./service.js";
 
 /** Admin-only: nightly pg_dump schedule + on-demand runs (design: backups/ in repo root). */
 export async function backupRoutes(app: FastifyInstance): Promise<void> {
@@ -34,5 +37,17 @@ export async function backupRoutes(app: FastifyInstance): Promise<void> {
     await requireAdmin(req);
     const result = await runBackup();
     return { result, backups: await listBackups() };
+  });
+
+  /** Download one backup file. The name is whitelisted against the actual backup
+   *  listing (no path traversal — only a real backup file can be fetched). */
+  app.get("/admin/backup/download", async (req, reply) => {
+    await requireAdmin(req);
+    const { file } = z.object({ file: z.string() }).parse(req.query);
+    const files = await listBackups();
+    if (!files.some((f) => f.file === file)) throw notFound("backup");
+    reply.header("Content-Type", "application/octet-stream");
+    reply.header("Content-Disposition", `attachment; filename="${file}"`);
+    return reply.send(createReadStream(join(backupsDir, file)));
   });
 }

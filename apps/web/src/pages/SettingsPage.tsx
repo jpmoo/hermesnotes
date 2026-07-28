@@ -1,6 +1,6 @@
 import { CalendarDays, Copy, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
+import { api, apiBase, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
 import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
@@ -393,6 +393,12 @@ export function SettingsPage() {
                         <code>{f.file}</code>
                         <span>{fmtBytes(f.bytes)}</span>
                         <span>{new Date(f.createdAt).toLocaleString()}</span>
+                        <a
+                          href={`${apiBase}/admin/backup/download?file=${encodeURIComponent(f.file)}`}
+                          download={f.file}
+                        >
+                          Download
+                        </a>
                       </div>
                     ))}
                   </div>

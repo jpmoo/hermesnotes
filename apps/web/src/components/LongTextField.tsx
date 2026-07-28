@@ -9,16 +9,24 @@ export function LongTextField({
   onChange,
   placeholder = "Write…",
   blockId,
+  onFocusChange,
 }: {
   value: unknown;
   onChange: (value: string) => void;
   placeholder?: string;
   blockId?: string;
+  onFocusChange?: (focused: boolean) => void;
 }) {
   const initial = typeof value === "string" ? value : "";
   return (
     <div className="longtext">
-      <MarkdownEditor value={initial} onChange={onChange} placeholder={placeholder} blockId={blockId} />
+      <MarkdownEditor
+        value={initial}
+        onChange={onChange}
+        placeholder={placeholder}
+        blockId={blockId}
+        onFocusChange={onFocusChange}
+      />
     </div>
   );
 }

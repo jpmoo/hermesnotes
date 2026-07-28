@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
-import { useBlockChanged } from "../lib/block-events.ts";
+import { emitBlockChange, useBlockChanged, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { LongTextField } from "./LongTextField.tsx";
@@ -68,27 +68,59 @@ function ConnGroup({
  * keyed by collection id so each collection gets a fresh initial value.
  */
 function CollectionDescription({ collectionId, initial }: { collectionId: string; initial: string }) {
+  const origin = useBlockOrigin();
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const pending = useRef<string | null>(null);
+  const focusedRef = useRef(false);
+  // The editor owns its content, so a remote change remounts it (keyed by nonce)
+  // — but not while you're editing here (held until blur / the save settles).
+  const [ext, setExt] = useState({ value: initial, nonce: 0 });
+  const dirty = () => pending.current != null;
+  const releaseSync = useBlockSync(
+    collectionId,
+    origin,
+    (b) => setExt((e) => ({ value: String((b.properties as Record<string, unknown>)?.description ?? ""), nonce: e.nonce + 1 })),
+    () => focusedRef.current || dirty(),
+  );
+  const commit = (v: string) => {
+    void api.patch(`/collections/${collectionId}`, { description: v }).then(() => {
+      emitBlockChange(collectionId, origin); // sync other surfaces (and other windows via SSE)
+      if (!focusedRef.current && !dirty()) releaseSync();
+    });
+  };
   const save = (v: string) => {
     pending.current = v;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       pending.current = null;
       timer.current = undefined;
-      void api.patch(`/collections/${collectionId}`, { description: v });
+      commit(v);
     }, 700);
   };
   useEffect(
     () => () => {
       if (timer.current) {
         clearTimeout(timer.current);
-        if (pending.current != null) void api.patch(`/collections/${collectionId}`, { description: pending.current });
+        if (pending.current != null) commit(pending.current);
       }
     },
+    // commit closes over stable refs/id; only re-arm when the collection changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [collectionId],
   );
-  return <LongTextField value={initial} onChange={save} placeholder="Describe this collection…" blockId={collectionId} />;
+  return (
+    <LongTextField
+      key={ext.nonce}
+      value={ext.value}
+      onChange={save}
+      placeholder="Describe this collection…"
+      blockId={collectionId}
+      onFocusChange={(f) => {
+        focusedRef.current = f;
+        if (!f && !dirty()) releaseSync();
+      }}
+    />
+  );
 }
 
 /** Right-panel info pane: an editable card for the selected block + its info. */

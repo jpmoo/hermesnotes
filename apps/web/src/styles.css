@@ -2606,12 +2606,19 @@ input.matrix-axis-y::placeholder {
 .region-actions:hover {
   background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
 }
-/* Solid region colors: give the header a readable surface. */
+/* Solid region colors: the title/header text uses a readable shade derived from
+   the region background (set inline on .matrix-region), so it stays legible in
+   both themes without a washed-out overlay. */
 .matrix-region.colored .region-head {
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 7px;
-  padding: 3px 7px;
-  margin: -2px -4px 8px;
+  margin-bottom: 8px;
+}
+.matrix-region.colored .region-title,
+.matrix-region.colored .region-title-static {
+  color: inherit;
+}
+.matrix-region.colored .region-title::placeholder {
+  color: currentColor;
+  opacity: 0.55;
 }
 .drawer-count {
   min-width: 22px;

@@ -30,6 +30,20 @@ const REGION_HEIGHTS: Record<RegionSize, number> = { short: 224, medium: 280, ta
 const regionHeight = (size?: string): number =>
   REGION_HEIGHTS[(size as RegionSize) in REGION_HEIGHTS ? (size as RegionSize) : "medium"];
 
+/** A readable text color for a region's background: light on dark, dark on light. */
+function readableOn(bg: string | null): string | undefined {
+  if (!bg) return undefined;
+  const h = bg.trim().replace(/^#/, "");
+  const hex = h.length === 3 ? h.replace(/(.)/g, "$1$1") : h;
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return undefined;
+  const n = parseInt(hex, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum < 0.55 ? "#f4f5f6" : "#1f2328";
+}
+
 // Pointer-based collision so the droppable UNDER the cursor wins (reliable
 // reordering even when a big chip overlaps several drop zones); falls back to
 // nearest-center when the pointer is outside every droppable.
@@ -362,7 +376,7 @@ function RegionCell({
     <div
       ref={drop.setNodeRef}
       className={`matrix-region${drop.isOver ? " over" : ""}${color ? " colored" : ""}`}
-      style={{ height: regionHeight(size), ...(color ? { background: color, borderColor: color } : {}) }}
+      style={{ height: regionHeight(size), ...(color ? { background: color, borderColor: color, color: readableOn(color) } : {}) }}
       onClick={onInteract}
     >
       <div className="region-head">

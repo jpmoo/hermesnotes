@@ -26,6 +26,7 @@ import { calendarRoutes } from "./calendar/routes.js";
 import { assistantRoutes } from "./assistant/routes.js";
 import { setupRoutes } from "./setup/routes.js";
 import { backupRoutes } from "./backup/routes.js";
+import { exportRoutes } from "./export/routes.js";
 import { adminRoutes } from "./admin/routes.js";
 import { eventRoutes } from "./events/routes.js";
 import { publishChange, type ChangeEvent } from "./events/hub.js";
@@ -151,6 +152,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(authRoutes, { prefix: "/api" });
   await app.register(settingsRoutes, { prefix: "/api" });
   await app.register(backupRoutes, { prefix: "/api" });
+  await app.register(exportRoutes, { prefix: "/api" });
   await app.register(adminRoutes, { prefix: "/api" });
   await app.register(eventRoutes, { prefix: "/api" });
   await app.register(blockTypeRoutes, { prefix: "/api" });

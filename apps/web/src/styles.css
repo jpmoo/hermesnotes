@@ -236,6 +236,28 @@ label,
   color: #fff;
 }
 
+/* ── Export tab: the type checklist ───────────────────────────────── */
+.export-types {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+.export-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.export-type:hover {
+  background: var(--surface-2);
+}
+.export-type input {
+  flex: 0 0 auto;
+}
+
 /* ── Settings page tabs (top-of-page, mirrors the info-panel tabs) ─ */
 .settings-tabs {
   display: flex;

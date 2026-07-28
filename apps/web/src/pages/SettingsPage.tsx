@@ -8,6 +8,7 @@ import { RailEditor } from "../components/RailEditor.tsx";
 import { CalendarFeedsSettings } from "../components/CalendarFeedsSettings.tsx";
 import { UserManagement } from "../components/UserManagement.tsx";
 import { WeeklyReviewSettings } from "../components/WeeklyReviewSettings.tsx";
+import { ExportSettings } from "../components/ExportSettings.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -48,12 +49,12 @@ const TIMEZONES: string[] = (() => {
   }
 })();
 
-type SettingsTab = "general" | "review" | "appearance" | "calendar" | "access" | "admin";
+type SettingsTab = "general" | "review" | "appearance" | "calendar" | "access" | "export" | "admin";
 
 const readSettingsTab = (isAdmin: boolean): SettingsTab => {
   try {
     const v = localStorage.getItem("hn.settings.tab");
-    if (v === "review" || v === "appearance" || v === "calendar" || v === "access") return v;
+    if (v === "review" || v === "appearance" || v === "calendar" || v === "access" || v === "export") return v;
     if (v === "admin" && isAdmin) return "admin";
   } catch {
     /* ignore */
@@ -271,6 +272,7 @@ export function SettingsPage() {
     { key: "appearance", label: "Appearance", Icon: Palette },
     { key: "calendar", label: "Calendar", Icon: CalendarDays },
     { key: "access", label: "Access Keys", Icon: KeyRound },
+    { key: "export", label: "Export", Icon: Download },
     ...(isAdmin ? [{ key: "admin" as const, label: "Admin", Icon: ShieldAlert, admin: true }] : []),
   ];
 
@@ -552,6 +554,8 @@ export function SettingsPage() {
       )}
       {tab === "calendar" && <CalendarFeedsSettings />}
       {tab === "access" && <AccessKeys />}
+
+      {tab === "export" && <ExportSettings />}
 
       {status && <div className="hint" style={{ marginTop: 10 }}>{status}</div>}
       {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}

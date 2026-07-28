@@ -72,10 +72,20 @@ export function AIPanel() {
                 ))}
               </div>
             )}
-            {m.content && (
+            {m.content ? (
               <div className="ai-bubble">
                 {m.role === "assistant" ? <Markdown>{m.content}</Markdown> : m.content}
               </div>
+            ) : (
+              // Streaming, but nothing to show yet (before the first token, or
+              // while the next model turn runs after a tool): pulse while we wait.
+              m.streaming && (
+                <div className="ai-bubble ai-thinking">
+                  <span className="ai-dot" />
+                  <span className="ai-dot" />
+                  <span className="ai-dot" />
+                </div>
+              )
             )}
             {m.pending && m.pending.length > 0 && !m.resolved && (
               <div className="ai-confirm">
@@ -102,15 +112,6 @@ export function AIPanel() {
             )}
           </div>
         ))}
-        {busy && (
-          <div className="ai-msg ai-assistant">
-            <div className="ai-bubble ai-thinking">
-              <span className="ai-dot" />
-              <span className="ai-dot" />
-              <span className="ai-dot" />
-            </div>
-          </div>
-        )}
         {error && <div className="ai-error">{error}</div>}
       </div>
 

@@ -48,6 +48,10 @@ export interface AgentResult {
   promptTokens?: number;
 }
 
+/** Progress emitted during a streamed turn: reply tokens as the model writes
+ * them, and a step each time a tool finishes. */
+export type AgentEvent = { type: "token"; text: string } | { type: "step"; step: AgentStep };
+
 /** Convert the shared tool registry into Ollama's function-tool format. */
 function toOllamaTools(tools: ToolDef[]) {
   return tools.map((t) => {
@@ -66,10 +70,12 @@ async function ollamaChat(
   messages: OllamaMessage[],
   tools: ReturnType<typeof toOllamaTools>,
   numCtx?: number,
+  onToken?: (t: string) => void,
 ): Promise<{ message: OllamaMessage; promptTokens: number }> {
   const base = url.replace(/\/+$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
+  const stream = Boolean(onToken);
   try {
     const res = await fetch(`${base}/api/chat`, {
       method: "POST",
@@ -78,7 +84,7 @@ async function ollamaChat(
         model,
         messages,
         tools,
-        stream: false,
+        stream,
         ...(numCtx ? { options: { num_ctx: numCtx } } : {}),
       }),
       signal: controller.signal,
@@ -87,8 +93,48 @@ async function ollamaChat(
       const body = (await res.text()).slice(0, 400);
       throw new Error(`Ollama /api/chat ${res.status}: ${body}`);
     }
-    const json = (await res.json()) as { message?: OllamaMessage; prompt_eval_count?: number };
-    return { message: json.message ?? { role: "assistant", content: "" }, promptTokens: json.prompt_eval_count ?? 0 };
+    if (!stream) {
+      const json = (await res.json()) as { message?: OllamaMessage; prompt_eval_count?: number };
+      return { message: json.message ?? { role: "assistant", content: "" }, promptTokens: json.prompt_eval_count ?? 0 };
+    }
+    // Streaming: Ollama emits one JSON object per line; accumulate content (and
+    // tool_calls, which arrive whole in a chunk) while forwarding text tokens.
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let content = "";
+    let role = "assistant";
+    let toolCalls: OllamaToolCall[] | undefined;
+    let promptTokens = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl: number;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let obj: { message?: OllamaMessage; prompt_eval_count?: number };
+        try {
+          obj = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        const m = obj.message;
+        if (m?.role) role = m.role;
+        if (m?.content) {
+          content += m.content;
+          onToken!(m.content);
+        }
+        if (m?.tool_calls?.length) toolCalls = m.tool_calls;
+        if (typeof obj.prompt_eval_count === "number") promptTokens = obj.prompt_eval_count;
+      }
+    }
+    return {
+      message: { role, content, ...(toolCalls ? { tool_calls: toolCalls } : {}) },
+      promptTokens,
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -180,6 +226,9 @@ export async function runAgent(opts: {
   messages: { role: "user" | "assistant"; content: string }[];
   confirmDestructive?: boolean;
   numCtx?: number;
+  /** When set, the turn streams: reply tokens and finished tool steps are pushed
+   * here as they happen (in addition to the final AgentResult). */
+  onEvent?: (ev: AgentEvent) => void;
 }): Promise<AgentResult> {
   const registry = defineTools(opts.api);
   const byName = new Map(registry.map((t) => [t.name, t]));
@@ -188,9 +237,10 @@ export async function runAgent(opts: {
   const messages: OllamaMessage[] = [{ role: "system", content: SYSTEM }, ...opts.messages];
   const steps: AgentStep[] = [];
   let promptTokens = 0;
+  const onToken = opts.onEvent ? (t: string) => opts.onEvent!({ type: "token", text: t }) : undefined;
 
   for (let i = 0; i < MAX_STEPS; i++) {
-    const { message: msg, promptTokens: pt } = await ollamaChat(opts.url, opts.model, messages, tools, opts.numCtx);
+    const { message: msg, promptTokens: pt } = await ollamaChat(opts.url, opts.model, messages, tools, opts.numCtx, onToken);
     promptTokens = pt || promptTokens;
     messages.push(msg);
     const calls = msg.tool_calls ?? [];
@@ -206,6 +256,7 @@ export async function runAgent(opts: {
       }
       const step = await execTool(byName, name, args);
       steps.push(step);
+      opts.onEvent?.({ type: "step", step });
       messages.push({ role: "tool", content: step.result });
     }
     if (pending.length) return { reply: msg.content?.trim() || "", steps, pending, promptTokens };

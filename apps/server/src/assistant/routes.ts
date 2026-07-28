@@ -6,7 +6,7 @@ import { db } from "../db.js";
 import { env } from "../env.js";
 import { badRequest } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
-import { Api, type ApiAuth } from "../mcp/api.js";
+import { Api, ApiError, type ApiAuth } from "../mcp/api.js";
 import { runAgent, runConfirmed } from "./agent.js";
 import { appendMessage, buildContext, clearThread, loadThread, maybeSummarize, modelContext } from "./store.js";
 
@@ -58,29 +58,55 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
    * Tool calls act as the requester — we forward the caller's own auth (session
    * cookie or bearer key) to the loopback API, so ownership/permissions match.
    */
-  app.post("/assistant/chat", async (req) => {
+  app.post("/assistant/chat", (req, reply) => {
     const userId = requireUser(req);
+    // Validate before hijacking, so a bad body is a normal 400.
     const body = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
-    const { url, model } = await requireModel(userId);
+    const api = apiFor(req);
 
-    await appendMessage(userId, "user", body.message);
-    const thread = await loadThread(userId);
-    const numCtx = await modelContext(url, model);
-
-    const result = await runAgent({
-      url,
-      model,
-      api: apiFor(req),
-      messages: buildContext(thread),
-      confirmDestructive: true,
-      numCtx,
+    // Stream the turn as SSE over the POST response: `token` (reply text as the
+    // model writes it), `step` (a tool finished), then a final `done` / `error`.
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     });
+    const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
-    // Persist the assistant's reply (pending destructive calls stay transient —
-    // they're resolved via /confirm, which persists their outcome).
-    await appendMessage(userId, "assistant", result.reply, result.steps);
-    await maybeSummarize({ userId, url, model, numCtx, promptTokens: result.promptTokens ?? 0 });
-    return { reply: result.reply, steps: result.steps, pending: result.pending };
+    void (async () => {
+      try {
+        const { url, model } = await requireModel(userId);
+        await appendMessage(userId, "user", body.message);
+        const thread = await loadThread(userId);
+        const numCtx = await modelContext(url, model);
+
+        const result = await runAgent({
+          url,
+          model,
+          api,
+          messages: buildContext(thread),
+          confirmDestructive: true,
+          numCtx,
+          onEvent: send,
+        });
+
+        // Persist the reply (pending destructive calls stay transient — they're
+        // resolved via /confirm, which persists their outcome).
+        await appendMessage(userId, "assistant", result.reply, result.steps);
+        await maybeSummarize({ userId, url, model, numCtx, promptTokens: result.promptTokens ?? 0 });
+        send({ type: "done", reply: result.reply, steps: result.steps, pending: result.pending });
+      } catch (e) {
+        send({
+          type: "error",
+          message: e instanceof ApiError ? e.body.slice(0, 300) : e instanceof Error ? e.message : "assistant failed",
+        });
+      } finally {
+        res.end();
+      }
+    })();
   });
 
   /** Execute the destructive calls the user just approved in the panel. */

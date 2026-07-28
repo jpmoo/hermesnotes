@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -210,7 +210,7 @@ async function resolveLabels(userId: string, steps: ReviewStep[]): Promise<Map<s
   const rows = await db
     .select({ id: blocks.id, properties: blocks.properties })
     .from(blocks)
-    .where(and(eq(blocks.ownerId, userId), sql`${blocks.id} = ANY(${ids})`));
+    .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, ids)));
   for (const r of rows) {
     const p = (r.properties ?? {}) as Record<string, unknown>;
     out.set(r.id, String(p.title ?? "Untitled"));

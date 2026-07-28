@@ -93,9 +93,18 @@ export function ReviewPage() {
   const [state, setState] = useState<ReviewState | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const { bottomSlotEl, setHasContent } = usePanels();
 
-  const load = useCallback(() => void reviewApi.get().then(setState).catch(() => setState(null)), []);
+  // Distinguish "still loading" from "load failed" so a failure shows an error
+  // (and a retry) instead of a permanent spinner.
+  const load = useCallback(() => {
+    setLoadError(false);
+    return reviewApi
+      .get()
+      .then(setState)
+      .catch(() => setLoadError(true));
+  }, []);
   useEffect(() => {
     load();
     void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});
@@ -148,6 +157,15 @@ export function ReviewPage() {
 
   const mutate = (p: Promise<ReviewState>) => void p.then(setState).catch(() => {});
 
+  if (loadError)
+    return (
+      <div className="hint">
+        Couldn't load the weekly review.{" "}
+        <button className="ghost" onClick={() => void load()}>
+          Retry
+        </button>
+      </div>
+    );
   if (!state) return <div className="hint">Loading…</div>;
   if (!state.configured) {
     return (

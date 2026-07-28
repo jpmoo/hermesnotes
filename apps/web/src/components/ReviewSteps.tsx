@@ -10,8 +10,25 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { CheckSquare, GripVertical, Link2, Pencil, Plus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api, type BlockSearchResult, type Collection } from "../api.ts";
+import { api, type BlockSearchResult, type BlockType, type Collection } from "../api.ts";
+import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import type { NewStep, ReviewLink, ReviewStepView } from "../lib/review.ts";
+
+/** Icon for a collection given its kind (+ smart mode), mirroring the app's pickers. */
+function collectionIcon(kind: string | null, smart: boolean, color: string | null) {
+  return (
+    <CollectionIcon
+      document={kind === "document"}
+      matrix={kind === "matrix"}
+      table={kind === "table"}
+      canvas={kind === "canvas"}
+      calendar={kind === "calendar"}
+      smart={smart}
+      color={color}
+      size={15}
+    />
+  );
+}
 
 const stepLabel = (s: ReviewStepView): string => s.description.trim() || s.label || "Untitled step";
 
@@ -27,13 +44,16 @@ function LinkPicker({
 }) {
   const [mode, setMode] = useState<"none" | "block" | "collection">(value?.t ?? "none");
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [types, setTypes] = useState<BlockType[]>([]);
   const [q, setQ] = useState(value?.t === "block" ? initialLabel ?? "" : "");
   const [results, setResults] = useState<BlockSearchResult[]>([]);
 
   useEffect(() => {
     if (mode === "collection" && collections.length === 0)
       void api.get<Collection[]>("/collections").then(setCollections).catch(() => {});
-  }, [mode, collections.length]);
+    if (mode === "block" && types.length === 0)
+      void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => {});
+  }, [mode, collections.length, types.length]);
 
   useEffect(() => {
     if (mode !== "block") return;
@@ -64,36 +84,59 @@ function LinkPicker({
           <input placeholder="Search blocks…" value={q} onChange={(e) => setQ(e.target.value)} />
           {results.length > 0 && (
             <div className="menu review-linkmenu">
-              {results.slice(0, 8).map((r) => (
-                <button
-                  key={r.id}
-                  className="menu-item"
-                  type="button"
-                  onClick={() => {
-                    onChange({ t: "block", id: r.id });
-                    setResults([]);
-                    setQ(r.label || "Untitled");
-                  }}
-                >
-                  {r.label || "Untitled"}
-                </button>
-              ))}
+              {results.slice(0, 8).map((r) => {
+                const t = r.blockTypeId ? types.find((x) => x.id === r.blockTypeId) : undefined;
+                return (
+                  <button
+                    key={r.id}
+                    className="menu-item type-item"
+                    type="button"
+                    onClick={() => {
+                      onChange({ t: "block", id: r.id });
+                      setResults([]);
+                      setQ(r.label || "Untitled");
+                    }}
+                  >
+                    {r.collectionKind ? (
+                      collectionIcon(r.collectionKind, false, null)
+                    ) : (
+                      <BlockIcon
+                        iconKey={!t || t.isText ? "type" : t.iconKey}
+                        color={t && !t.isText ? t.iconColor : null}
+                        size={15}
+                      />
+                    )}
+                    <span className="sec-add-label">{r.label || "Untitled"}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </>
       )}
       {mode === "collection" && (
-        <select
-          value={value?.t === "collection" ? value.id : ""}
-          onChange={(e) => onChange(e.target.value ? { t: "collection", id: e.target.value } : null)}
-        >
-          <option value="">— select a collection —</option>
+        <div className="menu review-linkmenu">
           {collections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {String(c.properties.title ?? "Untitled")}
-            </option>
+            <button
+              key={c.id}
+              className={`menu-item type-item${value?.t === "collection" && value.id === c.id ? " active" : ""}`}
+              type="button"
+              onClick={() => onChange({ t: "collection", id: c.id })}
+            >
+              {collectionIcon(
+                c.collectionKind,
+                c.properties.membership_mode === "smart",
+                (c.properties.icon_color as string) ?? null,
+              )}
+              <span className="sec-add-label">{String(c.properties.title ?? "Untitled")}</span>
+            </button>
           ))}
-        </select>
+          {collections.length === 0 && (
+            <div className="hint" style={{ padding: "4px 6px" }}>
+              No collections yet.
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -216,8 +259,8 @@ function AddStepForm({ onAdd, onCancel }: { onAdd: (s: NewStep) => void; onCance
       <label className="field">
         <span>Add to</span>
         <select value={scope} onChange={(e) => setScope(e.target.value as "template" | "cycle")}>
-          <option value="template">All future reviews</option>
-          <option value="cycle">Just this review</option>
+          <option value="template">This and all future reviews</option>
+          <option value="cycle">This review only</option>
         </select>
       </label>
       <div className="row" style={{ gap: 8 }}>

@@ -75,10 +75,22 @@ export function Sidebar() {
   const {
     active: hovered,
     setActive: setHovered,
-    onMouseEnter: armOpen,
+    arm,
     onMouseLeave: collapse,
     cancelOpen,
   } = useHoverIntent();
+
+  // Hovering an icon usually means "I'm about to click it," so make expanding
+  // the rail wait longer there; over the empty gaps a hover almost always means
+  // "open the panel," so reveal quickly. Re-evaluated on move so sliding off an
+  // icon into empty space speeds the reveal back up.
+  const RAIL_OPEN_OVER_ICON = 700;
+  const RAIL_OPEN_OVER_GAP = 140;
+  const onRailOver = (e: React.MouseEvent) => {
+    if (hovered) return; // already open — nothing to arm
+    const overIcon = !!(e.target as HTMLElement).closest(".nav-link, .nav-row, button");
+    arm(overIcon ? RAIL_OPEN_OVER_ICON : RAIL_OPEN_OVER_GAP);
+  };
 
   // The rail expands when pinned, when hovering an empty area, or while a
   // kebab menu / color modal / create menu it spawned is open.
@@ -305,7 +317,7 @@ export function Sidebar() {
       </div>
 
       {/* The customizable middle — buttons + dividers, in the user's order. */}
-      <div className="rail-scroll" onMouseEnter={armOpen} onMouseLeave={cancelOpen}>
+      <div className="rail-scroll" onMouseOver={onRailOver} onMouseLeave={cancelOpen}>
         {body}
       </div>
 

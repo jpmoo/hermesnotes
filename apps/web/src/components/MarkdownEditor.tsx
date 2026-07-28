@@ -1,4 +1,3 @@
-import { Image as ImageIcon } from "lucide-react";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
@@ -51,7 +50,6 @@ export function MarkdownEditor({
   onFocusChange?: (focused: boolean) => void;
 }) {
   const [mode, setMode] = useState<Mode>("live");
-  const [imgMenu, setImgMenu] = useState<Attachment[] | null>(null);
   const [markdown, setMarkdown] = useState(value);
   const [sug, setSug] = useState<MentionState | null>(null);
   const [extract, setExtract] = useState<
@@ -168,13 +166,6 @@ export function MarkdownEditor({
     },
   });
 
-  useEffect(() => {
-    if (!imgMenu) return;
-    const close = () => setImgMenu(null);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [imgMenu]);
-
   const autosize = () => {
     const el = taRef.current;
     if (el) {
@@ -278,56 +269,6 @@ export function MarkdownEditor({
       <button className="ghost longtext-toggle" onClick={toggle} type="button">
         {mode === "live" ? "Raw" : "Live preview"}
       </button>
-      {blockId && mode === "live" && (
-        <span className="nav-kebab" style={{ position: "relative" }}>
-          <button
-            className="ghost longtext-toggle"
-            type="button"
-            title="Insert an attached image"
-            onClick={() =>
-              void api
-                .get<Attachment[]>(`/blocks/${blockId}/attachments`)
-                .then((all) => setImgMenu(all.filter((a) => a.mime.startsWith("image/"))))
-                .catch(() => setImgMenu([]))
-            }
-          >
-            <ImageIcon size={12} />
-          </button>
-          {imgMenu && (
-            <div className="menu" style={{ left: 0, right: "auto", top: "auto", bottom: "calc(100% + 4px)" }}>
-              {imgMenu.length === 0 && (
-                <div className="hint" style={{ padding: "6px 10px" }}>
-                  No image attachments — paste an image to add one.
-                </div>
-              )}
-              {imgMenu.map((a) => (
-                <button
-                  key={a.id}
-                  className="menu-item"
-                  type="button"
-                  onClick={() => {
-                    editor
-                      ?.chain()
-                      .focus()
-                      .insertContent({
-                        type: "mdImage",
-                        attrs: {
-                          src: `attachment:${a.id}`,
-                          alt: a.filename.replace(/\.[a-z0-9]+$/i, ""),
-                          width: IMG_SMALL,
-                        },
-                      })
-                      .run();
-                    setImgMenu(null);
-                  }}
-                >
-                  {a.filename}
-                </button>
-              ))}
-            </div>
-          )}
-        </span>
-      )}
       {sug && <MentionMenu state={sug} keydown={keydown} onClose={() => setSug(null)} />}
 
       {extract && (

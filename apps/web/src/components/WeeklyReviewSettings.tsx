@@ -116,7 +116,11 @@ export function WeeklyReviewSettings() {
       </label>
 
       {hydrated && projectRefTypeId && (
-        <label className="field" style={{ marginTop: 12 }}>
+        // A <div>, not a <label>: a native label forwards clicks to its first
+        // form control, which hijacks clicks on the reference dropdown's result
+        // buttons — so a picked project never registered. (Same reason
+        // TypedBlockCard uses a div for reference fields.)
+        <div className="field" style={{ marginTop: 12 }}>
           <span>Project</span>
           <ReferenceInput
             refTypeId={projectRefTypeId}
@@ -124,7 +128,7 @@ export function WeeklyReviewSettings() {
             onChange={(v) => setProject(Array.isArray(v) ? v.map(String) : v ? [String(v)] : [])}
           />
           <span className="hint">Files the “Do weekly review” task under a project, like any other task.</span>
-        </label>
+        </div>
       )}
 
       <div className="row" style={{ marginTop: 12 }}>

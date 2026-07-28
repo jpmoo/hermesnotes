@@ -1,6 +1,7 @@
 import { Info, PanelRight, Pin, PinOff, Share2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useAiConfig } from "../lib/ai-config.tsx";
 import { AIPanel } from "./AIPanel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
 import { FeedEventPane } from "./FeedEventPane.tsx";
@@ -106,6 +107,7 @@ export function RightPanel() {
   const showFeedEvent = selectedFeedEvent !== null;
   const showInfo = selectedBlockId !== null && !showFeedEvent;
 
+  const { ai: aiEnabled } = useAiConfig();
   const [tab, setTabRaw] = useState<Tab>(readTab);
   const setTab = (t: Tab) => {
     setTabRaw(t);
@@ -115,7 +117,9 @@ export function RightPanel() {
       /* ignore */
     }
   };
-  const tabTitle = tab === "graph" ? "Graph" : tab === "ai" ? "AI" : "Info";
+  // With no inference model configured, the AI tab is hidden — fall back to Info.
+  const activeTab: Tab = tab === "ai" && !aiEnabled ? "info" : tab;
+  const tabTitle = activeTab === "graph" ? "Graph" : activeTab === "ai" ? "AI" : "Info";
 
   return (
     <aside ref={asideRef} className={`right-panel${expanded ? " expanded" : ""}`}>
@@ -144,7 +148,7 @@ export function RightPanel() {
         <div className="panel-main">
           {/* Info content stays mounted (pages portal into its slots); other
               tabs just hide it. */}
-          <div className={`panel-scroll${tab === "info" ? "" : " hidden"}`}>
+          <div className={`panel-scroll${activeTab === "info" ? "" : " hidden"}`}>
             <div ref={setSlotEl} />
             {showFeedEvent && (
               <FeedEventPane event={selectedFeedEvent} onConverted={() => selectFeedEvent(null)} />
@@ -165,12 +169,12 @@ export function RightPanel() {
               </div>
             )}
           </div>
-          {tab === "graph" && (
+          {activeTab === "graph" && (
             <div className="panel-tabview">
               <GraphPanel />
             </div>
           )}
-          {tab === "ai" && (
+          {activeTab === "ai" && (
             <div className="panel-tabview">
               <AIPanel />
             </div>
@@ -178,15 +182,17 @@ export function RightPanel() {
         </div>
 
         <div className="panel-tabs">
-          <button className={`panel-tab${tab === "info" ? " active" : ""}`} onClick={() => setTab("info")}>
+          <button className={`panel-tab${activeTab === "info" ? " active" : ""}`} onClick={() => setTab("info")}>
             <Info size={14} /> Info
           </button>
-          <button className={`panel-tab${tab === "graph" ? " active" : ""}`} onClick={() => setTab("graph")}>
+          <button className={`panel-tab${activeTab === "graph" ? " active" : ""}`} onClick={() => setTab("graph")}>
             <Share2 size={14} /> Graph
           </button>
-          <button className={`panel-tab${tab === "ai" ? " active" : ""}`} onClick={() => setTab("ai")}>
-            <Sparkles size={14} /> AI
-          </button>
+          {aiEnabled && (
+            <button className={`panel-tab${activeTab === "ai" ? " active" : ""}`} onClick={() => setTab("ai")}>
+              <Sparkles size={14} /> AI
+            </button>
+          )}
         </div>
       </div>
     </aside>

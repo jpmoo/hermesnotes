@@ -1,6 +1,7 @@
 import type { FieldType, PropertySchema } from "@hermes/shared";
 import { useEffect, useState } from "react";
 import { api, ApiError, type BlockType } from "../api.ts";
+import { useAiConfig } from "../lib/ai-config.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { IconPickerModal } from "./IconPickerModal.tsx";
@@ -82,6 +83,7 @@ export function TypeEditor({
   onSaved: () => void;
   onCancel: () => void;
 }) {
+  const { embed: embedEnabled } = useAiConfig();
   const [name, setName] = useState(initial?.name ?? "");
   const [iconKey, setIconKey] = useState(initial?.iconKey ?? "file-text");
   const [iconColor, setIconColor] = useState(initial?.iconColor ?? "#5fa4b5");
@@ -294,15 +296,17 @@ export function TypeEditor({
                     ))}
                 </select>
               )}
-              <label className="row" style={{ gap: 4 }} title="Include in embedding">
-                <input
-                  type="checkbox"
-                  checked={f.includeEmbed}
-                  onChange={(e) => setField(i, { includeEmbed: e.target.checked })}
-                  style={{ width: "auto" }}
-                />
-                <span className="hint">embed</span>
-              </label>
+              {embedEnabled && (
+                <label className="row" style={{ gap: 4 }} title="Include in embedding">
+                  <input
+                    type="checkbox"
+                    checked={f.includeEmbed}
+                    onChange={(e) => setField(i, { includeEmbed: e.target.checked })}
+                    style={{ width: "auto" }}
+                  />
+                  <span className="hint">embed</span>
+                </label>
+              )}
               <button className="icon-btn" title="Move up" onClick={() => move(i, -1)}>
                 ↑
               </button>

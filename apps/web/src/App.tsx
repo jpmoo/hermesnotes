@@ -13,6 +13,7 @@ import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
 import { useLiveSync } from "./lib/block-events.ts";
 import { AssistantProvider } from "./lib/assistant.tsx";
 import { PreferencesProvider, usePreferences } from "./lib/preferences.tsx";
+import { AiConfigProvider } from "./lib/ai-config.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
@@ -40,13 +41,15 @@ function ConfiguredApp({
 
   return (
     <PreferencesProvider>
-      <PanelsProvider>
-        <AssistantProvider>
-          <RouteBannerProvider>
-            <Shell />
-          </RouteBannerProvider>
-        </AssistantProvider>
-      </PanelsProvider>
+      <AiConfigProvider>
+        <PanelsProvider>
+          <AssistantProvider>
+            <RouteBannerProvider>
+              <Shell />
+            </RouteBannerProvider>
+          </AssistantProvider>
+        </PanelsProvider>
+      </AiConfigProvider>
     </PreferencesProvider>
   );
 }

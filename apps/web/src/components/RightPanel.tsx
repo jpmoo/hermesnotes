@@ -1,9 +1,11 @@
-import { Info, PanelRight, Pin, PinOff, Share2, Sparkles } from "lucide-react";
+import { Info, PanelRight, Pin, PinOff, Share2, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useAiConfig } from "../lib/ai-config.tsx";
+import { useAssistant } from "../lib/assistant.tsx";
 import { AIPanel } from "./AIPanel.tsx";
 import { BlockInfoPane } from "./BlockInfoPane.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FeedEventPane } from "./FeedEventPane.tsx";
 import { GraphPanel } from "./GraphPanel.tsx";
 
@@ -108,6 +110,10 @@ export function RightPanel() {
   const showInfo = selectedBlockId !== null && !showFeedEvent;
 
   const { ai: aiEnabled } = useAiConfig();
+  // The AI-tab "clear conversation" action lives up in the header (next to the
+  // pin) instead of its own toolbar row.
+  const { msgs: aiMsgs, busy: aiBusy, clear: clearAi } = useAssistant();
+  const [confirmClear, setConfirmClear] = useState(false);
   const [tab, setTabRaw] = useState<Tab>(readTab);
   const setTab = (t: Tab) => {
     setTabRaw(t);
@@ -129,6 +135,17 @@ export function RightPanel() {
       <div className="panel-body">
         <div className="panel-head">
           <span className="panel-title">{tabTitle}</span>
+          {activeTab === "ai" && aiMsgs.length > 0 && (
+            <button
+              className="icon-btn"
+              title="Clear conversation"
+              disabled={aiBusy}
+              style={{ marginLeft: "auto", marginRight: 4 }}
+              onClick={() => setConfirmClear(true)}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
           <button
             className="icon-btn panel-pin"
             title={rightPinned ? "Unpin panel" : "Pin panel open"}
@@ -195,6 +212,18 @@ export function RightPanel() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear conversation?"
+        message="This permanently deletes the whole assistant conversation and resets its memory. This can't be undone."
+        confirmLabel="Clear"
+        onConfirm={() => {
+          setConfirmClear(false);
+          void clearAi();
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </aside>
   );
 }

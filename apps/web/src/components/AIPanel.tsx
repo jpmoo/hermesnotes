@@ -1,7 +1,6 @@
-import { AlertTriangle, ArrowUp, Sparkles, Trash2, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowUp, Sparkles, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAssistant } from "../lib/assistant.tsx";
-import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { Markdown } from "./Markdown.tsx";
 
 /**
@@ -10,9 +9,8 @@ import { Markdown } from "./Markdown.tsx";
  * tab switches. This component only owns the composer text and scroll position.
  */
 export function AIPanel() {
-  const { msgs, busy, error, send, resolvePending, clear } = useAssistant();
+  const { msgs, busy, error, send, resolvePending } = useAssistant();
   const [input, setInput] = useState("");
-  const [confirmClear, setConfirmClear] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,18 +33,6 @@ export function AIPanel() {
 
   return (
     <div className="ai-panel">
-      {msgs.length > 0 && (
-        <div className="ai-toolbar">
-          <button
-            className="icon-btn"
-            title="Clear conversation"
-            onClick={() => setConfirmClear(true)}
-            disabled={busy}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      )}
       <div className="ai-thread" ref={threadRef}>
         {msgs.length === 0 && (
           <div className="ai-empty">
@@ -129,18 +115,6 @@ export function AIPanel() {
           <ArrowUp size={16} />
         </button>
       </div>
-
-      <ConfirmDialog
-        open={confirmClear}
-        title="Clear conversation?"
-        message="This permanently deletes the whole assistant conversation and resets its memory. This can't be undone."
-        confirmLabel="Clear"
-        onConfirm={() => {
-          setConfirmClear(false);
-          void clear();
-        }}
-        onCancel={() => setConfirmClear(false)}
-      />
     </div>
   );
 }

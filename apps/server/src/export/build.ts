@@ -178,6 +178,8 @@ export interface ExportBlockInput {
   tags: string[];
   /** All attachment rows for this block, with their exported file names. */
   attachments: { id: string; name: string }[];
+  /** Vault-relative path to the block's banner image, if it has one. */
+  bannerPath?: string;
   /** Force a `title:` into the frontmatter (text notes have no title field). */
   titleInFrontmatter?: boolean;
 }
@@ -186,6 +188,7 @@ export interface ExportBlockInput {
 export function blockToMarkdown(b: ExportBlockInput, r: BodyResolvers): string {
   const pairs: FrontmatterPair[] = [];
   if (b.titleInFrontmatter && b.title) pairs.push({ key: "title", value: b.title });
+  if (b.bannerPath) pairs.push({ key: "banner", value: b.bannerPath });
 
   const refBlockIds: string[] = []; // connections to append as wikilinks
   const personNames: string[] = [];

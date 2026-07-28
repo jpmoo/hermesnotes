@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { PropertySchema } from "@hermes/shared";
-import { attachments, blocks, blockTags, blockTypes, tags } from "@hermes/db";
+import { attachments, banners, blocks, blockTags, blockTypes, tags } from "@hermes/db";
 import { db } from "../db.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { badRequest } from "../lib/errors.js";
@@ -23,6 +23,9 @@ const extOf = (name: string): string => {
   const m = /\.[A-Za-z0-9]+$/.exec(name);
   return m ? m[0] : "";
 };
+
+const mimeExt = (mime: string): string =>
+  mime === "image/png" ? ".png" : mime === "image/gif" ? ".gif" : mime === "image/jpeg" ? ".jpg" : "";
 
 /** Allocate a unique name within a used-set (case-insensitive), suffixing " 2"… */
 function unique(base: string, ext: string, used: Set<string>): string {
@@ -149,7 +152,24 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    // ── Attachments: fetch for exported blocks, dedupe by content hash.
+    // Shared attachments/ folder — everything deduped by content hash so a file
+    // (or banner) reused across blocks is written once.
+    const byHash = new Map<string, string>();
+    const usedAtt = new Set<string>();
+    const attFiles: ZipEntry[] = [];
+    const addFile = (baseHint: string, ext: string, data: unknown): string => {
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array);
+      const hash = createHash("sha256").update(buf).digest("hex");
+      let name = byHash.get(hash);
+      if (!name) {
+        name = unique(safeName(baseHint) || "file", ext, usedAtt);
+        byHash.set(hash, name);
+        attFiles.push({ name: `attachments/${name}`, data: buf });
+      }
+      return name;
+    };
+
+    // ── Attachments: fetch for exported blocks.
     const attRows = exportedIds.length
       ? await db
           .select({
@@ -162,25 +182,37 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
           .where(inArray(attachments.blockId, exportedIds))
       : [];
     const attNameById = new Map<string, string>();
-    const attByHash = new Map<string, string>();
-    const usedAtt = new Set<string>();
-    const attFiles: ZipEntry[] = [];
     const attByBlock = new Map<string, { id: string; name: string }[]>();
     for (const a of attRows) {
-      const buf = Buffer.isBuffer(a.data) ? a.data : Buffer.from(a.data as unknown as Uint8Array);
-      const hash = createHash("sha256").update(buf).digest("hex");
-      let name = attByHash.get(hash);
-      if (!name) {
-        const ext = extOf(a.filename);
-        const base = safeName(a.filename.slice(0, a.filename.length - ext.length)) || "file";
-        name = unique(base, ext, usedAtt);
-        attByHash.set(hash, name);
-        attFiles.push({ name: `attachments/${name}`, data: buf });
-      }
+      const ext = extOf(a.filename);
+      const name = addFile(a.filename.slice(0, a.filename.length - ext.length), ext, a.data);
       attNameById.set(a.id, name);
       const list = attByBlock.get(a.blockId) ?? [];
       list.push({ id: a.id, name });
       attByBlock.set(a.blockId, list);
+    }
+
+    // ── Banners: each block's banner image becomes an attachment, referenced by
+    //    a `banner:` YAML path (Obsidian banner plugins read this).
+    const bannerPathByBlock = new Map<string, string>();
+    const bannerIdByBlock = new Map<string, string>();
+    for (const p of prepared) {
+      const bv = p.properties.banner as { id?: string } | undefined;
+      if (bv?.id) bannerIdByBlock.set(p.id, bv.id);
+    }
+    const bannerIds = [...new Set(bannerIdByBlock.values())];
+    if (bannerIds.length) {
+      const bRows = await db
+        .select({ id: banners.id, mime: banners.mime, data: banners.data })
+        .from(banners)
+        .where(and(eq(banners.ownerId, userId), inArray(banners.id, bannerIds)));
+      const bById = new Map(bRows.map((b) => [b.id, b]));
+      for (const [blockId, bannerId] of bannerIdByBlock) {
+        const b = bById.get(bannerId);
+        if (!b) continue;
+        const name = addFile("banner", mimeExt(b.mime), b.data);
+        bannerPathByBlock.set(blockId, `attachments/${name}`);
+      }
     }
 
     // ── Tags per exported block.
@@ -219,6 +251,7 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
     for (const p of prepared) {
       p.tags = tagsByBlock.get(p.id) ?? [];
       p.attachments = attByBlock.get(p.id) ?? [];
+      p.bannerPath = bannerPathByBlock.get(p.id);
       const md = blockToMarkdown(p, resolvers);
       entries.push({ name: `${p.folder}/${p.basename}.md`, data: Buffer.from(md, "utf8") });
     }

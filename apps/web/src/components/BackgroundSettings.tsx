@@ -10,6 +10,8 @@ export function BackgroundSettings() {
   const animate = Boolean(prefs.bg_animate);
   const scanlines = Boolean(prefs.bg_scanlines);
   const blur = Math.max(0, Math.min(40, Number(prefs.bg_blur) || 0));
+  // Stored as opacity (1 = opaque); shown as transparency (0% = opaque).
+  const imgTransp = Math.round((1 - (prefs.bg_opacity == null ? 1 : Number(prefs.bg_opacity))) * 100);
   const panelT = Math.max(0, Math.min(100, Number(prefs.panel_transparency) || 0));
   const fallback = prefs.bg_fallback as BannerValue | null | undefined;
 
@@ -44,6 +46,18 @@ export function BackgroundSettings() {
           max={40}
           value={blur}
           onChange={(e) => setPref("bg_blur", Number(e.target.value))}
+          style={{ width: "100%" }}
+        />
+      </div>
+
+      <div className="field" style={{ marginTop: 10 }}>
+        <span className="field-label">Image transparency — {imgTransp}%</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={imgTransp}
+          onChange={(e) => setPref("bg_opacity", 1 - Number(e.target.value) / 100)}
           style={{ width: "100%" }}
         />
       </div>

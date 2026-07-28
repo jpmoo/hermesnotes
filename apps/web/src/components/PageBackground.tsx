@@ -96,12 +96,15 @@ export function PageBackground() {
     (prefs.bg_animate ? " anim" : "") +
     (prefs.bg_scanlines ? " scan" : "");
   const blur = Math.max(0, Math.min(40, Number(prefs.bg_blur) || 0));
+  // Image opacity (1 = opaque). Absent = fully opaque, preserving prior behavior.
+  const opacity = prefs.bg_opacity == null ? 1 : Math.max(0, Math.min(1, Number(prefs.bg_opacity)));
   return (
     <div className={cls} aria-hidden>
       <div
         className="page-bg-img"
         style={{
           backgroundImage: `url(${apiBase}/banners/${active.id})`,
+          opacity,
           ...(blur ? { filter: `blur(${blur}px)` } : {}),
         }}
       />

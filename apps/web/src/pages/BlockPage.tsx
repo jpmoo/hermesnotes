@@ -1,3 +1,4 @@
+import { Archive } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
@@ -44,10 +45,22 @@ export function BlockPage() {
   useSetRouteBanner(block ? (block.properties as Record<string, unknown>).banner : null);
 
   if (loading) return <div className="hint">Loading…</div>;
-  if (gone || !block) return <div className="hint">Block not found.</div>;
+  if (gone || !block) return <div className="hint">This block no longer exists.</div>;
 
   const type = types.find((t) => t.id === block.blockTypeId);
+  const unarchive = () => void api.post(`/blocks/${id}/unarchive`, {}).then(() => void load());
   return (
-    <BlockCard block={block} type={type} onConflict={() => void load()} onDeleted={() => nav(-1)} />
+    <>
+      {block.archivedAt && (
+        <div className="archived-banner">
+          <Archive size={14} />
+          <span>This block is archived.</span>
+          <button className="ghost" onClick={unarchive}>
+            Unarchive
+          </button>
+        </div>
+      )}
+      <BlockCard block={block} type={type} onConflict={() => void load()} onDeleted={() => nav(-1)} />
+    </>
   );
 }

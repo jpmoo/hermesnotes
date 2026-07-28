@@ -3522,6 +3522,33 @@ input.matrix-axis-y::placeholder {
   color: var(--danger);
   border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
 }
+/* Banner shown atop an archived block's full-page view. */
+.archived-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.archived-banner button {
+  margin-left: auto;
+}
+/* A stored reference (today section, review step) whose target is gone. */
+.ref-missing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
 .info-conn-text {
   min-width: 0;
   overflow: hidden;

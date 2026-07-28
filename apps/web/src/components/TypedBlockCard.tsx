@@ -61,6 +61,7 @@ export function TypedBlockCard({
   onChange,
   compact = false,
   archived = false,
+  hideBanner = false,
 }: {
   block: Block;
   type: BlockType;
@@ -70,6 +71,8 @@ export function TypedBlockCard({
   compact?: boolean;
   /** In the Archive view: offer Unarchive + permanent Delete instead of Archive. */
   archived?: boolean;
+  /** Suppress all banner UI (display + add button), e.g. in the info panel. */
+  hideBanner?: boolean;
 }) {
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -168,10 +171,10 @@ export function TypedBlockCard({
   const banner = (props.banner as BannerValue | null) ?? null;
   return (
     <div className="card typed-card" onPointerDownCapture={() => selectBlock(block.id)}>
-      {!compact && banner && (
+      {!compact && !hideBanner && banner && (
         <Banner value={banner} editable onChange={(v) => update("banner", v ?? null)} height={150} />
       )}
-      {compact && banner && <Banner value={banner} height={110} className="banner-slice" />}
+      {compact && !hideBanner && banner && <Banner value={banner} height={110} className="banner-slice" />}
       <div className="typed-head">
         {statusField ? (
           <StatusControl
@@ -190,7 +193,7 @@ export function TypedBlockCard({
           value={props.title == null ? "" : String(props.title)}
           onChange={(v) => update("title", v)}
         />
-        {!compact && !banner && (
+        {!compact && !hideBanner && !banner && (
           <BannerAddButton className="head-banner-add" onAdded={(v) => update("banner", v)} />
         )}
       </div>

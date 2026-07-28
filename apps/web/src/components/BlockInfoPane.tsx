@@ -218,6 +218,7 @@ export function BlockInfoPane({
               type={editorType}
               onConflict={() => void loadBlock()}
               onDeleted={() => onDeleted?.()}
+              hideBanner
             />
           ) : (
             // Not compact: text-note compact mode is a read-only preview, and
@@ -228,6 +229,7 @@ export function BlockInfoPane({
               type={editorType}
               onConflict={() => void loadBlock()}
               onDeleted={() => onDeleted?.()}
+              hideBanner
             />
           )}
         </div>

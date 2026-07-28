@@ -4892,6 +4892,14 @@ input.cv-add-input {
   gap: 8px;
   padding: 12px 14px;
 }
+/* The modal lays the magnifier out inline (a flex item), not absolutely like the
+   .global-search pill — otherwise it anchors to the fixed backdrop and floats at
+   the screen's left edge, next to the rail's own search icon. */
+.search-modal-input .gs-icon {
+  position: static;
+  left: auto;
+  flex: 0 0 auto;
+}
 .search-modal-input .gs-input {
   flex: 1;
   border: none;

@@ -110,20 +110,33 @@ export function useBlockOrigin(): string {
 /**
  * Refetch-and-apply when another surface changes this block. `apply` receives
  * the fresh block; the caller resets its local props/content/version from it.
+ *
+ * `shouldHold` guards live editing: if it returns true when a change arrives
+ * (the surface is focused or has unsaved edits), the fresh block is stashed
+ * instead of applied — so a remote edit never yanks the editor mid-keystroke.
+ * Call the returned `release()` when the surface goes idle (on blur, after a
+ * save settles) to apply the latest stashed block.
  */
 export function useBlockSync(
   blockId: string,
   origin: string,
   apply: (b: Block) => void,
-): void {
+  shouldHold?: () => boolean,
+): () => void {
   const applyRef = useRef(apply);
   applyRef.current = apply;
+  const holdRef = useRef(shouldHold);
+  holdRef.current = shouldHold;
+  const deferred = useRef<Block | null>(null);
   useEffect(() => {
     const l: Listener = (id, src) => {
       if (id !== blockId || src === origin) return;
       void api
         .get<Block>(`/blocks/${blockId}`)
-        .then((b) => applyRef.current(b))
+        .then((b) => {
+          if (holdRef.current?.()) deferred.current = b;
+          else applyRef.current(b);
+        })
         .catch(() => {});
     };
     listeners.add(l);
@@ -131,4 +144,13 @@ export function useBlockSync(
       listeners.delete(l);
     };
   }, [blockId, origin]);
+  // Stable release: apply the newest stashed block, if any.
+  const release = useRef(() => {
+    if (deferred.current) {
+      const b = deferred.current;
+      deferred.current = null;
+      applyRef.current(b);
+    }
+  });
+  return release.current;
 }

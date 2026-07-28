@@ -39,6 +39,7 @@ export function MarkdownEditor({
   placeholder = "Write…",
   autofocus = false,
   blockId,
+  onFocusChange,
 }: {
   value: string;
   onChange: (markdown: string) => void;
@@ -46,6 +47,8 @@ export function MarkdownEditor({
   autofocus?: boolean;
   /** Enables image paste/insert (images are stored as block attachments). */
   blockId?: string;
+  /** Reports focus/blur so the host can hold live-sync updates while editing. */
+  onFocusChange?: (focused: boolean) => void;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [imgMenu, setImgMenu] = useState<Attachment[] | null>(null);
@@ -144,6 +147,8 @@ export function MarkdownEditor({
         },
       },
     },
+    onFocus: () => onFocusChange?.(true),
+    onBlur: () => onFocusChange?.(false),
     onCreate: ({ editor }) => {
       // Patch the parser (fixes empty checkboxes on every later parse); the
       // initial content was already parsed before this, so re-parse it when it

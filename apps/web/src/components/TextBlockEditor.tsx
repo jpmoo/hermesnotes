@@ -57,18 +57,29 @@ export function TextBlockEditor({
   const { selectBlock } = usePanels();
 
   // Cross-surface sync. The markdown editor owns its content, so foreign
-  // updates remount it (keyed) with the fresh text.
+  // updates remount it (keyed) with the fresh text — but not while you're typing
+  // here: a hold defers the remote update until blur / the next save settles, so
+  // a remote edit (another tab, or the AI over MCP) can't yank the caret.
   const origin = useBlockOrigin();
+  const focusedRef = useRef(false);
   const [ext, setExt] = useState<{ content: string; nonce: number }>({
     content: block.content ?? "",
     nonce: 0,
   });
-  useBlockSync(block.id, origin, (b) => {
-    setProps(b.properties ?? {});
-    versionRef.current = b.version;
-    setUpdatedAt(b.updatedAt);
-    setExt((e) => ({ content: b.content ?? "", nonce: e.nonce + 1 }));
-  });
+  // Unsaved edits are pending until their debounced save fires (which clears
+  // these). The timer refs aren't cleared on fire, so they can't signal dirty.
+  const dirty = () => pendingContent.current != null || pendingProps.current != null;
+  const releaseSync = useBlockSync(
+    block.id,
+    origin,
+    (b) => {
+      setProps(b.properties ?? {});
+      versionRef.current = b.version;
+      setUpdatedAt(b.updatedAt);
+      setExt((e) => ({ content: b.content ?? "", nonce: e.nonce + 1 }));
+    },
+    () => focusedRef.current || dirty(),
+  );
 
   // The body IS the "description" field; any other schema fields render below it.
   const extraFields = [...(type?.propertySchema?.fields ?? [])]
@@ -88,6 +99,9 @@ export function TextBlockEditor({
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
       emitBlockChange(block.id, origin);
+      // A remote change that arrived mid-edit was held; now that we're settled
+      // and not typing, catch up to it.
+      if (!focusedRef.current && !dirty()) releaseSync();
       // #tag mentions were synced to the block's tags — refresh the chips.
       if (updated.tagsChanged) setTagsRefresh((k) => k + 1);
     } catch (err) {
@@ -199,6 +213,10 @@ export function TextBlockEditor({
           placeholder="Write a note…"
           autofocus={!block.content}
           blockId={block.id}
+          onFocusChange={(f) => {
+            focusedRef.current = f;
+            if (!f && !dirty()) releaseSync();
+          }}
         />
       )}
 

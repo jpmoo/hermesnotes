@@ -77,15 +77,23 @@ export function TypedBlockCard({
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  const pending = useRef(false); // an edit is waiting to save (i.e. you're typing)
   const { selectBlock } = usePanels();
 
-  // Cross-surface sync: announce saves; adopt foreign edits of this block.
+  // Cross-surface sync: announce saves; adopt foreign edits of this block — but
+  // hold a remote edit while you have unsaved changes here, so it can't overwrite
+  // a field you're mid-typing. Released once the pending save settles.
   const origin = useBlockOrigin();
-  useBlockSync(block.id, origin, (b) => {
-    setProps(b.properties ?? {});
-    versionRef.current = b.version;
-    setUpdatedAt(b.updatedAt);
-  });
+  const releaseSync = useBlockSync(
+    block.id,
+    origin,
+    (b) => {
+      setProps(b.properties ?? {});
+      versionRef.current = b.version;
+      setUpdatedAt(b.updatedAt);
+    },
+    () => pending.current,
+  );
 
   const schema = type.propertySchema;
   const fields = [...(schema?.fields ?? [])].sort((a, b) => a.order - b.order);
@@ -108,10 +116,13 @@ export function TypedBlockCard({
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
+      pending.current = false;
       emitBlockChange(block.id, origin);
+      releaseSync(); // catch up to any remote edit held while typing
       // A recurring task just spawned its next occurrence — refresh the list.
       if (updated.recurred) onConflict();
     } catch (err) {
+      pending.current = false;
       if (err instanceof ApiError && err.status === 409) {
         onConflict();
         return;
@@ -123,6 +134,7 @@ export function TypedBlockCard({
   const update = (key: string, value: unknown) => {
     const next = { ...props, [key]: value };
     setProps(next);
+    pending.current = true;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       void save(next);

@@ -1271,9 +1271,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!block) throw notFound("block");
     if (block.collectionKind) throw badRequest("collections can't be archived");
-    // The "Do weekly review" task can't be filed away half-finished: it stays
-    // archivable only once its status is explicitly "done" (not the broader
-    // complete set — a "wont_do" review shouldn't be archivable either).
+    // The "Do weekly review" task can't be filed away half-finished — it stays
+    // archivable only once it's complete. Use isComplete (any complete value) so
+    // a review closed as "wont_do" is archivable, and so this agrees with the
+    // auto-archive / "archive now" sweeps (which archive on isComplete too).
     const props = (block.properties ?? {}) as Record<string, unknown>;
     if (props.weekly_review === true && block.blockTypeId) {
       const [type] = await db
@@ -1281,9 +1282,8 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         .from(blockTypes)
         .where(and(eq(blockTypes.id, block.blockTypeId), eq(blockTypes.ownerId, userId)))
         .limit(1);
-      const statusKey = type?.propertySchema?.status_field;
-      if (!statusKey || props[statusKey] !== "done")
-        throw badRequest("Finish the weekly review (mark it done) before archiving it.");
+      if (!type?.propertySchema || !isComplete(type.propertySchema, props))
+        throw badRequest("Finish the weekly review before archiving it.");
     }
     await db
       .update(blocks)

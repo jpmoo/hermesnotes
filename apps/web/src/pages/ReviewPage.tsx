@@ -142,11 +142,13 @@ export function ReviewPage() {
     }
   }, [steps, currentId]);
 
-  /** Complete the managed task (also fires when the last step is checked). */
-  const completeTask = useCallback(async (taskId: string) => {
+  /** Complete the managed task (also fires when the last step is checked). Marks
+   *  it via a block PATCH — so the existing recurrence spawn still triggers —
+   *  using the type's resolved status key + complete value (no hardcoding). */
+  const completeTask = useCallback(async (taskId: string, statusKey: string, doneValue: string) => {
     const b = await api.get<Block>(`/blocks/${taskId}`);
     await api.patch(`/blocks/${taskId}`, {
-      properties: { ...((b.properties ?? {}) as Record<string, unknown>), status: "done" },
+      properties: { ...((b.properties ?? {}) as Record<string, unknown>), [statusKey]: doneValue },
       version: b.version,
     });
     load();
@@ -161,8 +163,8 @@ export function ReviewPage() {
       const idx = order.findIndex((s) => s.id === id);
       const following = [...order.slice(idx + 1), ...order.slice(0, idx + 1)].find((s) => !s.done);
       if (following) setCurrentId(following.id);
-      if (next.configured && next.allDone && next.task && next.task.status !== "done")
-        await completeTask(next.task.id);
+      if (next.configured && next.allDone && next.task && !next.task.done)
+        await completeTask(next.task.id, next.statusKey, next.doneValue);
     }
   };
 
@@ -191,7 +193,7 @@ export function ReviewPage() {
 
   const current = steps.find((s) => s.id === currentId) ?? steps[0] ?? null;
   const doneCount = steps.filter((s) => s.done).length;
-  const taskDone = state.task?.status === "done";
+  const taskDone = state.task?.done ?? false;
   const locked = !state.open; // before the available date: progress is read-only
 
   return (
@@ -199,7 +201,10 @@ export function ReviewPage() {
       <div className="review-head">
         <h1 className="page-title">Weekly Review</h1>
         {state.open && !taskDone && state.task && (
-          <button className="primary review-markdone" onClick={() => void completeTask(state.task!.id)}>
+          <button
+            className="primary review-markdone"
+            onClick={() => void completeTask(state.task!.id, state.statusKey, state.doneValue)}
+          >
             <CheckCircle2 size={16} /> Mark review done
           </button>
         )}

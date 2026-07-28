@@ -18,7 +18,11 @@ export interface ReviewConfigured {
   configured: true;
   dueWeekday: number;
   availableDaysPrior: number;
-  task: { id: string; status: string; available: string | null; due: string | null } | null;
+  /** The task type's status field key and the value that marks it complete —
+   *  so the client doesn't hardcode "status"/"done" (custom task types differ). */
+  statusKey: string;
+  doneValue: string;
+  task: { id: string; status: string; done: boolean; available: string | null; due: string | null } | null;
   /** Whether the review is open now (its available date has arrived). */
   open: boolean;
   steps: ReviewStepView[];

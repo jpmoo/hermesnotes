@@ -256,6 +256,11 @@ async function buildState(userId: string) {
   }
   const props = (active?.properties ?? {}) as Record<string, unknown>;
   const schema = task.propertySchema;
+  const statusKey = schema?.status_field ?? "status";
+  // The value that marks the task complete: prefer "done", else the first
+  // complete value the (possibly custom) type defines.
+  const completeVals = schema?.complete_values ?? [];
+  const doneValue = completeVals.includes("done") ? "done" : completeVals[0] ?? "done";
   const spanKey = schema?.fields.find((f) => f.type === "datespan")?.key ?? "schedule";
   const span = (props[spanKey] ?? {}) as { start?: string; end?: string };
   const available = dateOf(span.start);
@@ -281,13 +286,25 @@ async function buildState(userId: string) {
     template: wr.steps.some((t) => t.id === s.id),
     done: done.has(s.id),
   }));
-  const reflectionBlockId = due ? await findOrCreateReflection(userId, due) : null;
+  // Only create the reflection once the review is actually open (don't spawn an
+  // empty "Week Ending …" note before the week begins).
+  const reflectionBlockId = due && isOpen ? await findOrCreateReflection(userId, due) : null;
 
   return {
     configured: true as const,
     dueWeekday: wr.dueWeekday,
     availableDaysPrior: wr.availableDaysPrior,
-    task: active ? { id: active.id, status: String(props[schema?.status_field ?? "status"] ?? ""), available, due } : null,
+    statusKey,
+    doneValue,
+    task: active
+      ? {
+          id: active.id,
+          status: String(props[statusKey] ?? ""),
+          done: schema ? isComplete(schema, props) : false,
+          available,
+          due,
+        }
+      : null,
     open: isOpen,
     steps,
     allDone: steps.length > 0 && steps.every((s) => s.done),

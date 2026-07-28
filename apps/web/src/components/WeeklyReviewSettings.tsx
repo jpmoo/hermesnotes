@@ -25,12 +25,20 @@ export function WeeklyReviewSettings() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Hydrate from the synced preferences (and re-sync after a save).
+  // Hydrate from the synced preferences (and re-sync after a save). Key on the
+  // stored CONTENT (not array identity) so an unrelated re-render can't re-run
+  // this and wipe an in-progress project pick.
+  const storedKey = JSON.stringify({
+    d: wr?.dueWeekday ?? null,
+    p: wr?.availableDaysPrior ?? 0,
+    pr: Array.isArray(wr?.project) ? wr.project : [],
+  });
   useEffect(() => {
     setWeekday(wr?.dueWeekday ?? "");
     setPrior(wr?.availableDaysPrior ?? 0);
     setProject(Array.isArray(wr?.project) ? wr.project : []);
-  }, [wr?.dueWeekday, wr?.availableDaysPrior, wr?.project]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedKey]);
 
   // Resolve the task type's project reference field (mirrors a task's picker).
   useEffect(() => {

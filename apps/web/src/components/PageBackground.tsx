@@ -13,6 +13,7 @@ function bannerKeyForPath(path: string): string | null {
   if (path === "/collections") return "collections";
   if (path.startsWith("/types")) return "types";
   if (path.startsWith("/review")) return "review";
+  if (path.startsWith("/archive")) return "archive";
   return null;
 }
 

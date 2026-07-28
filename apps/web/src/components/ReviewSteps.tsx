@@ -83,7 +83,7 @@ function LinkPicker({
         <>
           <input placeholder="Search blocks…" value={q} onChange={(e) => setQ(e.target.value)} />
           {results.length > 0 && (
-            <div className="menu review-linkmenu">
+            <div className="review-linkmenu">
               {results.slice(0, 8).map((r) => {
                 const t = r.blockTypeId ? types.find((x) => x.id === r.blockTypeId) : undefined;
                 return (

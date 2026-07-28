@@ -157,8 +157,10 @@ export async function runQuery(
   const scope = and(
     eq(blocks.ownerId, userId),
     sql`${blocks.collectionKind} IS NULL`,
-    // Today scratchpad notes are hidden from all general queries.
+    // Today scratchpad notes and weekly-review reflections are system blocks —
+    // hidden from all general queries (All blocks, smart collections, tools).
     sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+    sql`NOT jsonb_exists(${blocks.properties}, 'review_reflection')`,
     // Archived blocks never appear in a normal query (smart collections, task
     // tools, All blocks, graph membership all flow through here); the Archive
     // page inverts this to show only archived ones.

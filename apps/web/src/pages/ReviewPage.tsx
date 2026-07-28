@@ -84,6 +84,8 @@ function Reflection({ blockId, title, types }: { blockId: string; title: string;
         type={types.find((t) => t.id === block.blockTypeId)}
         onConflict={reload}
         onDeleted={() => {}}
+        canDelete={false}
+        hideBanner
       />
     </section>
   );

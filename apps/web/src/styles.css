@@ -279,7 +279,7 @@ label,
 
 /* ── Weekly review ───────────────────────────────────────────── */
 .review-page {
-  max-width: 780px;
+  width: 100%;
 }
 .review-head {
   display: flex;
@@ -424,11 +424,18 @@ label,
   border-color: var(--accent);
   color: #fff;
 }
+/* Inline (in-flow) picker list — deliberately NOT the absolute .menu dropdown. */
 .review-linkmenu {
-  position: static;
-  margin-top: 2px;
+  margin-top: 4px;
   max-height: 220px;
   overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: 4px;
+}
+.review-linkmenu .menu-item {
+  border-radius: 6px;
 }
 
 /* ── Graph panel ─────────────────────────────────────────────── */

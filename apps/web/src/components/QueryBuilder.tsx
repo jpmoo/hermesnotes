@@ -338,15 +338,25 @@ function ConditionRow({
             ))}
           </select>
           <select value={c.op} onChange={(e) => onChange({ ...c, op: e.target.value as PropertyOp })}>
-            {(fields.find((f) => f.key === c.key)?.type === "reference" ? REF_OPS : PROP_OPS).map(
-              (op) => (
+            {(() => {
+              const ft = fields.find((f) => f.key === c.key)?.type;
+              const isRef = ft === "reference";
+              const isDate = ft === "date" || ft === "datetime";
+              // Date fields read like the Created/Edited conditions: before/after.
+              const label = (op: PropertyOp) =>
+                isRef && op === "contains"
+                  ? "includes"
+                  : isDate && op === "lt"
+                    ? "before"
+                    : isDate && op === "gt"
+                      ? "after"
+                      : OP_LABEL[op];
+              return (isRef ? REF_OPS : PROP_OPS).map((op) => (
                 <option key={op} value={op}>
-                  {fields.find((f) => f.key === c.key)?.type === "reference" && op === "contains"
-                    ? "includes"
-                    : OP_LABEL[op]}
+                  {label(op)}
                 </option>
-              ),
-            )}
+              ));
+            })()}
           </select>
           {c.op !== "empty" && c.op !== "notEmpty" && (
             <ValueInput

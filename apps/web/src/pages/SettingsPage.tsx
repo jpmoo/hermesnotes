@@ -1,4 +1,4 @@
-import { CalendarDays, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
+import { CalendarDays, Copy, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
@@ -233,6 +233,10 @@ export function SettingsPage() {
     ? models.map((m) => m.name)
     : [embedModel, inferenceModel].filter(Boolean);
 
+  // The MCP endpoint is mounted at <app>/mcp behind the same reverse-proxy entry
+  // (BASE_URL is the subpath mount, e.g. "/hermesnotes/").
+  const mcpUrl = `${window.location.origin}${import.meta.env.BASE_URL}mcp`;
+
   const tabs: { key: SettingsTab; label: string; Icon: typeof Settings2; admin?: boolean }[] = [
     { key: "general", label: "General", Icon: Settings2 },
     { key: "review", label: "Weekly Review", Icon: ListChecks },
@@ -262,6 +266,21 @@ export function SettingsPage() {
       {tab === "admin" && isAdmin && (
         <>
           <div className="card">
+            <div className="panel-h" style={{ marginTop: 0 }}>MCP Server</div>
+            <p style={{ margin: "0 0 6px" }}>MCP Server is active at:</p>
+            <div className="info-id">
+              <code>{mcpUrl}</code>
+              <button
+                className="icon-btn"
+                title="Copy MCP URL"
+                onClick={() => void navigator.clipboard?.writeText(mcpUrl)}
+              >
+                <Copy size={12} />
+              </button>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 24 }}>
             <label className="field">
               <span>Ollama URL</span>
               <div className="row">

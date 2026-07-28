@@ -65,8 +65,11 @@ export function WeeklyReviewSettings() {
     setError(null);
     setStatus(null);
     try {
-      const st = await reviewApi.config(weekday === "" ? null : weekday, prior, project);
-      hydrate(st); // reflect exactly what the server saved (incl. project)
+      await reviewApi.config(weekday === "" ? null : weekday, prior, project);
+      // Re-read the authoritative server state (not the PUT echo) so the box
+      // shows exactly what persisted — if project didn't save, it vanishes now,
+      // not only after a restart.
+      hydrate(await reviewApi.get());
       refresh(); // updates the rail-icon gate
       setStatus(weekday === "" ? "Weekly review turned off." : "Weekly review schedule saved.");
     } catch (e) {

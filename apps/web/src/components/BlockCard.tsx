@@ -35,6 +35,10 @@ export function BlockCard({
       />
     );
   }
+  // Daily notes and weekly-review reflections are system blocks: no banner, and
+  // not archivable/deletable (they'd be recreated, and they're managed elsewhere).
+  const props = block.properties ?? {};
+  const systemNote = props.today_note != null || props.review_reflection != null;
   return (
     <TextBlockEditor
       block={block}
@@ -43,6 +47,8 @@ export function BlockCard({
       onDeleted={onDeleted}
       compact={textCollapsed ?? compact}
       archived={archived}
+      hideBanner={systemNote}
+      canDelete={!systemNote}
     />
   );
 }

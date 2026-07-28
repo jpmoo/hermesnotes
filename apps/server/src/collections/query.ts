@@ -64,9 +64,11 @@ export async function semanticIds(userId: string, value: string, floor: number):
 function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): SQL {
   switch (c.kind) {
     case "blockType":
-      // The Daily Note sentinel isn't a real type — match by the today_note marker.
+      // The Daily Note sentinel isn't a real type — match by the today_note
+      // marker, and only notes with actual scratchpad text (skip the empty
+      // day-notes auto-created just by visiting a day).
       return c.typeId === DAILY_NOTE_TYPE_ID
-        ? sql`jsonb_exists(${blocks.properties}, 'today_note')`
+        ? sql`(jsonb_exists(${blocks.properties}, 'today_note') AND coalesce(${blocks.content}, '') ~ '[^[:space:]]')`
         : eq(blocks.blockTypeId, c.typeId);
     case "created": {
       const d = new Date(resolveDateToken(c.date, now));

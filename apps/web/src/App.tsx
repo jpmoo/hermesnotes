@@ -24,6 +24,7 @@ import { TodayPage } from "./pages/TodayPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
 import { TypesPage } from "./pages/TypesPage.tsx";
+import { ReviewPage } from "./pages/ReviewPage.tsx";
 
 function ConfiguredApp({
   defaultAuthMode,
@@ -57,6 +58,7 @@ function sectionKey(path: string): string | null {
   if (path.startsWith("/blocks")) return "allblocks_colors";
   if (path.startsWith("/collections")) return "collections_colors";
   if (path.startsWith("/archive")) return "archive_colors";
+  if (path.startsWith("/review")) return "review_colors";
   return null;
 }
 
@@ -131,6 +133,7 @@ function Shell() {
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionView />} />
             <Route path="/types" element={<TypesPage />} />
+            <Route path="/review" element={<ReviewPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

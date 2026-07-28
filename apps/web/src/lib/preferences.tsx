@@ -10,6 +10,8 @@ export interface NavColors {
 interface PreferencesApi {
   prefs: Record<string, unknown>;
   setPref: (key: string, value: unknown) => void;
+  /** Re-pull the server preferences bag (e.g. after a feature toggles a gate). */
+  refresh: () => void;
   colors: (key: string) => NavColors;
   /** Starred blocks/collections (ordered by when they were starred). */
   favorites: string[];
@@ -36,12 +38,13 @@ const isMobileViewport = () => {
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<Record<string, unknown>>({});
 
-  useEffect(() => {
+  const refresh = () => {
     void api
       .get<{ preferences: Record<string, unknown> }>("/settings/preferences")
       .then((r) => setPrefs(r.preferences ?? {}))
       .catch(() => {});
-  }, []);
+  };
+  useEffect(refresh, []);
 
   const setPref = (key: string, value: unknown) => {
     setPrefs((p) => ({ ...p, [key]: value }));
@@ -100,6 +103,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       value={{
         prefs,
         setPref,
+        refresh,
         colors,
         favorites,
         isFavorite,

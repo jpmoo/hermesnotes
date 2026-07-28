@@ -277,6 +277,148 @@ label,
   color: #fff;
 }
 
+/* ── Weekly review ───────────────────────────────────────────── */
+.review-page {
+  max-width: 780px;
+}
+.review-reflection {
+  margin: 12px 0 20px;
+}
+.review-current {
+  margin-top: 16px;
+}
+.review-current-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.review-current-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.review-current-head .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.review-outside {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+.review-complete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+/* Info-panel step builder */
+.review-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.review-step-row.current {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 8px;
+}
+.review-step-check {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.review-step-check:hover {
+  color: var(--accent);
+}
+.review-step-label {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.review-step-label.done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.review-step-linkicon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.review-addbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  align-self: flex-start;
+}
+.review-addform {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.review-adddesc {
+  width: 100%;
+  resize: vertical;
+}
+.review-linkpick {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.review-linkpick .seg {
+  display: flex;
+  gap: 4px;
+}
+.review-linkpick .seg-btn {
+  flex: 1;
+  padding: 5px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.review-linkpick .seg-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.review-linkmenu {
+  position: static;
+  margin-top: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 /* ── Graph panel ─────────────────────────────────────────────── */
 .graph-canvas {
   position: absolute;

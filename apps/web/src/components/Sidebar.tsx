@@ -3,6 +3,7 @@ import {
   CalendarDays,
   Layers,
   Library,
+  ListChecks,
   LogOut,
   Moon,
   MoreVertical,
@@ -46,6 +47,7 @@ const FAVORITES_KEY = "favorites_colors";
 const ALLBLOCKS_KEY = "allblocks_colors";
 const COLLECTIONS_KEY = "collections_colors";
 const TYPES_KEY = "types_colors";
+const REVIEW_KEY = "review_colors";
 const ARCHIVE_KEY = "archive_colors";
 
 /**
@@ -58,7 +60,10 @@ const ARCHIVE_KEY = "archive_colors";
 export function Sidebar() {
   const { logout } = useAuth();
   const { leftPinned, setLeftPinned } = usePanels();
-  const { colors, setPref, theme, setTheme } = usePreferences();
+  const { colors, setPref, theme, setTheme, prefs } = usePreferences();
+  // The weekly-review rail icon only appears once a review day is configured.
+  const reviewConfigured =
+    (prefs.weekly_review as { dueWeekday?: number | null } | undefined)?.dueWeekday != null;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [modal, setModal] = useState<{ key: string; target: Target } | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
@@ -255,6 +260,12 @@ export function Sidebar() {
       {colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections")}
       {colorRow(TYPES_KEY, "/types", false, Shapes, "Types")}
       <div className="nav-divider" />
+      {reviewConfigured && (
+        <>
+          {colorRow(REVIEW_KEY, "/review", false, ListChecks, "Weekly Review")}
+          <div className="nav-divider" />
+        </>
+      )}
       {colorRow(ARCHIVE_KEY, "/archive", false, Archive, "Archive")}
 
       {/* Utilities stay anchored at the very bottom, grouped together. */}

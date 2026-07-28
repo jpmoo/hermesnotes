@@ -1,4 +1,4 @@
-import { CalendarDays, KeyRound, Palette, Settings2, ShieldAlert } from "lucide-react";
+import { CalendarDays, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
@@ -6,6 +6,7 @@ import { AccessKeys } from "../components/AccessKeys.tsx";
 import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
 import { CalendarFeedsSettings } from "../components/CalendarFeedsSettings.tsx";
 import { UserManagement } from "../components/UserManagement.tsx";
+import { WeeklyReviewSettings } from "../components/WeeklyReviewSettings.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -39,12 +40,12 @@ const TIMEZONES: string[] = (() => {
   }
 })();
 
-type SettingsTab = "general" | "appearance" | "calendar" | "access" | "admin";
+type SettingsTab = "general" | "review" | "appearance" | "calendar" | "access" | "admin";
 
 const readSettingsTab = (isAdmin: boolean): SettingsTab => {
   try {
     const v = localStorage.getItem("hn.settings.tab");
-    if (v === "appearance" || v === "calendar" || v === "access") return v;
+    if (v === "review" || v === "appearance" || v === "calendar" || v === "access") return v;
     if (v === "admin" && isAdmin) return "admin";
   } catch {
     /* ignore */
@@ -214,6 +215,7 @@ export function SettingsPage() {
 
   const tabs: { key: SettingsTab; label: string; Icon: typeof Settings2; admin?: boolean }[] = [
     { key: "general", label: "General", Icon: Settings2 },
+    { key: "review", label: "Weekly Review", Icon: ListChecks },
     { key: "appearance", label: "Appearance", Icon: Palette },
     { key: "calendar", label: "Calendar", Icon: CalendarDays },
     { key: "access", label: "Access Keys", Icon: KeyRound },
@@ -429,6 +431,7 @@ export function SettingsPage() {
       </div>
       )}
 
+      {tab === "review" && <WeeklyReviewSettings />}
       {tab === "appearance" && <BackgroundSettings />}
       {tab === "calendar" && <CalendarFeedsSettings />}
       {tab === "access" && <AccessKeys />}

@@ -135,6 +135,9 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
   const spanKey = spanField?.key ?? "schedule";
   const recKey = recField?.key ?? "recurrence";
 
+  // The task's project reference field (if any) — filed under the chosen project.
+  const projRefKey = schema?.fields.find((f) => f.type === "reference")?.key;
+
   const span = computeSpan(userLocalNow(tz), wr.dueWeekday, wr.availableDaysPrior);
   const rec = reviewRecurrence(wr.dueWeekday);
 
@@ -145,6 +148,7 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
     props[spanKey] = span;
     props[recKey] = { ...rec, n: (props[recKey] as { n?: number })?.n ?? 1 };
     props.weekly_review = true;
+    if (projRefKey) props[projRefKey] = wr.project;
     const embedSource = computeEmbedSource({ isText: task.isText, propertySchema: schema }, { properties: props });
     await db
       .update(blocks)
@@ -158,6 +162,7 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
     [spanKey]: span,
     [recKey]: rec,
     weekly_review: true,
+    ...(projRefKey ? { [projRefKey]: wr.project } : {}),
   };
   const embedSource = computeEmbedSource({ isText: task.isText, propertySchema: schema }, { properties: props });
   await db.insert(blocks).values({
@@ -332,10 +337,16 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
       .object({
         dueWeekday: z.number().int().min(0).max(6).nullable(),
         availableDaysPrior: z.number().int().min(0).max(6).default(0),
+        project: z.array(z.string().uuid()).max(20).optional(),
       })
       .parse(req.body);
     const { wr, timezone } = await loadState(userId);
-    const next: WeeklyReview = { ...wr, dueWeekday: body.dueWeekday, availableDaysPrior: body.availableDaysPrior };
+    const next: WeeklyReview = {
+      ...wr,
+      dueWeekday: body.dueWeekday,
+      availableDaysPrior: body.availableDaysPrior,
+      ...(body.project !== undefined ? { project: body.project } : {}),
+    };
     await saveWeeklyReview(userId, next);
     if (next.dueWeekday !== null) {
       await provisionReviewTask(userId, next, timezone);

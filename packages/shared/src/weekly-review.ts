@@ -50,6 +50,9 @@ export const weeklyReviewSchema = z.object({
   /** The template — steps present in every review; reorder saves here. */
   steps: z.array(reviewStepSchema).max(MAX_REVIEW_STEPS).default([]),
   cycle: reviewCycleSchema.default({ key: "", extras: [], done: [], order: [] }),
+  /** Project(s) the managed "Do weekly review" task is filed under — block ids
+   *  for the task type's project reference field (empty = none). */
+  project: z.array(z.string()).default([]),
 });
 export type WeeklyReview = z.infer<typeof weeklyReviewSchema>;
 

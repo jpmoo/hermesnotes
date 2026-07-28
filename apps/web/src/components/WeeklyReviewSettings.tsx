@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ApiError } from "../api.ts";
+import { api, ApiError, type BlockType } from "../api.ts";
 import { usePreferences } from "../lib/preferences.tsx";
 import { reviewApi, WEEKDAYS } from "../lib/review.ts";
+import { ReferenceInput } from "./ReferenceInput.tsx";
 
 /**
  * Weekly-review schedule. Setting a review day creates/updates the recurring
@@ -11,10 +12,15 @@ import { reviewApi, WEEKDAYS } from "../lib/review.ts";
  */
 export function WeeklyReviewSettings() {
   const { prefs, refresh } = usePreferences();
-  const wr = prefs.weekly_review as { dueWeekday?: number | null; availableDaysPrior?: number } | undefined;
+  const wr = prefs.weekly_review as
+    | { dueWeekday?: number | null; availableDaysPrior?: number; project?: string[] }
+    | undefined;
 
   const [weekday, setWeekday] = useState<number | "">("");
   const [prior, setPrior] = useState(0);
+  const [project, setProject] = useState<string[]>([]);
+  // The task type's project reference type — so this picker matches a task's own.
+  const [projectRefTypeId, setProjectRefTypeId] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -23,14 +29,29 @@ export function WeeklyReviewSettings() {
   useEffect(() => {
     setWeekday(wr?.dueWeekday ?? "");
     setPrior(wr?.availableDaysPrior ?? 0);
-  }, [wr?.dueWeekday, wr?.availableDaysPrior]);
+    setProject(Array.isArray(wr?.project) ? wr.project : []);
+  }, [wr?.dueWeekday, wr?.availableDaysPrior, wr?.project]);
+
+  // Resolve the task type's project reference field (mirrors a task's picker).
+  useEffect(() => {
+    void api
+      .get<BlockType[]>("/block-types")
+      .then((types) => {
+        const task =
+          types.find((t) => t.builtin && t.name.trim().toLowerCase() === "task") ??
+          types.find((t) => t.propertySchema?.fields.some((f) => f.type === "reference"));
+        const ref = task?.propertySchema?.fields.find((f) => f.type === "reference");
+        setProjectRefTypeId(ref?.refTypeId);
+      })
+      .catch(() => {});
+  }, []);
 
   const save = async () => {
     setBusy(true);
     setError(null);
     setStatus(null);
     try {
-      await reviewApi.config(weekday === "" ? null : weekday, prior);
+      await reviewApi.config(weekday === "" ? null : weekday, prior, project);
       refresh(); // updates the rail-icon gate + these fields
       setStatus(weekday === "" ? "Weekly review turned off." : "Weekly review schedule saved.");
     } catch (e) {
@@ -75,6 +96,18 @@ export function WeeklyReviewSettings() {
         </select>
         <span className="hint">When a new review opens, the previous one’s checked-off progress resets.</span>
       </label>
+
+      {projectRefTypeId && (
+        <label className="field" style={{ marginTop: 12 }}>
+          <span>Project</span>
+          <ReferenceInput
+            refTypeId={projectRefTypeId}
+            value={project}
+            onChange={(v) => setProject(Array.isArray(v) ? v.map(String) : v ? [String(v)] : [])}
+          />
+          <span className="hint">Files the “Do weekly review” task under a project, like any other task.</span>
+        </label>
+      )}
 
       <div className="row" style={{ marginTop: 12 }}>
         <button className="primary" onClick={() => void save()} disabled={busy}>

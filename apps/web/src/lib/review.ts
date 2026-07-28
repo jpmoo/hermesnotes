@@ -40,8 +40,8 @@ export interface NewStep {
 
 export const reviewApi = {
   get: () => api.get<ReviewState>("/review"),
-  config: (dueWeekday: number | null, availableDaysPrior: number) =>
-    api.put<ReviewState>("/review/config", { dueWeekday, availableDaysPrior }),
+  config: (dueWeekday: number | null, availableDaysPrior: number, project?: string[]) =>
+    api.put<ReviewState>("/review/config", { dueWeekday, availableDaysPrior, project }),
   addStep: (step: NewStep) => api.post<ReviewState>("/review/steps", step),
   editStep: (
     id: string,

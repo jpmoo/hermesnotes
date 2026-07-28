@@ -272,7 +272,22 @@ export const ActiveLineSource = Extension.create({
               const source = sourceForEdit(
                 String(md.serializer.serialize(Fragment.from(op.node)) ?? "").replace(/\n+$/, ""),
               );
-              caretRel = mapOffset($head.parentOffset, op.node.content.size, source.length);
+              // Is there any real text AFTER the caret in the rendered line? If
+              // not — only chips, trailing whitespace, or nothing follow — the
+              // click landed past the line's end, so drop the caret at the end of
+              // the source rather than at a proportional (often mid-line) guess.
+              const off = $head.parentOffset;
+              let textAfterCaret = false;
+              op.node.descendants((child, pos) => {
+                if (!child.isText) return true;
+                const rel = off - pos;
+                const t = child.text ?? "";
+                if (rel < t.length && t.slice(Math.max(0, rel)).trim().length) textAfterCaret = true;
+                return true;
+              });
+              caretRel = textAfterCaret
+                ? mapOffset(off, op.node.content.size, source.length)
+                : source.length;
               const content = source.length ? [schema.text(source)] : [];
               tr = tr.replaceWith(op.from, op.from + op.node.nodeSize, sourceType.create(null, content));
             } else {

@@ -102,11 +102,12 @@ function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): S
         case "contains":
           return sql`${p} ILIKE ${`%${v}%`}`;
         case "lt":
-          // Ordered comparisons require a value: an empty string would sort
-          // before every date, making "< today" true for undated blocks.
-          return sql`(${p} <> '' AND ${p} < ${v})`;
+          // Ordered comparisons require a non-empty value on BOTH sides: an
+          // empty stored value sorts before every date, and an empty compare
+          // value (`> ''`) would otherwise match every non-empty row. Guard both.
+          return v ? sql`(${p} <> '' AND ${p} < ${v})` : sql`false`;
         case "gt":
-          return sql`(${p} <> '' AND ${p} > ${v})`;
+          return v ? sql`(${p} <> '' AND ${p} > ${v})` : sql`false`;
         case "empty":
           return sql`(${p} IS NULL OR ${p} = '')`;
         case "notEmpty":

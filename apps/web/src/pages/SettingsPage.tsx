@@ -1,4 +1,4 @@
-import { CalendarDays, Copy, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
+import { CalendarDays, Copy, Download, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, apiBase, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
@@ -394,10 +394,14 @@ export function SettingsPage() {
                         <span>{fmtBytes(f.bytes)}</span>
                         <span>{new Date(f.createdAt).toLocaleString()}</span>
                         <a
+                          className="icon-btn"
+                          style={{ marginLeft: "auto" }}
                           href={`${apiBase}/admin/backup/download?file=${encodeURIComponent(f.file)}`}
                           download={f.file}
+                          title={`Download ${f.file}`}
+                          aria-label={`Download ${f.file}`}
                         >
-                          Download
+                          <Download size={15} />
                         </a>
                       </div>
                     ))}

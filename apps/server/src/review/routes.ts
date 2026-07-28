@@ -320,7 +320,22 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     const { wr, timezone } = await loadState(userId);
     const next: WeeklyReview = { ...wr, dueWeekday: body.dueWeekday, availableDaysPrior: body.availableDaysPrior };
     await saveWeeklyReview(userId, next);
-    if (next.dueWeekday !== null) await provisionReviewTask(userId, next, timezone);
+    if (next.dueWeekday !== null) {
+      await provisionReviewTask(userId, next, timezone);
+    } else {
+      // Turning the feature off: unmark the managed task(s) so they become plain
+      // tasks — otherwise the archive guard keeps a half-finished one stuck.
+      await db
+        .update(blocks)
+        .set({ properties: sql`${blocks.properties} - 'weekly_review'`, version: sql`${blocks.version} + 1` })
+        .where(
+          and(
+            eq(blocks.ownerId, userId),
+            sql`${blocks.properties}->>'weekly_review' = 'true'`,
+            isNull(blocks.archivedAt),
+          ),
+        );
+    }
     return buildState(userId);
   });
 

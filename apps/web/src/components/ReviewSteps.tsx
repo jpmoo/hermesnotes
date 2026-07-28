@@ -8,57 +8,26 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckSquare, GripVertical, Link2, Plus, Square, X } from "lucide-react";
+import { CheckSquare, GripVertical, Link2, Pencil, Plus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type BlockSearchResult, type Collection } from "../api.ts";
 import type { NewStep, ReviewLink, ReviewStepView } from "../lib/review.ts";
 
-const stepLabel = (s: ReviewStepView): string =>
-  s.description.trim() || s.label || "Untitled step";
+const stepLabel = (s: ReviewStepView): string => s.description.trim() || s.label || "Untitled step";
 
-function Row({
-  step,
-  current,
-  onSelect,
-  onToggleDone,
-  onRemove,
+/** The compact link picker: none / block / collection. */
+function LinkPicker({
+  value,
+  onChange,
+  initialLabel,
 }: {
-  step: ReviewStepView;
-  current: boolean;
-  onSelect: (id: string) => void;
-  onToggleDone: (id: string, done: boolean) => void;
-  onRemove: (id: string) => void;
+  value: ReviewLink | null;
+  onChange: (v: ReviewLink | null) => void;
+  initialLabel?: string;
 }) {
-  const sortable = useSortable({ id: step.id });
-  const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
-  return (
-    <div ref={sortable.setNodeRef} style={style} className={`sec-row review-step-row${current ? " current" : ""}`}>
-      <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
-        <GripVertical size={14} />
-      </button>
-      <button
-        className="review-step-check"
-        title={step.done ? "Mark not done" : "Mark done"}
-        onClick={() => onToggleDone(step.id, !step.done)}
-      >
-        {step.done ? <CheckSquare size={16} /> : <Square size={16} />}
-      </button>
-      <button className={`sec-label review-step-label${step.done ? " done" : ""}`} onClick={() => onSelect(step.id)}>
-        {step.link && <Link2 size={11} className="review-step-linkicon" />}
-        {stepLabel(step)}
-      </button>
-      <button className="icon-btn sec-remove" title="Remove step" onClick={() => onRemove(step.id)}>
-        <X size={13} />
-      </button>
-    </div>
-  );
-}
-
-/** The compact link picker used when adding a step: none / block / collection. */
-function LinkPicker({ value, onChange }: { value: ReviewLink | null; onChange: (v: ReviewLink | null) => void }) {
   const [mode, setMode] = useState<"none" | "block" | "collection">(value?.t ?? "none");
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(value?.t === "block" ? initialLabel ?? "" : "");
   const [results, setResults] = useState<BlockSearchResult[]>([]);
 
   useEffect(() => {
@@ -69,7 +38,8 @@ function LinkPicker({ value, onChange }: { value: ReviewLink | null; onChange: (
   useEffect(() => {
     if (mode !== "block") return;
     const t = setTimeout(() => {
-      if (q.trim()) void api.get<BlockSearchResult[]>(`/blocks/search?q=${encodeURIComponent(q)}`).then(setResults).catch(() => {});
+      if (q.trim())
+        void api.get<BlockSearchResult[]>(`/blocks/search?q=${encodeURIComponent(q)}`).then(setResults).catch(() => {});
       else setResults([]);
     }, 200);
     return () => clearTimeout(t);
@@ -129,12 +99,22 @@ function LinkPicker({ value, onChange }: { value: ReviewLink | null; onChange: (
   );
 }
 
-function AddStepForm({ onAdd, onCancel }: { onAdd: (s: NewStep) => void; onCancel: () => void }) {
-  const [description, setDescription] = useState("");
-  const [link, setLink] = useState<ReviewLink | null>(null);
-  const [scope, setScope] = useState<"template" | "cycle">("template");
+/** Shared description + link fields, used by both the add form and inline edit. */
+function StepFields({
+  description,
+  setDescription,
+  link,
+  setLink,
+  initialLabel,
+}: {
+  description: string;
+  setDescription: (v: string) => void;
+  link: ReviewLink | null;
+  setLink: (v: ReviewLink | null) => void;
+  initialLabel?: string;
+}) {
   return (
-    <div className="review-addform">
+    <>
       <textarea
         className="review-adddesc"
         placeholder="Describe this step…"
@@ -142,7 +122,97 @@ function AddStepForm({ onAdd, onCancel }: { onAdd: (s: NewStep) => void; onCance
         value={description}
         onChange={(e) => setDescription(e.target.value)}
       />
-      <LinkPicker value={link} onChange={setLink} />
+      <LinkPicker value={link} onChange={setLink} initialLabel={initialLabel} />
+    </>
+  );
+}
+
+function Row({
+  step,
+  current,
+  locked,
+  onSelect,
+  onToggleDone,
+  onRemove,
+  onEdit,
+}: {
+  step: ReviewStepView;
+  current: boolean;
+  locked: boolean;
+  onSelect: (id: string) => void;
+  onToggleDone: (id: string, done: boolean) => void;
+  onRemove: (id: string) => void;
+  onEdit: (id: string, patch: { description: string; link: ReviewLink | null }) => void;
+}) {
+  const sortable = useSortable({ id: step.id });
+  const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
+  const [editing, setEditing] = useState(false);
+  const [description, setDescription] = useState(step.description);
+  const [link, setLink] = useState<ReviewLink | null>(step.link);
+
+  if (editing) {
+    return (
+      <div ref={sortable.setNodeRef} style={style} className="review-addform">
+        <StepFields
+          description={description}
+          setDescription={setDescription}
+          link={link}
+          setLink={setLink}
+          initialLabel={step.label ?? undefined}
+        />
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="primary"
+            type="button"
+            onClick={() => {
+              onEdit(step.id, { description: description.trim(), link });
+              setEditing(false);
+            }}
+          >
+            Save
+          </button>
+          <button className="ghost" type="button" onClick={() => setEditing(false)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div ref={sortable.setNodeRef} style={style} className={`sec-row review-step-row${current ? " current" : ""}`}>
+      <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
+        <GripVertical size={14} />
+      </button>
+      <button
+        className="review-step-check"
+        title={locked ? "Opens on the review's available date" : step.done ? "Mark not done" : "Mark done"}
+        disabled={locked}
+        onClick={() => onToggleDone(step.id, !step.done)}
+      >
+        {step.done ? <CheckSquare size={16} /> : <Square size={16} />}
+      </button>
+      <button className={`sec-label review-step-label${step.done ? " done" : ""}`} onClick={() => onSelect(step.id)}>
+        {step.link && <Link2 size={11} className="review-step-linkicon" />}
+        {stepLabel(step)}
+      </button>
+      <button className="icon-btn sec-remove" title="Edit step" onClick={() => setEditing(true)}>
+        <Pencil size={12} />
+      </button>
+      <button className="icon-btn sec-remove" title="Remove step" onClick={() => onRemove(step.id)}>
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
+function AddStepForm({ onAdd, onCancel }: { onAdd: (s: NewStep) => void; onCancel: () => void }) {
+  const [description, setDescription] = useState("");
+  const [link, setLink] = useState<ReviewLink | null>(null);
+  const [scope, setScope] = useState<"template" | "cycle">("template");
+  return (
+    <div className="review-addform">
+      <StepFields description={description} setDescription={setDescription} link={link} setLink={setLink} />
       <label className="field">
         <span>Add to</span>
         <select value={scope} onChange={(e) => setScope(e.target.value as "template" | "cycle")}>
@@ -171,18 +241,24 @@ function AddStepForm({ onAdd, onCancel }: { onAdd: (s: NewStep) => void; onCance
 export function ReviewSteps({
   steps,
   currentId,
+  locked,
   onSelect,
   onToggleDone,
   onReorder,
   onRemove,
+  onEdit,
   onAdd,
 }: {
   steps: ReviewStepView[];
   currentId: string | null;
+  /** Before the review opens: progress (done boxes) is read-only; you can still
+   *  build the step list. */
+  locked: boolean;
   onSelect: (id: string) => void;
   onToggleDone: (id: string, done: boolean) => void;
   onReorder: (ids: string[]) => void;
   onRemove: (id: string) => void;
+  onEdit: (id: string, patch: { description: string; link: ReviewLink | null }) => void;
   onAdd: (step: NewStep) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -208,9 +284,11 @@ export function ReviewSteps({
               key={s.id}
               step={s}
               current={s.id === currentId}
+              locked={locked}
               onSelect={onSelect}
               onToggleDone={onToggleDone}
               onRemove={onRemove}
+              onEdit={onEdit}
             />
           ))}
         </SortableContext>

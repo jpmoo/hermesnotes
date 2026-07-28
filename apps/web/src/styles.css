@@ -281,6 +281,18 @@ label,
 .review-page {
   max-width: 780px;
 }
+.review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.review-markdone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .review-reflection {
   margin: 12px 0 20px;
 }

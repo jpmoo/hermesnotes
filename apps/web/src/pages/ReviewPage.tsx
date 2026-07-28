@@ -8,6 +8,7 @@ import { CollectionSection } from "../components/CollectionSection.tsx";
 import { ReviewSteps } from "../components/ReviewSteps.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useBlockChanged } from "../lib/block-events.ts";
 import { reviewApi, WEEKDAYS, type ReviewState, type ReviewStepView } from "../lib/review.ts";
 
 const fmtLong = (date: string) =>
@@ -82,6 +83,11 @@ export function ReviewPage() {
     return () => setHasContent(false);
   }, [setHasContent]);
 
+  // Live-sync: if the task is completed/edited elsewhere (another window, MCP),
+  // refetch. The subscribed id follows the current occurrence.
+  const taskId = state?.configured ? state.task?.id ?? "" : "";
+  useBlockChanged(taskId, load);
+
   const steps = state?.configured ? state.steps : [];
   // Default the cursor to the first unfinished step (or the first).
   useEffect(() => {
@@ -135,10 +141,18 @@ export function ReviewPage() {
   const current = steps.find((s) => s.id === currentId) ?? steps[0] ?? null;
   const doneCount = steps.filter((s) => s.done).length;
   const taskDone = state.task?.status === "done";
+  const locked = !state.open; // before the available date: progress is read-only
 
   return (
     <div className="review-page">
-      <h1 className="page-title">Weekly Review</h1>
+      <div className="review-head">
+        <h1 className="page-title">Weekly Review</h1>
+        {state.open && !taskDone && state.task && (
+          <button className="primary review-markdone" onClick={() => void completeTask(state.task!.id)}>
+            <CheckCircle2 size={16} /> Mark review done
+          </button>
+        )}
+      </div>
       <p className="page-sub">
         Due {state.task?.due ? fmtLong(state.task.due) : WEEKDAYS[state.dueWeekday]}
         {" · "}
@@ -159,7 +173,7 @@ export function ReviewPage() {
         <section className="review-current">
           <div className="review-current-head">
             <h2>{current.description.trim() || current.label || "Step"}</h2>
-            {!current.done && (
+            {!current.done && !locked && (
               <button className="primary" onClick={() => void toggleDone(current.id, true)}>
                 Done <ChevronRight size={15} />
               </button>
@@ -171,12 +185,6 @@ export function ReviewPage() {
         <div className="hint">Add your first step in the panel on the right.</div>
       )}
 
-      {!taskDone && state.allDone && state.task && (
-        <button className="primary review-complete" onClick={() => void completeTask(state.task!.id)}>
-          <CheckCircle2 size={16} /> Complete this review
-        </button>
-      )}
-
       {bottomSlotEl &&
         createPortal(
           <>
@@ -185,10 +193,12 @@ export function ReviewPage() {
             <ReviewSteps
               steps={steps}
               currentId={currentId}
+              locked={locked}
               onSelect={setCurrentId}
               onToggleDone={(id, done) => void toggleDone(id, done)}
               onReorder={(ids) => mutate(reviewApi.reorder(ids))}
               onRemove={(id) => mutate(reviewApi.removeStep(id))}
+              onEdit={(id, patch) => mutate(reviewApi.editStep(id, patch))}
               onAdd={(step) => mutate(reviewApi.addStep(step))}
             />
           </>,

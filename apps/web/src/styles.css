@@ -2436,6 +2436,12 @@ input.region-title:focus {
 /* Cards let the region's color show through — a shade more than the head. */
 .region-body .matrix-chip {
   background: rgba(255, 255, 255, 0.6);
+  /* The card is a translucent-white surface in every theme (and over any region
+     color/transparency), so its text must be dark to stay readable. */
+  color: #1f2328;
+}
+.region-body .matrix-chip .chip-dates {
+  color: #565d64;
 }
 /* Desktop task cards run a touch tall — trim the vertical padding. Mobile keeps
    its roomier padding for two-line labels. */

@@ -2606,11 +2606,16 @@ input.matrix-axis-y::placeholder {
 .region-actions:hover {
   background: color-mix(in srgb, var(--accent-ink) 12%, transparent);
 }
-/* Solid region colors: the title/header text uses a readable shade derived from
-   the region background (set inline on .matrix-region), so it stays legible in
-   both themes without a washed-out overlay. */
+/* Solid region colors: keep the translucent header bar, but its text is always
+   dark (the bar is light in every theme, so the theme's own light-in-dark title
+   color was unreadable on it). The region body inherits a readable shade of the
+   region background (set inline on .matrix-region) for anything outside the bar. */
 .matrix-region.colored .region-head {
-  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 7px;
+  padding: 3px 7px;
+  margin: -2px -4px 8px;
+  color: #1f2328;
 }
 .matrix-region.colored .region-title,
 .matrix-region.colored .region-title-static {

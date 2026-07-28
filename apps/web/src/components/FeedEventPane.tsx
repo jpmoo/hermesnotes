@@ -1,7 +1,7 @@
-import { CalendarDays, Copy, MapPin, RefreshCw } from "lucide-react";
+import { CalendarDays, MapPin, RefreshCw } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { api, type FeedEvent } from "../api.ts";
-import { emitCalendarRefresh, emitFeedEventConverted } from "../lib/calendar-events.ts";
+import { emitFeedEventConverted } from "../lib/calendar-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 
 const fmtDateTime = (v: string, allDay: boolean) => {
@@ -69,9 +69,8 @@ function renderDescription(raw: string): ReactNode[] {
 
 /**
  * Read-only detail for a subscribed calendar-feed event. Feed events aren't
- * Hermes blocks; the only mutations offered are turning one into a Hermes event
- * — either "sync" (linked, follows the feed, hides the event here) or "copy"
- * (a one-off; the feed event stays).
+ * Hermes blocks; the one mutation offered is turning it into a linked Hermes
+ * event that follows the feed and hides the feed row here.
  */
 export function FeedEventPane({
   event,
@@ -81,7 +80,7 @@ export function FeedEventPane({
   onConverted: (blockId: string) => void;
 }) {
   const { selectBlock } = usePanels();
-  const [busy, setBusy] = useState<"sync" | "copy" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const when =
@@ -89,14 +88,14 @@ export function FeedEventPane({
       ? `${fmtDateTime(event.start, event.allDay)} → ${fmtDateTime(event.end, event.allDay)}`
       : fmtDateTime(event.start, event.allDay);
 
-  const convert = async (mode: "sync" | "copy") => {
-    setBusy(mode);
+  const convert = async () => {
+    setBusy(true);
     setErr(null);
     try {
       const res = await api.post<{ blockId: string }>("/calendar/convert", {
         feedId: event.feedId,
         uid: event.uid,
-        mode,
+        mode: "sync",
         summary: event.summary,
         description: event.description,
         location: event.location,
@@ -104,13 +103,12 @@ export function FeedEventPane({
         end: event.end,
         allDay: event.allDay,
       });
-      if (mode === "sync") emitFeedEventConverted(event.feedId, event.uid);
-      else emitCalendarRefresh();
+      emitFeedEventConverted(event.feedId, event.uid);
       onConverted(res.blockId);
       selectBlock(res.blockId);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't convert this event");
-      setBusy(null);
+      setBusy(false);
     }
   };
 
@@ -140,18 +138,14 @@ export function FeedEventPane({
       )}
 
       <div className="feed-event-actions">
-        <button className="primary feed-event-convert" onClick={() => void convert("sync")} disabled={busy !== null}>
+        <button className="primary feed-event-convert" onClick={() => void convert()} disabled={busy}>
           <RefreshCw size={15} />
-          {busy === "sync" ? "Syncing…" : "Sync to Hermes event"}
-        </button>
-        <button className="ghost feed-event-copy" onClick={() => void convert("copy")} disabled={busy !== null}>
-          <Copy size={15} />
-          {busy === "copy" ? "Copying…" : "Make a copy"}
+          {busy ? "Creating…" : "Create and Sync with a Hermes Note event"}
         </button>
       </div>
       <p className="hint feed-event-convert-hint">
-        <strong>Sync</strong> keeps the Hermes event in step with this feed and hides it here — delete the
-        event to bring it back. <strong>Copy</strong> is a one-off and leaves the feed event in place.
+        Keeps the Hermes Note event in step with this feed and hides it here — delete the event to bring
+        it back.
       </p>
       {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
     </div>

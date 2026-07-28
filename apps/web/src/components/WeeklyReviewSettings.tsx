@@ -18,6 +18,7 @@ export function WeeklyReviewSettings() {
   const [project, setProject] = useState<string[]>([]);
   // The task type's project reference type — so this picker matches a task's own.
   const [projectRefTypeId, setProjectRefTypeId] = useState<string | undefined>();
+  const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +30,14 @@ export function WeeklyReviewSettings() {
     setPrior(st.configured ? st.availableDaysPrior : 0);
     setProject(st.configured ? st.project : []);
   };
+  // Gate editing until this resolves: it's slower than the block-types fetch, so
+  // a pick made before it lands would otherwise be wiped by this hydrate.
   useEffect(() => {
-    void reviewApi.get().then(hydrate).catch(() => {});
+    void reviewApi
+      .get()
+      .then(hydrate)
+      .catch(() => {})
+      .finally(() => setHydrated(true));
   }, []);
 
   // Use the exact type the task's Project field references — matches YOUR project
@@ -105,7 +112,7 @@ export function WeeklyReviewSettings() {
         <span className="hint">When a new review opens, the previous one’s checked-off progress resets.</span>
       </label>
 
-      {projectRefTypeId && (
+      {hydrated && projectRefTypeId && (
         <label className="field" style={{ marginTop: 12 }}>
           <span>Project</span>
           <ReferenceInput

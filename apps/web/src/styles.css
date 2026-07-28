@@ -3086,6 +3086,13 @@ input.matrix-axis-y::placeholder {
   align-items: center;
   gap: 4px;
 }
+/* Matrix toolbar labels sit over the page banner — use the banner-aware readable
+   color (same as the "Add banner" text), not a fixed muted shade. */
+.cols-ctl .hint,
+.matrix-bind .hint {
+  color: var(--bg-title, var(--text-muted));
+  text-shadow: 0 1px 3px var(--bg-title-shadow, transparent);
+}
 .cols-n {
   min-width: 14px;
   text-align: center;

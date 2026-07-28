@@ -33,16 +33,22 @@ export function WeeklyReviewSettings() {
     void reviewApi.get().then(hydrate).catch(() => {});
   }, []);
 
-  // The picker targets the "project" type directly (what a task's Project field
-  // references), rather than guessing via the task type's first reference field.
+  // Use the exact type the task's Project field references — matches YOUR project
+  // type (there can be more than one type named "project"). Find the task type by
+  // name or by shape (status + datespan), then its reference field's refTypeId.
   useEffect(() => {
     void api
       .get<BlockType[]>("/block-types")
       .then((types) => {
-        const project =
-          types.find((t) => t.name.trim().toLowerCase() === "project") ??
-          types.find((t) => t.name.trim().toLowerCase() === "projects");
-        setProjectRefTypeId(project?.id);
+        const task =
+          types.find((t) => t.name.trim().toLowerCase() === "task") ??
+          types.find(
+            (t) =>
+              t.propertySchema?.status_field &&
+              t.propertySchema.fields.some((f) => f.type === "datespan"),
+          );
+        const ref = task?.propertySchema?.fields.find((f) => f.type === "reference" && f.refTypeId);
+        setProjectRefTypeId(ref?.refTypeId);
       })
       .catch(() => {});
   }, []);

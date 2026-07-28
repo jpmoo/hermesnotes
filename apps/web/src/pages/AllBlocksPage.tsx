@@ -1,5 +1,5 @@
 import type { FilterGroup } from "@hermes/shared";
-import { ChevronDown, ChevronUp, FolderPlus, Layers } from "lucide-react";
+import { ChevronDown, ChevronUp, FolderPlus, Layers, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
@@ -20,6 +20,7 @@ export function AllBlocksPage() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saveOpen, setSaveOpen] = useState(false);
   const { bottomSlotEl, setHasContent, selectPage } = usePanels();
@@ -33,16 +34,22 @@ export function AllBlocksPage() {
     void api.get<{ name: string }[]>("/tags").then((t) => setTags(t.map((x) => x.name)));
   }, []);
 
-  // Re-run the query whenever the filter changes (debounced).
+  // The live search box ANDs a full-text condition onto the builder's filter.
+  const effectiveFilter: FilterGroup = search.trim()
+    ? { kind: "group", match: "all", items: [...filter.items, { kind: "text", value: search.trim() }] }
+    : filter;
+
+  // Re-run the query whenever the filter or search changes (debounced).
   useEffect(() => {
     const t = setTimeout(() => {
       void api
-        .post<Block[]>("/blocks/query", { filterQuery: filter })
+        .post<Block[]>("/blocks/query", { filterQuery: effectiveFilter })
         .then(setBlocks)
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, search]);
 
   // Offer the query builder in the right panel; arriving logs the page as the
   // current location (clearing any block selection, so the panel shows tools).
@@ -55,7 +62,7 @@ export function AllBlocksPage() {
 
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
   const reload = () =>
-    void api.post<Block[]>("/blocks/query", { filterQuery: filter }).then(setBlocks);
+    void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter }).then(setBlocks);
 
   const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "allblocks" });
 
@@ -85,8 +92,24 @@ export function AllBlocksPage() {
         )}
       </div>
       <p className="page-sub">
-        Every block. Filter with the query builder on the right, then save it as a list.
+        Every block. Search below, or filter with the query builder on the right and save it as a list.
       </p>
+
+      <div className="allblocks-search">
+        <Search size={16} className="allblocks-search-icon" />
+        <input
+          type="text"
+          placeholder="Search all blocks…"
+          value={search}
+          autoComplete="off"
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button className="icon-btn" title="Clear search" onClick={() => setSearch("")}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
 
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
         <button className="save-as-btn" onClick={() => setSaveOpen(true)}>
@@ -140,7 +163,7 @@ export function AllBlocksPage() {
         })
       )}
 
-      {saveOpen && <SaveAsCollectionModal filter={filter} onClose={() => setSaveOpen(false)} />}
+      {saveOpen && <SaveAsCollectionModal filter={effectiveFilter} onClose={() => setSaveOpen(false)} />}
 
       {bottomSlotEl &&
         createPortal(

@@ -1323,6 +1323,30 @@ button.nav-link:hover {
   color: var(--text-muted);
   font-style: italic;
 }
+/* All-blocks live search box. */
+.allblocks-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  max-width: 480px;
+}
+.allblocks-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.allblocks-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+}
 
 /* Sign out styled as a nav row (button reset). */
 .signout {

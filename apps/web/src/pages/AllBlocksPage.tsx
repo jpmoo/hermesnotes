@@ -2,7 +2,7 @@ import type { FilterGroup } from "@hermes/shared";
 import { ChevronDown, ChevronUp, FolderPlus, Layers, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
-import { api, type Block, type BlockType } from "../api.ts";
+import { api, type Block, type BlockType, type Settings } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
@@ -21,6 +21,8 @@ export function AllBlocksPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
   const [search, setSearch] = useState("");
+  // Similarity floor for the search box's semantic pass — matches global search.
+  const [simFloor, setSimFloor] = useState(0.75);
   const [loading, setLoading] = useState(true);
   const [saveOpen, setSaveOpen] = useState(false);
   const { bottomSlotEl, setHasContent, selectPage } = usePanels();
@@ -32,11 +34,32 @@ export function AllBlocksPage() {
   useEffect(() => {
     void api.get<BlockType[]>("/block-types").then(setTypes);
     void api.get<{ name: string }[]>("/tags").then((t) => setTags(t.map((x) => x.name)));
+    void api
+      .get<Settings>("/settings")
+      .then((s) => setSimFloor(s.defaultSimilarity ?? 0.75))
+      .catch(() => {});
   }, []);
 
-  // The live search box ANDs a full-text condition onto the builder's filter.
-  const effectiveFilter: FilterGroup = search.trim()
-    ? { kind: "group", match: "all", items: [...filter.items, { kind: "text", value: search.trim() }] }
+  // The live search box ANDs a (keyword OR semantic) match onto the builder's
+  // filter — so results include both literal hits and conceptually-similar ones,
+  // like the global search. (Semantic is a no-op when no embedding model is set.)
+  const term = search.trim();
+  const effectiveFilter: FilterGroup = term
+    ? {
+        kind: "group",
+        match: "all",
+        items: [
+          ...filter.items,
+          {
+            kind: "group",
+            match: "any",
+            items: [
+              { kind: "text", value: term },
+              { kind: "semantic", value: term, floor: simFloor },
+            ],
+          },
+        ],
+      }
     : filter;
 
   // Re-run the query whenever the filter or search changes (debounced).
@@ -49,7 +72,7 @@ export function AllBlocksPage() {
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, search]);
+  }, [filter, search, simFloor]);
 
   // Offer the query builder in the right panel; arriving logs the page as the
   // current location (clearing any block selection, so the panel shows tools).
@@ -99,7 +122,7 @@ export function AllBlocksPage() {
         <Search size={16} className="allblocks-search-icon" />
         <input
           type="text"
-          placeholder="Search all blocks…"
+          placeholder="Search all blocks (keyword + similar)…"
           value={search}
           autoComplete="off"
           onChange={(e) => setSearch(e.target.value)}

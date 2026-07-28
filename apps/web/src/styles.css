@@ -1333,7 +1333,7 @@ button.nav-link:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface);
-  max-width: 480px;
+  width: 100%;
 }
 .allblocks-search-icon {
   color: var(--text-muted);

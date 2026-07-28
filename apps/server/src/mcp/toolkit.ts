@@ -43,6 +43,9 @@ function whenConds(ctx: Ctx, when: string): (Condition | FilterGroup)[] {
     case "due_today":
       // `contains` matches both date-only and datetime values for the day.
       return [prop(end, "contains", "today"), ...openConds(ctx)];
+    case "tomorrow":
+    case "due_tomorrow":
+      return [prop(end, "contains", "today+1"), ...openConds(ctx)];
     case "week":
     case "due_week":
       return [prop(end, "lt", "today+7"), ...openConds(ctx)];
@@ -54,7 +57,7 @@ function whenConds(ctx: Ctx, when: string): (Condition | FilterGroup)[] {
       return [prop(end, "empty"), prop(start, "empty"), ...openConds(ctx)];
     default:
       throw new Error(
-        `Unknown when="${when}". Use overdue, today, week, available, or unscheduled.`,
+        `Unknown when="${when}". Use overdue, today, tomorrow, week, available, or unscheduled.`,
       );
   }
 }
@@ -165,7 +168,7 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "task_find",
-    "List/search tasks. All params optional and composable. status: open|done|... (or comma list); when: overdue|today|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id; region: a matrix region/row/column title within that list (e.g. \"Do\").",
+    "List/search tasks. All params optional and composable. status: open|done|... (or comma list); when: overdue|today|tomorrow|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id; region: a matrix region/row/column title within that list (e.g. \"Do\").",
     {
       status: z.string().optional(),
       when: z.string().optional(),

@@ -3,6 +3,7 @@ export * from "./collections.js";
 export * from "./display.js";
 export * from "./today.js";
 export * from "./recurrence.js";
+export * from "./weekly-review.js";
 
 /** Icon metadata (doc §10). */
 export interface IconSpec {

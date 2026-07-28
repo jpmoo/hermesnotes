@@ -60,6 +60,37 @@ function ConnGroup({
   );
 }
 
+/**
+ * A collection's description — the one long-text field that saves to the
+ * collection (PATCH /collections/:id), not to a block-type field. Self-contained:
+ * mounts with the loaded value, debounces edits, and flushes on unmount so a save
+ * in flight isn't lost when the panel closes or you pick another block. Mount it
+ * keyed by collection id so each collection gets a fresh initial value.
+ */
+function CollectionDescription({ collectionId, initial }: { collectionId: string; initial: string }) {
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const pending = useRef<string | null>(null);
+  const save = (v: string) => {
+    pending.current = v;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      pending.current = null;
+      timer.current = undefined;
+      void api.patch(`/collections/${collectionId}`, { description: v });
+    }, 700);
+  };
+  useEffect(
+    () => () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        if (pending.current != null) void api.patch(`/collections/${collectionId}`, { description: pending.current });
+      }
+    },
+    [collectionId],
+  );
+  return <LongTextField value={initial} onChange={save} placeholder="Describe this collection…" blockId={collectionId} />;
+}
+
 /** Right-panel info pane: an editable card for the selected block + its info. */
 export function BlockInfoPane({
   blockId,
@@ -77,8 +108,6 @@ export function BlockInfoPane({
   const [info, setInfo] = useState<BlockInfo | null>(null);
   const [block, setBlock] = useState<Block | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
-  const [desc, setDesc] = useState("");
-  const descTimer = useRef<ReturnType<typeof setTimeout>>();
   const { pathname } = useLocation();
   const { infoTick } = usePanels();
   const { isFavorite, toggleFavorite } = usePreferences();
@@ -93,17 +122,6 @@ export function BlockInfoPane({
   // Collection description lives here (not on the page) and is embedded with
   // the title, so semantic search finds the collection by purpose.
   const isCollection = Boolean(block?.collectionKind);
-  useEffect(() => {
-    if (block?.collectionKind) setDesc(String(block.properties?.description ?? ""));
-  }, [block]);
-  const saveDesc = (v: string) => {
-    setDesc(v);
-    if (descTimer.current) clearTimeout(descTimer.current);
-    descTimer.current = setTimeout(
-      () => void api.patch(`/collections/${blockId}`, { description: v }),
-      800,
-    );
-  };
 
   useEffect(() => {
     void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => setInfo(null));
@@ -192,10 +210,14 @@ export function BlockInfoPane({
           </div>
         )
       )}
-      {isCollection && (
-        <div className="collection-desc" key={`desc-${blockId}`}>
+      {isCollection && block && (
+        <div className="collection-desc">
           <div className="panel-h">Description</div>
-          <LongTextField value={desc} onChange={saveDesc} placeholder="Describe this collection…" blockId={blockId} />
+          <CollectionDescription
+            key={`desc-${blockId}`}
+            collectionId={blockId}
+            initial={String(block.properties?.description ?? "")}
+          />
         </div>
       )}
       <dl className="info-grid">

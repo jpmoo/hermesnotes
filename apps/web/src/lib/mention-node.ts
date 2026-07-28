@@ -68,7 +68,7 @@ export const MentionNode = Node.create({
  * attacker-chosen link on the next parse — and a raw newline breaks the link
  * apart entirely (multi-line selections are the norm for extract-to-block).
  */
-function escapeLabel(label: string): string {
+export function escapeLabel(label: string): string {
   return String(label ?? "")
     .replace(/\\/g, "\\\\")
     .replace(/\[/g, "\\[")

@@ -13,7 +13,8 @@ import { Markdown } from "tiptap-markdown";
 import { ActiveLineSource, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
-import { linksToMentions, MentionNode } from "../lib/mention-node.ts";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 
@@ -51,7 +52,7 @@ export function MarkdownEditor({
   const [markdown, setMarkdown] = useState(value);
   const [sug, setSug] = useState<MentionState | null>(null);
   const [extract, setExtract] = useState<
-    { x: number; y: number; from: number; to: number; text: string; types: BlockType[] } | null
+    { x: number; y: number; from: number; to: number; titleText: string; mdText: string; types: BlockType[] } | null
   >(null);
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -195,37 +196,46 @@ export function MarkdownEditor({
     autosize();
   };
 
-  // Right-click on a selection → offer to extract it into a new block.
+  // Right-click on a selection → offer to extract it into a new block. We read
+  // the selection twice: `titleText` inlines any mention/link as its plain label
+  // (for a clean title), while `mdText` keeps the link as `[label](href)` so the
+  // extracted block's body preserves the connection.
   const onContextMenu = (e: React.MouseEvent) => {
     if (!editor || mode !== "live") return;
     const { from, to, empty } = editor.state.selection;
     if (empty) return;
-    const text = editor.state.doc.textBetween(from, to, "\n").trim();
-    if (!text) return;
+    const doc = editor.state.doc;
+    const asLabel = (n: PMNode) => (n.type.name === "mention" ? String(n.attrs.label ?? "") : "");
+    const asMarkdown = (n: PMNode) =>
+      n.type.name === "mention" ? `[${escapeLabel(String(n.attrs.label ?? ""))}](${n.attrs.href})` : "";
+    const titleText = doc.textBetween(from, to, "\n", asLabel).trim();
+    const mdText = doc.textBetween(from, to, "\n", asMarkdown).trim();
+    if (!titleText && !mdText) return;
     e.preventDefault();
     void api
       .get<BlockType[]>("/block-types")
-      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, text, types }))
+      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, titleText, mdText, types }))
       .catch(() => {});
   };
 
-  // Create a new block of `type` from the selected text, then replace the
-  // selection with a block: mention whose label is the original text — saving
-  // registers it as an outgoing link. New block: title = first line, body = all.
+  // Create a new block of `type` from the selection, then replace the selection
+  // with a block: mention linking back to it. The new block's title is the
+  // link-free label text; its body keeps the original links so any connections
+  // in the selection survive on the new block too.
   const extractTo = async (type: BlockType) => {
     if (!extract || !editor) return;
-    const { from, to, text } = extract;
+    const { from, to, titleText, mdText } = extract;
     setExtract(null);
-    const firstLine = text.split("\n")[0]!.trim() || "Untitled";
+    const firstLine = titleText.split("\n")[0]!.trim() || "Untitled";
     const hasDescription = type.propertySchema?.fields.some((f) => f.key === "description");
     const body = type.isText
-      ? { content: text }
-      : { properties: hasDescription ? { title: firstLine, description: text } : { title: text } };
+      ? { content: mdText }
+      : { properties: hasDescription ? { title: firstLine, description: mdText } : { title: firstLine } };
     try {
       const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
       const mention = editor.state.schema.nodes.mention;
       if (!mention) return;
-      const tr = editor.state.tr.replaceWith(from, to, mention.create({ href: `block:${b.id}`, label: text }));
+      const tr = editor.state.tr.replaceWith(from, to, mention.create({ href: `block:${b.id}`, label: titleText }));
       editor.view.dispatch(tr);
       editor.view.focus();
     } catch {

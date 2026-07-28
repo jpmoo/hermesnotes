@@ -57,6 +57,32 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
  * Anything else (an ISO date/datetime, a plain value) is returned unchanged, so
  * literal values pass straight through.
  */
+/**
+ * "Now" as a Date whose server-local Y/M/D/H:M mirror the user's wall clock in
+ * their configured IANA timezone (null/undefined = server local), so a caller
+ * reading its Y/M/D fields gets the user's calendar day — not the server's,
+ * which can already be on the next date in the evening (the box runs UTC).
+ */
+export function userLocalNow(tz: string | null | undefined, base: Date = new Date()): Date {
+  if (!tz) return base;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).formatToParts(base);
+    const g = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+    return new Date(g("year"), g("month") - 1, g("day"), g("hour") % 24, g("minute"), g("second"));
+  } catch {
+    return base;
+  }
+}
+
 export function resolveDateToken(value: string, now: Date): string {
   const s = (value ?? "").trim().toLowerCase();
   const today = s.match(/^today\s*([+-]\s*\d+)?$/);

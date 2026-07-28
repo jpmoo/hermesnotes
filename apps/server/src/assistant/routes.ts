@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { userLocalNow } from "@hermes/shared";
 import { userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { env } from "../env.js";
@@ -22,14 +23,25 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
 
   const requireModel = async (userId: string) => {
     const [settings] = await db
-      .select({ url: userSettings.ollamaUrl, model: userSettings.inferenceModel })
+      .select({ url: userSettings.ollamaUrl, model: userSettings.inferenceModel, timezone: userSettings.timezone })
       .from(userSettings)
       .where(eq(userSettings.userId, userId))
       .limit(1);
     if (!settings?.url) throw badRequest("No Ollama URL configured for this instance.");
     if (!settings.model)
       throw badRequest("No inference model set. Choose a tool-capable model (e.g. llama3.1, qwen2.5) in Settings.");
-    return { url: settings.url, model: settings.model };
+    return { url: settings.url, model: settings.model, timezone: settings.timezone };
+  };
+
+  /** The authoritative "Today is …" line for the system prompt: the current date
+   * in the user's configured timezone, so the model never guesses (and relative
+   * asks like "tomorrow" line up with how task_find resolves its `when` tokens). */
+  const todayLine = (tz: string | null): string => {
+    const now = userLocalNow(tz);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+    return `Today is ${weekday}, ${date}${tz ? ` (${tz})` : ""}.`;
   };
 
   /** The persisted conversation (for hydrating the panel on load). */
@@ -78,7 +90,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
 
     void (async () => {
       try {
-        const { url, model } = await requireModel(userId);
+        const { url, model, timezone } = await requireModel(userId);
         await appendMessage(userId, "user", body.message);
         const thread = await loadThread(userId);
         const numCtx = await modelContext(url, model);
@@ -90,6 +102,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
           messages: buildContext(thread),
           confirmDestructive: true,
           numCtx,
+          systemExtra: todayLine(timezone),
           onEvent: send,
         });
 

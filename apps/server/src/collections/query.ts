@@ -12,6 +12,7 @@ import { EMBEDDING_INDEX_DIM } from "@hermes/db/schema";
 import {
   normalizeFilter,
   resolveDateToken,
+  userLocalNow,
   type Condition,
   type FilterGroup,
   type FilterQuery,
@@ -56,32 +57,6 @@ export async function semanticIds(userId: string, value: string, floor: number):
     )
     .limit(1000);
   return rows.map((r) => r.blockId);
-}
-
-/**
- * "Now" as a Date whose server-local Y/M/D/H:M mirror the user's wall clock in
- * their configured timezone, so relative-date tokens (today, today+1, now)
- * resolve to the user's calendar day — not the server's, which can already be
- * on the next date in the evening (the box runs UTC).
- */
-function userLocalNow(tz: string | null): Date {
-  if (!tz) return new Date();
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).formatToParts(new Date());
-    const g = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
-    return new Date(g("year"), g("month") - 1, g("day"), g("hour") % 24, g("minute"), g("second"));
-  } catch {
-    return new Date();
-  }
 }
 
 function conditionSql(c: Condition, sem: Map<Condition, string[]>, now: Date): SQL {

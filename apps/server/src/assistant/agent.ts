@@ -18,6 +18,7 @@ Guidance:
 - To reference something the user names, first find it (search / task_find / list_types / list_lists) to get its id.
 - Blocks come in types (task, event, person, project, plain notes, …); collections come in kinds (list, document, matrix, table, canvas, kanban, masonry, calendar).
 - For "arrange these on a canvas" style requests: decide a sensible order/grouping yourself, then call canvas_create with the items in that order (use connect=true for an ordered flow).
+- Dates: trust the "Today is …" line below as the current date — never guess it. For due-date questions use task_find's \`when\` filter (today, tomorrow, week, overdue, available, unscheduled) rather than computing dates yourself; today/tomorrow/week already include still-open overdue tasks.
 - Be concise. Don't invent ids — only use ids returned by tools.`;
 
 interface OllamaToolCall {
@@ -226,6 +227,9 @@ export async function runAgent(opts: {
   messages: { role: "user" | "assistant"; content: string }[];
   confirmDestructive?: boolean;
   numCtx?: number;
+  /** A line appended to the system prompt (e.g. the authoritative current date
+   * in the user's timezone) so the model never has to guess it. */
+  systemExtra?: string;
   /** When set, the turn streams: reply tokens and finished tool steps are pushed
    * here as they happen (in addition to the final AgentResult). */
   onEvent?: (ev: AgentEvent) => void;
@@ -234,7 +238,8 @@ export async function runAgent(opts: {
   const byName = new Map(registry.map((t) => [t.name, t]));
   const tools = toOllamaTools(registry);
 
-  const messages: OllamaMessage[] = [{ role: "system", content: SYSTEM }, ...opts.messages];
+  const system = opts.systemExtra ? `${SYSTEM}\n\n${opts.systemExtra}` : SYSTEM;
+  const messages: OllamaMessage[] = [{ role: "system", content: system }, ...opts.messages];
   const steps: AgentStep[] = [];
   let promptTokens = 0;
   const onToken = opts.onEvent ? (t: string) => opts.onEvent!({ type: "token", text: t }) : undefined;

@@ -1612,9 +1612,13 @@ input.typed-title:focus {
   box-shadow: none;
   background: transparent;
 }
-/* Node titles read smaller on the canvas than in a full card. */
+/* Node titles read much smaller on the canvas than in a full card, and the
+   status icon aligns to the top of the (possibly wrapping) title. */
 .cv-node input.typed-title {
-  font-size: 13px;
+  font-size: 11px;
+}
+.cv-node .typed-head {
+  align-items: flex-start;
 }
 /* Compact (masonry) text-note header: icon + truncated first line. */
 .text-head-title {
@@ -2385,6 +2389,9 @@ input.region-title:focus {
   border: 1px solid var(--border);
   border-radius: 9px;
   background: var(--surface);
+  /* Own the text color so it stays readable on the card's surface, regardless of
+     the region's color or transparency (don't inherit the region's text shade). */
+  color: var(--text);
   font-size: 12.5px;
   cursor: grab;
   user-select: none;
@@ -2618,7 +2625,8 @@ input.matrix-axis-y::placeholder {
   color: #1f2328;
 }
 .matrix-region.colored .region-title,
-.matrix-region.colored .region-title-static {
+.matrix-region.colored .region-title-static,
+.matrix-region.colored .region-actions {
   color: inherit;
 }
 .matrix-region.colored .region-title::placeholder {

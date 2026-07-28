@@ -223,10 +223,12 @@ export function MarkdownEditor({
     const { from, to, titleText, mdText } = extract;
     setExtract(null);
     const firstLine = titleText.split("\n")[0]!.trim() || "Untitled";
-    const hasDescription = type.propertySchema?.fields.some((f) => f.key === "description");
+    // Put the extracted body into the type's first long-text field, whatever it's
+    // keyed (description, notes, body…) — not only a field literally "description".
+    const longKey = type.propertySchema?.fields.find((f) => f.type === "longtext")?.key;
     const body = type.isText
       ? { content: mdText }
-      : { properties: hasDescription ? { title: firstLine, description: mdText } : { title: firstLine } };
+      : { properties: longKey ? { title: firstLine, [longKey]: mdText } : { title: firstLine } };
     try {
       const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
       const mention = editor.state.schema.nodes.mention;

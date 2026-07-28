@@ -1,4 +1,4 @@
-import type { FieldDef } from "@hermes/shared";
+import { isComplete, type FieldDef } from "@hermes/shared";
 import { ArrowDown, ArrowUp, Palette, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -211,7 +211,15 @@ function TableRow({
       );
     }
     return (
-      <FieldInput field={field} value={props[fkey]} onChange={(v) => update(fkey, v)} blockId={member.id} />
+      <FieldInput
+        field={field}
+        value={props[fkey]}
+        onChange={(v) => update(fkey, v)}
+        blockId={member.id}
+        showOverdue={Boolean(
+          type?.propertySchema?.status_field && !isComplete(type.propertySchema, props),
+        )}
+      />
     );
   };
 

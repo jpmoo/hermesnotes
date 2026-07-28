@@ -158,9 +158,12 @@ interface DateBit {
  * (end) date in the past marks the bit overdue — unless the block is complete. */
 function dateBits(schema: PropertySchema | null | undefined, props: Record<string, unknown>): DateBit[] {
   const statusKey = schema?.status_field;
+  // Only status-bearing (task-like) blocks can be "overdue" — an event's end
+  // date just passes, it isn't overdue.
   const done = statusKey
     ? (schema?.complete_values ?? []).includes(String(props[statusKey] ?? ""))
     : false;
+  const overdueEligible = Boolean(statusKey) && !done;
   const out: DateBit[] = [];
   for (const f of schema?.fields ?? []) {
     const v = props[f.key];
@@ -174,7 +177,7 @@ function dateBits(schema: PropertySchema | null | undefined, props: Record<strin
       if (s || e) {
         out.push({
           text: s && e ? `${s} – ${e}` : s || e,
-          overdue: !done && isOverdue(span.end),
+          overdue: overdueEligible && isOverdue(span.end),
         });
       }
     }

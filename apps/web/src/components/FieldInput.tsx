@@ -19,11 +19,16 @@ export function FieldInput({
   value,
   onChange,
   blockId,
+  showOverdue = false,
 }: {
   field: FieldDef;
   value: unknown;
   onChange: (value: unknown) => void;
   blockId?: string;
+  /** Whether an "Overdue" pill may show on a past due date. Only true for
+   *  task-like blocks (a type with a status field) that aren't complete — an
+   *  event's end date, for instance, isn't "overdue", it just passed. */
+  showOverdue?: boolean;
 }) {
   const str = value == null ? "" : String(value);
 
@@ -73,7 +78,7 @@ export function FieldInput({
           <div className="span-leg">
             <span className="span-label">
               {field.endLabel?.trim() || "End"}
-              {isOverdue(span.end) && <span className="overdue-pill">Overdue</span>}
+              {showOverdue && isOverdue(span.end) && <span className="overdue-pill">Overdue</span>}
             </span>
             <DateTimePicker
               value={span.end ?? ""}

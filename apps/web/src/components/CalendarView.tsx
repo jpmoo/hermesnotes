@@ -74,7 +74,10 @@ function occupiedDays(schema: PropertySchema | null | undefined, props: Record<s
 /** Short display strings for any dated fields (with overdue flagging). */
 function dateBits(schema: PropertySchema | null | undefined, props: Record<string, unknown>): DateBit[] {
   const statusKey = schema?.status_field;
+  // Only status-bearing (task-like) blocks can be "overdue"; an event's end date
+  // just passes.
   const done = statusKey ? (schema?.complete_values ?? []).includes(String(props[statusKey] ?? "")) : false;
+  const overdueEligible = Boolean(statusKey) && !done;
   const out: DateBit[] = [];
   for (const f of schema?.fields ?? []) {
     const v = props[f.key];
@@ -85,7 +88,7 @@ function dateBits(schema: PropertySchema | null | undefined, props: Record<strin
       const span = v as { start?: string; end?: string };
       const s = span.start ? fmtShort(span.start) : "";
       const e = span.end ? fmtShort(span.end) : "";
-      if (s || e) out.push({ text: s && e ? `${s} – ${e}` : s || e, overdue: !done && isOverdue(span.end) });
+      if (s || e) out.push({ text: s && e ? `${s} – ${e}` : s || e, overdue: overdueEligible && isOverdue(span.end) });
     }
   }
   return out;

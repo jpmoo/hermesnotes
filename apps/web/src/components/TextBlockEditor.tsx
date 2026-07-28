@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isComplete } from "@hermes/shared";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { oneLineText } from "../lib/display.ts";
@@ -241,6 +242,10 @@ export function TextBlockEditor({
                 value={props[f.key]}
                 onChange={(v) => updateField(f.key, v)}
                 blockId={block.id}
+                showOverdue={Boolean(
+                  type?.propertySchema?.status_field &&
+                    !isComplete(type.propertySchema, props),
+                )}
               />
             </label>
           ))}

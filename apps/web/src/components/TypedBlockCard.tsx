@@ -1,4 +1,4 @@
-import type { FieldDef } from "@hermes/shared";
+import { isComplete, type FieldDef } from "@hermes/shared";
 import { useRef, useState } from "react";
 import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
@@ -223,6 +223,7 @@ export function TypedBlockCard({
                   value={props[f.key]}
                   onChange={(v) => update(f.key, v)}
                   blockId={block.id}
+                  showOverdue={Boolean(schema && schema.status_field && !isComplete(schema, props))}
                 />
               </Tag>
             );

@@ -53,7 +53,16 @@ export function MarkdownEditor({
   const [markdown, setMarkdown] = useState(value);
   const [sug, setSug] = useState<MentionState | null>(null);
   const [extract, setExtract] = useState<
-    { x: number; y: number; from: number; to: number; titleText: string; mdText: string; types: BlockType[] } | null
+    {
+      x: number;
+      y: number;
+      from: number;
+      to: number;
+      titleText: string;
+      titleRaw: string;
+      mdText: string;
+      types: BlockType[];
+    } | null
   >(null);
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -193,9 +202,11 @@ export function MarkdownEditor({
   };
 
   // Right-click on a selection → offer to extract it into a new block. We read
-  // the selection twice: `titleText` inlines any mention/link as its plain label
-  // (for a clean title), while `mdText` keeps the link as `[label](href)` so the
-  // extracted block's body preserves the connection.
+  // the selection three ways: `titleText` inlines any mention as its plain label
+  // (used for the mention that replaces the selection); `titleRaw` keeps mentions
+  // in a title field's compact form (`|<id>`, `#tag`, `@Name`) so the new block's
+  // title preserves the connections; `mdText` keeps them as `[label](href)` for a
+  // text block's body.
   const onContextMenu = (e: React.MouseEvent) => {
     if (!editor || mode !== "live") return;
     const { from, to, empty } = editor.state.selection;
@@ -204,31 +215,39 @@ export function MarkdownEditor({
     const asLabel = (n: PMNode) => (n.type.name === "mention" ? String(n.attrs.label ?? "") : "");
     const asMarkdown = (n: PMNode) =>
       n.type.name === "mention" ? `[${escapeLabel(String(n.attrs.label ?? ""))}](${n.attrs.href})` : "";
+    // A mention in a title is stored raw: tags `#name`, people `@Name`, any other
+    // block `|<id>`. Plain web links (no scheme we recognize) fall back to text.
+    const asTitleRaw = (n: PMNode) => {
+      if (n.type.name !== "mention") return "";
+      const href = String(n.attrs.href ?? "");
+      const label = String(n.attrs.label ?? "");
+      if (href.startsWith("tag:")) return `#${href.slice(4)}`;
+      if (href.startsWith("person:")) return `@${href.slice(7).replace(/ /g, "_")}`;
+      if (href.startsWith("block:")) return `|${href.slice(6)}`;
+      return label;
+    };
     const titleText = doc.textBetween(from, to, "\n", asLabel).trim();
+    // Titles are single-line — collapse any line breaks in the selection.
+    const titleRaw = doc.textBetween(from, to, " ", asTitleRaw).replace(/\s+/g, " ").trim();
     const mdText = doc.textBetween(from, to, "\n", asMarkdown).trim();
     if (!titleText && !mdText) return;
     e.preventDefault();
     void api
       .get<BlockType[]>("/block-types")
-      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, titleText, mdText, types }))
+      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, titleText, titleRaw, mdText, types }))
       .catch(() => {});
   };
 
   // Create a new block of `type` from the selection, then replace the selection
-  // with a block: mention linking back to it. The new block's title is the
-  // link-free label text; its body keeps the original links so any connections
-  // in the selection survive on the new block too.
+  // with a block: mention linking back to it. A typed block's title keeps the
+  // selection's mentions inline (so its @/#/| connections survive) — no separate
+  // description is populated; a text block keeps the markdown as its body.
   const extractTo = async (type: BlockType) => {
     if (!extract || !editor) return;
-    const { from, to, titleText, mdText } = extract;
+    const { from, to, titleText, titleRaw, mdText } = extract;
     setExtract(null);
-    const firstLine = titleText.split("\n")[0]!.trim() || "Untitled";
-    // Put the extracted body into the type's first long-text field, whatever it's
-    // keyed (description, notes, body…) — not only a field literally "description".
-    const longKey = type.propertySchema?.fields.find((f) => f.type === "longtext")?.key;
-    const body = type.isText
-      ? { content: mdText }
-      : { properties: longKey ? { title: firstLine, [longKey]: mdText } : { title: firstLine } };
+    const title = titleRaw.trim() || "Untitled";
+    const body = type.isText ? { content: mdText } : { properties: { title } };
     try {
       const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
       const mention = editor.state.schema.nodes.mention;

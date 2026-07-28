@@ -3680,6 +3680,54 @@ input.matrix-axis-y::placeholder {
   background: rgba(95, 164, 181, 0.1);
   color: var(--accent);
 }
+
+/* Light pill tabs for the Connections section (active / archived / deleted) —
+   the tab conveys state, so partners need no per-item pill. */
+.conn-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.conn-tab {
+  padding: 3px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.conn-tab:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.conn-tab.active {
+  color: var(--accent);
+  background: rgba(95, 164, 181, 0.14);
+}
+/* A deleted partner is inert text (its target is gone) with a clear-it button. */
+.info-conn-item.deleted,
+.info-conn-item.deleted:hover {
+  color: var(--text-muted);
+  background: transparent;
+  cursor: default;
+}
+.conn-clear {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.conn-clear:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 .info-tags {
   display: flex;
   flex-wrap: wrap;

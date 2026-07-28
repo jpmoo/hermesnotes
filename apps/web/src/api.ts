@@ -149,6 +149,7 @@ export interface BlockInfo {
   linksTo: ConnRef[];
   linkedFrom: ConnRef[];
   canvasConnections: (ConnRef & { edgeLabel?: string; canvasLabel: string })[];
+  deletedLinks: { id: string }[]; // outbound links whose target no longer exists
   tags: string[];
 }
 

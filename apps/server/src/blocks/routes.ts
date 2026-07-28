@@ -60,6 +60,18 @@ function rewriteStrings(value: unknown, fn: (s: string) => string): unknown {
   return value;
 }
 
+/** Strip one target block's inline mention from a text field, keeping the human
+ *  label: `[label](block:<id>)` → `label`; any bare `block:<id>` / `|<id>` token
+ *  is dropped. Used when clearing a link whose target no longer exists. */
+function stripLinkFromText(text: string, target: string): string {
+  const esc = escapeRe(target);
+  const mention = new RegExp(String.raw`\[((?:\\.|[^\]\\])*)\]\(block:${esc}\)`, "g");
+  return text
+    .replace(mention, (_m, label: string) => label.replace(/\\([[\]\\])/g, "$1"))
+    .replace(new RegExp(String.raw`\|${esc}`, "g"), "")
+    .replace(new RegExp(`block:${esc}`, "g"), "");
+}
+
 /** Rewrite mention text in every block matching any LIKE pattern: used when a
  * title or tag is renamed so raw `@Name`/`#tag` tokens and markdown mention
  * labels stay in sync. Bumps versions and re-queues embeddings. */
@@ -952,6 +964,14 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const inCollections = inRows.map(withIcon);
     const linksTo = linkRows.map(withIcon);
     const linkedFrom = fromRows.map(withIcon);
+    // Outbound links whose target no longer resolves (hard-deleted, or no longer
+    // owned) — surfaced under the info box's "Deleted" tab so the dead reference
+    // can be cleared. Inbound/collection/canvas partners can't dangle: those come
+    // from queries over existing blocks (or FK-backed memberships).
+    const resolvedOut = new Set(linkRows.map((r) => r.id));
+    const deletedLinks = [...new Set(outIds)]
+      .filter((t) => t !== id && !resolvedOut.has(t))
+      .map((t) => ({ id: t }));
     const canvasById = new Map(canvasOtherRows.map((r) => [r.id, r]));
     const canvasConnections = touching.flatMap((t) => {
       const row = canvasById.get(t.otherId);
@@ -985,8 +1005,67 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       linksTo,
       linkedFrom,
       canvasConnections,
+      deletedLinks,
       tags: tagRows.map((t) => t.name),
     };
+  });
+
+  /** Clear a dead outbound link — the target block no longer exists. Removes it
+   *  from this block's reference-field values and strips its inline mentions from
+   *  every text field (the label is kept; only the link is discarded). No confirm:
+   *  it only ever touches a reference to an already-gone block. */
+  app.post("/blocks/:id/clear-link", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { target } = z.object({ target: z.string().uuid() }).parse(req.body);
+    const [b] = await db
+      .select({
+        content: blocks.content,
+        properties: blocks.properties,
+        blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
+      })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!b) throw notFound("block");
+
+    // Reference-field values store bare ids — drop the target from those first.
+    const type = b.collectionKind ? null : await resolveType(userId, b.blockTypeId ?? undefined);
+    const props = { ...((b.properties ?? {}) as Record<string, unknown>) };
+    for (const f of type?.propertySchema?.fields ?? []) {
+      if (f.type !== "reference") continue;
+      const v = props[f.key];
+      if (Array.isArray(v)) props[f.key] = v.filter((x) => String(x) !== target);
+      else if (typeof v === "string" && v === target) delete props[f.key];
+    }
+    // Then strip inline mentions (keeping the label) from all text + content.
+    const nextProps = rewriteStrings(props, (s) => stripLinkFromText(s, target)) as Record<string, unknown>;
+    const nextContent = b.content != null ? stripLinkFromText(b.content, target) : b.content;
+
+    const base = {
+      content: nextContent,
+      properties: nextProps,
+      version: sql`${blocks.version} + 1`,
+      updatedAt: new Date(),
+    };
+    // Collections embed via their own path; recompute embed_source only for
+    // typed/text blocks (a collection's isn't derivable from a text type).
+    if (type) {
+      const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
+      const hash = sha256(embedSource);
+      await db
+        .update(blocks)
+        .set({
+          ...base,
+          embedSource,
+          embedSourceHash: sql`CASE WHEN ${blocks.embedSourceHash} = ${hash} THEN ${blocks.embedSourceHash} ELSE NULL END`,
+        })
+        .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
+    } else {
+      await db.update(blocks).set(base).where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
+    }
+    return { ok: true };
   });
 
   // Update a block (content for text, properties for typed) with optimistic

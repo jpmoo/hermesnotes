@@ -1,4 +1,4 @@
-import { CalendarDays, Copy, Star } from "lucide-react";
+import { CalendarDays, Copy, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
@@ -48,12 +48,11 @@ function ConnGroup({
           <button
             key={it.id}
             className={`info-conn-item${it.archived ? " archived" : ""}`}
-            title={it.archived ? `${it.label} — archived` : it.label}
+            title={it.label}
             onClick={() => onSelect(it.id)}
           >
             <BlockIcon iconKey={it.iconKey} color={it.iconColor} size={14} />
             <span className="info-conn-text">{it.label}</span>
-            {it.archived && <span className="ref-badge">archived</span>}
           </button>
         ),
       )}
@@ -141,6 +140,7 @@ export function BlockInfoPane({
   const [info, setInfo] = useState<BlockInfo | null>(null);
   const [block, setBlock] = useState<Block | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
+  const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
   const { pathname } = useLocation();
   const { infoTick } = usePanels();
   const { isFavorite, toggleFavorite } = usePreferences();
@@ -150,7 +150,17 @@ export function BlockInfoPane({
   useEffect(() => {
     setInfo(null);
     setBlock(null);
+    setConnTab("active");
   }, [blockId]);
+
+  // Clear a dead outbound link (its target no longer exists), then refetch the
+  // info so the "Deleted" list updates in place.
+  const clearDeadLink = (target: string) => {
+    void api
+      .post(`/blocks/${blockId}/clear-link`, { target })
+      .then(() => api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo))
+      .catch(() => {});
+  };
 
   // Collection description lives here (not on the page) and is embedded with
   // the title, so semantic search finds the collection by purpose.
@@ -189,12 +199,26 @@ export function BlockInfoPane({
     ...c,
     label: `${c.label}${c.edgeLabel ? ` — “${c.edgeLabel}”` : ""} · ${c.canvasLabel}`,
   }));
-  const noConnections =
-    info.inCollections.length === 0 &&
-    info.linksTo.length === 0 &&
-    info.linkedFrom.length === 0 &&
-    canvasConns.length === 0 &&
-    (editable || info.tags.length === 0);
+  // Partition each group by state so the tabs can show active vs. archived
+  // partners without per-item pills. Only outbound links can be "deleted".
+  const live = <T extends { archived?: boolean }>(items: T[]) => items.filter((i) => !i.archived);
+  const gone = <T extends { archived?: boolean }>(items: T[]) => items.filter((i) => i.archived);
+  const deletedLinks = info.deletedLinks ?? [];
+  const archivedCount =
+    gone(info.inCollections).length +
+    gone(info.linksTo).length +
+    gone(info.linkedFrom).length +
+    gone(canvasConns).length;
+  const tags = editable ? [] : info.tags;
+  const activeCount =
+    live(info.inCollections).length +
+    live(info.linksTo).length +
+    live(info.linkedFrom).length +
+    live(canvasConns).length +
+    tags.length;
+  const showConnTabs = archivedCount > 0 || deletedLinks.length > 0;
+  const tab = showConnTabs ? connTab : "active";
+  const noConnections = activeCount === 0 && archivedCount === 0 && deletedLinks.length === 0;
 
   const fav = isFavorite(blockId);
   return (
@@ -289,25 +313,84 @@ export function BlockInfoPane({
           <div className="hint">No connections.</div>
         ) : (
           <>
-            <ConnGroup
-              label="In collection"
-              items={info.inCollections}
-              onSelect={onSelectCollection}
-            />
-            <ConnGroup label="Links to" items={info.linksTo} onSelect={onSelect} />
-            <ConnGroup label="Linked from" items={info.linkedFrom} onSelect={onSelect} />
-            <ConnGroup label="Connected on canvas" items={canvasConns} onSelect={onSelect} />
-            {!editable && info.tags.length > 0 && (
-              <div className="info-conn">
-                <div className="info-conn-label">Tagged</div>
-                <div className="info-tags">
-                  {info.tags.map((t) => (
-                    <span key={t} className="tag-chip">
-                      {t}
-                    </span>
-                  ))}
-                </div>
+            {showConnTabs && (
+              <div className="conn-tabs">
+                <button
+                  className={`conn-tab${tab === "active" ? " active" : ""}`}
+                  onClick={() => setConnTab("active")}
+                >
+                  Active{activeCount > 0 ? ` · ${activeCount}` : ""}
+                </button>
+                {archivedCount > 0 && (
+                  <button
+                    className={`conn-tab${tab === "archived" ? " active" : ""}`}
+                    onClick={() => setConnTab("archived")}
+                  >
+                    Archived · {archivedCount}
+                  </button>
+                )}
+                {deletedLinks.length > 0 && (
+                  <button
+                    className={`conn-tab${tab === "deleted" ? " active" : ""}`}
+                    onClick={() => setConnTab("deleted")}
+                  >
+                    Deleted · {deletedLinks.length}
+                  </button>
+                )}
               </div>
+            )}
+
+            {tab === "deleted" ? (
+              <div className="info-conn">
+                <div className="info-conn-label">No longer exists</div>
+                {deletedLinks.map((d) => (
+                  <div key={d.id} className="info-conn-item deleted">
+                    <span className="info-conn-text">Deleted item · {d.id.slice(0, 8)}</span>
+                    <button
+                      className="conn-clear"
+                      title="Clear this dead link"
+                      onClick={() => clearDeadLink(d.id)}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <ConnGroup
+                  label="In collection"
+                  items={tab === "archived" ? gone(info.inCollections) : live(info.inCollections)}
+                  onSelect={onSelectCollection}
+                />
+                <ConnGroup
+                  label="Links to"
+                  items={tab === "archived" ? gone(info.linksTo) : live(info.linksTo)}
+                  onSelect={onSelect}
+                />
+                <ConnGroup
+                  label="Linked from"
+                  items={tab === "archived" ? gone(info.linkedFrom) : live(info.linkedFrom)}
+                  onSelect={onSelect}
+                />
+                <ConnGroup
+                  label="Connected on canvas"
+                  items={tab === "archived" ? gone(canvasConns) : live(canvasConns)}
+                  onSelect={onSelect}
+                />
+                {tab === "active" && tags.length > 0 && (
+                  <div className="info-conn">
+                    <div className="info-conn-label">Tagged</div>
+                    <div className="info-tags">
+                      {tags.map((t) => (
+                        <span key={t} className="tag-chip">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

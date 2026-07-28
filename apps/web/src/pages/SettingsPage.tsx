@@ -27,6 +27,13 @@ interface BackupResult {
   ms?: number;
   error?: string;
 }
+interface EmbeddingStats {
+  total: number;
+  embeddable: number;
+  embedded: number;
+  pending: number;
+  connected: boolean;
+}
 
 const fmtBytes = (n: number): string =>
   n > 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -79,12 +86,16 @@ export function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<
-    null | "connect" | "save" | "prefs" | "backup" | "backup-run" | "archive-now"
+    null | "connect" | "save" | "prefs" | "backup" | "backup-run" | "archive-now" | "reembed"
   >(null);
 
   const [backup, setBackup] = useState<BackupSettings | null>(null);
   const [backupFiles, setBackupFiles] = useState<BackupFileInfo[]>([]);
   const [lastBackup, setLastBackup] = useState<BackupResult | null>(null);
+  const [embStats, setEmbStats] = useState<EmbeddingStats | null>(null);
+
+  const loadEmbeddings = () =>
+    void api.get<EmbeddingStats>("/admin/embeddings").then(setEmbStats).catch(() => {});
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -98,7 +109,23 @@ export function SettingsPage() {
         setBackupFiles(r.backups);
       })
       .catch(() => {});
+    loadEmbeddings();
   }, [isAdmin]);
+
+  const reembedAll = async () => {
+    setBusy("reembed");
+    setError(null);
+    setStatus(null);
+    try {
+      const r = await api.post<{ queued: number }>("/admin/embeddings/reembed", {});
+      setStatus(`Queued ${r.queued} block(s) for re-embedding. This runs in the background.`);
+      loadEmbeddings();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "could not queue re-embedding");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const saveBackup = async () => {
     if (!backup) return;
@@ -279,6 +306,36 @@ export function SettingsPage() {
                 <Copy size={12} />
               </button>
             </div>
+          </div>
+
+          <div className="card" style={{ marginTop: 24 }}>
+            <div className="panel-h" style={{ marginTop: 0 }}>Embeddings</div>
+            {embStats ? (
+              <>
+                <p style={{ margin: "0 0 4px" }}>
+                  <strong>
+                    {embStats.embedded} of {embStats.embeddable}
+                  </strong>{" "}
+                  embeddable blocks have embeddings
+                  {embStats.pending > 0 ? ` — ${embStats.pending} pending` : ""}.
+                </p>
+                <p className="hint" style={{ marginTop: 0 }}>
+                  {embStats.total} blocks total (empty ones aren’t embedded). Semantic search uses
+                  these vectors.
+                  {!embStats.connected && " No embed model is configured — nothing can embed yet."}
+                </p>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <button onClick={() => void reembedAll()} disabled={busy !== null}>
+                    {busy === "reembed" ? "Queuing…" : "Embed again"}
+                  </button>
+                  <button className="ghost" onClick={loadEmbeddings} disabled={busy !== null}>
+                    Refresh
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="hint" style={{ margin: 0 }}>Loading…</p>
+            )}
           </div>
 
           <div className="card" style={{ marginTop: 24 }}>

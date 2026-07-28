@@ -1,7 +1,7 @@
 import { asc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { blocks, users } from "@hermes/db";
+import { blocks, users, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { getAllowRegistration, saveAllowRegistration } from "../config.js";
 import { hashPassword } from "../auth/passwords.js";
@@ -69,6 +69,45 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (!target) throw notFound("user");
     await db.update(users).set({ passwordHash: await hashPassword(password), updatedAt: new Date() }).where(eq(users.id, id));
     return { ok: true };
+  });
+
+  /** Instance-wide embedding coverage (all owners). `embeddable` is the
+   *  denominator that can actually be embedded (non-empty embed source);
+   *  `embedded` have a stamped hash (a live vector). */
+  app.get("/admin/embeddings", async (req) => {
+    await requireAdmin(req);
+    const [row] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        embeddable: sql<number>`count(*) FILTER (WHERE coalesce(${blocks.embedSource}, '') <> '')::int`,
+        embedded: sql<number>`count(*) FILTER (WHERE ${blocks.embedSourceHash} IS NOT NULL AND coalesce(${blocks.embedSource}, '') <> '')::int`,
+      })
+      .from(blocks);
+    const [cfg] = await db
+      .select({ url: userSettings.ollamaUrl, model: userSettings.embedModel })
+      .from(userSettings)
+      .where(sql`${userSettings.ollamaUrl} IS NOT NULL AND ${userSettings.embedModel} IS NOT NULL`)
+      .limit(1);
+    return {
+      total: row?.total ?? 0,
+      embeddable: row?.embeddable ?? 0,
+      embedded: row?.embedded ?? 0,
+      pending: Math.max(0, (row?.embeddable ?? 0) - (row?.embedded ?? 0)),
+      connected: Boolean(cfg),
+    };
+  });
+
+  /** Re-embed: clear the hash on every embeddable block (all owners) so the
+   *  background worker regenerates its vector. Needs an embed model configured;
+   *  otherwise the worker leaves them queued until one is. */
+  app.post("/admin/embeddings/reembed", async (req) => {
+    await requireAdmin(req);
+    const queued = await db
+      .update(blocks)
+      .set({ embedSourceHash: null })
+      .where(sql`coalesce(${blocks.embedSource}, '') <> ''`)
+      .returning({ id: blocks.id });
+    return { queued: queued.length };
   });
 
   /** Delete a user and (via ON DELETE CASCADE) all of their data. */

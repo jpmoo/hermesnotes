@@ -105,7 +105,7 @@ export function ReviewPage() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const { slotEl, bottomSlotEl, setHasContent } = usePanels();
+  const { slotEl, bottomSlotEl, setHasContent, selectPage } = usePanels();
 
   // Distinguish "still loading" from "load failed" so a failure shows an error
   // (and a retry) instead of a permanent spinner.
@@ -124,6 +124,11 @@ export function ReviewPage() {
     setHasContent(true);
     return () => setHasContent(false);
   }, [setHasContent]);
+  // Register the review as the current location so it shows in recent history.
+  useEffect(() => {
+    selectPage("review");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Live-sync: if the task is completed/edited elsewhere (another window, MCP),
   // refetch. The subscribed id follows the current occurrence.
@@ -265,7 +270,6 @@ export function ReviewPage() {
               onToggleDone={(id, done) => void toggleDone(id, done)}
               onReorder={(ids) => mutate(reviewApi.reorder(ids))}
               onRemove={(id) => mutate(reviewApi.removeStep(id))}
-              onEdit={(id, patch) => mutate(reviewApi.editStep(id, patch))}
               onAdd={(step) => mutate(reviewApi.addStep(step))}
             />
           </>,

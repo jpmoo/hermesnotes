@@ -8,9 +8,10 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckSquare, GripVertical, Link2, Pencil, Plus, Square, X } from "lucide-react";
+import { CheckSquare, GripVertical, Link2, Plus, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type BlockSearchResult, type BlockType, type Collection } from "../api.ts";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import type { NewStep, ReviewLink, ReviewStepView } from "../lib/review.ts";
 
@@ -177,7 +178,6 @@ function Row({
   onSelect,
   onToggleDone,
   onRemove,
-  onEdit,
 }: {
   step: ReviewStepView;
   current: boolean;
@@ -185,42 +185,10 @@ function Row({
   onSelect: (id: string) => void;
   onToggleDone: (id: string, done: boolean) => void;
   onRemove: (id: string) => void;
-  onEdit: (id: string, patch: { description: string; link: ReviewLink | null }) => void;
 }) {
   const sortable = useSortable({ id: step.id });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
-  const [editing, setEditing] = useState(false);
-  const [description, setDescription] = useState(step.description);
-  const [link, setLink] = useState<ReviewLink | null>(step.link);
-
-  if (editing) {
-    return (
-      <div ref={sortable.setNodeRef} style={style} className="review-addform">
-        <StepFields
-          description={description}
-          setDescription={setDescription}
-          link={link}
-          setLink={setLink}
-          initialLabel={step.label ?? undefined}
-        />
-        <div className="row" style={{ gap: 8 }}>
-          <button
-            className="primary"
-            type="button"
-            onClick={() => {
-              onEdit(step.id, { description: description.trim(), link });
-              setEditing(false);
-            }}
-          >
-            Save
-          </button>
-          <button className="ghost" type="button" onClick={() => setEditing(false)}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const [confirmDel, setConfirmDel] = useState(false);
 
   return (
     <div ref={sortable.setNodeRef} style={style} className={`sec-row review-step-row${current ? " current" : ""}`}>
@@ -239,12 +207,20 @@ function Row({
         {step.link && <Link2 size={11} className="review-step-linkicon" />}
         {stepLabel(step)}
       </button>
-      <button className="icon-btn sec-remove" title="Edit step" onClick={() => setEditing(true)}>
-        <Pencil size={12} />
-      </button>
-      <button className="icon-btn sec-remove" title="Remove step" onClick={() => onRemove(step.id)}>
+      <button className="icon-btn sec-remove" title="Remove step" onClick={() => setConfirmDel(true)}>
         <X size={13} />
       </button>
+      <ConfirmDialog
+        open={confirmDel}
+        title="Remove step?"
+        message="This removes the step from the review. It can't be undone (re-add it if needed)."
+        confirmLabel="Remove"
+        onConfirm={() => {
+          setConfirmDel(false);
+          onRemove(step.id);
+        }}
+        onCancel={() => setConfirmDel(false)}
+      />
     </div>
   );
 }
@@ -289,7 +265,6 @@ export function ReviewSteps({
   onToggleDone,
   onReorder,
   onRemove,
-  onEdit,
   onAdd,
 }: {
   steps: ReviewStepView[];
@@ -301,7 +276,6 @@ export function ReviewSteps({
   onToggleDone: (id: string, done: boolean) => void;
   onReorder: (ids: string[]) => void;
   onRemove: (id: string) => void;
-  onEdit: (id: string, patch: { description: string; link: ReviewLink | null }) => void;
   onAdd: (step: NewStep) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -331,7 +305,6 @@ export function ReviewSteps({
               onSelect={onSelect}
               onToggleDone={onToggleDone}
               onRemove={onRemove}
-              onEdit={onEdit}
             />
           ))}
         </SortableContext>

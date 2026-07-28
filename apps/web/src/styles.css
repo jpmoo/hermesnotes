@@ -371,6 +371,12 @@ label,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Override the global button:hover (white surface-2) with an accent tint, so
+   hovering a step title reads blue — matching the current-step highlight. */
+.review-step-label:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 6px;
+}
 .review-step-label.done {
   color: var(--text-muted);
   text-decoration: line-through;

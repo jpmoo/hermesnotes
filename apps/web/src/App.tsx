@@ -10,6 +10,7 @@ import { useIsMobile } from "./lib/useIsMobile.ts";
 import { MobileBar } from "./components/MobileBar.tsx";
 import { Sidebar } from "./components/Sidebar.tsx";
 import { PanelsProvider, usePanels } from "./lib/right-panel.tsx";
+import { useLiveSync } from "./lib/block-events.ts";
 import { AssistantProvider } from "./lib/assistant.tsx";
 import { PreferencesProvider, usePreferences } from "./lib/preferences.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
@@ -64,6 +65,7 @@ function Shell() {
   const { colors } = usePreferences();
   const { pathname } = useLocation();
   const isMobile = useIsMobile();
+  useLiveSync(); // stream remote block changes into the in-tab bus
   const hasBg = useHasPageBackground();
   const [navOpen, setNavOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);

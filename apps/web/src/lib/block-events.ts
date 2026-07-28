@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { api, type Block } from "../api.ts";
+import { api, apiBase, CLIENT_ID, type Block } from "../api.ts";
 
 /**
  * App-wide block-change bus: every editing surface (page card, info-panel
@@ -23,6 +23,33 @@ export function emitBlockChange(blockId: string, origin: string): void {
 /** A block was permanently deleted — every surface drops it immediately. */
 export function emitBlockDeleted(blockId: string): void {
   for (const l of [...deleteListeners]) l(blockId);
+}
+
+/**
+ * Live sync: subscribe to the server's SSE stream and feed remote block changes
+ * (another tab, another device, the AI over MCP) into the SAME in-tab bus, so
+ * every surface that already reacts to local edits reacts to remote ones too.
+ * A tab skips the echo of its own edits (matched by client id). Mount once, at
+ * the app shell. EventSource auto-reconnects on drop.
+ */
+export function useLiveSync(): void {
+  useEffect(() => {
+    const es = new EventSource(`${apiBase}/events`, { withCredentials: true });
+    es.onmessage = (e) => {
+      let ev: { kind: "block" | "delete"; id: string; origin?: string };
+      try {
+        ev = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (ev.origin === CLIENT_ID) return; // our own change — already handled in-tab
+      if (ev.kind === "delete") emitBlockDeleted(ev.id);
+      // A remote origin, so no in-tab listener will double-fire; the empty id
+      // (a create/membership change) still wakes list-level `useAnyBlockChange`.
+      else emitBlockChange(ev.id, "remote");
+    };
+    return () => es.close();
+  }, []);
 }
 
 export function useBlockDeleted(cb: (blockId: string) => void): void {

@@ -3,6 +3,10 @@
 // prefix before the server, which serves the API under "/api".
 const BASE = `${import.meta.env.BASE_URL}api`;
 
+/** A stable id for this browser tab. Sent on every request so the live-sync
+ * stream can tell a tab which change events it caused (and skip its own). */
+export const CLIENT_ID = crypto.randomUUID();
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -16,7 +20,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: "include",
-    headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+    headers: {
+      "x-client-id": CLIENT_ID,
+      ...(body !== undefined ? { "content-type": "application/json" } : {}),
+    },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
@@ -31,7 +38,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const apiBase = BASE;
 
 async function upload<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", body: form });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "x-client-id": CLIENT_ID },
+    body: form,
+  });
   const text = await res.text();
   const data = text ? JSON.parse(text) : undefined;
   if (!res.ok) throw new ApiError(res.status, (data && (data.error as string)) || res.statusText);

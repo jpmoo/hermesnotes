@@ -103,6 +103,19 @@ function starterNode(text: string, schema: Schema): PMNode | null {
   return null;
 }
 
+/**
+ * The serializer defensively escapes `\[` / `\]` in plain text so literal
+ * brackets can't be misread as markdown. But when we hand a line back to the
+ * user to edit as raw source, those backslashes are baked-in noise — and, worse,
+ * a link the user is repairing (e.g. a dropped `)`) stays broken because `\[`
+ * never re-parses as a link. Un-escape the brackets for the editable source so
+ * `[text](url)` round-trips cleanly. (Only brackets: leaving `\*`/`` \` `` escaped
+ * keeps literal emphasis/code from turning into formatting on the next render.)
+ */
+function sourceForEdit(md: string): string {
+  return md.replace(/\\([[\]])/g, "$1");
+}
+
 /** Map a caret offset in the rendered block to a plausible offset in its source. */
 function mapOffset(renderedOffset: number, renderedSize: number, sourceLen: number): number {
   if (renderedSize <= 0 || renderedOffset >= renderedSize) return sourceLen;
@@ -256,9 +269,8 @@ export const ActiveLineSource = Extension.create({
           for (let i = ops.length - 1; i >= 0; i--) {
             const op = ops[i]!;
             if (op.action === "source") {
-              const source = String(md.serializer.serialize(Fragment.from(op.node)) ?? "").replace(
-                /\n+$/,
-                "",
+              const source = sourceForEdit(
+                String(md.serializer.serialize(Fragment.from(op.node)) ?? "").replace(/\n+$/, ""),
               );
               caretRel = mapOffset($head.parentOffset, op.node.content.size, source.length);
               const content = source.length ? [schema.text(source)] : [];

@@ -298,6 +298,7 @@ async function buildState(userId: string) {
     configured: true as const,
     dueWeekday: wr.dueWeekday,
     availableDaysPrior: wr.availableDaysPrior,
+    project: wr.project,
     statusKey,
     doneValue,
     task: active

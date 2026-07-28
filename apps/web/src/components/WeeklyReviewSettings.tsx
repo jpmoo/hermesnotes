@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, type BlockType } from "../api.ts";
 import { usePreferences } from "../lib/preferences.tsx";
-import { reviewApi, WEEKDAYS } from "../lib/review.ts";
+import { reviewApi, WEEKDAYS, type ReviewState } from "../lib/review.ts";
 import { ReferenceInput } from "./ReferenceInput.tsx";
 
 /**
@@ -11,10 +11,7 @@ import { ReferenceInput } from "./ReferenceInput.tsx";
  * "available" offset is how many days before the due date the review opens.
  */
 export function WeeklyReviewSettings() {
-  const { prefs, refresh } = usePreferences();
-  const wr = prefs.weekly_review as
-    | { dueWeekday?: number | null; availableDaysPrior?: number; project?: string[] }
-    | undefined;
+  const { refresh } = usePreferences();
 
   const [weekday, setWeekday] = useState<number | "">("");
   const [prior, setPrior] = useState(0);
@@ -25,20 +22,16 @@ export function WeeklyReviewSettings() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Hydrate from the synced preferences (and re-sync after a save). Key on the
-  // stored CONTENT (not array identity) so an unrelated re-render can't re-run
-  // this and wipe an in-progress project pick.
-  const storedKey = JSON.stringify({
-    d: wr?.dueWeekday ?? null,
-    p: wr?.availableDaysPrior ?? 0,
-    pr: Array.isArray(wr?.project) ? wr.project : [],
-  });
+  // Hydrate straight from the server's review state (authoritative for project),
+  // on mount and after each save — no dependence on the preferences round-trip.
+  const hydrate = (st: ReviewState) => {
+    setWeekday(st.configured ? st.dueWeekday : "");
+    setPrior(st.configured ? st.availableDaysPrior : 0);
+    setProject(st.configured ? st.project : []);
+  };
   useEffect(() => {
-    setWeekday(wr?.dueWeekday ?? "");
-    setPrior(wr?.availableDaysPrior ?? 0);
-    setProject(Array.isArray(wr?.project) ? wr.project : []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedKey]);
+    void reviewApi.get().then(hydrate).catch(() => {});
+  }, []);
 
   // Resolve the task type's project reference field (mirrors a task's picker).
   useEffect(() => {
@@ -59,8 +52,9 @@ export function WeeklyReviewSettings() {
     setError(null);
     setStatus(null);
     try {
-      await reviewApi.config(weekday === "" ? null : weekday, prior, project);
-      refresh(); // updates the rail-icon gate + these fields
+      const st = await reviewApi.config(weekday === "" ? null : weekday, prior, project);
+      hydrate(st); // reflect exactly what the server saved (incl. project)
+      refresh(); // updates the rail-icon gate
       setStatus(weekday === "" ? "Weekly review turned off." : "Weekly review schedule saved.");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "could not save");

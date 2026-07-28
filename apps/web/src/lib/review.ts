@@ -18,6 +18,8 @@ export interface ReviewConfigured {
   configured: true;
   dueWeekday: number;
   availableDaysPrior: number;
+  /** Project block ids the managed task is filed under. */
+  project: string[];
   /** The task type's status field key and the value that marks it complete —
    *  so the client doesn't hardcode "status"/"done" (custom task types differ). */
   statusKey: string;

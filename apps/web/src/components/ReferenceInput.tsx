@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
 import { firstLineHtml } from "../lib/markdown-excerpt.ts";
 import { oneLineText } from "../lib/display.ts";
+import { resolveRef } from "../lib/resolve-ref.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 
 /**
@@ -26,6 +27,7 @@ export function ReferenceInput({
   const [results, setResults] = useState<BlockRef[]>([]);
   const [open, setOpen] = useState(false);
   const [labels, setLabels] = useState<Record<string, string>>({});
+  const [refStatus, setRefStatus] = useState<Record<string, "archived" | "missing">>({});
   const [refType, setRefType] = useState<BlockType | null>(null);
   const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
   const fetched = useRef<Set<string>>(new Set());
@@ -70,10 +72,15 @@ export function ReferenceInput({
     ids.forEach((id) => {
       if (fetched.current.has(id)) return;
       fetched.current.add(id);
-      void api
-        .get<Block>(`/blocks/${id}`)
-        .then((b) => setLabels((l) => ({ ...l, [id]: oneLineText(b.properties, b.content) || "Untitled" })))
-        .catch(() => setLabels((l) => ({ ...l, [id]: "(unknown)" })));
+      void resolveRef(id).then(({ status, block }) => {
+        if (status === "missing" || !block) {
+          setLabels((l) => ({ ...l, [id]: "(deleted)" }));
+          setRefStatus((s) => ({ ...s, [id]: "missing" }));
+          return;
+        }
+        setLabels((l) => ({ ...l, [id]: oneLineText(block.properties, block.content) || "Untitled" }));
+        if (status === "archived") setRefStatus((s) => ({ ...s, [id]: "archived" }));
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey]);
@@ -134,8 +141,12 @@ export function ReferenceInput({
     <div className="ref-combo ref-multi" ref={ref}>
       <div className="ref-chips" onClick={() => setOpen(true)}>
         {ids.map((id) => (
-          <span className="ref-chip" key={id}>
+          <span
+            className={`ref-chip${refStatus[id] === "missing" ? " missing" : ""}${refStatus[id] === "archived" ? " archived" : ""}`}
+            key={id}
+          >
             <span className="ref-chip-label">{labels[id] ?? "…"}</span>
+            {refStatus[id] === "archived" && <span className="ref-badge">archived</span>}
             <button
               className="ref-chip-x"
               title="Remove"

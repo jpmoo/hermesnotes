@@ -3553,6 +3553,17 @@ input.matrix-axis-y::placeholder {
   color: var(--text-muted);
   font-size: 13px;
 }
+/* Archived mention chip: dimmed but still live/clickable. */
+.mention-chip.archived {
+  opacity: 0.6;
+}
+/* Reference-field chips whose target is archived/deleted. */
+.ref-chip.archived .ref-chip-label {
+  color: var(--text-muted);
+}
+.ref-chip.missing .ref-chip-label {
+  color: var(--danger);
+}
 .info-conn-text {
   min-width: 0;
   overflow: hidden;

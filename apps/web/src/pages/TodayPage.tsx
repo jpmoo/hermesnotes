@@ -1,5 +1,5 @@
 import type { TodayLayout, TodayScope, TodaySection } from "@hermes/shared";
-import { CalendarDays, Maximize2 } from "lucide-react";
+import { Archive, CalendarDays, Maximize2, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -11,6 +11,7 @@ import { SectionLayout, type SectionEntry } from "../components/SectionLayout.ts
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TodayCalendar } from "../components/TodayCalendar.tsx";
 import { oneLineText } from "../lib/display.ts";
+import { resolveRef, type RefStatus } from "../lib/resolve-ref.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
@@ -43,20 +44,29 @@ function NoteSection({
   reportLabel: (label: string) => void;
   onGone: () => void;
 }) {
-  const [block, setBlock] = useState<Block | null>(null);
+  const [ref, setRef] = useState<{ status: RefStatus; block: Block | null } | "loading">("loading");
   const reload = useCallback(() => {
-    void api
-      .get<Block>(`/blocks/${blockId}`)
-      .then((b) => {
-        setBlock(b);
-        reportLabel(oneLineText(b.properties, b.content) || "Untitled");
-      })
-      .catch(() => {});
+    setRef("loading");
+    void resolveRef(blockId).then((r) => {
+      setRef(r);
+      if (r.block) reportLabel(oneLineText(r.block.properties, r.block.content) || "Untitled");
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockId]);
   useEffect(reload, [reload]);
   const { openBlock } = usePanels();
-  if (!block) return null;
+  if (ref === "loading") return null;
+  if (ref.status === "missing" || !ref.block) {
+    return (
+      <section className="today-section note-embed">
+        <div className="ref-missing">
+          <Trash2 size={15} />
+          <span>This note no longer exists — remove it from the layout in the panel.</span>
+        </div>
+      </section>
+    );
+  }
+  const block = ref.block;
   const typeById = new Map(types.map((t) => [t.id, t]));
   return (
     <section className="today-section note-embed">
@@ -67,6 +77,12 @@ function NoteSection({
       >
         <Maximize2 size={14} />
       </button>
+      {ref.status === "archived" && (
+        <div className="archived-banner">
+          <Archive size={14} />
+          <span>This note is archived.</span>
+        </div>
+      )}
       <BlockCard
         block={block}
         type={typeById.get(block.blockTypeId)}

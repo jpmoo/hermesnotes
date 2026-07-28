@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronRight, ExternalLink } from "lucide-react";
+import { Archive, CheckCircle2, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -9,6 +9,7 @@ import { ReviewSteps } from "../components/ReviewSteps.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockChanged } from "../lib/block-events.ts";
+import { resolveRef, type RefStatus } from "../lib/resolve-ref.ts";
 import { reviewApi, WEEKDAYS, type ReviewState, type ReviewStepView } from "../lib/review.ts";
 
 const fmtLong = (date: string) =>
@@ -16,12 +17,16 @@ const fmtLong = (date: string) =>
 
 /** The linked block/collection for a step (or the outside-step note). */
 function StepContent({ step, types }: { step: ReviewStepView; types: BlockType[] }) {
-  const [block, setBlock] = useState<Block | null>(null);
+  // "loading" is distinct from a resolved { status: "missing" } — conflating the
+  // two is what left a deleted link stuck on a permanent spinner.
+  const [ref, setRef] = useState<{ status: RefStatus; block: Block | null } | "loading">("loading");
   const isBlock = step.link?.t === "block";
+  const linkId = step.link?.id;
   const reload = useCallback(() => {
-    if (!isBlock || !step.link) return;
-    void api.get<Block>(`/blocks/${step.link.id}`).then(setBlock).catch(() => setBlock(null));
-  }, [isBlock, step.link]);
+    if (!isBlock || !linkId) return;
+    setRef("loading");
+    void resolveRef(linkId).then(setRef);
+  }, [isBlock, linkId]);
   useEffect(reload, [reload]);
 
   if (!step.link) {
@@ -35,14 +40,31 @@ function StepContent({ step, types }: { step: ReviewStepView; types: BlockType[]
   if (step.link.t === "collection") {
     return <CollectionSection collectionId={step.link.id} types={types} host="review" />;
   }
-  if (!block) return <div className="hint">Loading…</div>;
+  if (ref === "loading") return <div className="hint">Loading…</div>;
+  if (ref.status === "missing" || !ref.block) {
+    return (
+      <div className="ref-missing">
+        <Trash2 size={15} />
+        <span>This linked block no longer exists. Remove this step or link it to something else.</span>
+      </div>
+    );
+  }
+  const block = ref.block;
   return (
-    <BlockCard
-      block={block}
-      type={types.find((t) => t.id === block.blockTypeId)}
-      onConflict={reload}
-      onDeleted={() => setBlock(null)}
-    />
+    <>
+      {ref.status === "archived" && (
+        <div className="archived-banner">
+          <Archive size={14} />
+          <span>This linked block is archived.</span>
+        </div>
+      )}
+      <BlockCard
+        block={block}
+        type={types.find((t) => t.id === block.blockTypeId)}
+        onConflict={reload}
+        onDeleted={() => setRef({ status: "missing", block: null })}
+      />
+    </>
   );
 }
 

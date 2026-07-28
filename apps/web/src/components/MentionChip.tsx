@@ -56,6 +56,7 @@ export function MentionChip({ node }: NodeViewProps) {
   const [resolvedId, setResolvedId] = useState("");
   const [fetchedLabel, setFetchedLabel] = useState("");
   const [dead, setDead] = useState(false); // target no longer exists
+  const [archived, setArchived] = useState(false); // target exists but archived
   const id = staticId || resolvedId;
   const { openBlock } = usePanels();
 
@@ -70,6 +71,7 @@ export function MentionChip({ node }: NodeViewProps) {
         return;
       }
       setDead(false);
+      setArchived(Boolean(b.archivedAt));
       if (!staticId) setResolvedId(b.id);
       if (!label) setFetchedLabel(oneLineText(b.properties as Record<string, unknown>, b.content) || "Untitled");
       if (b.collectionKind) {
@@ -112,11 +114,17 @@ export function MentionChip({ node }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`mention-chip${isTag ? " tag" : ""}${dead ? " dead" : ""}`}
+      className={`mention-chip${isTag ? " tag" : ""}${dead ? " dead" : ""}${archived && !dead ? " archived" : ""}`}
       contentEditable={false}
       onMouseDown={onActivate}
       onClick={swallow}
-      title={dead ? `${label || "reference"} — no longer exists` : label || fetchedLabel}
+      title={
+        dead
+          ? `${label || "reference"} — no longer exists`
+          : archived
+            ? `${label || fetchedLabel || "reference"} — archived`
+            : label || fetchedLabel
+      }
     >
       {isTag ? (
         <Hash size={13} />

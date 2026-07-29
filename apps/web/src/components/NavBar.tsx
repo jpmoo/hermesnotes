@@ -5,6 +5,7 @@ import { api, type Block, type BlockType } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
 
 const fmtDay = (date: string) =>
   new Date(`${date}T00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -47,6 +48,7 @@ const getInfo = (id: string) =>
 
 function RecentsMenu() {
   const { recents, selectedBlockId, selectedToday, openBlock } = usePanels();
+  const { colors } = usePreferences();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [info, setInfo] = useState<Record<string, RecentInfo>>({});
@@ -82,12 +84,13 @@ function RecentsMenu() {
           ) : (
             recents.map((e) => {
               if (e.kind === "page") {
+                // Match the rail: each page's icon uses that nav row's icon color.
                 const meta = {
-                  blocks: { icon: <Layers size={14} />, label: "All blocks" },
-                  collections: { icon: <Library size={14} />, label: "Collections" },
-                  favorites: { icon: <Star size={14} />, label: "Favorites" },
-                  archive: { icon: <Archive size={14} />, label: "Archive" },
-                  review: { icon: <ListChecks size={14} />, label: "Weekly Review" },
+                  blocks: { Icon: Layers, label: "All blocks", key: "allblocks_colors" },
+                  collections: { Icon: Library, label: "Collections", key: "collections_colors" },
+                  favorites: { Icon: Star, label: "Favorites", key: "favorites_colors" },
+                  archive: { Icon: Archive, label: "Archive", key: "archive_colors" },
+                  review: { Icon: ListChecks, label: "Weekly Review", key: "review_colors" },
                 }[e.page];
                 return (
                   <button
@@ -98,7 +101,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    {meta.icon}
+                    <meta.Icon size={14} color={colors(meta.key).icon ?? undefined} />
                     <span className="recent-label">{meta.label}</span>
                   </button>
                 );
@@ -113,7 +116,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    <CalendarDays size={14} />
+                    <CalendarDays size={14} color={colors("today_colors").icon ?? undefined} />
                     <span className="recent-label">Today · {fmtDay(e.date)}</span>
                   </button>
                 );
@@ -130,7 +133,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    <CollectionIcon document={it?.document} matrix={it?.matrix} table={it?.table} canvas={it?.canvas} calendar={it?.calendar} smart={it?.smart} size={14} />
+                    <CollectionIcon document={it?.document} matrix={it?.matrix} table={it?.table} canvas={it?.canvas} calendar={it?.calendar} smart={it?.smart} color={(it?.properties?.icon_color as string) ?? undefined} size={14} />
                     <span className="recent-label">{it?.label ?? "…"}</span>
                   </button>
                 );

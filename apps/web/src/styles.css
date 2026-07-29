@@ -2240,6 +2240,9 @@ input.li-text:focus {
   min-height: 24px;
   cursor: text;
   outline: none;
+  /* Reserves the gutter a top-level list row's controls hang into, so they don't
+     have to be paid for by a deeper list indent. */
+  padding-left: 1.2em;
 }
 .note-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -2266,7 +2269,8 @@ input.li-text:focus {
    other list. */
 .note-editor ul[data-type="taskList"] li {
   position: relative;
-  padding-left: 24px;
+  /* Room for the checkbox, which is the row's marker (absolutely placed below). */
+  padding-left: 1.4em;
 }
 .note-editor ul[data-type="taskList"] li > label {
   /* Center the checkbox within the first line so it aligns with the text. */
@@ -2307,10 +2311,11 @@ input.li-text:focus {
 .note-editor h3 { font-size: 1.15em; }
 .note-editor h4 { font-size: 1.05em; }
 .note-editor p { margin: 0 0 0.55em; }
-/* Padding leaves a gutter wide enough for the fold twisty + drag grip, left of
-   the bullet/number. Every level gets one, so nested rows are reorderable too. */
+/* A normal list indent — the gutter controls hang to the LEFT of the row (into
+   the editor's own left padding at the top level, or into the parent's indent
+   when nested), so they don't have to inflate the indent per level. */
 .note-editor ul,
-.note-editor ol { margin: 0 0 0.55em; padding-left: 2.4em; }
+.note-editor ol { margin: 0 0 0.55em; padding-left: 1.5em; }
 .note-editor li { position: relative; margin: 0.15em 0; }
 
 /* List gutter controls. Kept muted rather than hover-only so the affordance is
@@ -2321,40 +2326,71 @@ input.li-text:focus {
 .li-drag,
 .li-fold {
   position: absolute;
-  top: 0.1em;
-  height: 1.35em;
-  width: 0.8em;
+  top: 0;
+  height: 1.5em;
+  width: 1em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
   user-select: none;
-  opacity: 0.3;
+  opacity: 0.55;
   transition: opacity 0.12s;
+  /* The grip drives its own touch gesture; don't let the browser pan instead. */
+  touch-action: none;
 }
 .li-drag {
-  left: -2.3em;
-  font-size: 11px;
+  left: -2.55em;
+  font-size: 12px;
   cursor: grab;
 }
-.li-drag:active { cursor: grabbing; }
+.li-drag:active,
+.li-drag.dragging { cursor: grabbing; opacity: 1; }
 .li-fold {
-  left: -1.45em;
-  font-size: 10px;
+  left: -1.5em;
+  font-size: 11px;
   cursor: pointer;
   transition: opacity 0.12s, transform 0.12s;
 }
 /* Pointing right when folded — the usual "there's more inside" cue. */
 .li-fold.collapsed {
   transform: rotate(-90deg);
-  opacity: 0.75;
+  opacity: 0.8;
 }
 .li-drag:hover,
-.li-fold:hover { opacity: 0.95; }
+.li-fold:hover { opacity: 1; }
+
+/* Touch: the same controls need real tap targets, and a wider gutter to sit in. */
+@media (pointer: coarse) {
+  .note-editor { padding-left: 1.7em; }
+  .note-editor ul,
+  .note-editor ol { padding-left: 2em; }
+  .li-drag,
+  .li-fold {
+    width: 1.5em;
+    height: 1.9em;
+    opacity: 0.6;
+  }
+  .li-drag { left: -3.55em; font-size: 14px; }
+  .li-fold { left: -2em; font-size: 13px; }
+}
+
+/* Where a row being dragged by touch would land. */
+.li-drop-line {
+  position: fixed;
+  z-index: 40;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
 /* Children of a collapsed row. */
 .li-nested-hidden { display: none; }
 /* The row picked up by its grip — shows exactly what a drag will move, including
-   anything nested inside it. */
+   anything nested inside it. (.li-dragging is the touch path, which marks the row
+   with a class instead of selecting it, to keep the keyboard down.) */
+.note-editor li.li-dragging { opacity: 0.75; }
+.note-editor li.li-dragging,
 .note-editor li.ProseMirror-selectednode {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

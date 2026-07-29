@@ -73,6 +73,81 @@ function itemAt(view: EditorView, pos: number): PMNode | null {
   return node && ITEM_TYPES.has(node.type.name) ? node : null;
 }
 
+// ── Touch reordering ─────────────────────────────────────────────────────────
+// Touch devices never fire HTML5 drag events, so the grip's native drag-and-drop
+// is mouse-only. These handlers reproduce it: track the finger, show where the
+// row would land, and move the node on release.
+
+let dropLine: HTMLElement | null = null;
+
+/** Show (creating if needed) the line marking where the row would land. */
+function showDropLine(view: EditorView, target: number): void {
+  if (!dropLine) {
+    dropLine = document.createElement("div");
+    dropLine.className = "li-drop-line";
+    document.body.appendChild(dropLine);
+  }
+  let coords: { top: number; bottom: number };
+  try {
+    coords = view.coordsAtPos(target);
+  } catch {
+    return;
+  }
+  const box = view.dom.getBoundingClientRect();
+  dropLine.style.top = `${coords.top}px`;
+  dropLine.style.left = `${box.left}px`;
+  dropLine.style.width = `${box.width}px`;
+}
+
+function hideDropLine(): void {
+  dropLine?.remove();
+  dropLine = null;
+}
+
+/**
+ * Where a row released at these viewport coordinates should be inserted, or null
+ * if that isn't a legal home for it. Only items of the SAME type are considered,
+ * so a checklist row can't be dropped among bullets (which the schema forbids)
+ * and a drop inside the row being dragged is refused.
+ */
+function dropTargetAt(view: EditorView, x: number, y: number, dragPos: number): number | null {
+  const dragged = itemAt(view, dragPos);
+  if (!dragged) return null;
+  const at = view.posAtCoords({ left: x, top: y });
+  if (!at) return null;
+  const $pos = view.state.doc.resolve(at.pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    const node = $pos.node(d);
+    if (node.type.name !== dragged.type.name) continue;
+    const itemPos = $pos.before(d);
+    // Refuse to drop a row into itself or its own subtree.
+    if (itemPos >= dragPos && itemPos < dragPos + dragged.nodeSize) return null;
+    const dom = view.nodeDOM(itemPos);
+    const rect = dom instanceof HTMLElement ? dom.getBoundingClientRect() : null;
+    const below = rect ? y > rect.top + rect.height / 2 : false;
+    return below ? itemPos + node.nodeSize : itemPos;
+  }
+  return null;
+}
+
+/** Move the row at `from` to the insertion point `to`. */
+function moveItem(view: EditorView, from: number, to: number): void {
+  const node = itemAt(view, from);
+  if (!node) return;
+  if (to >= from && to <= from + node.nodeSize) return; // no-op
+  const tr = view.state.tr;
+  tr.delete(from, from + node.nodeSize);
+  const insertAt = tr.mapping.map(to, -1);
+  try {
+    tr.insert(insertAt, node);
+  } catch {
+    return; // not a legal spot after all — leave the document alone
+  }
+  // Keep the live-preview plugin from reshaping things around the move.
+  tr.setMeta(LINE_SWAP_META, true);
+  view.dispatch(tr);
+}
+
 function buildGrip(view: EditorView, pos: number): HTMLElement {
   const grip = document.createElement("span");
   grip.className = "li-drag";
@@ -82,10 +157,11 @@ function buildGrip(view: EditorView, pos: number): HTMLElement {
   grip.title = "Drag to reorder";
   grip.textContent = "⠿";
 
-  // Select the whole item, then let ProseMirror's own drag-and-drop move it: it
-  // already knows how to lift a node out of a list and drop it somewhere valid,
-  // which is far safer than hand-rolling the transforms. Because a nested list is
-  // a CHILD of its item, selecting the item takes its children along for free.
+  // Mouse: select the whole item, then hand off to ProseMirror's own
+  // drag-and-drop, which already knows how to lift a node out of a list and drop
+  // it somewhere schema-valid — far safer than hand-rolling the transforms.
+  // Because a nested list is a CHILD of its item, selecting the item takes its
+  // children along for free.
   const selectItem = () => {
     if (!itemAt(view, pos)) return;
     const sel = view.state.selection;
@@ -105,9 +181,56 @@ function buildGrip(view: EditorView, pos: number): HTMLElement {
     event.stopPropagation();
     selectItem();
   });
-  // Belt and braces: if a drag begins without our mousedown (touch, synthetic),
-  // select the item before ProseMirror reads the selection.
   grip.addEventListener("dragstart", () => selectItem());
+
+  // Touch: drive the move ourselves.
+  let target: number | null = null;
+  let dragging = false;
+  let row: HTMLElement | null = null;
+  grip.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!itemAt(view, pos)) return;
+      // Claim the gesture so the page doesn't scroll or start selecting text.
+      event.preventDefault();
+      event.stopPropagation();
+      dragging = true;
+      target = null;
+      grip.classList.add("dragging");
+      // Outline the row via a class rather than selecting it: a selection would
+      // focus the editor and raise the on-screen keyboard in the middle of a drag.
+      const dom = view.nodeDOM(pos);
+      row = dom instanceof HTMLElement ? dom : null;
+      row?.classList.add("li-dragging");
+    },
+    { passive: false },
+  );
+  grip.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!dragging) return;
+      event.preventDefault();
+      const touch = event.touches[0];
+      if (!touch) return;
+      target = dropTargetAt(view, touch.clientX, touch.clientY, pos);
+      if (target == null) hideDropLine();
+      else showDropLine(view, target);
+    },
+    { passive: false },
+  );
+  const endTouch = (event: Event) => {
+    if (!dragging) return;
+    event.preventDefault();
+    dragging = false;
+    grip.classList.remove("dragging");
+    row?.classList.remove("li-dragging");
+    row = null;
+    hideDropLine();
+    if (target != null) moveItem(view, pos, target);
+    target = null;
+  };
+  grip.addEventListener("touchend", endTouch, { passive: false });
+  grip.addEventListener("touchcancel", endTouch, { passive: false });
 
   return grip;
 }
@@ -119,17 +242,21 @@ function buildTwisty(view: EditorView, pos: number, collapsed: boolean): HTMLEle
   twisty.setAttribute("aria-hidden", "true");
   twisty.title = collapsed ? "Expand" : "Collapse";
   twisty.textContent = "▾";
-  // Don't let a click here move the caret or start a selection.
-  twisty.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-  });
-  twisty.addEventListener("click", (event) => {
+  const toggle = (event: Event) => {
     event.preventDefault();
     event.stopPropagation();
     if (!itemAt(view, pos)) return;
     view.dispatch(view.state.tr.setMeta(TOGGLE_FOLD, pos).setMeta("addToHistory", false));
+  };
+  // Don't let a tap here move the caret or start a selection.
+  twisty.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
   });
+  twisty.addEventListener("click", toggle);
+  // Touch gets its own binding: waiting for the synthesized click adds a delay,
+  // and the surrounding editor may claim the gesture first.
+  twisty.addEventListener("touchend", toggle, { passive: false });
   return twisty;
 }
 

@@ -191,6 +191,32 @@ export function CanvasView({
   };
   const [createdCollection, setCreatedCollection] = useState<{ id: string; title: string; kind: string } | null>(null);
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+
+  // When a live link connects a block to another whose type matches one of the
+  // source's reference (relation) fields, file the source under the target —
+  // e.g. linking a task to a project sets the task's Project relation, so the
+  // task becomes part of that project. No matching relation → just the edge.
+  const fileUnderRelation = (fromId: string, toId: string): void => {
+    const from = members.find((m) => m.id === fromId);
+    const to = members.find((m) => m.id === toId);
+    if (!from || !to || !to.blockTypeId) return;
+    const schema = from.blockTypeId ? typeById.get(from.blockTypeId)?.propertySchema : null;
+    const field = schema?.fields.find((f) => f.type === "reference" && f.refTypeId === to.blockTypeId);
+    if (!field) return;
+    const cur = from.properties[field.key];
+    const arr = Array.isArray(cur) ? cur.map(String) : typeof cur === "string" && cur ? [cur] : [];
+    if (arr.includes(to.id)) return; // already filed there
+    void api
+      .patch(`/blocks/${from.id}`, {
+        properties: { ...from.properties, [field.key]: [...arr, to.id] },
+        version: from.version,
+      })
+      .then(() => {
+        emitBlockChange(from.id, "canvas-edges");
+        showToast(`Added to ${oneLineText(to.properties, to.content) || (field.label ?? "relation")}`);
+      })
+      .catch(() => {});
+  };
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Fill the viewport: measure where the canvas actually starts and take the
@@ -721,6 +747,8 @@ export function CanvasView({
               ...(eph ? { dash: "dotted" as const } : {}),
             },
           ]);
+          // A live link between two real blocks may also set a relation.
+          if (!eph) fileUnderRelation(linking.from, target);
         }
       }
       setLinking(null);

@@ -34,6 +34,14 @@ async function resolveEventType(userId: string): Promise<EventType> {
 }
 
 /**
+ * The property key holding a joined feed event's own description, verbatim from
+ * the feed. Deliberately NOT the block's `description`: that one belongs to the
+ * user, and the feed must never overwrite what they wrote there. Rendered
+ * read-only in the UI, so the two live side by side.
+ */
+export const FEED_NOTES_KEY = "feed_description";
+
+/**
  * The property values a feed event dictates, keyed by the type's own field keys.
  * This is both what a conversion seeds and the baseline recorded on the sync row
  * (`last_feed`) for later change detection.
@@ -44,8 +52,8 @@ function feedProperties(type: EventType, ev: EventLike): Record<string, unknown>
   const props: Record<string, unknown> = {
     title: ev.summary || "(untitled event)",
     [spanKey]: { start: ev.start, end: ev.end ?? ev.start },
+    [FEED_NOTES_KEY]: ev.description || "",
   };
-  if (fields.some((f) => f.key === "description")) props.description = ev.description || "";
   if (fields.some((f) => f.key === "location")) props.location = ev.location || "";
   return props;
 }

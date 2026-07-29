@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { renderFeedText } from "../lib/feed-text.tsx";
 import { fmtDateTime } from "../lib/format.ts";
 import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { useRegisterEditor } from "../lib/editor-registry.ts";
@@ -212,6 +213,10 @@ export function TypedBlockCard({
   };
 
   const banner = (props.banner as BannerValue | null) ?? null;
+  // A joined calendar-feed event carries the feed's own description. It's the
+  // feed's text, not the user's, so it shows read-only beside their description
+  // (see FEED_NOTES_KEY, apps/server/src/calendar/routes.ts).
+  const feedNotes = typeof props.feed_description === "string" ? props.feed_description.trim() : "";
   return (
     <div
       className="card typed-card"
@@ -285,6 +290,13 @@ export function TypedBlockCard({
               </Tag>
             );
           })}
+        </div>
+      )}
+
+      {!compact && feedNotes && (
+        <div className="field typed-field full feed-notes">
+          <span>Feed description</span>
+          <div className="feed-notes-body">{renderFeedText(feedNotes)}</div>
         </div>
       )}
 

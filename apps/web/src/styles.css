@@ -5474,6 +5474,23 @@ input.cv-add-input {
   word-break: break-word;
   margin: 0 0 16px;
 }
+/* The feed's own description on a joined event — read-only, so it reads as
+   quoted source material rather than an editable field. */
+.feed-notes-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 6px 10px;
+  border-left: 2px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 4px 4px 0;
+}
+.feed-notes-body a {
+  color: var(--accent);
+  text-decoration: underline;
+}
 .feed-event-desc a {
   color: var(--accent);
   text-decoration: underline;

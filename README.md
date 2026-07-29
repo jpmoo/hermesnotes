@@ -2,6 +2,8 @@
 
 **A block-first personal knowledge base — where notes, tasks, and projects are all the same thing, and everything connects.**
 
+> I'm a vibe-coder, and Claude did all of the heavy lifting here.
+
 Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task, a project, a person, a bookmark — is a **block** of a type you define. Blocks link to each other, roll up into flexible **collections** (lists, tables, kanban matrices, calendars, or an infinite canvas), and are searchable by keyword *and* meaning. It ships with daily notes, a weekly-review workflow, an optional local AI assistant, an MCP server for agents, and one-click export to Obsidian-compatible Markdown.
 
 > Status: `2.0.0-alpha` — usable and actively developed. Expect sharp edges.

@@ -75,11 +75,12 @@ interface SyncTarget {
 
 /**
  * Mirror feed changes into synced blocks — a three-way merge, never a wholesale
- * overwrite. For each field the feed owns, the new feed value is taken only when
- * the FEED changed it and the user hasn't edited it here since the last sync;
- * a field the user has touched stays theirs, so notes added to a synced event
- * are never lost to a later feed fetch. Rows with no recorded baseline adopt the
- * feed's current values as the baseline without touching the block at all.
+ * overwrite. For each field the feed owns: an absent value is filled in (that
+ * can't destroy anything), and an existing one is replaced only when the FEED
+ * changed it and the user hasn't edited it here since the last sync. A field the
+ * user has touched stays theirs, so notes added to a joined event are never lost
+ * to a later feed fetch — and with no recorded baseline yet, nothing the user
+ * already has is touched at all.
  */
 async function applySyncUpdates(userId: string, targets: Map<string, SyncTarget>): Promise<void> {
   const ids = [...targets.keys()];
@@ -102,31 +103,39 @@ async function applySyncUpdates(userId: string, targets: Map<string, SyncTarget>
     const feedNow = feedProperties(type, target.ev);
     const prev = target.lastFeed;
 
-    // With a baseline, merge field by field. Without one, skip straight to
-    // recording the baseline: we can't tell feed values from user edits yet, and
-    // guessing wrong would destroy the user's text.
-    if (prev) {
-      const next = { ...base };
-      let changed = false;
-      for (const [key, value] of Object.entries(feedNow)) {
-        if (same(value, prev[key])) continue; // feed hasn't changed this field
-        if (!same(base[key], prev[key])) continue; // the user edited it — keep theirs
+    const next = { ...base };
+    let changed = false;
+    for (const [key, value] of Object.entries(feedNow)) {
+      const cur = base[key];
+      // The block has no value for this field at all, so filling it in can't
+      // destroy anything — and it's how a newly-tracked field (the feed's own
+      // description) reaches events joined before that field existed.
+      if (cur === undefined) {
+        if (value == null || value === "") continue; // nothing worth writing
         next[key] = value;
         changed = true;
+        continue;
       }
-      if (changed) {
-        const embedSource = computeEmbedSource(type, { content: null, properties: next });
-        await db
-          .update(blocks)
-          .set({
-            properties: next,
-            embedSource,
-            embedSourceHash: null,
-            version: sql`${blocks.version} + 1`,
-            updatedAt: new Date(),
-          })
-          .where(eq(blocks.id, row.id));
-      }
+      // Past that, changing a field needs a baseline to tell a feed change from
+      // an edit made here. Without one, leave the user's value alone.
+      if (!prev || !(key in prev)) continue;
+      if (same(value, prev[key])) continue; // feed hasn't changed this field
+      if (!same(cur, prev[key])) continue; // the user edited it — keep theirs
+      next[key] = value;
+      changed = true;
+    }
+    if (changed) {
+      const embedSource = computeEmbedSource(type, { content: null, properties: next });
+      await db
+        .update(blocks)
+        .set({
+          properties: next,
+          embedSource,
+          embedSourceHash: null,
+          version: sql`${blocks.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(blocks.id, row.id));
     }
 
     if (!same(feedNow, prev)) {

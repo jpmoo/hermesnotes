@@ -90,6 +90,9 @@ export function TypedBlockCard({
   // (leaving the card — e.g. expanding to the viewport — before the 700ms fired
   // must not drop the change).
   const pendingProps = useRef<Record<string, unknown> | null>(null);
+  // Which fields the user actually edited, so a version conflict can re-apply
+  // exactly those onto the server's newer state instead of losing them.
+  const pendingKeys = useRef<Set<string>>(new Set());
   const dirty = () => pendingProps.current != null;
   // Any field in this card holding focus also holds off remote updates — a pause
   // longer than the debounce must not let one remount the editor under the caret.
@@ -128,8 +131,9 @@ export function TypedBlockCard({
   // In masonry (compact) the attachments field is replaced by a paperclip chip.
   const bodyFields = compact ? rest.filter((f) => f.type !== "attachments") : rest;
 
-  const save = async (next: Record<string, unknown>) => {
+  const save = async (next: Record<string, unknown>, isRetry = false) => {
     setSaveState("saving");
+    const edited = [...pendingKeys.current];
     try {
       const updated = await api.patch<Block & { recurred?: boolean }>(`/blocks/${block.id}`, {
         properties: next,
@@ -138,6 +142,7 @@ export function TypedBlockCard({
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
+      pendingKeys.current.clear();
       emitBlockChange(block.id, origin);
       // A remote change that arrived mid-edit was held; now that we're settled
       // and not typing, catch up to it.
@@ -146,6 +151,23 @@ export function TypedBlockCard({
       if (updated.recurred) onConflict();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
+        // Something else wrote first — another tab, the assistant over MCP, a
+        // calendar-feed mirror. Never answer that by discarding what the user
+        // typed: re-apply just the fields they actually edited on top of the
+        // server's current state and save once more. Only then give up.
+        if (!isRetry && edited.length) {
+          try {
+            const fresh = await api.get<Block>(`/blocks/${block.id}`);
+            versionRef.current = fresh.version;
+            const merged = { ...((fresh.properties ?? {}) as Record<string, unknown>) };
+            for (const key of edited) merged[key] = next[key];
+            setProps(merged);
+            await save(merged, true);
+            return;
+          } catch {
+            /* couldn't reconcile — fall through to the host's conflict handler */
+          }
+        }
         onConflict();
         return;
       }
@@ -157,6 +179,7 @@ export function TypedBlockCard({
     const next = { ...props, [key]: value };
     setProps(next);
     pendingProps.current = next;
+    pendingKeys.current.add(key);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       pendingProps.current = null;
@@ -215,8 +238,10 @@ export function TypedBlockCard({
   const banner = (props.banner as BannerValue | null) ?? null;
   // A joined calendar-feed event carries the feed's own description. It's the
   // feed's text, not the user's, so it shows read-only beside their description
-  // (see FEED_NOTES_KEY, apps/server/src/calendar/routes.ts).
-  const feedNotes = typeof props.feed_description === "string" ? props.feed_description.trim() : "";
+  // (see FEED_NOTES_KEY, apps/server/src/calendar/routes.ts). The key's presence
+  // — not its content — is what marks the event as joined, so an empty one still
+  // shows the section rather than silently vanishing.
+  const feedNotes = typeof props.feed_description === "string" ? props.feed_description.trim() : null;
   return (
     <div
       className="card typed-card"
@@ -293,10 +318,14 @@ export function TypedBlockCard({
         </div>
       )}
 
-      {!compact && feedNotes && (
+      {!compact && feedNotes !== null && (
         <div className="field typed-field full feed-notes">
           <span>Feed description</span>
-          <div className="feed-notes-body">{renderFeedText(feedNotes)}</div>
+          {feedNotes ? (
+            <div className="feed-notes-body">{renderFeedText(feedNotes)}</div>
+          ) : (
+            <div className="feed-notes-body empty">(empty)</div>
+          )}
         </div>
       )}
 

@@ -5491,6 +5491,30 @@ input.cv-add-input {
   color: var(--accent);
   text-decoration: underline;
 }
+.feed-notes-body.empty {
+  font-style: italic;
+  opacity: 0.7;
+}
+/* An editable field whose value is a URL: input plus a click-through. */
+.field-with-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.field-with-link > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.field-open {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+.field-open:hover {
+  color: var(--accent);
+}
 .feed-event-desc a {
   color: var(--accent);
   text-decoration: underline;

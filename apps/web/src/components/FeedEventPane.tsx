@@ -77,7 +77,8 @@ export function FeedEventPane({
         {event.location && (
           <span className="feed-event-row">
             <MapPin size={14} />
-            <span>{event.location}</span>
+            {/* Often a meeting URL rather than a place — make it clickable. */}
+            <span>{renderFeedText(event.location)}</span>
           </span>
         )}
         <span className="feed-event-source">from {event.feedName}</span>

@@ -1,4 +1,6 @@
 import type { FieldDef } from "@hermes/shared";
+import { ExternalLink } from "lucide-react";
+import type { ReactNode } from "react";
 import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 import { LongTextField } from "./LongTextField.tsx";
@@ -11,6 +13,39 @@ import { ReferenceInput } from "./ReferenceInput.tsx";
 interface Span {
   start?: string;
   end?: string;
+}
+
+/** The href a field's whole value points at, if it is just a URL. */
+function urlHref(v: string): string | null {
+  const t = v.trim();
+  if (/^https?:\/\/\S+$/i.test(t)) return t;
+  if (/^www\.\S+$/i.test(t)) return `https://${t}`;
+  return null;
+}
+
+/**
+ * Wrap an editable field that currently holds a URL with a click-through, so a
+ * meeting link (a calendar event's location is often just a Zoom URL) is
+ * reachable without selecting and copying it. `stopPropagation` keeps the
+ * enclosing <label> from swallowing the click and focusing the input instead.
+ */
+function WithOpenLink({ href, children }: { href: string | null; children: ReactNode }) {
+  if (!href) return <>{children}</>;
+  return (
+    <span className="field-with-link">
+      {children}
+      <a
+        className="field-open"
+        href={href}
+        target="_blank"
+        rel="noreferrer noopener"
+        title={`Open ${href}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ExternalLink size={13} />
+      </a>
+    </span>
+  );
 }
 
 /** Renders the appropriate control for a property_schema field (design doc §3). */
@@ -99,7 +134,11 @@ export function FieldInput({
         />
       );
     case "url":
-      return <input type="url" autoComplete="off" value={str} onChange={(e) => onChange(e.target.value)} />;
+      return (
+        <WithOpenLink href={urlHref(str)}>
+          <input type="url" autoComplete="off" value={str} onChange={(e) => onChange(e.target.value)} />
+        </WithOpenLink>
+      );
     case "reference":
       return <ReferenceInput refTypeId={field.refTypeId} value={value} onChange={onChange} />;
     case "select":
@@ -116,6 +155,12 @@ export function FieldInput({
       );
     default:
       // Plain text fields: mention-aware (@ / # / | search dropdown, chips).
-      return <MentionTextInput className="field-text" value={str} onChange={(v) => onChange(v)} />;
+      // A field holding just a URL (e.g. an event's location) also gets a
+      // click-through, since it stays editable text.
+      return (
+        <WithOpenLink href={urlHref(str)}>
+          <MentionTextInput className="field-text" value={str} onChange={(v) => onChange(v)} />
+        </WithOpenLink>
+      );
   }
 }

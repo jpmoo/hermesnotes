@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP, isIPv4 } from "node:net";
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { blockTypes, blocks, calendarConverted, calendarFeeds, userSettings } from "@hermes/db";
@@ -111,8 +111,11 @@ async function applySyncUpdates(userId: string, targets: Map<string, SyncTarget>
       // destroy anything — and it's how a newly-tracked field (the feed's own
       // description) reaches events joined before that field existed.
       if (cur === undefined) {
-        if (value == null || value === "") continue; // nothing worth writing
-        next[key] = value;
+        // The feed-notes key is always recorded, even empty: its presence is how
+        // the UI knows this event is feed-joined, so it can show the section as
+        // "(empty)" rather than leaving the user wondering.
+        if ((value == null || value === "") && key !== FEED_NOTES_KEY) continue;
+        next[key] = value ?? "";
         changed = true;
         continue;
       }
@@ -126,13 +129,18 @@ async function applySyncUpdates(userId: string, targets: Map<string, SyncTarget>
     }
     if (changed) {
       const embedSource = computeEmbedSource(type, { content: null, properties: next });
+      // Deliberately does NOT bump `version`. This is a background mirror, not a
+      // user edit: bumping it would invalidate the optimistic-concurrency token
+      // an open editor is holding, so a save the user had in flight would 409 and
+      // their typing would be thrown away — which is exactly the data loss this
+      // whole area was fixed for. A client writing its own snapshot afterwards
+      // may drop a feed field; the next fetch simply puts it back.
       await db
         .update(blocks)
         .set({
           properties: next,
           embedSource,
           embedSourceHash: null,
-          version: sql`${blocks.version} + 1`,
           updatedAt: new Date(),
         })
         .where(eq(blocks.id, row.id));

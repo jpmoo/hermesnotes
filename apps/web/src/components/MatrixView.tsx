@@ -266,6 +266,7 @@ function Chip({
       {...drag.attributes}
       {...drag.listeners}
       className={`matrix-chip${drag.isDragging ? " dragging" : ""}${chipDrop.isOver ? " chip-over" : ""}`}
+      title={item.label}
       onClick={(e) => {
         e.stopPropagation();
         selectBlock(item.id);

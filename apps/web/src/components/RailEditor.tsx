@@ -31,7 +31,10 @@ import { useState } from "react";
 import {
   DEFAULT_RAIL,
   normalizeRail,
+  normalizeStartPage,
   RAIL_LAYOUT_PREF_KEY,
+  START_PAGE_OPTIONS,
+  START_PAGE_PREF_KEY,
   type RailButtonId,
   type RailItem,
 } from "@hermes/shared";
@@ -174,6 +177,21 @@ export function RailEditor() {
           Reset to default
         </button>
       </div>
+
+      <label className="field" style={{ marginTop: 18 }}>
+        <span>Start page</span>
+        <select
+          value={normalizeStartPage(prefs[START_PAGE_PREF_KEY])}
+          onChange={(e) => setPref(START_PAGE_PREF_KEY, e.target.value)}
+        >
+          {START_PAGE_OPTIONS.map((o) => (
+            <option key={o.path} value={o.path}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <span className="hint">Where you land when you sign in or open the app at its root.</span>
+      </label>
     </div>
   );
 }

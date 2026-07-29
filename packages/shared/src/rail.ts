@@ -38,6 +38,27 @@ export type RailLayout = z.infer<typeof railLayoutSchema>;
 
 export const RAIL_LAYOUT_PREF_KEY = "rail_layout";
 
+/** Preference: which page to land on at login / a root refresh. */
+export const START_PAGE_PREF_KEY = "start_page";
+
+/** Selectable landing pages (the rail's navigable destinations). */
+export const START_PAGE_OPTIONS = [
+  { path: "/today", label: "Today" },
+  { path: "/favorites", label: "Favorites" },
+  { path: "/blocks", label: "All blocks" },
+  { path: "/collections", label: "Collections" },
+  { path: "/types", label: "Types" },
+  { path: "/review", label: "Weekly Review" },
+  { path: "/archive", label: "Archive" },
+] as const;
+
+export const DEFAULT_START_PAGE = "/blocks";
+
+/** Coerce a stored start-page preference to a known destination. */
+export function normalizeStartPage(raw: unknown): string {
+  return START_PAGE_OPTIONS.some((o) => o.path === raw) ? (raw as string) : DEFAULT_START_PAGE;
+}
+
 /** The stock arrangement (matches the app's default rail). */
 export const DEFAULT_RAIL: RailLayout = [
   { kind: "button", id: "new" },

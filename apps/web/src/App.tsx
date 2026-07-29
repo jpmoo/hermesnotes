@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { normalizeStartPage, START_PAGE_PREF_KEY } from "@hermes/shared";
 import { api, type SetupStatus } from "./api.ts";
 import { useAuth } from "./auth/AuthContext.tsx";
 import { NavBar } from "./components/NavBar.tsx";
@@ -67,7 +68,8 @@ function sectionKey(path: string): string | null {
 
 function Shell() {
   const { leftPinned, rightPinned } = usePanels();
-  const { colors } = usePreferences();
+  const { colors, prefs } = usePreferences();
+  const startPage = normalizeStartPage(prefs[START_PAGE_PREF_KEY]);
   const { pathname } = useLocation();
   const isMobile = useIsMobile();
   useLiveSync(); // stream remote block changes into the in-tab bus
@@ -127,7 +129,7 @@ function Shell() {
         <div className="main-inner">
           <NavBar />
           <Routes>
-            <Route path="/" element={<Navigate to="/blocks" replace />} />
+            <Route path="/" element={<Navigate to={startPage} replace />} />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/today/:date" element={<TodayPage />} />
             <Route path="/blocks" element={<AllBlocksPage />} />

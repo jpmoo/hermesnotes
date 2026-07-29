@@ -89,6 +89,24 @@ function gutterLeft(level: number, which: "grip" | "fold"): number {
   return (which === "grip" ? m.gripX : m.foldX) - rowIndent;
 }
 
+/**
+ * Correct the control's offset against the row's real indent once it's laid out.
+ * The METRICS above get it right for a plain list, but a checklist carries a
+ * slightly different indent (its checkbox is a wider marker), and measuring means
+ * the column stays true for any such difference without a second set of constants
+ * to keep in sync.
+ */
+function alignToGutter(el: HTMLElement, view: EditorView, which: "grip" | "fold"): void {
+  requestAnimationFrame(() => {
+    const li = el.closest("li");
+    if (!li || !el.isConnected || !view.dom.isConnected) return;
+    const m = isCoarsePointer() ? METRICS.coarse : METRICS.fine;
+    // .note-editor has no left padding, so its border edge IS the content edge.
+    const indent = li.getBoundingClientRect().left - view.dom.getBoundingClientRect().left;
+    el.style.left = `${(which === "grip" ? m.gripX : m.foldX) - indent}px`;
+  });
+}
+
 /** The nested lists directly inside a list item, as absolute ranges. */
 function nestedLists(item: PMNode, itemPos: number): { from: number; to: number }[] {
   const out: { from: number; to: number }[] = [];
@@ -216,6 +234,7 @@ function buildGrip(view: EditorView, level: number): HTMLElement {
   const grip = document.createElement("span");
   grip.className = "li-drag";
   grip.style.left = `${gutterLeft(level, "grip")}px`;
+  alignToGutter(grip, view, "grip");
   grip.draggable = true;
   grip.contentEditable = "false";
   grip.setAttribute("aria-hidden", "true");
@@ -307,6 +326,7 @@ function buildTwisty(view: EditorView, level: number, collapsed: boolean): HTMLE
   const twisty = document.createElement("span");
   twisty.className = `li-fold${collapsed ? " collapsed" : ""}`;
   twisty.style.left = `${gutterLeft(level, "fold")}px`;
+  alignToGutter(twisty, view, "fold");
   twisty.contentEditable = "false";
   twisty.setAttribute("aria-hidden", "true");
   twisty.title = collapsed ? "Expand" : "Collapse";

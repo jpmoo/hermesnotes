@@ -2288,6 +2288,14 @@ input.li-text:focus {
 .note-editor ul[data-type="taskList"] {
   list-style: none;
   margin: 0 0 0.55em;
+  /* A few px more than a plain list: the checkbox is a wider marker than a bullet
+     or a number, so without this the fold twisty ends up crowded against it
+     instead of sitting centred in the gutter. The controls measure the row's real
+     indent (alignToGutter), so they stay in the shared column regardless. */
+  padding-left: 25px;
+}
+.note-editor > ul[data-type="taskList"] {
+  padding-left: 59px;
 }
 .note-editor li ul[data-type="taskList"] {
   margin: 0.15em 0 0;
@@ -2419,6 +2427,10 @@ input.li-text:focus {
   .note-editor ol { padding-left: 26px; }
   .note-editor > ul,
   .note-editor > ol { padding-left: 68px; }
+  /* Same few-px allowance for the wider checkbox marker as on desktop. The
+     taskList selector outranks the ones above, so it needs restating here. */
+  .note-editor ul[data-type="taskList"] { padding-left: 29px; }
+  .note-editor > ul[data-type="taskList"] { padding-left: 71px; }
   .li-drag,
   .li-fold {
     width: 16px;
@@ -2446,11 +2458,14 @@ input.li-text:focus {
    row's nested children too — and reaches left under the marker so it reads as a
    full row. Striping restarts within each nested list, since CSS can't count
    rows across nesting levels. */
-:root[data-list-stripes="1"] .note-editor li:nth-child(even) > p:first-child,
-:root[data-list-stripes="1"] .note-editor li:nth-child(even) > pre:first-child,
-:root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > p:first-child,
-:root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-child {
-  background: color-mix(in srgb, var(--text) 6%, transparent);
+/* `first-of-type`, NOT `first-child`: the drag grip is a widget <span> injected as
+   the row's first child, so `p:first-child` matched nothing and the stripes never
+   appeared at all. */
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > p:first-of-type,
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > pre:first-of-type,
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > p:first-of-type,
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-of-type {
+  background: color-mix(in srgb, var(--text) 11%, transparent);
   border-radius: 4px;
   /* Pulled left by exactly the marker box, so the band covers the
      bullet/number/checkbox but stops short of the control gutter. */
@@ -2458,10 +2473,10 @@ input.li-text:focus {
   padding-left: 22px;
 }
 @media (pointer: coarse) {
-  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > p:first-child,
-  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > pre:first-child,
-  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > p:first-child,
-  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-child {
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > p:first-of-type,
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > pre:first-of-type,
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > p:first-of-type,
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-of-type {
     margin-left: -26px;
     padding-left: 26px;
   }

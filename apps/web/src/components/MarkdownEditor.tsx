@@ -9,7 +9,7 @@ import { IMG_SMALL, MdImage } from "../lib/image-node.ts";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
-import { ActiveLineSource, SourceBlock } from "../lib/active-line-source.ts";
+import { ActiveLineSource, SourceableListItem, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -75,7 +75,10 @@ export function MarkdownEditor({
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      // Our ListItem (below) accepts a raw source line as a child so the active
+      // list line can show its markdown — disable StarterKit's stock one.
+      StarterKit.configure({ listItem: false }),
+      SourceableListItem,
       // Allow our custom mention schemes to survive markdown re-parsing (raw→live
       // and reload), so they convert back into mention chips.
       Link.configure({
@@ -85,7 +88,12 @@ export function MarkdownEditor({
         protocols: ["block", "tag"],
       }),
       TaskList,
-      TaskItem.configure({ nested: true }),
+      // Same source-line allowance for checklist items.
+      TaskItem.extend({
+        content() {
+          return this.options.nested ? "(paragraph | sourceBlock) block*" : "(paragraph | sourceBlock)+";
+        },
+      }).configure({ nested: true }),
       Markdown.configure({ breaks: true, transformPastedText: true }),
       Placeholder.configure({ placeholder }),
       CheckboxInput,

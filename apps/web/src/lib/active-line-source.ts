@@ -1,4 +1,4 @@
-import { Extension, Node } from "@tiptap/core";
+import { Extension, mergeAttributes, Node } from "@tiptap/core";
 import { DOMParser as PMDOMParser, Fragment, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 
@@ -34,9 +34,40 @@ export const SourceBlock = Node.create({
   },
 });
 
+/**
+ * Drop-in replacement for tiptap's ListItem whose content also accepts a raw
+ * source line (`sourceBlock`) as its first child — so the active list line can
+ * present its markdown, just like a top-level paragraph. Behaves exactly like
+ * the stock ListItem otherwise (Enter/Tab/Shift-Tab map to the core list
+ * commands). Register it with `StarterKit.configure({ listItem: false })`.
+ */
+export const SourceableListItem = Node.create({
+  name: "listItem",
+  addOptions() {
+    return { HTMLAttributes: {}, bulletListTypeName: "bulletList", orderedListTypeName: "orderedList" };
+  },
+  content: "(paragraph | sourceBlock) block*",
+  defining: true,
+  parseHTML() {
+    return [{ tag: "li" }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["li", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => this.editor.commands.splitListItem(this.name),
+      Tab: () => this.editor.commands.sinkListItem(this.name),
+      "Shift-Tab": () => this.editor.commands.liftListItem(this.name),
+    };
+  },
+});
+
 const KEY = new PluginKey("activeLineSource");
 export const LINE_SWAP_META = "lineSourceSwap";
 const META = LINE_SWAP_META;
+// Textblocks that swap to raw source. Lists/quotes reach these via their inner
+// paragraphs (handled by the depth-agnostic active-line logic below).
 const SOURCEABLE = new Set(["paragraph", "heading"]);
 
 type MdStorage = {
@@ -150,6 +181,44 @@ export const ActiveLineSource = Extension.create({
         if ($head.parent.type !== sourceType) return false;
 
         const md = editor.storage.markdown as MdStorage;
+
+        // A source line INSIDE a list item or blockquote: render it back and hand
+        // Enter to tiptap's own list/quote logic, so a new bullet (or quote line)
+        // is created correctly. The freshly-placed cursor's line then swaps to
+        // source on its own via the plugin below.
+        const listItemType = schema.nodes.listItem;
+        const taskItemType = schema.nodes.taskItem;
+        const blockquoteType = schema.nodes.blockquote;
+        const container = $head.depth >= 2 ? $head.node($head.depth - 1) : null;
+        const inListItem =
+          !!container && (container.type === listItemType || container.type === taskItemType);
+        const inQuote = !!container && container.type === blockquoteType;
+        if (inListItem || inQuote) {
+          const lineText = $head.parent.textContent;
+          const caret = $head.parentOffset;
+          const sbFrom = $head.before($head.depth);
+          const sbTo = $head.after($head.depth);
+          const rendered = lineText.trim().length
+            ? mdToFragment(schema, md, lineText)
+            : Fragment.from(paraType.create());
+          const renderedLen = rendered.firstChild?.content.size ?? 0;
+          editor.commands.command(({ tr, dispatch }) => {
+            tr.replaceWith(sbFrom, sbTo, rendered);
+            tr = rechipMentions(tr, schema);
+            try {
+              tr.setSelection(TextSelection.create(tr.doc, sbFrom + 1 + Math.min(caret, renderedLen)));
+            } catch {
+              /* leave as mapped */
+            }
+            tr.setMeta(META, true);
+            if (dispatch) dispatch(tr);
+            return true;
+          });
+          return inListItem
+            ? editor.commands.splitListItem(container!.type.name)
+            : editor.commands.splitBlock();
+        }
+
         const text = $head.parent.textContent;
         const offset = $head.parentOffset;
         const before = text.slice(0, offset);
@@ -239,38 +308,46 @@ export const ActiveLineSource = Extension.create({
           // Only a FOCUSED editor shows a source line: a freshly mounted (or
           // merely rendered) note has a selection at its first block, and that
           // must not present as raw markdown. Unfocused → everything renders.
-          // A selection kept WITHIN one top-level block keeps that block as its
-          // editable source, so double-click / drag can select text inside the
-          // raw line. Only a selection that SPANS blocks renders everything —
+          // A selection kept WITHIN one line (same parent textblock) keeps that
+          // line as editable source, so double-click / drag can select text in
+          // the raw line. A selection that SPANS blocks renders everything —
           // swapping the head block mid-drag would collapse a multi-line range.
+          //
+          // The active line is the textblock DIRECTLY containing the cursor, at
+          // any depth — so a paragraph inside a list item or blockquote counts,
+          // and only that line reveals its markdown while the rest stay rendered.
           const sel = newState.selection;
           const focused = editor.view?.hasFocus() ?? false;
-          const anchorIdx = sel.$anchor.depth >= 1 ? sel.$anchor.index(0) : -1;
-          const headIdx = $head.depth >= 1 ? $head.index(0) : -1;
-          const activeIndex = focused && anchorIdx >= 0 && anchorIdx === headIdx ? headIdx : -1;
+          const sameLine = sel.$anchor.sameParent($head);
+          const activePos = focused && sameLine && $head.depth >= 1 ? $head.before($head.depth) : -1;
+          const activeParent = activePos >= 0 ? $head.parent : null;
 
-          // Which top-level blocks need swapping?
+          // Render every source line except the active one; source the active
+          // textblock if it's a paragraph/heading not already shown as source.
           const ops: { from: number; node: PMNode; action: "source" | "render" }[] = [];
-          newState.doc.forEach((node, offset, index) => {
-            if (node.type === sourceType && index !== activeIndex) {
-              ops.push({ from: offset, node, action: "render" });
-            } else if (
-              index === activeIndex &&
-              node.type !== sourceType &&
-              SOURCEABLE.has(node.type.name)
-            ) {
-              ops.push({ from: offset, node, action: "source" });
+          newState.doc.descendants((node, pos) => {
+            if (node.type === sourceType) {
+              if (pos !== activePos) ops.push({ from: pos, node, action: "render" });
+              return false; // don't descend into a source line's text
             }
+            return true;
           });
+          if (
+            activeParent &&
+            activeParent.type !== sourceType &&
+            SOURCEABLE.has(activeParent.type.name)
+          ) {
+            ops.push({ from: activePos, node: activeParent, action: "source" });
+          }
           if (ops.length === 0) return null;
+          // Apply high→low so earlier positions stay valid.
+          ops.sort((a, b) => b.from - a.from);
 
           const md = editor.storage.markdown as MdStorage;
           let tr = newState.tr;
           // Where to drop the caret inside the block we're turning into source.
           let caretRel = 0;
-          // Apply high→low so earlier offsets stay valid.
-          for (let i = ops.length - 1; i >= 0; i--) {
-            const op = ops[i]!;
+          for (const op of ops) {
             if (op.action === "source") {
               const source = sourceForEdit(
                 String(md.serializer.serialize(Fragment.from(op.node)) ?? "").replace(/\n+$/, ""),
@@ -303,13 +380,17 @@ export const ActiveLineSource = Extension.create({
           tr = rechipMentions(tr, schema);
 
           // Put the cursor inside the (single) source block, near where it was.
+          // `descendants` (not forEach) so a source line nested in a list item /
+          // blockquote is found too.
           let sbPos = -1;
           let sbNode: PMNode | null = null;
-          tr.doc.forEach((n, off) => {
+          tr.doc.descendants((n, pos) => {
             if (n.type === sourceType) {
-              sbPos = off;
+              sbPos = pos;
               sbNode = n;
+              return false;
             }
+            return true;
           });
           if (sbPos >= 0 && sbNode) {
             const rel = Math.min(caretRel, (sbNode as PMNode).content.size);

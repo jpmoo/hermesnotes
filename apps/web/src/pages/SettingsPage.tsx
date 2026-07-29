@@ -1,5 +1,5 @@
 import { CalendarDays, Copy, Download, KeyRound, ListChecks, Palette, Settings2, ShieldAlert } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, apiBase, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
@@ -243,23 +243,22 @@ export function SettingsPage() {
     }
   };
 
-  const savePrefs = async () => {
-    setBusy("prefs");
-    setError(null);
-    setStatus(null);
-    try {
-      const res = await api.put<Settings>("/settings", {
-        defaultSimilarity: similarity,
-        timezone: timezone || null,
-        autoarchiveDoneDays: autoDays > 0 ? autoDays : null,
-      });
-      setSettings(res);
-      setStatus("Preferences saved.");
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "could not save");
-    } finally {
-      setBusy(null);
-    }
+  // The low-risk general settings auto-save (like Appearance), debounced so a
+  // slider drag or fast typing coalesces into one request. (Side-effect-heavy
+  // settings — Ollama models, backups, weekly review — keep an explicit Save.)
+  const prefsTimer = useRef<ReturnType<typeof setTimeout>>();
+  const pendingPrefs = useRef<Record<string, unknown>>({});
+  const autoSaveSetting = (patch: Record<string, unknown>) => {
+    pendingPrefs.current = { ...pendingPrefs.current, ...patch };
+    if (prefsTimer.current) clearTimeout(prefsTimer.current);
+    prefsTimer.current = setTimeout(() => {
+      const body = pendingPrefs.current;
+      pendingPrefs.current = {};
+      void api
+        .put<Settings>("/settings", body)
+        .then(setSettings)
+        .catch((err) => setError(err instanceof ApiError ? err.message : "could not save"));
+    }, 500);
   };
 
   const modelOptions = models.length
@@ -500,7 +499,11 @@ export function SettingsPage() {
             max={1}
             step={0.05}
             value={similarity}
-            onChange={(e) => setSimilarity(Number(e.target.value))}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setSimilarity(v);
+              autoSaveSetting({ defaultSimilarity: v });
+            }}
           />
           <span className="hint">
             Used for semantic matching where there's no per-search slider (e.g. the Types page).
@@ -514,7 +517,10 @@ export function SettingsPage() {
             list="hn-timezones"
             placeholder="e.g. America/New_York (blank = server local)"
             value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
+            onChange={(e) => {
+              setTimezone(e.target.value);
+              autoSaveSetting({ timezone: e.target.value || null });
+            }}
           />
           <datalist id="hn-timezones">
             {TIMEZONES.map((t) => (
@@ -534,7 +540,11 @@ export function SettingsPage() {
               max={3650}
               value={autoDays}
               style={{ width: 90 }}
-              onChange={(e) => setAutoDays(Math.min(3650, Math.max(0, Number(e.target.value) || 0)))}
+              onChange={(e) => {
+                const v = Math.min(3650, Math.max(0, Number(e.target.value) || 0));
+                setAutoDays(v);
+                autoSaveSetting({ autoarchiveDoneDays: v > 0 ? v : null });
+              }}
             />
             <span className="hint">days done (0 = off)</span>
           </div>
@@ -545,9 +555,7 @@ export function SettingsPage() {
         </label>
 
         <div className="row" style={{ marginTop: 12, gap: 12 }}>
-          <button className="primary" onClick={() => void savePrefs()} disabled={busy !== null}>
-            {busy === "prefs" ? "Saving…" : "Save preferences"}
-          </button>
+          <span className="hint" style={{ marginRight: "auto" }}>Changes here save automatically.</span>
           <button onClick={() => void archiveNow()} disabled={busy !== null} title="Archive all completed tasks now">
             {busy === "archive-now" ? "Archiving…" : "Archive completed now"}
           </button>

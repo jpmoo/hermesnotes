@@ -217,10 +217,9 @@ export function BlockInfoPane({
     live(canvasConns).length +
     tags.length;
   const noConnections = activeCount === 0 && archivedCount === 0 && deletedLinks.length === 0;
-  // Always offer the three tabs when the block has any connection at all, so the
-  // Active/Archived/Deleted split is discoverable even when a bucket is empty.
-  const showConnTabs = !noConnections;
-  const tab = showConnTabs ? connTab : "active";
+  // When shown, the Active/Archived tabs pick their partition of each group.
+  const pick = <T extends { archived?: boolean }>(items: T[]) =>
+    connTab === "archived" ? gone(items) : live(items);
 
   const fav = isFavorite(blockId);
   return (
@@ -315,30 +314,28 @@ export function BlockInfoPane({
           <div className="hint">No connections.</div>
         ) : (
           <>
-            {showConnTabs && (
-              <div className="conn-tabs">
-                <button
-                  className={`conn-tab${tab === "active" ? " active" : ""}`}
-                  onClick={() => setConnTab("active")}
-                >
-                  Active · {activeCount}
-                </button>
-                <button
-                  className={`conn-tab${tab === "archived" ? " active" : ""}`}
-                  onClick={() => setConnTab("archived")}
-                >
-                  Archived · {archivedCount}
-                </button>
-                <button
-                  className={`conn-tab${tab === "deleted" ? " active" : ""}`}
-                  onClick={() => setConnTab("deleted")}
-                >
-                  Deleted · {deletedLinks.length}
-                </button>
-              </div>
-            )}
+            <div className="conn-tabs">
+              <button
+                className={`conn-tab${connTab === "active" ? " active" : ""}`}
+                onClick={() => setConnTab("active")}
+              >
+                Active · {activeCount}
+              </button>
+              <button
+                className={`conn-tab${connTab === "archived" ? " active" : ""}`}
+                onClick={() => setConnTab("archived")}
+              >
+                Archived · {archivedCount}
+              </button>
+              <button
+                className={`conn-tab${connTab === "deleted" ? " active" : ""}`}
+                onClick={() => setConnTab("deleted")}
+              >
+                Deleted · {deletedLinks.length}
+              </button>
+            </div>
 
-            {tab === "deleted" ? (
+            {connTab === "deleted" ? (
               <div className="info-conn">
                 {deletedLinks.length === 0 ? (
                   <div className="hint">No deleted connections.</div>
@@ -360,33 +357,17 @@ export function BlockInfoPane({
               </div>
             ) : (
               <>
-                {tab === "active" && activeCount === 0 && (
+                {connTab === "active" && activeCount === 0 && (
                   <div className="hint">No active connections.</div>
                 )}
-                {tab === "archived" && archivedCount === 0 && (
+                {connTab === "archived" && archivedCount === 0 && (
                   <div className="hint">No archived connections.</div>
                 )}
-                <ConnGroup
-                  label="In collection"
-                  items={tab === "archived" ? gone(info.inCollections) : live(info.inCollections)}
-                  onSelect={onSelectCollection}
-                />
-                <ConnGroup
-                  label="Links to"
-                  items={tab === "archived" ? gone(info.linksTo) : live(info.linksTo)}
-                  onSelect={onSelect}
-                />
-                <ConnGroup
-                  label="Linked from"
-                  items={tab === "archived" ? gone(info.linkedFrom) : live(info.linkedFrom)}
-                  onSelect={onSelect}
-                />
-                <ConnGroup
-                  label="Connected on canvas"
-                  items={tab === "archived" ? gone(canvasConns) : live(canvasConns)}
-                  onSelect={onSelect}
-                />
-                {tab === "active" && tags.length > 0 && (
+                <ConnGroup label="In collection" items={pick(info.inCollections)} onSelect={onSelectCollection} />
+                <ConnGroup label="Links to" items={pick(info.linksTo)} onSelect={onSelect} />
+                <ConnGroup label="Linked from" items={pick(info.linkedFrom)} onSelect={onSelect} />
+                <ConnGroup label="Connected on canvas" items={pick(canvasConns)} onSelect={onSelect} />
+                {connTab === "active" && tags.length > 0 && (
                   <div className="info-conn">
                     <div className="info-conn-label">Tagged</div>
                     <div className="info-tags">

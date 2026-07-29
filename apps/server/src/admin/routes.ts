@@ -76,18 +76,20 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
    *  `embedded` have a stamped hash (a live vector). */
   app.get("/admin/embeddings", async (req) => {
     await requireAdmin(req);
-    const [row] = await db
-      .select({
-        total: sql<number>`count(*)::int`,
-        embeddable: sql<number>`count(*) FILTER (WHERE coalesce(${blocks.embedSource}, '') <> '')::int`,
-        embedded: sql<number>`count(*) FILTER (WHERE ${blocks.embedSourceHash} IS NOT NULL AND coalesce(${blocks.embedSource}, '') <> '')::int`,
-      })
-      .from(blocks);
-    const [cfg] = await db
-      .select({ url: userSettings.ollamaUrl, model: userSettings.embedModel })
-      .from(userSettings)
-      .where(sql`${userSettings.ollamaUrl} IS NOT NULL AND ${userSettings.embedModel} IS NOT NULL`)
-      .limit(1);
+    const [[row], [cfg]] = await Promise.all([
+      db
+        .select({
+          total: sql<number>`count(*)::int`,
+          embeddable: sql<number>`count(*) FILTER (WHERE coalesce(${blocks.embedSource}, '') <> '')::int`,
+          embedded: sql<number>`count(*) FILTER (WHERE ${blocks.embedSourceHash} IS NOT NULL AND coalesce(${blocks.embedSource}, '') <> '')::int`,
+        })
+        .from(blocks),
+      db
+        .select({ url: userSettings.ollamaUrl, model: userSettings.embedModel })
+        .from(userSettings)
+        .where(sql`${userSettings.ollamaUrl} IS NOT NULL AND ${userSettings.embedModel} IS NOT NULL`)
+        .limit(1),
+    ]);
     return {
       total: row?.total ?? 0,
       embeddable: row?.embeddable ?? 0,

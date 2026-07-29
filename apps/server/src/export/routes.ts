@@ -48,51 +48,47 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       .object({ typeIds: z.array(z.string().uuid()).min(1).max(100) })
       .parse(req.body);
 
-    // The chosen types (name + schema + whether they're text notes).
-    const types = await db
-      .select({
-        id: blockTypes.id,
-        name: blockTypes.name,
-        isText: blockTypes.isText,
-        schema: blockTypes.propertySchema,
-      })
-      .from(blockTypes)
-      .where(and(eq(blockTypes.ownerId, userId), inArray(blockTypes.id, typeIds)));
+    // Three independent reads, issued together: the chosen types; every owned
+    // non-archived block of those types (text notes include daily scratchpads +
+    // weekly reflections, filtered to non-empty below); and light metadata for
+    // EVERY owned block, to resolve link targets (only a content PREFIX — just
+    // enough for a first-line title fallback, not whole bodies).
+    const [types, rows, metaRows] = await Promise.all([
+      db
+        .select({
+          id: blockTypes.id,
+          name: blockTypes.name,
+          isText: blockTypes.isText,
+          schema: blockTypes.propertySchema,
+        })
+        .from(blockTypes)
+        .where(and(eq(blockTypes.ownerId, userId), inArray(blockTypes.id, typeIds))),
+      db
+        .select({
+          id: blocks.id,
+          blockTypeId: blocks.blockTypeId,
+          content: blocks.content,
+          properties: blocks.properties,
+        })
+        .from(blocks)
+        .where(
+          and(eq(blocks.ownerId, userId), isNull(blocks.archivedAt), inArray(blocks.blockTypeId, typeIds)),
+        ),
+      db
+        .select({
+          id: blocks.id,
+          collectionKind: blocks.collectionKind,
+          title: sql<string | null>`${blocks.properties}->>'title'`,
+          today: sql<string | null>`${blocks.properties}->>'today_note'`,
+          reflection: sql<string | null>`${blocks.properties}->>'review_reflection'`,
+          weeklyReview: sql<string | null>`${blocks.properties}->>'weekly_review'`,
+          content: sql<string | null>`left(${blocks.content}, 280)`,
+        })
+        .from(blocks)
+        .where(eq(blocks.ownerId, userId)),
+    ]);
     if (!types.length) throw badRequest("no exportable types selected");
     const typeById = new Map(types.map((t) => [t.id, t]));
-
-    // Every owned, non-archived block of a chosen type. (Text notes include the
-    // daily scratchpads and weekly reflections, filtered to non-empty below.)
-    const rows = await db
-      .select({
-        id: blocks.id,
-        blockTypeId: blocks.blockTypeId,
-        content: blocks.content,
-        properties: blocks.properties,
-      })
-      .from(blocks)
-      .where(
-        and(
-          eq(blocks.ownerId, userId),
-          isNull(blocks.archivedAt),
-          inArray(blocks.blockTypeId, typeIds),
-        ),
-      );
-
-    // ── Metadata for EVERY owned block, to resolve link targets (including ones
-    //    that aren't themselves being exported). Light columns only.
-    const metaRows = await db
-      .select({
-        id: blocks.id,
-        collectionKind: blocks.collectionKind,
-        title: sql<string | null>`${blocks.properties}->>'title'`,
-        today: sql<string | null>`${blocks.properties}->>'today_note'`,
-        reflection: sql<string | null>`${blocks.properties}->>'review_reflection'`,
-        weeklyReview: sql<string | null>`${blocks.properties}->>'weekly_review'`,
-        content: blocks.content,
-      })
-      .from(blocks)
-      .where(eq(blocks.ownerId, userId));
     const meta = new Map(metaRows.map((m) => [m.id, m]));
 
     const metaTitle = (m: (typeof metaRows)[number]): string => {
@@ -169,18 +165,38 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       return name;
     };
 
-    // ── Attachments: fetch for exported blocks.
-    const attRows = exportedIds.length
-      ? await db
-          .select({
-            id: attachments.id,
-            blockId: attachments.blockId,
-            filename: attachments.filename,
-            data: attachments.data,
-          })
-          .from(attachments)
-          .where(inArray(attachments.blockId, exportedIds))
-      : [];
+    // ── Attachments, tags, and banner images for the exported blocks —
+    //    independent reads issued together. (exportedIds is non-empty here.)
+    const bannerIdByBlock = new Map<string, string>();
+    for (const p of prepared) {
+      const bv = p.properties.banner as { id?: string } | undefined;
+      if (bv?.id) bannerIdByBlock.set(p.id, bv.id);
+    }
+    const bannerIds = [...new Set(bannerIdByBlock.values())];
+    const [attRows, tagRows, bRows] = await Promise.all([
+      db
+        .select({
+          id: attachments.id,
+          blockId: attachments.blockId,
+          filename: attachments.filename,
+          data: attachments.data,
+        })
+        .from(attachments)
+        .where(inArray(attachments.blockId, exportedIds)),
+      db
+        .select({ blockId: blockTags.blockId, name: tags.name })
+        .from(blockTags)
+        .innerJoin(tags, eq(tags.id, blockTags.tagId))
+        .where(inArray(blockTags.blockId, exportedIds)),
+      bannerIds.length
+        ? db
+            .select({ id: banners.id, mime: banners.mime, data: banners.data })
+            .from(banners)
+            .where(and(eq(banners.ownerId, userId), inArray(banners.id, bannerIds)))
+        : Promise.resolve([] as { id: string; mime: string; data: Buffer }[]),
+    ]);
+
+    // Attachments → deduped files + a per-block listing.
     const attNameById = new Map<string, string>();
     const attByBlock = new Map<string, { id: string; name: string }[]>();
     for (const a of attRows) {
@@ -192,37 +208,15 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       attByBlock.set(a.blockId, list);
     }
 
-    // ── Banners: each block's banner image becomes an attachment, referenced by
-    //    a `banner:` YAML path (Obsidian banner plugins read this).
+    // Banners → an attachment file + a `banner:` YAML path per block.
     const bannerPathByBlock = new Map<string, string>();
-    const bannerIdByBlock = new Map<string, string>();
-    for (const p of prepared) {
-      const bv = p.properties.banner as { id?: string } | undefined;
-      if (bv?.id) bannerIdByBlock.set(p.id, bv.id);
-    }
-    const bannerIds = [...new Set(bannerIdByBlock.values())];
-    if (bannerIds.length) {
-      const bRows = await db
-        .select({ id: banners.id, mime: banners.mime, data: banners.data })
-        .from(banners)
-        .where(and(eq(banners.ownerId, userId), inArray(banners.id, bannerIds)));
-      const bById = new Map(bRows.map((b) => [b.id, b]));
-      for (const [blockId, bannerId] of bannerIdByBlock) {
-        const b = bById.get(bannerId);
-        if (!b) continue;
-        const name = addFile("banner", mimeExt(b.mime), b.data);
-        bannerPathByBlock.set(blockId, `attachments/${name}`);
-      }
+    const bById = new Map(bRows.map((b) => [b.id, b]));
+    for (const [blockId, bannerId] of bannerIdByBlock) {
+      const b = bById.get(bannerId);
+      if (b) bannerPathByBlock.set(blockId, `attachments/${addFile("banner", mimeExt(b.mime), b.data)}`);
     }
 
-    // ── Tags per exported block.
-    const tagRows = exportedIds.length
-      ? await db
-          .select({ blockId: blockTags.blockId, name: tags.name })
-          .from(blockTags)
-          .innerJoin(tags, eq(tags.id, blockTags.tagId))
-          .where(inArray(blockTags.blockId, exportedIds))
-      : [];
+    // Tags per exported block.
     const tagsByBlock = new Map<string, string[]>();
     for (const t of tagRows) {
       const list = tagsByBlock.get(t.blockId) ?? [];

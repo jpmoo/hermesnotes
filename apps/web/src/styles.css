@@ -3527,10 +3527,14 @@ input.matrix-axis-y::placeholder {
   margin-left: 8px;
 }
 .gs-icon {
-  position: absolute;
-  left: 11px;
   color: var(--text-faint);
   pointer-events: none;
+}
+/* Absolute positioning is pill-specific (the icon overlays the padded input);
+   scoped here so other consumers (e.g. the search modal) get sane inline flow. */
+.global-search .gs-icon {
+  position: absolute;
+  left: 11px;
 }
 .global-search .gs-input {
   width: 100%;
@@ -4913,14 +4917,6 @@ input.cv-add-input {
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-}
-/* The modal lays the magnifier out inline (a flex item), not absolutely like the
-   .global-search pill — otherwise it anchors to the fixed backdrop and floats at
-   the screen's left edge, next to the rail's own search icon. */
-.search-modal-input .gs-icon {
-  position: static;
-  left: auto;
-  flex: 0 0 auto;
 }
 .search-modal-input .gs-input {
   flex: 1;

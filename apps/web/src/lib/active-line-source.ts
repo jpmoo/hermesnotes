@@ -279,6 +279,7 @@ export const ActiveLineSource = Extension.create({
               const off = $head.parentOffset;
               let textAfterCaret = false;
               op.node.descendants((child, pos) => {
+                if (textAfterCaret) return false; // answer found — stop descending
                 if (!child.isText) return true;
                 const rel = off - pos;
                 const t = child.text ?? "";

@@ -2190,6 +2190,37 @@ input.li-text:focus {
   line-height: 1.5;
   margin: 0 0 18px;
 }
+/* Banner chooser: wider than a confirm dialog, since it shows a gallery. */
+.modal-card.banner-picker {
+  max-width: 680px;
+}
+.banner-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 2px 0 14px;
+}
+.banner-thumb {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-2);
+  cursor: pointer;
+  aspect-ratio: 16 / 7;
+  display: block;
+  width: 100%;
+}
+.banner-thumb:hover {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.banner-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 /* Type editor is a full-page card, not a modal — plain (non-sticky) actions. */
 .type-actions {
   display: flex;
@@ -2240,9 +2271,10 @@ input.li-text:focus {
   min-height: 24px;
   cursor: text;
   outline: none;
-  /* Reserves the gutter a top-level list row's controls hang into, so they don't
-     have to be paid for by a deeper list indent. */
-  padding-left: 1.2em;
+  /* Reserves the gutter a top-level list row's controls hang into. Paying for it
+     once here, rather than out of each list's indent, is what keeps nesting tight
+     — the controls cost nothing per level. */
+  padding-left: 2.7em;
 }
 .note-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -2269,13 +2301,15 @@ input.li-text:focus {
    other list. */
 .note-editor ul[data-type="taskList"] li {
   position: relative;
-  /* Room for the checkbox, which is the row's marker (absolutely placed below). */
-  padding-left: 1.4em;
 }
 .note-editor ul[data-type="taskList"] li > label {
-  /* Center the checkbox within the first line so it aligns with the text. */
+  /* The checkbox hangs in the list's padding, exactly like a bullet or number —
+     NOT inside the row. Indenting the row to make space for it would charge that
+     space again at every nesting level, which is what made checklists creep
+     right so much faster than other lists. Top-aligned so it sits on the row's
+     first line even when the text wraps. */
   position: absolute;
-  left: 0;
+  left: -1.2em;
   top: 0;
   display: inline-flex;
   align-items: center;
@@ -2311,11 +2345,13 @@ input.li-text:focus {
 .note-editor h3 { font-size: 1.15em; }
 .note-editor h4 { font-size: 1.05em; }
 .note-editor p { margin: 0 0 0.55em; }
-/* A normal list indent — the gutter controls hang to the LEFT of the row (into
-   the editor's own left padding at the top level, or into the parent's indent
-   when nested), so they don't have to inflate the indent per level. */
-.note-editor ul,
-.note-editor ol { margin: 0 0 0.55em; padding-left: 1.5em; }
+/* One tight indent per level — the gutter controls hang to the LEFT of the row
+   (into the editor's own left padding at the top level, or an ancestor's indent
+   when nested), so they cost nothing per level. Ordered lists get a little more
+   room because a two-digit marker ("10.") is far wider than a bullet, and the
+   controls sit clear of whichever marker is widest. */
+.note-editor ul { margin: 0 0 0.55em; padding-left: 1.4em; }
+.note-editor ol { margin: 0 0 0.55em; padding-left: 1.8em; }
 .note-editor li { position: relative; margin: 0.15em 0; }
 
 /* List gutter controls. Kept muted rather than hover-only so the affordance is
@@ -2334,45 +2370,51 @@ input.li-text:focus {
   justify-content: center;
   color: var(--text-muted);
   user-select: none;
-  opacity: 0.55;
-  transition: opacity 0.12s;
+  opacity: 0.75;
+  transition: opacity 0.12s, color 0.12s;
   /* The grip drives its own touch gesture; don't let the browser pan instead. */
   touch-action: none;
 }
+/* Both sit left of the WIDEST marker — an ordered list's "10." at -1.8em — so one
+   set of offsets clears bullets, numbers and checkboxes without overlapping any. */
 .li-drag {
-  left: -2.55em;
+  left: -4em;
   font-size: 12px;
   cursor: grab;
 }
 .li-drag:active,
-.li-drag.dragging { cursor: grabbing; opacity: 1; }
+.li-drag.dragging { cursor: grabbing; opacity: 1; color: var(--accent); }
 .li-fold {
-  left: -1.5em;
+  left: -2.9em;
   font-size: 11px;
   cursor: pointer;
-  transition: opacity 0.12s, transform 0.12s;
+  transition: opacity 0.12s, transform 0.12s, color 0.12s;
 }
 /* Pointing right when folded — the usual "there's more inside" cue. */
 .li-fold.collapsed {
   transform: rotate(-90deg);
-  opacity: 0.8;
+  opacity: 0.95;
 }
 .li-drag:hover,
-.li-fold:hover { opacity: 1; }
+.li-fold:hover {
+  opacity: 1;
+  color: var(--accent);
+}
 
-/* Touch: the same controls need real tap targets, and a wider gutter to sit in. */
+/* Touch: the same controls need real tap targets, and a wider gutter to sit in.
+   The per-level indent barely grows — only the one-off left inset does. */
 @media (pointer: coarse) {
-  .note-editor { padding-left: 1.7em; }
-  .note-editor ul,
+  .note-editor { padding-left: 3.2em; }
+  .note-editor ul { padding-left: 1.6em; }
   .note-editor ol { padding-left: 2em; }
   .li-drag,
   .li-fold {
-    width: 1.5em;
+    width: 1.3em;
     height: 1.9em;
-    opacity: 0.6;
+    opacity: 0.8;
   }
-  .li-drag { left: -3.55em; font-size: 14px; }
-  .li-fold { left: -2em; font-size: 13px; }
+  .li-drag { left: -4.7em; font-size: 14px; }
+  .li-fold { left: -3.3em; font-size: 13px; }
 }
 
 /* Where a row being dragged by touch would land. */

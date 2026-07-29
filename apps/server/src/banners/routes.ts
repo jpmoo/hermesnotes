@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { banners } from "@hermes/db";
@@ -28,6 +28,21 @@ export async function bannerRoutes(app: FastifyInstance): Promise<void> {
       .values({ ownerId: userId, mime, size: buf.length, data: buf })
       .returning({ id: banners.id });
     return { id: row!.id };
+  });
+
+  /**
+   * The account's uploaded banners, newest first — metadata only, so the picker
+   * can show a gallery and reuse an image instead of uploading it again. The
+   * bytes come from /banners/:id per thumbnail.
+   */
+  app.get("/banners", { preHandler: authenticate }, async (req) => {
+    const userId = requireUser(req);
+    return db
+      .select({ id: banners.id, mime: banners.mime, size: banners.size, createdAt: banners.createdAt })
+      .from(banners)
+      .where(eq(banners.ownerId, userId))
+      .orderBy(desc(banners.createdAt))
+      .limit(200);
   });
 
   app.get("/banners/:id", { preHandler: authenticate }, async (req, reply) => {

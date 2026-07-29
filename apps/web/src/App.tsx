@@ -68,7 +68,7 @@ function sectionKey(path: string): string | null {
 
 function Shell() {
   const { leftPinned, rightPinned } = usePanels();
-  const { colors, prefs } = usePreferences();
+  const { colors, prefs, loaded: prefsLoaded } = usePreferences();
   const startPage = normalizeStartPage(prefs[START_PAGE_PREF_KEY]);
   const { pathname } = useLocation();
   const isMobile = useIsMobile();
@@ -129,7 +129,14 @@ function Shell() {
         <div className="main-inner">
           <NavBar />
           <Routes>
-            <Route path="/" element={<Navigate to={startPage} replace />} />
+            {/* Wait for the preferences bag: this redirect fires once, so acting
+                before it arrives would always send you to the default start page
+                and never re-run. Most visible on a cold load straight to "/" —
+                a phone's home-screen shortcut, for instance. */}
+            <Route
+              path="/"
+              element={prefsLoaded ? <Navigate to={startPage} replace /> : null}
+            />
             <Route path="/today" element={<TodayPage />} />
             <Route path="/today/:date" element={<TodayPage />} />
             <Route path="/blocks" element={<AllBlocksPage />} />

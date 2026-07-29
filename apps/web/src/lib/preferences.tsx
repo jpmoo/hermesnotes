@@ -9,6 +9,13 @@ export interface NavColors {
 
 interface PreferencesApi {
   prefs: Record<string, unknown>;
+  /**
+   * Whether the server bag has come back yet (true even if the request failed, so
+   * callers fall through to defaults rather than waiting forever). Anything that
+   * acts on a preference ONCE — redirecting to the configured start page, say —
+   * must wait for this, or it will act on an empty bag and never re-run.
+   */
+  loaded: boolean;
   setPref: (key: string, value: unknown) => void;
   /** Re-pull the server preferences bag (e.g. after a feature toggles a gate). */
   refresh: () => void;
@@ -37,12 +44,16 @@ const isMobileViewport = () => {
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefs] = useState<Record<string, unknown>>({});
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = () => {
     void api
       .get<{ preferences: Record<string, unknown> }>("/settings/preferences")
       .then((r) => setPrefs(r.preferences ?? {}))
-      .catch(() => {});
+      .catch(() => {})
+      // Settled either way: a failed load must fall through to defaults rather
+      // than leave one-shot consumers (the start-page redirect) waiting forever.
+      .finally(() => setLoaded(true));
   };
   useEffect(refresh, []);
 
@@ -102,6 +113,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider
       value={{
         prefs,
+        loaded,
         setPref,
         refresh,
         colors,

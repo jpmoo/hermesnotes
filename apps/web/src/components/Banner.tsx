@@ -1,5 +1,6 @@
 import { ImagePlus, Move, X, ZoomIn } from "lucide-react";
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { api, apiBase } from "../api.ts";
 
 /**
@@ -106,7 +107,119 @@ export async function uploadBanner(file: File): Promise<BannerValue> {
   return { id, zoom: 1, x: 50, y: 50 };
 }
 
-/** The "Add banner" affordance — placed on a title line by the caller. */
+/** One of the account's uploaded banners, as listed for the gallery. */
+interface BannerInfo {
+  id: string;
+  mime: string;
+  size: number;
+  createdAt: string;
+}
+
+/**
+ * Banner chooser: the images already uploaded to this account, so one can be
+ * reused anywhere without uploading it a second time, plus a way to add a new
+ * one. Images are shared account-wide — picking one here never alters another
+ * page that already uses it, since each place stores its own framing.
+ */
+function BannerPicker({
+  onPick,
+  onClose,
+}: {
+  onPick: (v: BannerValue) => void;
+  onClose: () => void;
+}) {
+  const [items, setItems] = useState<BannerInfo[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Held in a ref so the effect below doesn't re-run (and refetch) whenever the
+  // caller hands us a fresh closure.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    void api
+      .get<BannerInfo[]>("/banners")
+      .then(setItems)
+      .catch(() => setItems([]));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const upload = async (file: File) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      onPick(await uploadBanner(file));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Upload failed");
+      setBusy(false);
+    }
+  };
+
+  // Portalled for the same reason as ConfirmDialog: callers often sit inside the
+  // auto-hiding right panel, which would swallow an in-place modal.
+  return createPortal(
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal-card banner-picker"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="modal-title">Choose a banner</h2>
+        {items == null ? (
+          <div className="hint">Loading…</div>
+        ) : items.length === 0 ? (
+          <div className="hint">No banners uploaded yet — add your first below.</div>
+        ) : (
+          <div className="banner-gallery">
+            {items.map((b) => (
+              <button
+                key={b.id}
+                className="banner-thumb"
+                title="Use this banner"
+                onClick={() => onPick({ id: b.id, zoom: 1, x: 50, y: 50 })}
+              >
+                <img src={`${apiBase}/banners/${b.id}`} alt="" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        )}
+        {err && <div className="error">{err}</div>}
+        <div className="modal-actions">
+          <button className="ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <ImagePlus size={14} />
+            {busy ? "Uploading…" : "Upload new image"}
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif"
+          hidden
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void upload(file);
+          }}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * The "Add banner" affordance — placed on a title line by the caller. Opens the
+ * gallery of already-uploaded banners first; uploading is one click from there.
+ */
 export function BannerAddButton({
   onAdded,
   className,
@@ -116,36 +229,26 @@ export function BannerAddButton({
   className?: string;
   label?: string;
 }) {
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
   return (
     <>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/png,image/jpeg,image/gif"
-        hidden
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (!file) return;
-          setBusy(true);
-          try {
-            onAdded(await uploadBanner(file));
-          } finally {
-            setBusy(false);
-          }
-        }}
-      />
       <button
         className={`ghost banner-add${className ? ` ${className}` : ""}`}
-        disabled={busy}
-        title="Add a banner image (PNG, JPG, GIF)"
-        onClick={() => fileRef.current?.click()}
+        title="Choose an existing banner, or upload a new one"
+        onClick={() => setOpen(true)}
       >
         <ImagePlus size={14} />
-        {busy ? "Uploading…" : label}
+        {label}
       </button>
+      {open && (
+        <BannerPicker
+          onPick={(v) => {
+            setOpen(false);
+            onAdded(v);
+          }}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   );
 }

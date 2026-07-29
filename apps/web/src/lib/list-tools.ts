@@ -49,6 +49,46 @@ const GUTTER_KEY = new PluginKey<number[]>("listGutter");
 /** Transaction meta carrying the item position whose fold state should flip. */
 const TOGGLE_FOLD = "listGutterToggleFold";
 
+/**
+ * Gutter geometry, in px, mirroring the list padding in styles.css. Every row's
+ * controls are placed in ONE column down the left edge regardless of nesting
+ * depth, rather than stepping right with each level — the row striping is what
+ * ties a control back to its row, so they don't need to sit beside it.
+ *
+ * Because a control is positioned within its own row, landing it in that shared
+ * column means offsetting it by however far the row is indented, which is why
+ * these have to be known here and not just in CSS.
+ */
+const METRICS = {
+  fine: { top: 56, nested: 22, gripX: 3, foldX: 21 },
+  coarse: { top: 68, nested: 26, gripX: 3, foldX: 24 },
+};
+
+const isCoarsePointer = (): boolean => {
+  try {
+    return window.matchMedia("(pointer: coarse)").matches;
+  } catch {
+    return false;
+  }
+};
+
+/** How many lists enclose the item at `pos` (1 = a top-level list). */
+function listLevel(state: EditorState, pos: number): number {
+  const $pos = state.doc.resolve(pos);
+  let level = 0;
+  for (let d = 1; d <= $pos.depth; d++) {
+    if (LIST_TYPES.has($pos.node(d).type.name)) level++;
+  }
+  return Math.max(1, level);
+}
+
+/** `left` for a control on a row at this nesting level, in its own coordinates. */
+function gutterLeft(level: number, which: "grip" | "fold"): number {
+  const m = isCoarsePointer() ? METRICS.coarse : METRICS.fine;
+  const rowIndent = m.top + (level - 1) * m.nested;
+  return (which === "grip" ? m.gripX : m.foldX) - rowIndent;
+}
+
 /** The nested lists directly inside a list item, as absolute ranges. */
 function nestedLists(item: PMNode, itemPos: number): { from: number; to: number }[] {
   const out: { from: number; to: number }[] = [];
@@ -172,9 +212,10 @@ function moveItem(view: EditorView, from: number, to: number): void {
   view.dispatch(tr);
 }
 
-function buildGrip(view: EditorView): HTMLElement {
+function buildGrip(view: EditorView, level: number): HTMLElement {
   const grip = document.createElement("span");
   grip.className = "li-drag";
+  grip.style.left = `${gutterLeft(level, "grip")}px`;
   grip.draggable = true;
   grip.contentEditable = "false";
   grip.setAttribute("aria-hidden", "true");
@@ -262,9 +303,10 @@ function buildGrip(view: EditorView): HTMLElement {
   return grip;
 }
 
-function buildTwisty(view: EditorView, collapsed: boolean): HTMLElement {
+function buildTwisty(view: EditorView, level: number, collapsed: boolean): HTMLElement {
   const twisty = document.createElement("span");
   twisty.className = `li-fold${collapsed ? " collapsed" : ""}`;
+  twisty.style.left = `${gutterLeft(level, "fold")}px`;
   twisty.contentEditable = "false";
   twisty.setAttribute("aria-hidden", "true");
   twisty.title = collapsed ? "Expand" : "Collapse";
@@ -332,27 +374,28 @@ export const ListGutter = Extension.create({
                 return !node.isTextblock;
               }
               const isCollapsed = collapsed.has(pos);
-              // Keys are position-INDEPENDENT on purpose: ProseMirror reuses a
-              // widget whose key is unchanged, so editing elsewhere in the note
-              // doesn't tear down and rebuild every control. Rebuilding them mid-
-              // gesture used to collapse drag-selections across rows.
+              const level = listLevel(state, pos);
+              // Keys carry no position on purpose: ProseMirror reuses a widget
+              // whose key is unchanged, so editing elsewhere in the note doesn't
+              // tear down and rebuild every control. Rebuilding them mid-gesture
+              // used to collapse drag-selections across rows. The nesting level IS
+              // in the key, since it decides the control's offset — and it only
+              // changes when the row is actually indented or outdented.
               decos.push(
-                Decoration.widget(pos + 1, (view) => buildGrip(view), {
+                Decoration.widget(pos + 1, (view) => buildGrip(view, level), {
                   side: -1,
                   // The controls aren't content: never let them affect the selection.
                   ignoreSelection: true,
-                  key: "li-drag",
+                  key: `li-drag:${level}`,
                 }),
               );
               const kids = nestedLists(node, pos);
               if (kids.length) {
                 decos.push(
-                  Decoration.widget(pos + 1, (view) => buildTwisty(view, isCollapsed), {
+                  Decoration.widget(pos + 1, (view) => buildTwisty(view, level, isCollapsed), {
                     side: -2, // ahead of the grip
                     ignoreSelection: true,
-                    // Only the glyph state is in the key, so a fold rebuilds just
-                    // the row it happened on.
-                    key: `li-fold:${isCollapsed}`,
+                    key: `li-fold:${level}:${isCollapsed}`,
                   }),
                 );
                 if (isCollapsed) {

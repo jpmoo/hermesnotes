@@ -2350,13 +2350,15 @@ input.li-text:focus {
 /* One tight indent per level — enough for the row's own marker (bullet, number or
    checkbox) and nothing more. A nested row's controls hang left into an ancestor's
    indent, so they cost nothing per level. */
+/* NOTE: these paddings are mirrored by METRICS in lib/list-tools.ts, which offsets
+   each row's controls into the shared gutter column. Change them together. */
 .note-editor ul,
-.note-editor ol { margin: 0 0 0.55em; padding-left: 1.4em; }
-/* Only a TOP-LEVEL list carries the gutter its controls need — there's no
-   ancestor indent to borrow. Kept on the list rather than the editor so
-   paragraphs and headings aren't pushed over too. */
+.note-editor ol { margin: 0 0 0.55em; padding-left: 22px; }
+/* Only a TOP-LEVEL list reserves the control gutter — deeper rows put their
+   controls in that same column rather than indenting for their own. Kept on the
+   list rather than the editor so paragraphs and headings aren't pushed over. */
 .note-editor > ul,
-.note-editor > ol { padding-left: 54px; }
+.note-editor > ol { padding-left: 56px; }
 .note-editor li { position: relative; margin: 0.15em 0; }
 
 /* List gutter controls. Kept muted rather than hover-only so the affordance is
@@ -2386,15 +2388,15 @@ input.li-text:focus {
 }
 /* Both sit left of the WIDEST marker — an ordered list's "10." at -1.8em — so one
    set of offsets clears bullets, numbers and checkboxes without overlapping any. */
+/* `left` is set inline by the plugin (see gutterLeft) — it depends on how deeply
+   the row is nested, so every control lands in the same gutter column. */
 .li-drag {
-  left: -52px;
   font-size: 12px;
   cursor: grab;
 }
 .li-drag:active,
 .li-drag.dragging { cursor: grabbing; opacity: 1; color: var(--accent); }
 .li-fold {
-  left: -37px;
   font-size: 11px;
   cursor: pointer;
   transition: opacity 0.12s, transform 0.12s, color 0.12s;
@@ -2414,17 +2416,17 @@ input.li-text:focus {
    The per-level indent barely grows — only the one-off left inset does. */
 @media (pointer: coarse) {
   .note-editor ul,
-  .note-editor ol { padding-left: 1.6em; }
+  .note-editor ol { padding-left: 26px; }
   .note-editor > ul,
-  .note-editor > ol { padding-left: 66px; }
+  .note-editor > ol { padding-left: 68px; }
   .li-drag,
   .li-fold {
     width: 16px;
     height: 26px;
     opacity: 0.8;
   }
-  .li-drag { left: -64px; font-size: 14px; }
-  .li-fold { left: -44px; font-size: 13px; }
+  .li-drag { font-size: 14px; }
+  .li-fold { font-size: 13px; }
 }
 
 /* Where a row being dragged by touch would land. */
@@ -2450,9 +2452,19 @@ input.li-text:focus {
 :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-child {
   background: color-mix(in srgb, var(--text) 6%, transparent);
   border-radius: 4px;
-  /* Pulled left so the shading sits under the bullet/number/checkbox as well. */
-  margin-left: -1.55em;
-  padding-left: 1.55em;
+  /* Pulled left by exactly the marker box, so the band covers the
+     bullet/number/checkbox but stops short of the control gutter. */
+  margin-left: -22px;
+  padding-left: 22px;
+}
+@media (pointer: coarse) {
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > p:first-child,
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > pre:first-child,
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > p:first-child,
+  :root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-child {
+    margin-left: -26px;
+    padding-left: 26px;
+  }
 }
 /* The row picked up by its grip — shows exactly what a drag will move, including
    anything nested inside it. (.li-dragging is the touch path, which marks the row

@@ -527,7 +527,7 @@ export function MatrixView({
   typesStore = types;
   typesSubs.forEach((f) => f());
 
-  const { selectBlock, refreshInfo } = usePanels();
+  const { selectBlock, refreshInfo, bottomSlotEl, selectedBlockId } = usePanels();
   // Collection-level interactions make the collection the active block (so its
   // query tools show); card interactions make the card active instead.
   const selectCollection = () => selectBlock(collection.id, { collection: true });
@@ -1100,101 +1100,116 @@ export function MatrixView({
       }))
     : regions;
 
-  return (
-    <DndContext sensors={sensors} collisionDetection={matrixCollision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <div className="row" style={{ margin: "0 0 12px", gap: 14, flexWrap: "wrap" }}>
-        {header}
-        {!bound && !dateMode && (
-          <>
-            <span className="cols-ctl">
-              <span className="hint">Columns</span>
-              <button className="icon-btn" onClick={() => resize(cols - 1, rows)}>−</button>
-              <span className="cols-n">{cols}</span>
-              <button className="icon-btn" onClick={() => resize(cols + 1, rows)}>+</button>
-            </span>
-            <span className="cols-ctl">
-              <span className="hint">Rows</span>
-              <button className="icon-btn" onClick={() => resize(cols, rows - 1)}>−</button>
-              <span className="cols-n">{rows}</span>
-              <button className="icon-btn" onClick={() => resize(cols, rows + 1)}>+</button>
-            </span>
-          </>
-        )}
-        {isSmart && (
-          <label className="matrix-bind">
-            <span className="hint">Regions</span>
-            <select value={bindKey} onChange={(e) => setBind(e.target.value)}>
-              <option value="">Custom grid</option>
-              {bindable.map((b) => (
-                <option key={b.key} value={b.key}>
-                  By {b.label}
-                </option>
-              ))}
-              <option value="@days_before">Days · ending today</option>
-              <option value="@days_after">Days · starting today</option>
-              <option value="@days_around">Days · around today</option>
-              <option value="@days_span">Days · custom range</option>
-            </select>
-          </label>
-        )}
-        {dateMode && (
+  // The grid-size / region-binding controls. Moved into the collection's info
+  // panel (below), so the matrix page itself stays clean.
+  const layoutControls = (
+    <div className="matrix-panel-controls">
+      {!bound && !dateMode && (
+        <>
+          <span className="cols-ctl">
+            <span className="hint">Columns</span>
+            <button className="icon-btn" onClick={() => resize(cols - 1, rows)}>−</button>
+            <span className="cols-n">{cols}</span>
+            <button className="icon-btn" onClick={() => resize(cols + 1, rows)}>+</button>
+          </span>
           <span className="cols-ctl">
             <span className="hint">Rows</span>
-            <button className="icon-btn" onClick={() => resizeDateRows(dRows - 1)}>−</button>
-            <span className="cols-n">{dRows}</span>
-            <button className="icon-btn" onClick={() => resizeDateRows(dRows + 1)}>+</button>
+            <button className="icon-btn" onClick={() => resize(cols, rows - 1)}>−</button>
+            <span className="cols-n">{rows}</span>
+            <button className="icon-btn" onClick={() => resize(cols, rows + 1)}>+</button>
           </span>
+        </>
+      )}
+      {isSmart && (
+        <label className="matrix-bind">
+          <span className="hint">Regions</span>
+          <select value={bindKey} onChange={(e) => setBind(e.target.value)}>
+            <option value="">Custom grid</option>
+            {bindable.map((b) => (
+              <option key={b.key} value={b.key}>
+                By {b.label}
+              </option>
+            ))}
+            <option value="@days_before">Days · ending today</option>
+            <option value="@days_after">Days · starting today</option>
+            <option value="@days_around">Days · around today</option>
+            <option value="@days_span">Days · custom range</option>
+          </select>
+        </label>
+      )}
+      {dateMode && (
+        <span className="cols-ctl">
+          <span className="hint">Rows</span>
+          <button className="icon-btn" onClick={() => resizeDateRows(dRows - 1)}>−</button>
+          <span className="cols-n">{dRows}</span>
+          <button className="icon-btn" onClick={() => resizeDateRows(dRows + 1)}>+</button>
+        </span>
+      )}
+      {dateMode && bindKey === "@days_span" && (
+        <span className="matrix-span-ctl">
+          <DateTimePicker
+            value={spanStart}
+            placeholder="Start"
+            onChange={(v) =>
+              void api
+                .patch(`/collections/${collection.id}`, { matrix_date_start: v.slice(0, 10) })
+                .then(onChanged)
+            }
+          />
+          <span className="hint">to</span>
+          <DateTimePicker
+            value={spanEnd}
+            placeholder="End"
+            onChange={(v) =>
+              void api
+                .patch(`/collections/${collection.id}`, { matrix_date_end: v.slice(0, 10) })
+                .then(onChanged)
+            }
+          />
+        </span>
+      )}
+      {dateMode && bindKey !== "@days_span" && (
+        <span className="cols-ctl">
+          <span className="hint">Days</span>
+          <button
+            className="icon-btn"
+            onClick={() =>
+              void api
+                .patch(`/collections/${collection.id}`, { matrix_bind_count: Math.max(1, dayCount - 1) })
+                .then(onChanged)
+            }
+          >
+            −
+          </button>
+          <span className="cols-n">{dayCount}</span>
+          <button
+            className="icon-btn"
+            onClick={() =>
+              void api
+                .patch(`/collections/${collection.id}`, { matrix_bind_count: Math.min(DAYS_MAX, dayCount + 1) })
+                .then(onChanged)
+            }
+          >
+            +
+          </button>
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={matrixCollision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      {header && <div className="row" style={{ margin: "0 0 12px", gap: 14, flexWrap: "wrap" }}>{header}</div>}
+      {bottomSlotEl &&
+        selectedBlockId === collection.id &&
+        createPortal(
+          <>
+            <div className="panel-divider" />
+            <div className="panel-h">Grid layout</div>
+            {layoutControls}
+          </>,
+          bottomSlotEl,
         )}
-        {dateMode && bindKey === "@days_span" && (
-          <span className="matrix-span-ctl">
-            <DateTimePicker
-              value={spanStart}
-              placeholder="Start"
-              onChange={(v) =>
-                void api
-                  .patch(`/collections/${collection.id}`, { matrix_date_start: v.slice(0, 10) })
-                  .then(onChanged)
-              }
-            />
-            <span className="hint">to</span>
-            <DateTimePicker
-              value={spanEnd}
-              placeholder="End"
-              onChange={(v) =>
-                void api
-                  .patch(`/collections/${collection.id}`, { matrix_date_end: v.slice(0, 10) })
-                  .then(onChanged)
-              }
-            />
-          </span>
-        )}
-        {dateMode && bindKey !== "@days_span" && (
-          <span className="cols-ctl">
-            <span className="hint">Days</span>
-            <button
-              className="icon-btn"
-              onClick={() =>
-                void api
-                  .patch(`/collections/${collection.id}`, { matrix_bind_count: Math.max(1, dayCount - 1) })
-                  .then(onChanged)
-              }
-            >
-              −
-            </button>
-            <span className="cols-n">{dayCount}</span>
-            <button
-              className="icon-btn"
-              onClick={() =>
-                void api
-                  .patch(`/collections/${collection.id}`, { matrix_bind_count: Math.min(DAYS_MAX, dayCount + 1) })
-                  .then(onChanged)
-              }
-            >
-              +
-            </button>
-          </span>
-        )}
-      </div>
 
       {dateMode ? (
         <div className="matrix-wrap">

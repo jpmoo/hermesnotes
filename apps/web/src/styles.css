@@ -3137,6 +3137,33 @@ input.matrix-axis-y::placeholder {
   font-variant-numeric: tabular-nums;
   font-size: 13px;
 }
+
+/* The grid controls in the collection's info panel: stacked, aligned labels,
+   normal muted hint color (not the page-banner-aware one). */
+.matrix-panel-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.matrix-panel-controls .cols-ctl,
+.matrix-panel-controls .matrix-bind,
+.matrix-panel-controls .matrix-span-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.matrix-panel-controls .matrix-bind {
+  margin: 0;
+}
+.matrix-panel-controls .matrix-bind select {
+  flex: 1;
+}
+.matrix-panel-controls .hint {
+  min-width: 62px;
+  color: var(--text-muted);
+  text-shadow: none;
+}
 .block-stack > * + * {
   margin-top: 0;
 }

@@ -2274,7 +2274,7 @@ input.li-text:focus {
   /* Reserves the gutter a top-level list row's controls hang into. Paying for it
      once here, rather than out of each list's indent, is what keeps nesting tight
      — the controls cost nothing per level. */
-  padding-left: 2.7em;
+  padding-left: 2em;
 }
 .note-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -2305,16 +2305,20 @@ input.li-text:focus {
 .note-editor ul[data-type="taskList"] li > label {
   /* The checkbox hangs in the list's padding, exactly like a bullet or number —
      NOT inside the row. Indenting the row to make space for it would charge that
-     space again at every nesting level, which is what made checklists creep
-     right so much faster than other lists. Top-aligned so it sits on the row's
-     first line even when the text wraps. */
+     space again at every nesting level, which is what made checklists creep right
+     faster than other lists.
+
+     `right: 100%` parks it just left of the text whatever the checkbox's actual
+     width is, and the margin is the gap — pinning it with `left` instead left the
+     box touching the label. Top-aligned so it stays on the first line when the
+     text wraps. */
   position: absolute;
-  left: -1.2em;
+  right: 100%;
+  margin-right: 0.35em;
   top: 0;
   display: inline-flex;
   align-items: center;
   height: 1.55em;
-  margin: 0;
   user-select: none;
 }
 .note-editor ul[data-type="taskList"] li > div {
@@ -2351,7 +2355,7 @@ input.li-text:focus {
    room because a two-digit marker ("10.") is far wider than a bullet, and the
    controls sit clear of whichever marker is widest. */
 .note-editor ul { margin: 0 0 0.55em; padding-left: 1.4em; }
-.note-editor ol { margin: 0 0 0.55em; padding-left: 1.8em; }
+.note-editor ol { margin: 0 0 0.55em; padding-left: 1.5em; }
 .note-editor li { position: relative; margin: 0.15em 0; }
 
 /* List gutter controls. Kept muted rather than hover-only so the affordance is
@@ -2364,7 +2368,7 @@ input.li-text:focus {
   position: absolute;
   top: 0;
   height: 1.5em;
-  width: 1em;
+  width: 0.85em;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2378,14 +2382,14 @@ input.li-text:focus {
 /* Both sit left of the WIDEST marker — an ordered list's "10." at -1.8em — so one
    set of offsets clears bullets, numbers and checkboxes without overlapping any. */
 .li-drag {
-  left: -4em;
+  left: -3.35em;
   font-size: 12px;
   cursor: grab;
 }
 .li-drag:active,
 .li-drag.dragging { cursor: grabbing; opacity: 1; color: var(--accent); }
 .li-fold {
-  left: -2.9em;
+  left: -2.4em;
   font-size: 11px;
   cursor: pointer;
   transition: opacity 0.12s, transform 0.12s, color 0.12s;
@@ -2404,17 +2408,17 @@ input.li-text:focus {
 /* Touch: the same controls need real tap targets, and a wider gutter to sit in.
    The per-level indent barely grows — only the one-off left inset does. */
 @media (pointer: coarse) {
-  .note-editor { padding-left: 3.2em; }
+  .note-editor { padding-left: 2.6em; }
   .note-editor ul { padding-left: 1.6em; }
-  .note-editor ol { padding-left: 2em; }
+  .note-editor ol { padding-left: 1.7em; }
   .li-drag,
   .li-fold {
-    width: 1.3em;
+    width: 1.2em;
     height: 1.9em;
     opacity: 0.8;
   }
-  .li-drag { left: -4.7em; font-size: 14px; }
-  .li-fold { left: -3.3em; font-size: 13px; }
+  .li-drag { left: -4.2em; font-size: 14px; }
+  .li-fold { left: -2.9em; font-size: 13px; }
 }
 
 /* Where a row being dragged by touch would land. */

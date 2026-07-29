@@ -111,9 +111,9 @@ function rechipMentions(tr: Transaction, schema: Schema): Transaction {
 /**
  * If a source line's whole text is just a list/quote marker + trailing space,
  * build the block it should become (empty). This stands in for the normal
- * markdown input rules, which can't fire inside the code source line. Task
- * lists aren't handled here: `- ` renders to a bullet first, then the `[ ] `
- * input rule converts it in the rendered content.
+ * markdown input rules, which can't fire inside the code source line. Task-list
+ * markers (`[ ] ` / `- [ ] `) are handled separately by the caller, which can
+ * retype the enclosing bullet list as a task list.
  */
 function starterNode(text: string, schema: Schema): PMNode | null {
   const bulletList = schema.nodes.bulletList;
@@ -288,8 +288,61 @@ export const ActiveLineSource = Extension.create({
 
           // Live list/quote starters: typing `- `, `1. `, `> ` in a source line
           // renders the matching (empty) block, then normal list editing takes
-          // over (input rules for `[ ] `, Tab to nest, Enter for new items).
+          // over (Tab to nest, Enter for new items).
           if (docChanged && $head.parent.type === sourceType) {
+            // Checkbox: `[ ] ` / `[x] ` (optionally still carrying a `- ` marker)
+            // at the start of a source line becomes a real task item. Normally the
+            // `- ` has already rendered to a bullet, so this source line sits inside
+            // a one-item bullet list — retype that whole list as a task list. A bare
+            // top-level `[ ] ` (no list yet) becomes a fresh task list. This stands
+            // in for the `[ ] ` input rule, which can't fire inside the code source
+            // line (ProseMirror skips input rules in code nodes).
+            const taskListType = schema.nodes.taskList;
+            const taskItemType = schema.nodes.taskItem;
+            const bulletListType = schema.nodes.bulletList;
+            const listItemType = schema.nodes.listItem;
+            const cbx = /^(?:[-*+]\s+)?\[([ xX]?)\]\s$/.exec($head.parent.textContent);
+            if (taskListType && taskItemType && cbx) {
+              const checked = /[xX]/.test(cbx[1] ?? "");
+              const makeList = () =>
+                taskListType.create(null, taskItemType.create({ checked }, paraType.create()));
+              const container = $head.depth >= 2 ? $head.node($head.depth - 1) : null;
+              const inBulletItem =
+                !!container &&
+                container.type === listItemType &&
+                $head.depth >= 3 &&
+                $head.node($head.depth - 2).type === bulletListType;
+              let tr: Transaction | null = null;
+              if (inBulletItem) {
+                const list = $head.node($head.depth - 2);
+                // Only a single-item list is safe to retype wholesale; splitting a
+                // multi-item bullet list mid-edit would be fiddly, so leave those.
+                if (list.childCount === 1) {
+                  const listFrom = $head.before($head.depth - 2);
+                  const listTo = $head.after($head.depth - 2);
+                  tr = newState.tr.replaceWith(listFrom, listTo, makeList());
+                  try {
+                    tr = tr.setSelection(Selection.near(tr.doc.resolve(listFrom + 1), 1));
+                  } catch {
+                    /* leave selection as mapped */
+                  }
+                }
+              } else if ($head.depth === 1) {
+                const from = $head.before($head.depth);
+                const to = $head.after($head.depth);
+                tr = newState.tr.replaceWith(from, to, makeList());
+                try {
+                  tr = tr.setSelection(Selection.near(tr.doc.resolve(from + 1), 1));
+                } catch {
+                  /* leave selection as mapped */
+                }
+              }
+              if (tr) {
+                tr.setMeta(META, true);
+                return tr;
+              }
+            }
+
             const node = starterNode($head.parent.textContent, schema);
             if (node) {
               const from = $head.before();

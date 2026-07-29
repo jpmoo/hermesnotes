@@ -1,4 +1,4 @@
-import { CalendarDays, Copy, Star, X } from "lucide-react";
+import { CalendarDays, Copy, Maximize2, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
@@ -143,7 +143,7 @@ export function BlockInfoPane({
   const [types, setTypes] = useState<BlockType[]>([]);
   const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
   const { pathname } = useLocation();
-  const { infoTick } = usePanels();
+  const { infoTick, openBlock } = usePanels();
   const { isFavorite, toggleFavorite } = usePreferences();
   // If this block already has a live editor in the viewport, the panel shows a
   // read-only preview rather than a second editor that would fight over versions.
@@ -230,15 +230,30 @@ export function BlockInfoPane({
     connTab === "archived" ? gone(items) : live(items);
 
   const fav = isFavorite(blockId);
+  // Expand the panel's entity into the main view — but not when it's already
+  // there (its own full page) or is a daily note (shown beside the Today page).
+  const fullPage = isCollection ? `/collections/${blockId}` : `/block/${blockId}`;
+  const canExpand = block != null && !titleOverride && pathname !== fullPage;
   return (
     <div className="info-pane">
-      <button
-        className={`icon-btn fav-star${fav ? " on" : ""}`}
-        title={fav ? "Remove from favorites" : "Add to favorites"}
-        onClick={() => toggleFavorite(blockId)}
-      >
-        <Star size={15} fill={fav ? "currentColor" : "none"} />
-      </button>
+      <div className="info-actions">
+        <button
+          className={`icon-btn fav-star${fav ? " on" : ""}`}
+          title={fav ? "Remove from favorites" : "Add to favorites"}
+          onClick={() => toggleFavorite(blockId)}
+        >
+          <Star size={15} fill={fav ? "currentColor" : "none"} />
+        </button>
+        {canExpand && (
+          <button
+            className="icon-btn info-expand"
+            title="Open in main view"
+            onClick={() => openBlock(blockId, { collection: isCollection })}
+          >
+            <Maximize2 size={15} />
+          </button>
+        )}
+      </div>
       {editable && block ? (
         <div className="panel-editor">
           {editorType && !editorType.isText ? (

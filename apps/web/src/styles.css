@@ -4154,18 +4154,22 @@ input.matrix-axis-y::placeholder {
 .info-pane {
   position: relative;
 }
-.fav-star {
+.info-actions {
   position: absolute;
   top: 0;
   right: 0;
   z-index: 2;
+  display: flex;
+  gap: 2px;
+}
+.info-actions .icon-btn {
   width: 26px;
   height: 26px;
   border: none;
   background: transparent;
   color: var(--text-muted);
 }
-.fav-star:hover {
+.info-actions .icon-btn:hover {
   background: transparent;
   color: var(--accent-ink);
 }

@@ -239,12 +239,15 @@ export const ActiveLineSource = Extension.create({
           // Only a FOCUSED editor shows a source line: a freshly mounted (or
           // merely rendered) note has a selection at its first block, and that
           // must not present as raw markdown. Unfocused → everything renders.
-          // A non-empty (range) selection also renders everything: swapping the
-          // head block to source mid-drag would collapse a multi-line
-          // selection, so leave it be while the user is selecting text.
+          // A selection kept WITHIN one top-level block keeps that block as its
+          // editable source, so double-click / drag can select text inside the
+          // raw line. Only a selection that SPANS blocks renders everything —
+          // swapping the head block mid-drag would collapse a multi-line range.
+          const sel = newState.selection;
           const focused = editor.view?.hasFocus() ?? false;
-          const ranged = !newState.selection.empty;
-          const activeIndex = focused && !ranged && $head.depth >= 1 ? $head.index(0) : -1;
+          const anchorIdx = sel.$anchor.depth >= 1 ? sel.$anchor.index(0) : -1;
+          const headIdx = $head.depth >= 1 ? $head.index(0) : -1;
+          const activeIndex = focused && anchorIdx >= 0 && anchorIdx === headIdx ? headIdx : -1;
 
           // Which top-level blocks need swapping?
           const ops: { from: number; node: PMNode; action: "source" | "render" }[] = [];

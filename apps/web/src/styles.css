@@ -2260,13 +2260,20 @@ input.li-text:focus {
   padding-left: 1.4em;
   margin: 0.15em 0 0;
 }
+/* The checkbox is positioned out of flow rather than laid out with flex: a flex
+   container breaks the browser's native text selection across its children, so
+   flex rows couldn't be drag-selected the way bullet/ordered rows can. Keeping
+   the row as ordinary block content makes multi-row selection behave like every
+   other list. */
 .note-editor ul[data-type="taskList"] li {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  position: relative;
+  padding-left: 24px;
 }
 .note-editor ul[data-type="taskList"] li > label {
   /* Center the checkbox within the first line so it aligns with the text. */
+  position: absolute;
+  left: 0;
+  top: 0;
   display: inline-flex;
   align-items: center;
   height: 1.55em;
@@ -2274,7 +2281,6 @@ input.li-text:focus {
   user-select: none;
 }
 .note-editor ul[data-type="taskList"] li > div {
-  flex: 1;
   min-width: 0;
 }
 .note-editor ul[data-type="taskList"] li > div > p {

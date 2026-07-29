@@ -62,11 +62,35 @@ function nestedLists(item: PMNode, itemPos: number): { from: number; to: number 
 }
 
 /**
- * The list item at `pos`, or null if the position no longer holds one. Each
- * control's decoration key includes its position, so ProseMirror rebuilds the
- * control whenever the item moves and `pos` is current — this only guards
- * against acting on a position the document has since invalidated.
+ * Resolve the row a control belongs to, from the DOM, at the moment it's used.
+ *
+ * Deliberately not a captured position: keying the decorations by position meant
+ * every control in the note was destroyed and rebuilt whenever positions shifted
+ * — including on the live-preview line swap that fires as soon as a selection
+ * starts — and that DOM churn collapsed any drag-selection across rows. Stable
+ * keys keep the elements alive; the position is looked up here instead.
+ *
+ * `closest("li")` rather than `parentElement` because a checklist renders its
+ * content in an inner <div>, so the control can sit at either depth.
  */
+function itemPosFor(view: EditorView, el: HTMLElement): number | null {
+  const li = el.closest("li");
+  if (!li) return null;
+  let pos: number;
+  try {
+    pos = view.posAtDOM(li, 0);
+  } catch {
+    return null;
+  }
+  if (pos < 0 || pos > view.state.doc.content.size) return null;
+  const $pos = view.state.doc.resolve(pos);
+  for (let d = $pos.depth; d > 0; d--) {
+    if (ITEM_TYPES.has($pos.node(d).type.name)) return $pos.before(d);
+  }
+  return null;
+}
+
+/** The list item at `pos`, or null if that position no longer holds one. */
 function itemAt(view: EditorView, pos: number): PMNode | null {
   if (pos < 0 || pos > view.state.doc.content.size) return null;
   const node = view.state.doc.nodeAt(pos);
@@ -148,7 +172,7 @@ function moveItem(view: EditorView, from: number, to: number): void {
   view.dispatch(tr);
 }
 
-function buildGrip(view: EditorView, pos: number): HTMLElement {
+function buildGrip(view: EditorView): HTMLElement {
   const grip = document.createElement("span");
   grip.className = "li-drag";
   grip.draggable = true;
@@ -163,7 +187,8 @@ function buildGrip(view: EditorView, pos: number): HTMLElement {
   // Because a nested list is a CHILD of its item, selecting the item takes its
   // children along for free.
   const selectItem = () => {
-    if (!itemAt(view, pos)) return;
+    const pos = itemPosFor(view, grip);
+    if (pos == null || !itemAt(view, pos)) return;
     const sel = view.state.selection;
     if (sel instanceof NodeSelection && sel.from === pos) return; // already ours
     const tr = view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos));
@@ -183,18 +208,20 @@ function buildGrip(view: EditorView, pos: number): HTMLElement {
   });
   grip.addEventListener("dragstart", () => selectItem());
 
-  // Touch: drive the move ourselves.
+  // Touch: drive the move ourselves. The row is resolved once at gesture start
+  // and held for the duration, so the move lands where the drag began.
   let target: number | null = null;
-  let dragging = false;
+  let from: number | null = null;
   let row: HTMLElement | null = null;
   grip.addEventListener(
     "touchstart",
     (event) => {
-      if (!itemAt(view, pos)) return;
+      const pos = itemPosFor(view, grip);
+      if (pos == null || !itemAt(view, pos)) return;
       // Claim the gesture so the page doesn't scroll or start selecting text.
       event.preventDefault();
       event.stopPropagation();
-      dragging = true;
+      from = pos;
       target = null;
       grip.classList.add("dragging");
       // Outline the row via a class rather than selecting it: a selection would
@@ -208,25 +235,25 @@ function buildGrip(view: EditorView, pos: number): HTMLElement {
   grip.addEventListener(
     "touchmove",
     (event) => {
-      if (!dragging) return;
+      if (from == null) return;
       event.preventDefault();
       const touch = event.touches[0];
       if (!touch) return;
-      target = dropTargetAt(view, touch.clientX, touch.clientY, pos);
+      target = dropTargetAt(view, touch.clientX, touch.clientY, from);
       if (target == null) hideDropLine();
       else showDropLine(view, target);
     },
     { passive: false },
   );
   const endTouch = (event: Event) => {
-    if (!dragging) return;
+    if (from == null) return;
     event.preventDefault();
-    dragging = false;
     grip.classList.remove("dragging");
     row?.classList.remove("li-dragging");
     row = null;
     hideDropLine();
-    if (target != null) moveItem(view, pos, target);
+    if (target != null) moveItem(view, from, target);
+    from = null;
     target = null;
   };
   grip.addEventListener("touchend", endTouch, { passive: false });
@@ -235,7 +262,7 @@ function buildGrip(view: EditorView, pos: number): HTMLElement {
   return grip;
 }
 
-function buildTwisty(view: EditorView, pos: number, collapsed: boolean): HTMLElement {
+function buildTwisty(view: EditorView, collapsed: boolean): HTMLElement {
   const twisty = document.createElement("span");
   twisty.className = `li-fold${collapsed ? " collapsed" : ""}`;
   twisty.contentEditable = "false";
@@ -245,7 +272,8 @@ function buildTwisty(view: EditorView, pos: number, collapsed: boolean): HTMLEle
   const toggle = (event: Event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!itemAt(view, pos)) return;
+    const pos = itemPosFor(view, twisty);
+    if (pos == null || !itemAt(view, pos)) return;
     view.dispatch(view.state.tr.setMeta(TOGGLE_FOLD, pos).setMeta("addToHistory", false));
   };
   // Don't let a tap here move the caret or start a selection.
@@ -304,23 +332,27 @@ export const ListGutter = Extension.create({
                 return !node.isTextblock;
               }
               const isCollapsed = collapsed.has(pos);
-              // The position is part of each key, so the control — and the `pos`
-              // its handlers close over — is rebuilt whenever the item moves.
+              // Keys are position-INDEPENDENT on purpose: ProseMirror reuses a
+              // widget whose key is unchanged, so editing elsewhere in the note
+              // doesn't tear down and rebuild every control. Rebuilding them mid-
+              // gesture used to collapse drag-selections across rows.
               decos.push(
-                Decoration.widget(pos + 1, (view) => buildGrip(view, pos), {
+                Decoration.widget(pos + 1, (view) => buildGrip(view), {
                   side: -1,
                   // The controls aren't content: never let them affect the selection.
                   ignoreSelection: true,
-                  key: `li-drag:${pos}`,
+                  key: "li-drag",
                 }),
               );
               const kids = nestedLists(node, pos);
               if (kids.length) {
                 decos.push(
-                  Decoration.widget(pos + 1, (view) => buildTwisty(view, pos, isCollapsed), {
+                  Decoration.widget(pos + 1, (view) => buildTwisty(view, isCollapsed), {
                     side: -2, // ahead of the grip
                     ignoreSelection: true,
-                    key: `li-fold:${pos}:${isCollapsed}`,
+                    // Only the glyph state is in the key, so a fold rebuilds just
+                    // the row it happened on.
+                    key: `li-fold:${isCollapsed}`,
                   }),
                 );
                 if (isCollapsed) {

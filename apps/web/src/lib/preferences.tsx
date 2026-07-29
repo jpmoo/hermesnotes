@@ -87,6 +87,13 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     }
     document.documentElement.dataset.theme = t;
   };
+  // Alternating list-row shading is opt-out (Settings → Appearance), flagged on
+  // :root so the editor stylesheet can gate it without threading a prop through
+  // every editing surface.
+  useEffect(() => {
+    document.documentElement.dataset.listStripes = prefs.list_stripes === false ? "0" : "1";
+  }, [prefs.list_stripes]);
+
   // Panel transparency (0 = opaque … 100 = clear) → --panel-alpha on :root,
   // which the sidebar/right-panel backgrounds mix with transparent.
   useEffect(() => {

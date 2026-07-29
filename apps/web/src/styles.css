@@ -2271,10 +2271,8 @@ input.li-text:focus {
   min-height: 24px;
   cursor: text;
   outline: none;
-  /* Reserves the gutter a top-level list row's controls hang into. Paying for it
-     once here, rather than out of each list's indent, is what keeps nesting tight
-     — the controls cost nothing per level. */
-  padding-left: 2em;
+  /* No inset here: the gutter belongs to the lists that need it (below), so
+     paragraphs and headings stay flush with the note's left edge. */
 }
 .note-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
@@ -2349,13 +2347,16 @@ input.li-text:focus {
 .note-editor h3 { font-size: 1.15em; }
 .note-editor h4 { font-size: 1.05em; }
 .note-editor p { margin: 0 0 0.55em; }
-/* One tight indent per level — the gutter controls hang to the LEFT of the row
-   (into the editor's own left padding at the top level, or an ancestor's indent
-   when nested), so they cost nothing per level. Ordered lists get a little more
-   room because a two-digit marker ("10.") is far wider than a bullet, and the
-   controls sit clear of whichever marker is widest. */
-.note-editor ul { margin: 0 0 0.55em; padding-left: 1.4em; }
-.note-editor ol { margin: 0 0 0.55em; padding-left: 1.5em; }
+/* One tight indent per level — enough for the row's own marker (bullet, number or
+   checkbox) and nothing more. A nested row's controls hang left into an ancestor's
+   indent, so they cost nothing per level. */
+.note-editor ul,
+.note-editor ol { margin: 0 0 0.55em; padding-left: 1.4em; }
+/* Only a TOP-LEVEL list carries the gutter its controls need — there's no
+   ancestor indent to borrow. Kept on the list rather than the editor so
+   paragraphs and headings aren't pushed over too. */
+.note-editor > ul,
+.note-editor > ol { padding-left: 54px; }
 .note-editor li { position: relative; margin: 0.15em 0; }
 
 /* List gutter controls. Kept muted rather than hover-only so the affordance is
@@ -2363,12 +2364,16 @@ input.li-text:focus {
    positioned ancestor) so they line up across bullets, numbers and checkboxes
    alike. Note a checklist renders its content in an inner <div>, so these can sit
    at either depth — hence descendant, not child, selectors. */
+/* Geometry in px, deliberately NOT em: these carry their own small font-size, so
+   an em here would resolve against 11-12px instead of the body's 16px and pull
+   every offset ~30% closer to the text — which tucked the twisty under the wider
+   markers (checkbox, "10.") while narrow bullets still looked fine. */
 .li-drag,
 .li-fold {
   position: absolute;
   top: 0;
-  height: 1.5em;
-  width: 0.85em;
+  height: 22px;
+  width: 13px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2382,14 +2387,14 @@ input.li-text:focus {
 /* Both sit left of the WIDEST marker — an ordered list's "10." at -1.8em — so one
    set of offsets clears bullets, numbers and checkboxes without overlapping any. */
 .li-drag {
-  left: -3.35em;
+  left: -52px;
   font-size: 12px;
   cursor: grab;
 }
 .li-drag:active,
 .li-drag.dragging { cursor: grabbing; opacity: 1; color: var(--accent); }
 .li-fold {
-  left: -2.4em;
+  left: -37px;
   font-size: 11px;
   cursor: pointer;
   transition: opacity 0.12s, transform 0.12s, color 0.12s;
@@ -2408,17 +2413,18 @@ input.li-text:focus {
 /* Touch: the same controls need real tap targets, and a wider gutter to sit in.
    The per-level indent barely grows — only the one-off left inset does. */
 @media (pointer: coarse) {
-  .note-editor { padding-left: 2.6em; }
-  .note-editor ul { padding-left: 1.6em; }
-  .note-editor ol { padding-left: 1.7em; }
+  .note-editor ul,
+  .note-editor ol { padding-left: 1.6em; }
+  .note-editor > ul,
+  .note-editor > ol { padding-left: 66px; }
   .li-drag,
   .li-fold {
-    width: 1.2em;
-    height: 1.9em;
+    width: 16px;
+    height: 26px;
     opacity: 0.8;
   }
-  .li-drag { left: -4.2em; font-size: 14px; }
-  .li-fold { left: -2.9em; font-size: 13px; }
+  .li-drag { left: -64px; font-size: 14px; }
+  .li-fold { left: -44px; font-size: 13px; }
 }
 
 /* Where a row being dragged by touch would land. */
@@ -2432,6 +2438,22 @@ input.li-text:focus {
 }
 /* Children of a collapsed row. */
 .li-nested-hidden { display: none; }
+
+/* Alternating row shading, to keep the eye on one line across a long list. The
+   band goes on the row's OWN first line — not the <li>, which would tint that
+   row's nested children too — and reaches left under the marker so it reads as a
+   full row. Striping restarts within each nested list, since CSS can't count
+   rows across nesting levels. */
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > p:first-child,
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > pre:first-child,
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > p:first-child,
+:root[data-list-stripes="1"] .note-editor li:nth-child(even) > div > pre:first-child {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border-radius: 4px;
+  /* Pulled left so the shading sits under the bullet/number/checkbox as well. */
+  margin-left: -1.55em;
+  padding-left: 1.55em;
+}
 /* The row picked up by its grip — shows exactly what a drag will move, including
    anything nested inside it. (.li-dragging is the touch path, which marks the row
    with a class instead of selecting it, to keep the keyboard down.) */
@@ -5392,10 +5414,13 @@ input.cv-add-input {
   font-size: 10px;
   color: var(--text-muted);
   text-align: right;
-  padding: 6px 6px 0 0;
+  /* Left padding too: the label is nearly as wide as the gutter, so right-aligning
+     alone left it touching the left edge. */
+  padding: 6px 6px 0 8px;
   border-right: 1px solid var(--border);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 .cal-tg-allday-col {
   display: flex;

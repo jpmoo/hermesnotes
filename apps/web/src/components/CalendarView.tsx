@@ -694,7 +694,9 @@ function TimeGrid({
   onStatus: (item: Item, field: FieldDef, next: string) => void;
   scrollRef: React.RefObject<HTMLDivElement>;
 }) {
-  const template = `52px repeat(${cols}, 1fr)`;
+  // Wide enough for the "all-day" label to keep a left margin without wrapping
+  // (it's the widest thing in the gutter — wider than "12 AM").
+  const template = `62px repeat(${cols}, 1fr)`;
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const todayVisible = days.includes(today);

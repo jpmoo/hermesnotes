@@ -205,7 +205,7 @@ export function FavoritesPage() {
           <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("favorites", v)} />
         )}
       </div>
-      <p className="page-sub">Starred blocks and collections (star them in the info panel).</p>
+      <p className="page-sub">Starred blocks and collections.</p>
 
       {collections.length > 0 && (
         <div className="row fav-section-head">

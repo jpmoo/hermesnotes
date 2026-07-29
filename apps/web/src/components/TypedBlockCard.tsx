@@ -5,6 +5,7 @@ import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { fmtDateTime } from "../lib/format.ts";
 import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
+import { useRegisterEditor } from "../lib/editor-registry.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -62,6 +63,7 @@ export function TypedBlockCard({
   compact = false,
   archived = false,
   hideBanner = false,
+  noRegister = false,
 }: {
   block: Block;
   type: BlockType;
@@ -73,7 +75,10 @@ export function TypedBlockCard({
   archived?: boolean;
   /** Suppress all banner UI (display + add button), e.g. in the info panel. */
   hideBanner?: boolean;
+  /** Don't register as a viewport editor (the info panel's own instance). */
+  noRegister?: boolean;
 }) {
+  useRegisterEditor(block.id, !noRegister);
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [confirm, setConfirm] = useState<null | "archive" | "unarchive" | "delete">(null);

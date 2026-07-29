@@ -5,6 +5,7 @@ import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from ".
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { emitBlockChange, useBlockChanged, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
+import { useEditorMounted } from "../lib/editor-registry.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { LongTextField } from "./LongTextField.tsx";
@@ -144,6 +145,9 @@ export function BlockInfoPane({
   const { pathname } = useLocation();
   const { infoTick } = usePanels();
   const { isFavorite, toggleFavorite } = usePreferences();
+  // If this block already has a live editor in the viewport, the panel shows a
+  // read-only preview rather than a second editor that would fight over versions.
+  const editedInViewport = useEditorMounted(blockId);
 
   // Blank out only when the shown block changes; an infoTick bump (the block
   // was edited elsewhere, e.g. matrix region actions) refetches in place.
@@ -188,11 +192,15 @@ export function BlockInfoPane({
 
   if (!info) return <div className="hint">Loading…</div>;
 
-  // Edit-in-panel — except for collections (they have their own page), daily
-  // notes (the scratchpad is on screen), and the block's own full page (two
-  // live editors on one block would fight over versions).
+  // Edit-in-panel — except for collections (they have their own page), the
+  // block's own full page, or any block already open in a viewport editor: two
+  // live editors on one block fight over versions and remount each other.
   const editable =
-    block != null && !block.collectionKind && !titleOverride && pathname !== `/block/${blockId}`;
+    block != null &&
+    !block.collectionKind &&
+    !titleOverride &&
+    pathname !== `/block/${blockId}` &&
+    !editedInViewport;
   const editorType = block?.blockTypeId ? types.find((t) => t.id === block.blockTypeId) : undefined;
 
   const canvasConns = (info.canvasConnections ?? []).map((c) => ({
@@ -244,6 +252,7 @@ export function BlockInfoPane({
               onConflict={() => void loadBlock()}
               onDeleted={() => onDeleted?.()}
               hideBanner
+              noRegister
             />
           ) : (
             // Not compact: text-note compact mode is a read-only preview, and
@@ -255,6 +264,7 @@ export function BlockInfoPane({
               onConflict={() => void loadBlock()}
               onDeleted={() => onDeleted?.()}
               hideBanner
+              noRegister
             />
           )}
         </div>

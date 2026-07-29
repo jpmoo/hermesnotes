@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { isComplete } from "@hermes/shared";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
+import { useRegisterEditor } from "../lib/editor-registry.ts";
 import { oneLineText } from "../lib/display.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -30,6 +31,7 @@ export function TextBlockEditor({
   compact = false,
   hideBanner = false,
   archived = false,
+  noRegister = false,
 }: {
   block: Block;
   type?: BlockType;
@@ -42,7 +44,10 @@ export function TextBlockEditor({
   hideBanner?: boolean;
   /** In the Archive view: offer Unarchive + permanent Delete instead of Archive. */
   archived?: boolean;
+  /** Don't register as a viewport editor (the info panel's own instance). */
+  noRegister?: boolean;
 }) {
+  useRegisterEditor(block.id, !noRegister);
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
   const [confirm, setConfirm] = useState<null | "archive" | "unarchive" | "delete">(null);
   const [tagsRefresh, setTagsRefresh] = useState(0);

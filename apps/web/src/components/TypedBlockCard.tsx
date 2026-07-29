@@ -1,5 +1,5 @@
 import { isComplete, type FieldDef } from "@hermes/shared";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BlockType, Block } from "../api.ts";
 import { api, ApiError } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -85,7 +85,11 @@ export function TypedBlockCard({
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
   const versionRef = useRef(block.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  const pending = useRef(false); // an edit is waiting to save (i.e. you're typing)
+  // Latest not-yet-saved edit, so a pending debounce can be flushed on unmount
+  // (leaving the card — e.g. expanding to the viewport — before the 700ms fired
+  // must not drop the change).
+  const pendingProps = useRef<Record<string, unknown> | null>(null);
+  const dirty = () => pendingProps.current != null;
   const { selectBlock } = usePanels();
 
   // Cross-surface sync: announce saves; adopt foreign edits of this block — but
@@ -100,7 +104,7 @@ export function TypedBlockCard({
       versionRef.current = b.version;
       setUpdatedAt(b.updatedAt);
     },
-    () => pending.current,
+    dirty,
   );
 
   const schema = type.propertySchema;
@@ -124,13 +128,13 @@ export function TypedBlockCard({
       versionRef.current = updated.version;
       setUpdatedAt(updated.updatedAt);
       setSaveState("idle");
-      pending.current = false;
       emitBlockChange(block.id, origin);
-      releaseSync(); // catch up to any remote edit held while typing
+      // A remote change that arrived mid-edit was held; now that we're settled
+      // and not typing, catch up to it.
+      if (!dirty()) releaseSync();
       // A recurring task just spawned its next occurrence — refresh the list.
       if (updated.recurred) onConflict();
     } catch (err) {
-      pending.current = false;
       if (err instanceof ApiError && err.status === 409) {
         onConflict();
         return;
@@ -142,13 +146,38 @@ export function TypedBlockCard({
   const update = (key: string, value: unknown) => {
     const next = { ...props, [key]: value };
     setProps(next);
-    pending.current = true;
+    pendingProps.current = next;
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
+      pendingProps.current = null;
       void save(next);
       onChange?.({ properties: next });
     }, 700);
   };
+
+  // Flush a pending debounced save immediately (used on unmount) so navigating
+  // away or expanding this card into the viewport before the 700ms fires can't
+  // silently drop the edit.
+  const flushSaves = () => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = undefined;
+    }
+    if (pendingProps.current != null) {
+      const next = pendingProps.current;
+      pendingProps.current = null;
+      void save(next);
+    }
+  };
+  const flushRef = useRef(flushSaves);
+  flushRef.current = flushSaves;
+
+  useEffect(
+    () => () => {
+      flushRef.current();
+    },
+    [],
+  );
 
   // Show archived-mode actions whenever the block is actually archived — the
   // page prop is a hint, but the block's own state is the source of truth (an

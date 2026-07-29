@@ -206,20 +206,33 @@ export function CanvasView({
     const schema = from.blockTypeId ? typeById.get(from.blockTypeId)?.propertySchema : null;
     const field = schema?.fields.find((f) => f.type === "reference" && f.refTypeId === to.blockTypeId);
     if (!field) return false;
+
+    const target = oneLineText(to.properties, to.content) || (field.label ?? "the target");
+    // This connection is a relation, shown only under "Show connections" — turn
+    // that on now (if off) and say so, so the drawn line doesn't seem to vanish.
+    const revealed = !showLinks;
+    if (revealed) {
+      setShowLinks(true);
+      persistProps({ canvas_show_links: true });
+    }
+    const vis = `Shows as a connection${revealed ? " — turned Show connections on" : ""}.`;
+
     const cur = from.properties[field.key];
     const arr = Array.isArray(cur) ? cur.map(String) : typeof cur === "string" && cur ? [cur] : [];
-    if (!arr.includes(to.id)) {
-      void api
-        .patch(`/blocks/${from.id}`, {
-          properties: { ...from.properties, [field.key]: [...arr, to.id] },
-          version: from.version,
-        })
-        .then(() => {
-          emitBlockChange(from.id, "canvas-edges");
-          showToast(`Added to ${oneLineText(to.properties, to.content) || (field.label ?? "relation")}`);
-        })
-        .catch(() => {});
+    if (arr.includes(to.id)) {
+      showToast(`Already linked to ${target}. ${vis}`);
+      return true;
     }
+    void api
+      .patch(`/blocks/${from.id}`, {
+        properties: { ...from.properties, [field.key]: [...arr, to.id] },
+        version: from.version,
+      })
+      .then(() => {
+        emitBlockChange(from.id, "canvas-edges");
+        showToast(`Added to ${target}. ${vis}`);
+      })
+      .catch(() => showToast(`Couldn't link to ${target} — reload and try again.`));
     return true;
   };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -740,14 +753,11 @@ export function CanvasView({
           // ephemeral note is forced ephemeral (dotted).
           const eph = linking.from.startsWith("n:") || target.startsWith("n:");
           // A live link whose target type matches a relation field on the source
-          // sets that relation instead of drawing a standalone edge — it then
-          // renders as a toggleable "existing connection" (and vanishes if the
-          // relation is later removed). Reveal existing links so it's visible.
+          // sets that relation (and reveals it as a toggleable "existing
+          // connection") instead of drawing a standalone edge that would linger
+          // after the relation is removed. Otherwise, draw the edge.
           if (!eph && fileUnderRelation(linking.from, target)) {
-            if (!showLinks) {
-              setShowLinks(true);
-              persistProps({ canvas_show_links: true });
-            }
+            /* handled: relation set + connection revealed by fileUnderRelation */
           } else {
             saveEdges([
               ...edges,

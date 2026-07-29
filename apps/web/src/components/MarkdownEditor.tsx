@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import { ActiveLineSource, SourceableListItem, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
+import { ListGutter, ListIndent } from "../lib/list-tools.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
@@ -108,6 +109,8 @@ export function MarkdownEditor({
       MdImage,
       SourceBlock,
       ActiveLineSource,
+      ListIndent,
+      ListGutter,
       Mentions.configure({ handlers }),
     ],
     content: value,

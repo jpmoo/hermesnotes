@@ -2249,15 +2249,14 @@ input.li-text:focus {
   pointer-events: none;
 }
 /* Task list checkboxes (- [ ] in live preview) */
+/* Padding is left to the shared list rule below, so a checklist has the same
+   gutter (fold twisty + drag grip) and the same indent per level as any other
+   list; only the marker differs. */
 .note-editor ul[data-type="taskList"] {
   list-style: none;
-  padding-left: 0;
   margin: 0 0 0.55em;
 }
-/* Only the outermost task list is flush-left; nested ones indent so the
-   nesting is visible (the base rule above zeroed padding at every level). */
 .note-editor li ul[data-type="taskList"] {
-  padding-left: 1.4em;
   margin: 0.15em 0 0;
 }
 /* The checkbox is positioned out of flow rather than laid out with flex: a flex
@@ -2308,9 +2307,59 @@ input.li-text:focus {
 .note-editor h3 { font-size: 1.15em; }
 .note-editor h4 { font-size: 1.05em; }
 .note-editor p { margin: 0 0 0.55em; }
+/* Padding leaves a gutter wide enough for the fold twisty + drag grip, left of
+   the bullet/number. Every level gets one, so nested rows are reorderable too. */
 .note-editor ul,
-.note-editor ol { margin: 0 0 0.55em; padding-left: 1.4em; }
-.note-editor li { margin: 0.15em 0; }
+.note-editor ol { margin: 0 0 0.55em; padding-left: 2.4em; }
+.note-editor li { position: relative; margin: 0.15em 0; }
+
+/* List gutter controls. Kept muted rather than hover-only so the affordance is
+   discoverable, and positioned against the row (each <li> is the nearest
+   positioned ancestor) so they line up across bullets, numbers and checkboxes
+   alike. Note a checklist renders its content in an inner <div>, so these can sit
+   at either depth — hence descendant, not child, selectors. */
+.li-drag,
+.li-fold {
+  position: absolute;
+  top: 0.1em;
+  height: 1.35em;
+  width: 0.8em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  user-select: none;
+  opacity: 0.3;
+  transition: opacity 0.12s;
+}
+.li-drag {
+  left: -2.3em;
+  font-size: 11px;
+  cursor: grab;
+}
+.li-drag:active { cursor: grabbing; }
+.li-fold {
+  left: -1.45em;
+  font-size: 10px;
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.12s;
+}
+/* Pointing right when folded — the usual "there's more inside" cue. */
+.li-fold.collapsed {
+  transform: rotate(-90deg);
+  opacity: 0.75;
+}
+.li-drag:hover,
+.li-fold:hover { opacity: 0.95; }
+/* Children of a collapsed row. */
+.li-nested-hidden { display: none; }
+/* The row picked up by its grip — shows exactly what a drag will move, including
+   anything nested inside it. */
+.note-editor li.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .note-editor a { color: var(--accent); }
 .note-editor code {
   font-family: ui-monospace, Menlo, Consolas, monospace;

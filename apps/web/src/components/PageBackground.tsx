@@ -14,6 +14,7 @@ function bannerKeyForPath(path: string): string | null {
   if (path.startsWith("/types")) return "types";
   if (path.startsWith("/review")) return "review";
   if (path.startsWith("/archive")) return "archive";
+  if (path.startsWith("/settings")) return "settings";
   return null;
 }
 

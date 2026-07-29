@@ -2,6 +2,8 @@ import { CalendarDays, Copy, Download, KeyRound, ListChecks, Palette, Settings2,
 import { useEffect, useState } from "react";
 import { api, apiBase, ApiError, type OllamaModel, type Settings } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
+import { usePreferences } from "../lib/preferences.tsx";
+import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { AccessKeys } from "../components/AccessKeys.tsx";
 import { BackgroundSettings } from "../components/BackgroundSettings.tsx";
 import { RailEditor } from "../components/RailEditor.tsx";
@@ -65,6 +67,8 @@ const readSettingsTab = (isAdmin: boolean): SettingsTab => {
 export function SettingsPage() {
   const { user } = useAuth();
   const isAdmin = Boolean(user?.isAdmin);
+  const { banner, setBanner } = usePreferences();
+  const settingsBanner = banner("settings") as BannerValue | null;
 
   const [tab, setTabRaw] = useState<SettingsTab>(() => readSettingsTab(isAdmin));
   const setTab = (t: SettingsTab) => {
@@ -278,7 +282,15 @@ export function SettingsPage() {
 
   return (
     <>
-      <h1 className="page-title">Settings</h1>
+      {settingsBanner && (
+        <Banner value={settingsBanner} editable onChange={(v) => setBanner("settings", v)} />
+      )}
+      <div className="page-head">
+        <h1 className="page-title">Settings</h1>
+        {!settingsBanner && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("settings", v)} />
+        )}
+      </div>
       <p className="page-sub">Preferences are stored per-account.</p>
 
       <div className="settings-tabs">

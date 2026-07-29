@@ -190,6 +190,23 @@ export function BlockInfoPane({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockId, infoTick]);
 
+  // This pane hands its `block` snapshot to a freshly mounted editor, so the
+  // snapshot must not be stale. Refetch whenever the pane (re)becomes the
+  // editing surface — the block's own page closed, or a viewport editor
+  // released it — because that other surface may have saved since we loaded.
+  // Without this, returning from the expanded view remounts the panel editor on
+  // the pre-edit snapshot: fields render blank, and typing into them saves the
+  // stale values back over the newer ones (properties are replaced wholesale).
+  const ownsEditing =
+    !titleOverride &&
+    !editedInViewport &&
+    pathname !== `/block/${blockId}` &&
+    pathname !== `/collections/${blockId}`;
+  useEffect(() => {
+    if (ownsEditing) void loadBlock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownsEditing, blockId]);
+
   if (!info) return <div className="hint">Loading…</div>;
 
   // Edit-in-panel — except for collections (they have their own page), the

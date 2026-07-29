@@ -447,9 +447,10 @@ export function CalendarView({
   // A "copy" left the feed unchanged but added a block — refetch matches.
   useCalendarRefresh(() => setQueryTick((t) => t + 1));
 
-  // A deleted block leaves the calendar at once. If it was a synced feed event,
-  // deleting it dropped the link server-side, so refetch feeds to bring the
-  // source event back (and drop any stale optimistic hide).
+  // A deleted OR archived block leaves the calendar at once (both fire this).
+  // If it was a synced feed event, its link is no longer active server-side —
+  // deleting drops the row, archiving makes it dormant — so refetch feeds to
+  // bring the source event back (and drop any stale optimistic hide).
   useBlockDeleted((id) => {
     setMatches((ms) => ms.filter((b) => b.id !== id));
     setConvertedKeys(new Set());

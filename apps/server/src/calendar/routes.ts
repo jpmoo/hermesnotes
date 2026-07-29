@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP, isIPv4 } from "node:net";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { blockTypes, blocks, calendarConverted, calendarFeeds, userSettings } from "@hermes/db";
@@ -315,10 +315,16 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
 
     // Sync links: (feed,uid) → block id. Only "sync" conversions have a row;
     // deleting the block cascades the row away, so the event returns to the feed.
+    //
+    // A link only counts while its block is live: archiving the synced event has
+    // to hand the original feed event back (the block is hidden everywhere else,
+    // so suppressing the feed event too would make the event vanish outright).
+    // The row itself is kept, so unarchiving silently resumes the sync.
     const links = await db
       .select({ feedId: calendarConverted.feedId, uid: calendarConverted.uid, blockId: calendarConverted.blockId })
       .from(calendarConverted)
-      .where(eq(calendarConverted.ownerId, userId));
+      .innerJoin(blocks, eq(blocks.id, calendarConverted.blockId))
+      .where(and(eq(calendarConverted.ownerId, userId), isNull(blocks.archivedAt)));
     const syncByKey = new Map<string, string>();
     for (const l of links) if (l.blockId) syncByKey.set(`${l.feedId}|${l.uid}`, l.blockId);
 

@@ -144,8 +144,8 @@ export function FeedEventPane({
         </button>
       </div>
       <p className="hint feed-event-convert-hint">
-        Keeps the Hermes Note event in step with this feed and hides it here — delete the event to bring
-        it back.
+        Keeps the Hermes Note event in step with this feed and hides it here — archive or delete the
+        event to bring it back.
       </p>
       {err && <div className="error" style={{ marginTop: 8 }}>{err}</div>}
     </div>

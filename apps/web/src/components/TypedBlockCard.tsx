@@ -96,6 +96,11 @@ export function TypedBlockCard({
   // hold a remote edit while you have unsaved changes here, so it can't overwrite
   // a field you're mid-typing. Released once the pending save settles.
   const origin = useBlockOrigin();
+  // A longtext field's markdown editor owns its content internally, so a changed
+  // `value` prop alone won't update it — adopting a foreign edit has to remount
+  // the fields (bumped nonce below). Only ever happens when we're not dirty, so
+  // it can't interrupt typing.
+  const [ext, setExt] = useState(0);
   const releaseSync = useBlockSync(
     block.id,
     origin,
@@ -103,6 +108,7 @@ export function TypedBlockCard({
       setProps(b.properties ?? {});
       versionRef.current = b.version;
       setUpdatedAt(b.updatedAt);
+      setExt((n) => n + 1);
     },
     dirty,
   );
@@ -233,7 +239,7 @@ export function TypedBlockCard({
       </div>
 
       {bodyFields.length > 0 && (
-        <div className="typed-fields">
+        <div className="typed-fields" key={ext}>
           {bodyFields.map((f) => {
             const full =
               f.type === "text" ||

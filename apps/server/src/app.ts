@@ -37,6 +37,12 @@ const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web",
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: { level: process.env.LOG_LEVEL ?? "info" },
+    // Hermes is meant to run behind a reverse proxy (Caddy/nginx). Trust its
+    // X-Forwarded-For so `req.ip` is the real client — otherwise the login
+    // rate-limiter and logs key on the proxy's single IP, which both blinds the
+    // audit trail and lets one client's failures lock out everyone. When there
+    // is no proxy (localhost), this is harmless: there's no XFF header to trust.
+    trustProxy: true,
   });
 
   await app.register(cookie, { secret: getAuthSecret() });

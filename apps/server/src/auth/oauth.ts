@@ -102,7 +102,7 @@ export async function oauthRoutes(app: FastifyInstance): Promise<void> {
     const q = authorizeQuery.safeParse(req.query);
     if (!q.success) return reply.code(400).send("Invalid authorization request.");
     if (!redirectOk(q.data.redirect_uri)) return reply.code(400).send("Unsupported redirect_uri.");
-    const userId = readSession(req.cookies?.[SESSION_COOKIE]);
+    const userId = readSession(req.cookies?.[SESSION_COOKIE])?.userId ?? null;
     reply.type("text/html");
     if (!userId) {
       return `<!doctype html><meta charset="utf-8"><title>Hermes — sign in required</title>
@@ -143,7 +143,7 @@ there at any time.</p>
       })
       .parse(req.body);
     if (!redirectOk(body.redirect_uri)) return reply.code(400).send("Unsupported redirect_uri.");
-    const userId = readSession(req.cookies?.[SESSION_COOKIE]);
+    const userId = readSession(req.cookies?.[SESSION_COOKIE])?.userId ?? null;
     if (!userId) return reply.code(401).send("Session expired — reload the authorize page.");
     const code = randomUUID();
     codes.set(code, {

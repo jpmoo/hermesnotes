@@ -87,6 +87,22 @@ Everything's optional — with nothing set, the setup wizard handles the databas
 
 ---
 
+## Security & deploying safely
+
+Hermes is built for **personal use** — on your own laptop, or a home server on your own network, for you (and maybe a few people you trust). It is **not** hardened to be a public, multi-tenant service on the open internet. Running on localhost or a trusted LAN, the defaults are fine and there's nothing extra to do.
+
+If you *do* put it on the internet (a public domain, a port forward), spend two minutes on these:
+
+- **Finish the setup wizard before you expose it.** Until your first account exists, setup is open and *the first account to register becomes the admin* — so complete setup and create your account while the box is still private.
+- **Lock down registration.** Sign-ups are open by default. Once your account exists, turn off open registration in **Settings → Admin** unless you actually want others to self-register.
+- **Serve it over HTTPS behind a reverse proxy** (see the Caddy snippet under [Install & run](#install--run)). Hermes trusts the proxy's `X-Forwarded-For`, so login rate-limiting and logs see the real client — not just the proxy.
+- **Set `NODE_ENV=production`.** This marks the session cookie `Secure` (HTTPS-only), which matters once you're off plain localhost.
+- **Add HSTS at the proxy.** Caddy's automatic HTTPS handles this; for nginx, add a `Strict-Transport-Security` header.
+
+A few things are handled for you: your data is strictly per-user (no account can see another's blocks), passwords are hashed with argon2id, and **permanent deletion requires a real browser login** — an AI agent connected over MCP can archive blocks but can never hard-delete your notes.
+
+---
+
 ## Tech stack
 
 TypeScript · **Fastify** (API) · **PostgreSQL + pgvector** · **Drizzle** (schema/migrations) · **React + Vite + TipTap** (web). A pnpm monorepo.

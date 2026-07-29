@@ -94,7 +94,10 @@ export function MarkdownEditor({
           return this.options.nested ? "(paragraph | sourceBlock) block*" : "(paragraph | sourceBlock)+";
         },
       }).configure({ nested: true }),
-      Markdown.configure({ breaks: true, transformPastedText: true }),
+      // html:false — never parse raw HTML out of markdown into the document.
+      // Notes are plain markdown here, so this closes a raw-HTML-injection path
+      // (e.g. pasted/imported <img onerror=…>) at no cost to real content.
+      Markdown.configure({ html: false, breaks: true, transformPastedText: true }),
       Placeholder.configure({ placeholder }),
       CheckboxInput,
       SmartEnter,

@@ -19,8 +19,12 @@ const credentials = z.object({
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  const setSessionCookie = (reply: import("fastify").FastifyReply, userId: string) => {
-    const { value, maxAge } = issueSession(userId);
+  const setSessionCookie = (
+    reply: import("fastify").FastifyReply,
+    userId: string,
+    src: "password" | "key" = "password",
+  ) => {
+    const { value, maxAge } = issueSession(userId, src);
     reply.setCookie(SESSION_COOKIE, value, {
       httpOnly: true,
       sameSite: "lax",
@@ -129,7 +133,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       .update(apiTokens)
       .set({ lastUsedAt: new Date() })
       .where(eq(apiTokens.id, row.id));
-    setSessionCookie(reply, row.ownerId);
+    // Key-derived: this cookie is only as trusted as the access key, so it does
+    // not grant the browser-only powers (e.g. hard-delete) a password login does.
+    setSessionCookie(reply, row.ownerId, "key");
 
     const [user] = await db
       .select({ id: users.id, email: users.email, displayName: users.displayName })

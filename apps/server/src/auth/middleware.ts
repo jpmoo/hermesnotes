@@ -9,8 +9,15 @@ import { readSession, SESSION_COOKIE } from "./session.js";
 declare module "fastify" {
   interface FastifyRequest {
     userId?: string;
-    /** How the request authenticated: a browser session, or a bearer API key. */
-    authKind?: "cookie" | "bearer";
+    /**
+     * How the request authenticated:
+     * - "cookie": a full browser session (interactive password login/registration)
+     * - "bearer": an `Authorization: Bearer` access key
+     * - "key-cookie": a cookie minted by exchanging an access key (`/auth/exchange`)
+     * Only "cookie" is trusted for irreversible, browser-only actions; the other
+     * two are key-equivalent (an access key can reach an AI agent).
+     */
+    authKind?: "cookie" | "bearer" | "key-cookie";
   }
 }
 
@@ -45,10 +52,10 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
 
   // Session cookie.
   const cookie = req.cookies?.[SESSION_COOKIE];
-  const userId = readSession(cookie);
-  if (userId) {
-    req.userId = userId;
-    req.authKind = "cookie";
+  const session = readSession(cookie);
+  if (session) {
+    req.userId = session.userId;
+    req.authKind = session.src === "key" ? "key-cookie" : "cookie";
     return;
   }
 

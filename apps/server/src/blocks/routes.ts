@@ -274,6 +274,13 @@ const blockView = {
 const notArchived = sql`${blocks.archivedAt} IS NULL`;
 
 /**
+ * Upper bound on a free-text search term. A real query is a few words; anything
+ * longer is abuse — it would blow up the `ILIKE '%…%'` scan and, for semantic
+ * search, the embedding call. Reused by every `q`-style query param below.
+ */
+const searchTerm = z.string().max(256);
+
+/**
  * Stamp `done_at` when a block's status crosses into a complete value, and clear
  * it when it leaves — so auto-archive can measure "how long has this been done".
  * Returns the same object when nothing changes.
@@ -478,7 +485,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.get("/blocks/of-type/:typeId", async (req) => {
     const userId = requireUser(req);
     const { typeId } = z.object({ typeId: z.string().uuid() }).parse(req.params);
-    const { q } = z.object({ q: z.string().optional() }).parse(req.query);
+    const { q } = z.object({ q: searchTerm.optional() }).parse(req.query);
 
     const filters = [
       eq(blocks.ownerId, userId),
@@ -512,7 +519,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.get("/blocks/references", async (req) => {
     const userId = requireUser(req);
     const { typeId, q } = z
-      .object({ typeId: z.string().uuid(), q: z.string().optional() })
+      .object({ typeId: z.string().uuid(), q: searchTerm.optional() })
       .parse(req.query);
     const filters = [
       eq(blocks.ownerId, userId),
@@ -547,7 +554,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get("/search", async (req) => {
     const userId = requireUser(req);
-    const { q } = z.object({ q: z.string() }).parse(req.query);
+    const { q } = z.object({ q: searchTerm }).parse(req.query);
     const term = q.trim();
     if (!term) return [];
     const like = `%${term}%`;
@@ -623,7 +630,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { q, typeId, excludeCollectionId, includeCollections } = z
       .object({
-        q: z.string().optional(),
+        q: searchTerm.optional(),
         typeId: z.string().uuid().optional(),
         excludeCollectionId: z.string().uuid().optional(),
         includeCollections: z.coerce.boolean().optional(),

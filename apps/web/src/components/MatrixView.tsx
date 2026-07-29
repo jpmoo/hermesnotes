@@ -15,7 +15,8 @@ import {
 } from "@dnd-kit/core";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { ChevronDown, ChevronUp, Settings2, X } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { useAnyBlockChange } from "../lib/block-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
@@ -213,6 +214,40 @@ function useMatrixTypes() {
   return { types: typesStore };
 }
 
+// Chip hover tooltip. Native `title` is unreliable on the dnd-kit drag handles,
+// so a single portal'd bubble is driven from a module-level store the same way.
+let tipStore: { text: string; x: number; y: number } | null = null;
+const tipSubs = new Set<() => void>();
+function setTip(next: typeof tipStore): void {
+  tipStore = next;
+  for (const f of [...tipSubs]) f();
+}
+function MatrixTooltip() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const f = () => force((n) => n + 1);
+    tipSubs.add(f);
+    return () => void tipSubs.delete(f);
+  }, []);
+  if (!tipStore) return null;
+  // Offset from the cursor; flip left/up near the viewport edges.
+  const flipX = tipStore.x > window.innerWidth - 260;
+  const flipY = tipStore.y > window.innerHeight - 60;
+  const style: CSSProperties = {
+    position: "fixed",
+    left: flipX ? undefined : tipStore.x + 14,
+    right: flipX ? window.innerWidth - tipStore.x + 14 : undefined,
+    top: flipY ? undefined : tipStore.y + 18,
+    bottom: flipY ? window.innerHeight - tipStore.y + 18 : undefined,
+  };
+  return createPortal(
+    <div className="matrix-tip" style={style}>
+      {tipStore.text}
+    </div>,
+    document.body,
+  );
+}
+
 function statusFieldOf(type: BlockType | undefined): FieldDef | null {
   const schema = type?.propertySchema;
   const key = schema?.status_field;
@@ -260,20 +295,33 @@ function Chip({
     if (next) onStatus(item, statusField, next);
   };
 
+  const tipTimer = useRef<ReturnType<typeof setTimeout>>();
+  const armTip = (e: React.MouseEvent) => {
+    const { clientX, clientY } = e;
+    clearTimeout(tipTimer.current);
+    tipTimer.current = setTimeout(() => setTip({ text: item.label, x: clientX, y: clientY }), 350);
+  };
+  const clearTip = () => {
+    clearTimeout(tipTimer.current);
+    setTip(null);
+  };
+  useEffect(() => () => clearTimeout(tipTimer.current), []);
+
   return (
     <div
       ref={setRef}
       {...drag.attributes}
       {...drag.listeners}
       className={`matrix-chip${drag.isDragging ? " dragging" : ""}${chipDrop.isOver ? " chip-over" : ""}`}
+      onMouseEnter={armTip}
+      onMouseLeave={clearTip}
       onClick={(e) => {
         e.stopPropagation();
+        clearTip();
         selectBlock(item.id);
       }}
     >
-      {/* Tooltip lives on a plain inner element — a native `title` on the dnd-kit
-          drag handle (the outer div) doesn't reliably show while it's grabbable. */}
-      <div className="chip-row" title={item.label}>
+      <div className="chip-row">
         {statusField ? (
           <button
             className="chip-status"
@@ -1353,6 +1401,7 @@ export function MatrixView({
           </div>
         )}
       </DragOverlay>
+      <MatrixTooltip />
 
       <ColorPickerModal
         open={colorEdit != null}

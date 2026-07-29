@@ -2732,6 +2732,22 @@ input.matrix-axis-y::placeholder {
 .matrix-chip.dragging {
   opacity: 0.35;
 }
+
+/* Custom chip tooltip (native `title` is unreliable on the dnd drag handles). */
+.matrix-tip {
+  z-index: 1200;
+  max-width: 320px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #26282b;
+  color: #f5f6f7;
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: var(--shadow-soft);
+  pointer-events: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .matrix-chip.overlay {
   background: var(--surface);
   box-shadow: var(--shadow-lift);

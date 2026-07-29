@@ -183,8 +183,14 @@ export function TodayPage() {
 
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
   const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
-  const relevantCollapse = useCollapse((sheet?.relevant ?? []).map((b) => b.id), "today-relevant");
-  const activityCollapse = useCollapse((sheet?.activity ?? []).map((b) => b.id), "today-activity");
+  // Relevant/created cards default to collapsed and remember each block's choice
+  // across days (stable scope keys, id→collapsed map in localStorage).
+  const relevantCollapse = useCollapse((sheet?.relevant ?? []).map((b) => b.id), "today-relevant", {
+    defaultCollapsed: true,
+  });
+  const activityCollapse = useCollapse((sheet?.activity ?? []).map((b) => b.id), "today-activity", {
+    defaultCollapsed: true,
+  });
   const cardWith =
     (col: ReturnType<typeof useCollapse>) => (b: Block, compact: boolean) => (
       <CollapsibleCard

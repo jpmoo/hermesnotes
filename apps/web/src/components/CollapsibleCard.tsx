@@ -5,41 +5,51 @@ import { BlockCard } from "./BlockCard.tsx";
 import { CollapsedRow } from "./CollapsedRow.tsx";
 
 /**
- * Per-list collapse state: which card ids are collapsed, with all-toggle. When a
- * `scope` is given, the collapsed set persists in localStorage under that key, so
- * a page keeps its expand/collapse state across navigation and reloads.
+ * Per-list collapse state: each card's collapsed flag, with an all-toggle. When
+ * a `scope` is given, the state persists in localStorage under that key — an
+ * id→collapsed map, so a card's setting is remembered per block and survives
+ * navigation/reloads (and, for a stable scope like the Today sections, across
+ * days). Ids never seen before fall back to `opts.defaultCollapsed` (default
+ * expanded). Consumers can read `collapsed.has(id)` or `isCollapsed(id)`.
  */
-export function useCollapse(ids: string[], scope?: string) {
+export function useCollapse(ids: string[], scope?: string, opts?: { defaultCollapsed?: boolean }) {
+  const def = opts?.defaultCollapsed ?? false;
   const key = scope ? `hn.collapse.${scope}` : null;
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    if (!key) return new Set();
+  const [state, setState] = useState<Record<string, boolean>>(() => {
+    if (!key) return {};
     try {
       const raw = localStorage.getItem(key);
-      return raw ? new Set<string>(JSON.parse(raw) as string[]) : new Set();
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      // Migrate the legacy format (a plain array of collapsed ids).
+      if (Array.isArray(parsed)) return Object.fromEntries((parsed as string[]).map((id) => [id, true]));
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
     } catch {
-      return new Set();
+      return {};
     }
   });
-  const write = (next: Set<string>) => {
+  const write = (next: Record<string, boolean>) => {
     if (key) {
       try {
-        localStorage.setItem(key, JSON.stringify([...next]));
+        localStorage.setItem(key, JSON.stringify(next));
       } catch {
         /* ignore */
       }
     }
     return next;
   };
-  const toggle = (id: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+  const isCollapsed = (id: string) => state[id] ?? def;
+  const collapsed = new Set(ids.filter(isCollapsed));
+  const toggle = (id: string) => setState((prev) => write({ ...prev, [id]: !(prev[id] ?? def) }));
+  const allCollapsed = ids.length > 0 && ids.every(isCollapsed);
+  const toggleAll = () =>
+    setState((prev) => {
+      const target = !allCollapsed;
+      const next = { ...prev };
+      for (const id of ids) next[id] = target;
       return write(next);
     });
-  const allCollapsed = ids.length > 0 && ids.every((id) => collapsed.has(id));
-  const toggleAll = () => setCollapsed(() => write(allCollapsed ? new Set() : new Set(ids)));
-  return { collapsed, toggle, allCollapsed, toggleAll };
+  return { collapsed, isCollapsed, toggle, allCollapsed, toggleAll };
 }
 
 /**

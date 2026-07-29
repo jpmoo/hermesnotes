@@ -38,3 +38,6 @@ coverage/
 
 # Vite
 apps/web/dist/
+
+# Local deploy helper (server-specific; not distributed)
+restart.sh

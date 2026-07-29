@@ -26,8 +26,11 @@ function bannerKeyForPath(path: string): string | null {
  * applies; the shell makes the main surface transparent so it shows through.
  */
 export function PageBackground() {
-  const { prefs, banner } = usePreferences();
+  const { prefs, banner, theme } = usePreferences();
   const { pathname } = useLocation();
+  // The image is shown at this opacity over the (theme-colored) page surface, so
+  // the title's effective background is a blend — sample luminance accordingly.
+  const bgOpacity = prefs.bg_opacity == null ? 1 : Math.max(0, Math.min(1, Number(prefs.bg_opacity)));
 
   const routeBanner = useRouteBanner() as BannerValue | null;
   const isEntity =
@@ -75,7 +78,13 @@ export function PageBackground() {
         g /= n;
         b /= n;
         const [h, sat] = rgbToHs(r, g, b);
-        const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        const rawLum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        // The visible background is the image at `bgOpacity` over the page
+        // surface (near-black in dark mode, near-white in light), so a bright
+        // image dimmed to 50% over a dark page reads dark — pick the title color
+        // from that blended luminance, not the raw image.
+        const pageLum = theme === "dark" ? 0.11 : 0.98;
+        const lum = rawLum * bgOpacity + pageLum * (1 - bgOpacity);
         const dark = lum < 0.5;
         const s = Math.min(dark ? 0.6 : 0.7, Math.max(0.25, sat));
         const title = `hsl(${Math.round(h)}, ${Math.round(s * 100)}%, ${dark ? 92 : 16}%)`;
@@ -89,7 +98,7 @@ export function PageBackground() {
     return () => {
       alive = false;
     };
-  }, [active?.id]);
+  }, [active?.id, bgOpacity, theme]);
 
   if (!active?.id) return null;
 
@@ -98,15 +107,13 @@ export function PageBackground() {
     (prefs.bg_animate ? " anim" : "") +
     (prefs.bg_scanlines ? " scan" : "");
   const blur = Math.max(0, Math.min(40, Number(prefs.bg_blur) || 0));
-  // Image opacity (1 = opaque). Absent = fully opaque, preserving prior behavior.
-  const opacity = prefs.bg_opacity == null ? 1 : Math.max(0, Math.min(1, Number(prefs.bg_opacity)));
   return (
     <div className={cls} aria-hidden>
       <div
         className="page-bg-img"
         style={{
           backgroundImage: `url(${apiBase}/banners/${active.id})`,
-          opacity,
+          opacity: bgOpacity,
           ...(blur ? { filter: `blur(${blur}px)` } : {}),
         }}
       />

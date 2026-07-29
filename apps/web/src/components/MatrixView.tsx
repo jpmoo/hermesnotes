@@ -266,13 +266,14 @@ function Chip({
       {...drag.attributes}
       {...drag.listeners}
       className={`matrix-chip${drag.isDragging ? " dragging" : ""}${chipDrop.isOver ? " chip-over" : ""}`}
-      title={item.label}
       onClick={(e) => {
         e.stopPropagation();
         selectBlock(item.id);
       }}
     >
-      <div className="chip-row">
+      {/* Tooltip lives on a plain inner element — a native `title` on the dnd-kit
+          drag handle (the outer div) doesn't reliably show while it's grabbable. */}
+      <div className="chip-row" title={item.label}>
         {statusField ? (
           <button
             className="chip-status"

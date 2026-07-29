@@ -90,6 +90,9 @@ export function TypedBlockCard({
   // must not drop the change).
   const pendingProps = useRef<Record<string, unknown> | null>(null);
   const dirty = () => pendingProps.current != null;
+  // Any field in this card holding focus also holds off remote updates — a pause
+  // longer than the debounce must not let one remount the editor under the caret.
+  const focusedRef = useRef(false);
   const { selectBlock } = usePanels();
 
   // Cross-surface sync: announce saves; adopt foreign edits of this block — but
@@ -110,7 +113,7 @@ export function TypedBlockCard({
       setUpdatedAt(b.updatedAt);
       setExt((n) => n + 1);
     },
-    dirty,
+    () => focusedRef.current || dirty(),
   );
 
   const schema = type.propertySchema;
@@ -210,7 +213,18 @@ export function TypedBlockCard({
 
   const banner = (props.banner as BannerValue | null) ?? null;
   return (
-    <div className="card typed-card" onPointerDownCapture={() => selectBlock(block.id)}>
+    <div
+      className="card typed-card"
+      onPointerDownCapture={() => selectBlock(block.id)}
+      onFocusCapture={() => {
+        focusedRef.current = true;
+      }}
+      onBlurCapture={() => {
+        focusedRef.current = false;
+        // Settled: adopt any remote edit that was held while editing here.
+        if (!dirty()) releaseSync();
+      }}
+    >
       {!compact && !hideBanner && banner && (
         <Banner value={banner} editable onChange={(v) => update("banner", v ?? null)} height={150} />
       )}

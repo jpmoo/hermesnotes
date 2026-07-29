@@ -224,6 +224,14 @@ export const calendarConverted = pgTable("calendar_converted", {
   // Deleting the synced block drops this row too, so the feed event reappears.
   blockId: uuid("block_id").references(() => blocks.id, { onDelete: "cascade" }),
   mode: text("mode").notNull().default("sync"),
+  /**
+   * The feed-owned property values as the feed last reported them. Lets a later
+   * fetch tell a genuine feed change from an edit the user made here, so
+   * mirroring the feed never overwrites the user's own text. Null on rows
+   * predating this column — treated as "adopt the current feed as the baseline
+   * without touching the block".
+   */
+  lastFeed: jsonb("last_feed").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

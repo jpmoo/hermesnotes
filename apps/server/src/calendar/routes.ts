@@ -33,12 +33,15 @@ async function resolveEventType(userId: string): Promise<EventType> {
   return type;
 }
 
-/** Build an event block's properties from a feed event, honoring the type's field keys. */
-function eventProperties(type: EventType, ev: EventLike, base: Record<string, unknown> = {}): Record<string, unknown> {
+/**
+ * The property values a feed event dictates, keyed by the type's own field keys.
+ * This is both what a conversion seeds and the baseline recorded on the sync row
+ * (`last_feed`) for later change detection.
+ */
+function feedProperties(type: EventType, ev: EventLike): Record<string, unknown> {
   const fields = type.propertySchema?.fields ?? [];
   const spanKey = fields.find((f) => f.type === "datespan")?.key ?? "when";
   const props: Record<string, unknown> = {
-    ...base,
     title: ev.summary || "(untitled event)",
     [spanKey]: { start: ev.start, end: ev.end ?? ev.start },
   };
@@ -47,12 +50,30 @@ function eventProperties(type: EventType, ev: EventLike, base: Record<string, un
   return props;
 }
 
+/** Build an event block's properties from a feed event, honoring the type's field keys. */
+function eventProperties(type: EventType, ev: EventLike, base: Record<string, unknown> = {}): Record<string, unknown> {
+  return { ...base, ...feedProperties(type, ev) };
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** A synced block and the feed instance it should mirror. */
+interface SyncTarget {
+  ev: EventLike;
+  linkId: string;
+  /** What the feed reported last time we synced (null = no baseline recorded). */
+  lastFeed: Record<string, unknown> | null;
+}
+
 /**
- * Mirror feed changes into synced blocks. Fetches the target blocks, rebuilds
- * their properties from the feed instance, and writes only those that actually
- * changed (so an unchanged feed is a no-op). Feed is the source of truth here.
+ * Mirror feed changes into synced blocks — a three-way merge, never a wholesale
+ * overwrite. For each field the feed owns, the new feed value is taken only when
+ * the FEED changed it and the user hasn't edited it here since the last sync;
+ * a field the user has touched stays theirs, so notes added to a synced event
+ * are never lost to a later feed fetch. Rows with no recorded baseline adopt the
+ * feed's current values as the baseline without touching the block at all.
  */
-async function applySyncUpdates(userId: string, targets: Map<string, EventLike>): Promise<void> {
+async function applySyncUpdates(userId: string, targets: Map<string, SyncTarget>): Promise<void> {
   const ids = [...targets.keys()];
   const rows = await db
     .select()
@@ -60,8 +81,8 @@ async function applySyncUpdates(userId: string, targets: Map<string, EventLike>)
     .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, ids)));
   const typeCache = new Map<string, EventType>();
   for (const row of rows) {
-    const ev = targets.get(row.id);
-    if (!ev || !row.blockTypeId) continue;
+    const target = targets.get(row.id);
+    if (!target || !row.blockTypeId) continue;
     let type = typeCache.get(row.blockTypeId);
     if (!type) {
       const [t] = await db.select().from(blockTypes).where(eq(blockTypes.id, row.blockTypeId)).limit(1);
@@ -70,19 +91,42 @@ async function applySyncUpdates(userId: string, targets: Map<string, EventLike>)
       typeCache.set(row.blockTypeId, t);
     }
     const base = (row.properties as Record<string, unknown>) ?? {};
-    const nextProps = eventProperties(type, ev, base);
-    if (JSON.stringify(nextProps) === JSON.stringify(base)) continue;
-    const embedSource = computeEmbedSource(type, { content: null, properties: nextProps });
-    await db
-      .update(blocks)
-      .set({
-        properties: nextProps,
-        embedSource,
-        embedSourceHash: null,
-        version: sql`${blocks.version} + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(blocks.id, row.id));
+    const feedNow = feedProperties(type, target.ev);
+    const prev = target.lastFeed;
+
+    // With a baseline, merge field by field. Without one, skip straight to
+    // recording the baseline: we can't tell feed values from user edits yet, and
+    // guessing wrong would destroy the user's text.
+    if (prev) {
+      const next = { ...base };
+      let changed = false;
+      for (const [key, value] of Object.entries(feedNow)) {
+        if (same(value, prev[key])) continue; // feed hasn't changed this field
+        if (!same(base[key], prev[key])) continue; // the user edited it — keep theirs
+        next[key] = value;
+        changed = true;
+      }
+      if (changed) {
+        const embedSource = computeEmbedSource(type, { content: null, properties: next });
+        await db
+          .update(blocks)
+          .set({
+            properties: next,
+            embedSource,
+            embedSourceHash: null,
+            version: sql`${blocks.version} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(blocks.id, row.id));
+      }
+    }
+
+    if (!same(feedNow, prev)) {
+      await db
+        .update(calendarConverted)
+        .set({ lastFeed: feedNow })
+        .where(eq(calendarConverted.id, target.linkId));
+    }
   }
 }
 
@@ -321,28 +365,44 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     // so suppressing the feed event too would make the event vanish outright).
     // The row itself is kept, so unarchiving silently resumes the sync.
     const links = await db
-      .select({ feedId: calendarConverted.feedId, uid: calendarConverted.uid, blockId: calendarConverted.blockId })
+      .select({
+        id: calendarConverted.id,
+        feedId: calendarConverted.feedId,
+        uid: calendarConverted.uid,
+        blockId: calendarConverted.blockId,
+        lastFeed: calendarConverted.lastFeed,
+      })
       .from(calendarConverted)
       .innerJoin(blocks, eq(blocks.id, calendarConverted.blockId))
       .where(and(eq(calendarConverted.ownerId, userId), isNull(blocks.archivedAt)));
-    const syncByKey = new Map<string, string>();
-    for (const l of links) if (l.blockId) syncByKey.set(`${l.feedId}|${l.uid}`, l.blockId);
+    const syncByKey = new Map<string, { blockId: string; linkId: string; lastFeed: Record<string, unknown> | null }>();
+    for (const l of links) {
+      if (l.blockId) {
+        syncByKey.set(`${l.feedId}|${l.uid}`, {
+          blockId: l.blockId,
+          linkId: l.id,
+          lastFeed: l.lastFeed ?? null,
+        });
+      }
+    }
 
     const nowMs = Date.now();
     const out: Array<ParsedEvent & { feedId: string; feedName: string; color: string }> = [];
     // blockId → the feed instance the synced event should mirror (nearest to now).
-    const syncTargets = new Map<string, EventLike>();
+    const syncTargets = new Map<string, SyncTarget>();
     for (const feed of feeds) {
       try {
         const text = await icsFor(feed, force);
         const events = eventsInRange(text, q.start, q.end).map((e) => zoneEvent(e, tz));
         for (const ev of events) {
-          const linkedBlock = syncByKey.get(`${feed.id}|${ev.uid}`);
-          if (linkedBlock) {
+          const link = syncByKey.get(`${feed.id}|${ev.uid}`);
+          if (link) {
             // Hidden from the feed; the linked block mirrors the nearest instance.
-            const prev = syncTargets.get(linkedBlock);
+            const prev = syncTargets.get(link.blockId);
             const dist = (e: EventLike) => Math.abs(new Date(e.start).getTime() - nowMs);
-            if (!prev || dist(ev) < dist(prev)) syncTargets.set(linkedBlock, ev);
+            if (!prev || dist(ev) < dist(prev.ev)) {
+              syncTargets.set(link.blockId, { ev, linkId: link.linkId, lastFeed: link.lastFeed });
+            }
             continue;
           }
           out.push({ ...ev, feedId: feed.id, feedName: feed.name, color: feed.color });
@@ -420,7 +480,16 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       if (body.mode === "sync") {
         await tx
           .insert(calendarConverted)
-          .values({ ownerId: userId, feedId: body.feedId, uid: body.uid, blockId: row!.id, mode: "sync" })
+          .values({
+            ownerId: userId,
+            feedId: body.feedId,
+            uid: body.uid,
+            blockId: row!.id,
+            mode: "sync",
+            // Baseline: what the feed says right now, which is exactly what the
+            // block was seeded with — so the first later edit reads as the user's.
+            lastFeed: feedProperties(type, body),
+          })
           .onConflictDoNothing();
       }
       return row!;

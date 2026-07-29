@@ -362,9 +362,12 @@ export function TodayPage() {
         )}
       {bottomSlotEl &&
         createPortal(
-          <>
+          // `order` keeps this last in the panel's bottom slot, so it never
+          // splits another block's panel tools (e.g. an embedded matrix's grid
+          // controls) that portal into the same slot.
+          <div className="panel-slot-last">
             <div className="panel-divider" />
-            <div className="panel-h">Layout</div>
+            <div className="panel-h">Daily Note Layout</div>
             <SectionLayout
               entries={entries}
               canReorder
@@ -375,7 +378,7 @@ export function TodayPage() {
               onAddCollection={onAddCollection}
               onAddNote={onAddNote}
             />
-          </>,
+          </div>,
           bottomSlotEl,
         )}
     </>

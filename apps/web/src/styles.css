@@ -3323,6 +3323,16 @@ input.matrix-axis-y::placeholder {
   background: var(--border);
   margin: 16px 0 12px;
 }
+/* The panel's bottom slot stacks the tools pages portal into it; `order` lets a
+   section (e.g. the daily-note layout) pin itself last regardless of portal
+   commit order. */
+.panel-bottom-slot {
+  display: flex;
+  flex-direction: column;
+}
+.panel-slot-last {
+  order: 99;
+}
 .panel-h {
   font-size: 11px;
   font-weight: 700;

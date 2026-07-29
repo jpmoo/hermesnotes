@@ -179,7 +179,7 @@ export function RightPanel() {
                 onDeleted={clearSelection}
               />
             )}
-            <div ref={setBottomSlotEl} />
+            <div className="panel-bottom-slot" ref={setBottomSlotEl} />
             {!hasContent && !showInfo && !showFeedEvent && (
               <div className="panel-placeholder">
                 Select a block or collection to see and edit information here.

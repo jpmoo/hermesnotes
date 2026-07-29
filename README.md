@@ -27,13 +27,15 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 
 ---
 
-## Quick start (local)
+## Install & run
 
-**Prerequisites**
+You don't need to be a developer. If you can install a couple of tools and run a few commands, you can run Hermes.
 
-- **Node.js 22+** and **pnpm 9+** (`npm i -g pnpm`)
-- **PostgreSQL 14+** running locally. The first-run wizard can create the database and install the required `vector` (pgvector) and `pgcrypto` extensions for you — for that it needs a **superuser** admin login (e.g. the default `postgres` role). Alternatively, point Hermes at a database you've already prepared.
-- *(Optional)* **[Ollama](https://ollama.com)** if you want embeddings/semantic search and the AI assistant. Pull an embedding model, e.g. `ollama pull nomic-embed-text`.
+**You'll need**
+
+- **Node.js 22+** and **pnpm 9+** — install pnpm with `npm install -g pnpm`.
+- **PostgreSQL 14+** running somewhere the app can reach. On first run, Hermes' setup wizard can create its own database and install the bits it needs (the `vector` and `pgcrypto` extensions) for you — for that, give it a Postgres **admin/superuser** login (e.g. the default `postgres` user). Or point it at a database you've already made.
+- *(Optional)* **[Ollama](https://ollama.com)** — only if you want semantic search and the AI assistant. Then pull a model, e.g. `ollama pull nomic-embed-text`.
 
 **Run it**
 
@@ -41,62 +43,39 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 git clone https://github.com/jpmoo/hermesnotes.git
 cd hermesnotes
 pnpm install
-
-# Start the API server (dev). The web dev server proxies to it on :8089.
-PORT=8089 APP_ORIGIN=http://localhost:5173 pnpm dev:server
-
-# In a second terminal, start the web app:
-pnpm dev:web
+pnpm build
+pnpm start
 ```
 
-Open **http://localhost:5173/hermesnotes/**. On first run you'll get a **setup wizard**: give it your Postgres admin connection, and it provisions the database, installs the extensions, runs migrations, and creates your account. That's it.
+Now open **http://localhost:3000** in your browser. A **setup wizard** walks you through the rest: point it at your Postgres admin login, and it creates the database, installs the extensions, sets everything up, and makes your account. Done — it's running on a port.
 
-> Don't want the wizard? Set `DATABASE_URL` and `AUTH_SECRET` yourself (see [Configuration](#configuration)), run `pnpm db:migrate`, then start the server.
-
----
-
-## Production deployment
-
-Hermes is a single Node process: build the web bundle, and the server serves both the API and the static app on one port.
-
-```bash
-git clone https://github.com/jpmoo/hermesnotes.git
-cd hermesnotes
-pnpm install
-pnpm build                 # typechecks + builds apps/web/dist
-
-# Configure the server (or let the first-run wizard do it):
-cp .env.example .env        # then edit DATABASE_URL, AUTH_SECRET, APP_ORIGIN, PORT
-pnpm db:migrate             # if you set DATABASE_URL yourself
-
-pnpm --filter @hermes/server start   # serves API + web on $PORT
-```
-
-Then put it behind a reverse proxy (Caddy, nginx, …) for TLS and a stable hostname, and run it under a process manager (systemd, pm2, Docker…). A typical Caddy block:
+That's the whole thing. It's a single program: one command (`pnpm start`) runs both the app and its web page on one port. To reach it from other devices or give it a real web address with HTTPS, put it behind a reverse proxy (Caddy makes this a two-line config):
 
 ```caddy
-app.example.com {
+notes.example.com {
     reverse_proxy localhost:3000
 }
 ```
 
-**Hosting path.** The app is mounted under the subpath **`/hermesnotes/`** by default. To serve it at the root (`/`) or a different path, change the `BASE` constant at the top of [`apps/web/vite.config.ts`](apps/web/vite.config.ts) and rebuild. The MCP endpoint and all asset URLs derive from it automatically.
+**To keep it running** across reboots/crashes, use a process manager — systemd, [pm2](https://pm2.keymetrics.io/), or Docker.
 
 ---
 
 ## Configuration
 
-All server settings are environment variables (see [`.env.example`](.env.example)). **All of them are optional** — with none set, the first-run wizard configures the database and generates an auth secret for you.
+Everything's optional — with nothing set, the setup wizard handles the database and generates a secret for you. If you'd rather configure by hand, copy [`.env.example`](.env.example) to `.env` and edit it:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | *(wizard)* | Postgres connection for the app. Needs the `vector` extension. If unset, the wizard provisions it and writes `data/hermes.config.json`. |
-| `AUTH_SECRET` | *(generated)* | Signing key for sessions/tokens. Generate with `openssl rand -base64 48`. Auto-generated and persisted if unset. |
-| `PORT` | `3000` | HTTP port. (Use `8089` in dev to match the web proxy.) |
+| `PORT` | `3000` | The port the app runs on. |
 | `HOST` | `0.0.0.0` | Bind address. |
-| `APP_ORIGIN` | `http://localhost:5173` | Public origin of the web app, for CORS + cookies. Set to your real hostname in production. |
-| `EMBEDDING_INDEX_DIM` | `2000` | Zero-padded width of the vector index. Must be ≥ the largest embedding model dimension you'll use. |
-| `HERMES_CONFIG_PATH` | `data/hermes.config.json` | Where the wizard writes the persisted DB URL + auth secret. |
+| `APP_ORIGIN` | `http://localhost:3000` | Your app's public address (scheme + host, no path), for CORS + cookies. |
+| `DATABASE_URL` | *(wizard)* | Postgres connection. Needs the `vector` extension. Left to the wizard if unset. |
+| `AUTH_SECRET` | *(generated)* | Signing key for logins. Auto-generated if unset (`openssl rand -base64 48` to make your own). |
+| `EMBEDDING_INDEX_DIM` | `2000` | Vector index width; leave as-is unless you know you need more. |
+| `APP_BASE_PATH` / `PUBLIC_BASE` | *(root)* | Only needed to host under a subpath — see below. |
+
+**Hosting under a subpath.** By default the app lives at the root of its address (`http://host:PORT/`). To host it at something like `example.com/notes` behind a reverse proxy, set both `APP_BASE_PATH=/notes/` and `PUBLIC_BASE=https://example.com/notes` in `.env` before `pnpm build`. Otherwise, ignore these.
 
 ---
 
@@ -120,9 +99,20 @@ apps/web          React client
 docs/             Design doc + architecture notes
 ```
 
-Handy scripts: `pnpm dev:server`, `pnpm dev:web`, `pnpm build`, `pnpm typecheck`, `pnpm db:generate`, `pnpm db:migrate`.
-
 ---
+
+## Developing
+
+*Only if you want to change the code* — to just run Hermes, use [Install & run](#install--run) above.
+
+Run the two dev servers in separate terminals (hot reload). The web dev server proxies API calls to the running server:
+
+```bash
+PORT=8089 pnpm dev:server     # API, on :8089
+pnpm dev:web                  # web, on http://localhost:5173
+```
+
+Other scripts: `pnpm build`, `pnpm typecheck`, `pnpm db:generate`, `pnpm db:migrate`.
 
 ## Contributing
 

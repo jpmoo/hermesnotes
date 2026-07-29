@@ -12,6 +12,7 @@ const fmtDay = (date: string) =>
 interface RecentInfo {
   label: string;
   blockTypeId: string | null;
+  properties?: Record<string, unknown>;
   document?: boolean;
   matrix?: boolean;
   table?: boolean;
@@ -32,6 +33,7 @@ const getInfo = (id: string) =>
         .then((b) => ({
           label: oneLineText(b.properties, b.content) || "Untitled",
           blockTypeId: b.blockTypeId,
+          properties: b.properties,
           document: b.collectionKind === "document",
           matrix: b.collectionKind === "matrix",
           table: b.collectionKind === "table",
@@ -134,6 +136,14 @@ function RecentsMenu() {
                 );
               }
               const t = it?.blockTypeId ? types.find((x) => x.id === it.blockTypeId) : undefined;
+              // Match the card glyph: a status block shows its current status's
+              // icon/color; otherwise the type's icon/color. (A task's base type
+              // color is often unset while its status colors are — using only the
+              // type color made those show up gray here.)
+              const schema = t?.propertySchema;
+              const statusField =
+                schema?.fields.find((f) => f.type === "status" && f.key === schema.status_field) ?? null;
+              const status = statusField ? String(it?.properties?.[statusField.key] ?? "") : "";
               return (
                 <button
                   key={`b:${e.id}`}
@@ -144,8 +154,8 @@ function RecentsMenu() {
                   }}
                 >
                   <BlockIcon
-                    iconKey={!t || t.isText ? "type" : t.iconKey}
-                    color={t && !t.isText ? t.iconColor : null}
+                    iconKey={statusField?.optionIcons?.[status] ?? (!t || t.isText ? "type" : t.iconKey)}
+                    color={statusField?.optionColors?.[status] ?? (t && !t.isText ? t.iconColor : null)}
                     size={14}
                   />
                   <span className="recent-label">{it?.label ?? "…"}</span>

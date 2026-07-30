@@ -25,11 +25,11 @@
   --radius-control: 9px;
   /* Cast down AND to the right, as if lit from the upper left, so anything
      sitting on the page background reads as raised off it. */
-  --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.1);
-  --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.14);
+  --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.15);
+  --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.2);
   /* Bare colour, for the panels: each casts toward the content it floats over,
      so the offset differs per edge and can't come from a ready-made token. */
-  --shadow-color: rgba(0, 0, 0, 0.1);
+  --shadow-color: rgba(0, 0, 0, 0.15);
 }
 
 /* ── Dark theme ──────────────────────────────────────────────────

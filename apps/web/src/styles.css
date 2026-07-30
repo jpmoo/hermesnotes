@@ -3542,7 +3542,7 @@ input.matrix-axis-y::placeholder {
 .masonry-item {
   position: relative;
   break-inside: avoid;
-  padding-bottom: 14px;
+  padding-bottom: 7px;
 }
 .masonry-item .card {
   margin: 0;
@@ -5916,14 +5916,29 @@ input.cv-add-input {
   white-space: nowrap;
 }
 
-.num-field {
+/* Both selectors on purpose: a field label rule (`label.field > span`) is more
+   specific than a lone class, and it was forcing this span to display:block —
+   which stacked the input, rocker and units instead of keeping them in a row. */
+.num-field,
+.field > .num-field {
   display: inline-flex;
   align-items: stretch;
   gap: 6px;
   min-width: 0;
+  /* One line even in a narrow panel or masonry column: the input is only as wide
+     as a few digits need, and a long unit label ellipsises rather than wrapping
+     the rocker onto its own row. */
+  flex-wrap: nowrap;
 }
-.num-input {
-  width: 5.5em;
+/* Selector deliberately two classes deep: the global input rule sets width:100%
+   with a type selector (0,1,1), which outranks a lone .num-input (0,1,0) — that is
+   why the rocker and units used to wrap onto their own lines. */
+.num-field .num-input {
+  /* Wide enough for six or seven digits, and allowed to shrink rather than push
+     the rocker off the line in a narrow panel. */
+  width: 6em;
+  min-width: 0;
+  max-width: 100%;
   flex: 0 0 auto;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -5953,6 +5968,9 @@ input.cv-add-input {
   color: var(--text-muted);
   font-size: 12.5px;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .field-open {
   display: inline-flex;
@@ -6316,13 +6334,16 @@ input.cv-add-input {
    collapses/expands (CSS column-count would reflow the whole grid). */
 .masonry-cols {
   display: grid;
-  gap: 14px;
+  /* Rows tighter than columns: cards need horizontal separation to read as
+     separate stacks, but a tall vertical gap just wastes screen. */
+  row-gap: 7px;
+  column-gap: 14px;
   align-items: start;
 }
 .masonry-col {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 7px;
   min-width: 0;
 }
 .masonry-col .masonry-item {

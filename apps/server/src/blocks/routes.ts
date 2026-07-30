@@ -7,6 +7,7 @@ import {
   nextSpan,
   normalizeFilter,
   oneLineLabel,
+  periodicKindOf,
   recurrenceContinues,
   recurrenceSchema,
   type PropertySchema,
@@ -1361,6 +1362,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     // a review closed as "wont_do" is archivable, and so this agrees with the
     // auto-archive / "archive now" sweeps (which archive on isComplete too).
     const props = (block.properties ?? {}) as Record<string, unknown>;
+    // A periodic note belongs to its span of time, not to a list you file away:
+    // the page that owns it resolves it by marker and would keep rendering an
+    // archived one, and an empty one is swept automatically anyway. The UI hides
+    // the action; enforce it here so it holds for direct callers too.
+    const periodic = periodicKindOf(props);
+    if (periodic) throw badRequest(`a ${periodic.kind.label} belongs to its period and can't be archived`);
     if (props.weekly_review === true && block.blockTypeId) {
       const [type] = await db
         .select({ propertySchema: blockTypes.propertySchema })

@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { PERIODIC_MARKERS } from "@hermes/shared";
 import { db } from "../db.js";
 
 /**
@@ -17,13 +18,19 @@ import { db } from "../db.js";
  * ITS note, which would otherwise pull the first tab's note out from under it.
  */
 export async function purgeEmptyAutoNotes(userId: string, keepId?: string | null): Promise<void> {
+  // Built from the shared list, so a new kind of periodic note is swept without
+  // touching this query. Markers are our own identifiers, not user input.
+  const markerTest = sql.join(
+    PERIODIC_MARKERS.map((m) => sql`jsonb_exists(b.properties, ${m})`),
+    sql` OR `,
+  );
   await db.execute(sql`
     DELETE FROM blocks b
      WHERE b.owner_id = ${userId}::uuid
        AND b.archived_at IS NULL
        AND b.created_at < now() - interval '10 minutes'
        AND COALESCE(b.content, '') = ''
-       AND (jsonb_exists(b.properties, 'today_note') OR jsonb_exists(b.properties, 'review_reflection'))
+       AND (${markerTest})
        AND NOT jsonb_exists(b.properties, 'banner')
        AND NOT jsonb_exists(b.properties, 'layout')
        AND (${keepId ?? null}::uuid IS NULL OR b.id <> ${keepId ?? null}::uuid)

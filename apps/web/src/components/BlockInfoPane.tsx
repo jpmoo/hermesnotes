@@ -1,3 +1,4 @@
+import { isPeriodicNote } from "@hermes/shared";
 import { Archive, ArchiveRestore, CalendarDays, Copy, Maximize2, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -255,9 +256,12 @@ export function BlockInfoPane({
   const fullPage = isCollection ? `/collections/${blockId}` : `/block/${blockId}`;
   const canExpand = block != null && !titleOverride && pathname !== fullPage;
   const isArchived = block?.archivedAt != null;
-  // A daily note is excluded: its scratchpad belongs to the day, not to a list you
-  // file away.
-  const canArchive = block != null && !titleOverride && !editable;
+  // Daily notes and weekly reflections are excluded: each belongs to its date or
+  // review cycle rather than to a list you file away, and the page that owns it
+  // resolves it by that marker regardless of archived state. The server refuses
+  // these too — this just keeps a dead button off the panel.
+  const autoNote = isPeriodicNote(block?.properties);
+  const canArchive = block != null && !titleOverride && !editable && !autoNote;
 
   const archive = async () => {
     await api.post(`/blocks/${blockId}/archive`, {});

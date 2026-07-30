@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { periodicKindOf } from "@hermes/shared";
 import { banners, blocks, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
@@ -29,9 +30,8 @@ function usageLabel(row: {
   // saying which ones they are, since deleting the image reaches into the
   // Archive too and those aren't in front of you.
   const suffix = row.archivedAt ? " (archived)" : "";
-  if (typeof props.today_note === "string") return `Daily note · ${props.today_note}${suffix}`;
-  if (typeof props.review_reflection === "string")
-    return `Weekly review · week ending ${props.review_reflection}${suffix}`;
+  const periodic = periodicKindOf(props);
+  if (periodic) return `${periodic.kind.describe(periodic.period)}${suffix}`;
   const title = typeof props.title === "string" && props.title.trim() ? props.title : "Untitled";
   return row.collectionKind ? `${title} (collection)${suffix}` : `${title}${suffix}`;
 }

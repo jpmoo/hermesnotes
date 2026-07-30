@@ -4378,6 +4378,30 @@ input.matrix-axis-y::placeholder {
 .mention-chip svg {
   flex-shrink: 0;
 }
+/* Outside the editor a mention is part of a sentence, not a control: drop the
+   pill and mark it with weight and a soft underline instead. Colour is inherited
+   rather than set, because these sit on cards whose background the user chooses —
+   a fixed accent is unreadable on some of them, and the filled pill fought the
+   card besides. */
+.mention-chip.mention-inline {
+  padding: 0;
+  gap: 2px;
+  background: none;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+.mention-chip.mention-inline:hover {
+  background: none;
+  text-decoration-color: currentColor;
+}
+.mention-chip.mention-inline.tag {
+  font-weight: 500;
+  text-decoration: none;
+}
+
 /* Tag mentions read as tag pills. */
 .mention-chip.tag {
   background: var(--surface-3, rgba(0, 0, 0, 0.06));

@@ -11,10 +11,13 @@ function ReadonlyChip({ href, label }: { href: string; label: string }) {
   const target = useMentionTarget(staticId, personName, isTag, Boolean(label));
   const { selectOrOpen } = usePanels();
 
-  const text = isTag ? label.replace(/^#/, "") : label || target.fetchedLabel || (target.dead ? "missing" : "…");
+  // The person glyph already says it's a person, so the "@" is just noise in a
+  // title that's read rather than edited.
+  const raw = label || target.fetchedLabel || (target.dead ? "missing" : "…");
+  const text = isTag ? raw.replace(/^#/, "") : raw.replace(/^@/, "");
   return (
     <span
-      className={`mention-chip${isTag ? " tag" : ""}${target.dead ? " dead" : ""}${
+      className={`mention-chip mention-inline${isTag ? " tag" : ""}${target.dead ? " dead" : ""}${
         target.archived && !target.dead ? " archived" : ""
       }`}
       // The chip sits inside cards that are themselves clickable, so a click here

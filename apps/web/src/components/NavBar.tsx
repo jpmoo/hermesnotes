@@ -176,14 +176,21 @@ function RecentsMenu() {
 export function NavBar() {
   const { back, forward, canBack, canForward } = usePanels();
   return (
-    <div className="top-nav">
-      <button className="icon-btn" title="Back" disabled={!canBack} onClick={back}>
-        <ChevronLeft size={16} />
-      </button>
-      <button className="icon-btn" title="Forward" disabled={!canForward} onClick={forward}>
-        <ChevronRight size={16} />
-      </button>
-      <RecentsMenu />
-    </div>
+    <>
+      {/* An empty strip over the page's top padding whose only job is to reveal
+          the row below on hover. It holds no controls of its own, so a stray click
+          up here can't trigger navigation — and it sits over padding, not content,
+          so it isn't stealing clicks from anything. */}
+      <div className="top-nav-zone" aria-hidden />
+      <div className="top-nav">
+        <button className="icon-btn" title="Back" disabled={!canBack} onClick={back}>
+          <ChevronLeft size={16} />
+        </button>
+        <button className="icon-btn" title="Forward" disabled={!canForward} onClick={forward}>
+          <ChevronRight size={16} />
+        </button>
+        <RecentsMenu />
+      </div>
+    </>
   );
 }

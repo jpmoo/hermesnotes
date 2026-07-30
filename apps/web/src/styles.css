@@ -3762,11 +3762,20 @@ input.matrix-axis-y::placeholder {
   pointer-events: none;
   transition: opacity 0.14s;
 }
-/* Triggered from .main, not .main-inner: the row sits in .main's padding, ABOVE
-   .main-inner's box, so keying off the inner element meant reaching for the row
-   left it and made it vanish just as you went to click it. `.top-nav:hover` then
-   keeps it up once the pointer is on it, and :focus-within for keyboard users. */
-.main:hover .top-nav,
+/* The strip that reveals the row: the top-left corner of the page's padding, big
+   enough to find by sweeping up there but nowhere near the whole page — keying
+   this off .main meant "pointer anywhere on the page", so the row was up
+   essentially always. The row itself keeps it open once the pointer reaches it
+   (it covers the strip while visible), and :focus-within serves the keyboard. */
+.top-nav-zone {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  width: 210px;
+  height: 40px;
+  z-index: 5;
+}
+.top-nav-zone:hover ~ .top-nav,
 .top-nav:hover,
 .top-nav:focus-within {
   opacity: 1;

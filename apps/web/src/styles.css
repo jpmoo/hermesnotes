@@ -2291,12 +2291,14 @@ input.li-text:focus {
    list; only the marker differs. */
 .note-editor ul[data-type="taskList"] {
   list-style: none;
-  margin: 0 0 0.55em;
+  margin-top: 0;
+  margin-bottom: 0.55em;
   /* Padding deliberately left to the shared list rule: a checklist indents exactly
      like a bulleted or numbered list, its checkbox simply being a wider marker. */
 }
 .note-editor li ul[data-type="taskList"] {
-  margin: 0.15em 0 0;
+  margin-top: 0.15em;
+  margin-bottom: 0;
 }
 /* The checkbox is positioned out of flow rather than laid out with flex: a flex
    container breaks the browser's native text selection across its children, so
@@ -2372,7 +2374,7 @@ input.li-text:focus {
 /* NOTE: these paddings are mirrored by METRICS in lib/list-tools.ts, which offsets
    each row's controls into the shared gutter column. Change them together. */
 .note-editor ul,
-.note-editor ol { margin: 0 0 0.55em; padding-left: 20px; }
+.note-editor ol { margin-top: 0; margin-bottom: 0.55em; padding-left: 20px; }
 /* Only a TOP-LEVEL list reserves the control gutter — deeper rows put their
    controls in that same column rather than indenting for their own. Kept on the
    list rather than the editor so paragraphs and headings aren't pushed over. */
@@ -2412,7 +2414,11 @@ input.li-text:focus {
    content so a list inside it can subtract the shift and keep its controls and row
    banding aligned to the note's left edge rather than the section's. */
 .note-editor {
-  --hi-step: 1.5em;
+  /* In px, NOT em: this value is both applied as a margin and subtracted again by
+     the list gutter, and `em` in a custom property resolves against whichever
+     element reads it — 21px on a paragraph, 18px on a 12px control — so the two
+     wouldn't cancel and the gutter drifted. */
+  --hi-step: 22px;
 }
 .note-editor .hi-1 { margin-left: var(--hi-step); --outline-indent: var(--hi-step); }
 .note-editor .hi-2 { margin-left: calc(var(--hi-step) * 2); --outline-indent: calc(var(--hi-step) * 2); }
@@ -2560,7 +2566,10 @@ input.li-text:focus {
   border-left: 2px solid var(--accent);
   border-radius: 0;
   padding: 0 0 0 10px;
-  margin: 0 0 0.55em;
+  /* Longhand, so an outline indent (.hi-N) on this line isn't cancelled — the raw
+     line would otherwise jump to the margin the moment the caret entered it. */
+  margin-top: 0;
+  margin-bottom: 0.55em;
   overflow-x: visible;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

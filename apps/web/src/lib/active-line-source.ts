@@ -255,6 +255,13 @@ export const ActiveLineSource = Extension.create({
 
   addProseMirrorPlugins() {
     const editor = this.editor;
+    // True from mousedown until the button is released. While a drag-selection is
+    // being made, swapping the line under the pointer would replace the very DOM
+    // node the selection is anchored to and reset the selection with it — so the
+    // drag died the moment it started, unless it began at a line's end (where the
+    // caret sits on the block boundary rather than inside the text). Hold the swap
+    // until the pointer is up and the selection has settled.
+    let pointerDown = false;
     return [
       new Plugin({
         key: KEY,
@@ -262,6 +269,22 @@ export const ActiveLineSource = Extension.create({
         // appendTransaction below re-evaluates and renders/sources accordingly.
         props: {
           handleDOMEvents: {
+            mousedown: (view) => {
+              pointerDown = true;
+              // Listened for on the document, and captured: the release often
+              // lands outside the editor after a drag, and must not be swallowed.
+              const onUp = () => {
+                document.removeEventListener("mouseup", onUp, true);
+                pointerDown = false;
+                if (!view.isDestroyed) {
+                  // Re-evaluate now: the selection is final, so the right line can
+                  // reveal its markdown.
+                  view.dispatch(view.state.tr.setMeta("focusPing", true));
+                }
+              };
+              document.addEventListener("mouseup", onUp, true);
+              return false;
+            },
             focus: (view) => {
               view.dispatch(view.state.tr.setMeta("focusPing", true));
               return false;
@@ -274,6 +297,9 @@ export const ActiveLineSource = Extension.create({
         },
         appendTransaction(trs, oldState, newState) {
           if (trs.some((tr) => tr.getMeta(META))) return null;
+          // Mid-drag: leave the document alone (see `pointerDown` above). Typing
+          // can't reach here with the button held, so live preview is unaffected.
+          if (pointerDown) return null;
           const selChanged = !oldState.selection.eq(newState.selection);
           const docChanged = trs.some((tr) => tr.docChanged);
           const focusPing = trs.some((tr) => tr.getMeta("focusPing"));

@@ -19,6 +19,7 @@
   --accent: #5fa4b5; /* logo teal */
   --accent-ink: #3d4247; /* logo slate */
   --danger: #b5525f;
+  --cal-today: #c8901a; /* today ring — deliberately not the accent, which marks a day that has a note */
 
   --radius-card: 12px;
   --radius-control: 9px;
@@ -42,6 +43,7 @@
   --accent: #6fb3c4;
   --accent-ink: #d7dce1;
   --danger: #d6707d;
+  --cal-today: #e0ae3d;
   --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.45);
   --shadow-lift: 0 3px 12px rgba(0, 0, 0, 0.55);
   color-scheme: dark;
@@ -3328,7 +3330,31 @@ input.matrix-axis-y::placeholder {
 .dtp-day {
   position: relative;
 }
-.dtp-day.has-note::after {
+/* Three things can be true of a day at once, so each gets its own visual channel
+   and they read together rather than fighting: a FILL means the day has a note,
+   a RING means it's today, and a SOLID accent means it's the day you're looking
+   at. Ordered so the selected day's fill wins. */
+.dtp-day.has-note {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text);
+  font-weight: 600;
+}
+.dtp-day.has-note:hover {
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+.dtp-day.today {
+  border-color: var(--cal-today);
+  border-width: 2px;
+  font-weight: 700;
+}
+.dtp-day.sel,
+.dtp-day.sel.has-note {
+  background: var(--accent);
+  color: #fff;
+}
+/* The fill is hidden under a selected day's solid accent, so keep the dot there
+   as the only remaining hint that the day holds a note. */
+.dtp-day.sel.has-note::after {
   content: "";
   position: absolute;
   bottom: 4px;
@@ -3337,9 +3363,6 @@ input.matrix-axis-y::placeholder {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--accent);
-}
-.dtp-day.sel.has-note::after {
   background: #fff;
 }
 /* Let the kind picker wrap onto multiple rows in narrow modals. */

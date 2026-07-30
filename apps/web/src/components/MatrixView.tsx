@@ -20,6 +20,7 @@ import { createPortal } from "react-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { useAnyBlockChange } from "../lib/block-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
+import { MentionText } from "./MentionText.tsx";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -74,6 +75,9 @@ interface Item {
   id: string;
   blockTypeId: string | null;
   label: string;
+  /** The title as stored, mentions intact. The flattened form stays in label,
+   *  for tooltips and anything comparing text. */
+  rawLabel: string;
   member: boolean; // an explicit membership (vs a drawer candidate / bound match)
   props?: Record<string, unknown>;
   version?: number;
@@ -254,6 +258,13 @@ function statusFieldOf(type: BlockType | undefined): FieldDef | null {
   return schema?.fields.find((f) => f.type === "status" && f.key === key) ?? null;
 }
 
+/** The stored title, mentions and all; falls back to the flattened one-liner
+ *  when a card has no title (a note's first sentence, say). */
+function rawTitle(properties: Record<string, unknown> | null | undefined, content?: string | null): string {
+  const title = properties?.title;
+  return typeof title === "string" && title.trim() ? title.trim() : oneLineText(properties, content) || "Untitled";
+}
+
 /** One draggable chip: status (interactive), label, dates, remove. */
 function Chip({
   item,
@@ -345,7 +356,7 @@ function Chip({
             size={14}
           />
         )}
-        <span className="chip-label">{item.label}</span>
+        <span className="chip-label"><MentionText text={item.rawLabel} /></span>
         {dates.length > 0 && (
           <span className="chip-dates">
             {dates.map((d, i) =>
@@ -387,7 +398,7 @@ function ChipGhost({ item }: { item: Item }) {
         color={t && !t.isText ? t.iconColor : null}
         size={14}
       />
-      <span className="chip-label">{item.label}</span>
+      <span className="chip-label"><MentionText text={item.rawLabel} /></span>
     </>
   );
 }
@@ -637,6 +648,7 @@ export function MatrixView({
     id: m.id,
     blockTypeId: m.blockTypeId,
     label: oneLineText(m.properties, m.content) || "Untitled",
+    rawLabel: rawTitle(m.properties, m.content),
     member: true,
     props: m.properties,
     version: m.version,
@@ -645,6 +657,7 @@ export function MatrixView({
     id: b.id,
     blockTypeId: b.blockTypeId,
     label: oneLineText(b.properties, b.content) || "Untitled",
+    rawLabel: rawTitle(b.properties, b.content),
     member: false,
     props: b.properties,
     version: b.version,
@@ -690,12 +703,12 @@ export function MatrixView({
             "/collections/query-preview",
             { filterQuery: normalizeFilter(props.filter_query) },
           );
-          found = res.blocks.map((b) => ({ ...b, member: false }));
+          found = res.blocks.map((b) => ({ ...b, member: false, rawLabel: b.label }));
         } else {
           const res = await api.get<{ id: string; blockTypeId: string | null; label: string }[]>(
             `/blocks/search?q=${encodeURIComponent(q)}`,
           );
-          found = res.map((b) => ({ ...b, member: false }));
+          found = res.map((b) => ({ ...b, member: false, rawLabel: b.label }));
         }
         if (alive) setCandidates(found.filter((b) => !memberIds.has(b.id)));
       } catch {

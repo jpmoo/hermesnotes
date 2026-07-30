@@ -124,6 +124,23 @@ function alignToGutter(el: HTMLElement, view: EditorView, which: "grip" | "fold"
   });
 }
 
+/**
+ * Tell each banded row how far left its band must reach to hit the note's edge,
+ * by measuring where the row actually sits. Metrics alone can't: a list under a
+ * heading carries the outline indentation on top of its own, and that lives in a
+ * decoration, not in the list padding.
+ */
+function syncStripeReach(view: EditorView): void {
+  requestAnimationFrame(() => {
+    if (!view.dom.isConnected) return;
+    const editorLeft = view.dom.getBoundingClientRect().left;
+    view.dom.querySelectorAll<HTMLElement>("li.li-stripe").forEach((li) => {
+      const indent = li.getBoundingClientRect().left - editorLeft;
+      li.style.setProperty("--stripe-indent", `${Math.max(0, indent)}px`);
+    });
+  });
+}
+
 /** The nested lists directly inside a list item, as absolute ranges. */
 function nestedLists(item: PMNode, itemPos: number): { from: number; to: number }[] {
   const out: { from: number; to: number }[] = [];
@@ -400,6 +417,12 @@ export const ListGutter = Extension.create({
             return next;
           },
         },
+        // Re-measure after every render: rows move when the note is edited, when
+        // a heading is added above them, or when the panel is resized.
+        view(editorView) {
+          syncStripeReach(editorView);
+          return { update: (v) => syncStripeReach(v) };
+        },
         props: {
           decorations(state) {
             if (!editor.isEditable) return DecorationSet.empty; // nothing to drag or fold
@@ -419,14 +442,11 @@ export const ListGutter = Extension.create({
               const indent = rowIndent(state, pos);
               rowNumber += 1;
               if (rowNumber % 2 === 0) {
-                // The row's own indent rides along as a custom property so the band
-                // can reach back out to the note's left edge.
-                decos.push(
-                  Decoration.node(pos, pos + node.nodeSize, {
-                    class: "li-stripe",
-                    style: `--stripe-indent:${indent}px`,
-                  }),
-                );
+                // How far the band reaches back is set from a measurement after
+                // layout (syncStripeReach), not from METRICS: a list under a
+                // heading is shifted further right by the outline indentation,
+                // which only the DOM knows about.
+                decos.push(Decoration.node(pos, pos + node.nodeSize, { class: "li-stripe" }));
               }
               // Keys carry no position on purpose: ProseMirror reuses a widget
               // whose key is unchanged, so editing elsewhere in the note doesn't

@@ -3326,10 +3326,6 @@ input.matrix-axis-y::placeholder {
 .today-cal {
   padding: 4px 2px;
 }
-/* Dot marking a date that has a scratchpad note. */
-.dtp-day {
-  position: relative;
-}
 /* Three things can be true of a day at once, so each gets its own visual channel
    and they read together rather than fighting: a FILL means the day has a note,
    a RING means it's today, and a SOLID accent means it's the day you're looking
@@ -3351,19 +3347,6 @@ input.matrix-axis-y::placeholder {
 .dtp-day.sel.has-note {
   background: var(--accent);
   color: #fff;
-}
-/* The fill is hidden under a selected day's solid accent, so keep the dot there
-   as the only remaining hint that the day holds a note. */
-.dtp-day.sel.has-note::after {
-  content: "";
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #fff;
 }
 /* Let the kind picker wrap onto multiple rows in narrow modals. */
 .segmented.wrap {

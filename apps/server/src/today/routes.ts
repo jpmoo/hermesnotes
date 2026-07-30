@@ -24,6 +24,7 @@ import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
 import { zonedDayRange } from "../lib/timezone.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
+import { purgeEmptyAutoNotes } from "../blocks/auto-notes.js";
 
 /** The behind-the-scenes label for a date's scratchpad note, e.g. "Monday, July
  * 27, 2026 - Scratchpad". Shown wherever the block surfaces as a label (search,
@@ -44,6 +45,12 @@ function scratchpadTitle(date: string): string {
  * content, then the oldest — deterministically, so a day's note never "vanishes"
  * behind an empty twin. */
 async function findOrCreateNote(userId: string, date: string) {
+  // Opening a day brings its scratchpad into being whether or not anything is
+  // typed, so take the opportunity to clear away the ones earlier visits left
+  // empty. Best-effort, and never the note being opened — that one is
+  // legitimately empty until its first keystroke.
+  const sweep = (keepId: string) => void purgeEmptyAutoNotes(userId, keepId).catch(() => {});
+
   const [existing] = await db
     .select(blockView)
     .from(blocks)
@@ -51,6 +58,7 @@ async function findOrCreateNote(userId: string, date: string) {
     .orderBy(sql`COALESCE(${blocks.content}, '') <> '' DESC`, blocks.createdAt)
     .limit(1);
   if (existing) {
+    sweep(existing.id);
     // Backfill the title on notes created before scratchpads were titled.
     const props = (existing.properties ?? {}) as Record<string, unknown>;
     if (!props.title) {
@@ -83,6 +91,7 @@ async function findOrCreateNote(userId: string, date: string) {
       blockTypeSchemaVersion: textType.schemaVersion,
     })
     .returning(blockView);
+  sweep(created!.id);
   return created!;
 }
 

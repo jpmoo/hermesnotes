@@ -18,6 +18,7 @@ import { blocks, blockTypes, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
+import { purgeEmptyAutoNotes } from "../blocks/auto-notes.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
 
 /**
@@ -178,13 +179,20 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
 
 /** Find (or lazily create) the reflection note for a cycle's due date. */
 async function findOrCreateReflection(userId: string, dueDate: string): Promise<string> {
+  // An open review conjures its reflection note whether or not it is written in,
+  // so clear away the ones earlier cycles left empty. Best-effort, and never the
+  // note in hand.
+  const sweep = (keepId: string) => void purgeEmptyAutoNotes(userId, keepId).catch(() => {});
   const [existing] = await db
     .select({ id: blocks.id })
     .from(blocks)
     .where(and(eq(blocks.ownerId, userId), sql`${blocks.properties}->>${REFLECTION_MARK} = ${dueDate}`))
     .orderBy(sql`COALESCE(${blocks.content}, '') <> '' DESC`, blocks.createdAt)
     .limit(1);
-  if (existing) return existing.id;
+  if (existing) {
+    sweep(existing.id);
+    return existing.id;
+  }
   const [textType] = await db
     .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
     .from(blockTypes)
@@ -204,6 +212,7 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
       blockTypeSchemaVersion: textType.schemaVersion,
     })
     .returning({ id: blocks.id });
+  sweep(created!.id);
   return created!.id;
 }
 

@@ -165,8 +165,16 @@ export function TodayPage() {
   };
   const onRemove = (id: string, scope?: TodayScope) => {
     const section = scopedSection(id);
-    if (!scope || !section) return saveLayout(layout.filter((s) => idOf(s) !== id));
-    void api.post(`/today/${date}/layout/remove`, { section, scope }).then(load).catch(() => {});
+    // A collection/note section always goes through the endpoint, even with no
+    // scope given. Rewriting the day's layout without it looks right but doesn't
+    // stick when a cross-day default put it there: the sheet is recomposed from
+    // those defaults, so the section comes straight back and the X appears dead.
+    // The endpoint drops a day-local add AND suppresses a covering default.
+    if (!section) return saveLayout(layout.filter((s) => idOf(s) !== id));
+    void api
+      .post(`/today/${date}/layout/remove`, { section, scope: scope ?? "today" })
+      .then(load)
+      .catch(() => {});
   };
   const onAddCollection = (cid: string, scope: TodayScope = "today") => {
     void api

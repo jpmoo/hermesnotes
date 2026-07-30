@@ -106,6 +106,8 @@ function fmtSchemaFields(
   schema: PropertySchema | null | undefined,
   props: Record<string, unknown>,
   skip: string[] = [],
+  /** id -> title, for naming whatever a reference field points at. */
+  refTitles: Map<string, string> = new Map(),
 ): string[] {
   const out: string[] = [];
   for (const f of [...(schema?.fields ?? [])].sort((x, y) => x.order - y.order)) {
@@ -120,6 +122,14 @@ function fmtSchemaFields(
     if (raw == null || raw === "") continue;
     if ((f.type === "select" || f.type === "status") && typeof raw === "string") {
       out.push(`- ${label}: ${optionLabel(f, raw)}`);
+      continue;
+    }
+    if (f.type === "reference") {
+      // Without this a reference reads as a JSON array of uuids — true, and
+      // useless to anything trying to answer a question about the block.
+      const ids = (Array.isArray(raw) ? raw : [raw]).filter((v): v is string => typeof v === "string");
+      if (!ids.length) continue;
+      out.push(`- ${label}: ${ids.map((id) => refTitles.get(id) ?? id).join(", ")}`);
       continue;
     }
     out.push(`- ${label}: ${typeof raw === "object" ? JSON.stringify(raw) : String(raw)}`);
@@ -340,7 +350,9 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "task_info",
-    "Get full details for one task by id or (unique) title.",
+    "Get full details for one task by id or (unique) title. Prefer this over block_get for " +
+      "tasks: it accepts a title (block_get needs a uuid) and answers in task terms — status, " +
+      "available/due, projects. block_get reads anything, tasks included.",
     { task: z.string().min(1) },
     run(async (a) => {
       const ctx = await loadContext(api);
@@ -729,7 +741,28 @@ export function defineTools(api: Api): ToolDef[] {
           "/block-types",
         );
         const schema = types.find((t) => t.id === b.blockTypeId)?.propertySchema ?? null;
-        const described = fmtSchemaFields(schema, b.properties ?? {});
+        // Look up the titles behind any reference fields, so they read as names.
+        // Capped: a block with hundreds of references shouldn't turn one read into
+        // hundreds of requests.
+        const refIds = new Set<string>();
+        for (const f of schema?.fields ?? []) {
+          if (f.type !== "reference") continue;
+          const v = (b.properties ?? {})[f.key];
+          for (const id of Array.isArray(v) ? v : [v]) {
+            if (typeof id === "string" && id) refIds.add(id);
+          }
+        }
+        const refTitles = new Map<string, string>();
+        for (const id of [...refIds].slice(0, 25)) {
+          try {
+            const target = await api.get<HermesBlock>(`/blocks/${id}`);
+            const t = (target.properties as Record<string, unknown>)?.title;
+            if (typeof t === "string" && t.trim()) refTitles.set(id, t);
+          } catch {
+            /* unresolvable (deleted, or not ours) — the id is shown as-is */
+          }
+        }
+        const described = fmtSchemaFields(schema, b.properties ?? {}, [], refTitles);
         // Anything the schema does not declare still gets shown, so no stored
         // value silently disappears from the model's view.
         const known = new Set([...(schema?.fields ?? []).map((f) => f.key), "title"]);

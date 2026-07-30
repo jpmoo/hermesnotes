@@ -23,8 +23,13 @@
 
   --radius-card: 12px;
   --radius-control: 9px;
-  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.06);
-  --shadow-lift: 0 2px 8px rgba(0, 0, 0, 0.08);
+  /* Cast down AND to the right, as if lit from the upper left, so anything
+     sitting on the page background reads as raised off it. */
+  --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.14);
+  /* Bare colour, for the panels: each casts toward the content it floats over,
+     so the offset differs per edge and can't come from a ready-made token. */
+  --shadow-color: rgba(0, 0, 0, 0.1);
 }
 
 /* ── Dark theme ──────────────────────────────────────────────────
@@ -44,8 +49,10 @@
   --accent-ink: #d7dce1;
   --danger: #d6707d;
   --cal-today: #e0ae3d;
-  --shadow-soft: 0 1px 3px rgba(0, 0, 0, 0.45);
-  --shadow-lift: 0 3px 12px rgba(0, 0, 0, 0.55);
+  /* Deeper on a dark page, where a faint black shadow simply disappears. */
+  --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.6);
+  --shadow-color: rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 /* Nav active highlight (hardcoded light teal-tint → token). */
@@ -144,6 +151,9 @@ label,
   width: 420px;
   background: color-mix(in srgb, var(--surface) calc(var(--panel-alpha) * 100%), transparent);
   border-left: 1px solid var(--border);
+  /* Cast inward, over the page. A down-and-right shadow would fall off the
+     window entirely from this edge. */
+  box-shadow: -6px 0 18px var(--shadow-color);
   padding: 18px 16px;
   overflow-y: auto;
   transition: width 0.16s ease, box-shadow 0.16s ease;
@@ -940,6 +950,8 @@ label,
   width: 232px;
   background: color-mix(in srgb, var(--surface) calc(var(--panel-alpha) * 100%), transparent);
   border-right: 1px solid var(--border);
+  /* Cast inward, over the page — the same direction the light implies here. */
+  box-shadow: 6px 0 18px var(--shadow-color);
   /* Same padding in both states so the logo/icons don't shift on expand —
      only the width animates. */
   padding: 18px 11px;
@@ -2611,6 +2623,7 @@ input.li-text:focus {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   background: var(--surface);
+  box-shadow: var(--shadow-soft);
   padding: 10px 12px;
   /* Fixed height per region (Short/Medium/Tall in region settings) — renders
      full even when not filled; content scrolls. Height is set inline. */
@@ -2625,7 +2638,8 @@ input.li-text:focus {
 }
 .matrix-region.over {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
+  /* Drop-target ring, keeping the region's own lift rather than replacing it. */
+  box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15), var(--shadow-soft);
 }
 .region-head {
   display: flex;
@@ -6084,6 +6098,8 @@ input.cv-add-input {
   overflow: hidden;
   margin-bottom: 14px;
   background: var(--surface-2);
+  /* Same cast as every other raised surface, a touch stronger for its size. */
+  box-shadow: var(--shadow-lift);
 }
 .banner-img {
   width: 100%;

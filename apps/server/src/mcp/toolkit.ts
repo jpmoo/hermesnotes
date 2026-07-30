@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { randomUUID } from "node:crypto";
-import type { Condition, FilterGroup } from "@hermes/shared";
+import { optionLabel, type Condition, type FilterGroup, type PropertySchema } from "@hermes/shared";
 import { z } from "zod";
 import { Api, ApiError } from "./api.js";
 import {
@@ -93,6 +93,39 @@ const READONLY_TOOLS = new Set([
   "task_find", "task_info", "project_list", "project_archived", "project_info", "today_layout_get",
   "calendar_events",
 ]);
+
+/**
+ * Render a block's schema-defined fields the way a reader sees them: the field's
+ * LABEL rather than its storage key, a select's option label rather than the value
+ * stored underneath, and a number's unit alongside it.
+ *
+ * An empty number renders as "-" rather than being dropped, so an unset number is
+ * visibly unset and can never be read back as zero.
+ */
+function fmtSchemaFields(
+  schema: PropertySchema | null | undefined,
+  props: Record<string, unknown>,
+  skip: string[] = [],
+): string[] {
+  const out: string[] = [];
+  for (const f of [...(schema?.fields ?? [])].sort((x, y) => x.order - y.order)) {
+    if (f.key === "title" || skip.includes(f.key)) continue;
+    const raw = props[f.key];
+    const label = f.label?.trim() || f.key.replace(/_/g, " ");
+    if (f.type === "number") {
+      const n = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+      out.push(`- ${label}: ${n === null ? "-" : n}${f.units ? ` ${f.units}` : ""}`);
+      continue;
+    }
+    if (raw == null || raw === "") continue;
+    if ((f.type === "select" || f.type === "status") && typeof raw === "string") {
+      out.push(`- ${label}: ${optionLabel(f, raw)}`);
+      continue;
+    }
+    out.push(`- ${label}: ${typeof raw === "object" ? JSON.stringify(raw) : String(raw)}`);
+  }
+  return out;
+}
 
 /**
  * The full Hermes tool surface, bound to one caller's API client. This registry
@@ -692,12 +725,21 @@ export function defineTools(api: Api): ToolDef[] {
       } else {
         lines.push(`Block [${b.id}] created ${fmtDate(b.createdAt)}, edited ${fmtDate(b.updatedAt)}`);
         if (b.content) lines.push("", b.content);
-        const props = Object.entries(b.properties ?? {}).filter(
-          ([k, v]) => k !== "title" && v != null && v !== "",
+        const types = await api.get<{ id: string; propertySchema: PropertySchema | null }[]>(
+          "/block-types",
         );
-        if (props.length) {
+        const schema = types.find((t) => t.id === b.blockTypeId)?.propertySchema ?? null;
+        const described = fmtSchemaFields(schema, b.properties ?? {});
+        // Anything the schema does not declare still gets shown, so no stored
+        // value silently disappears from the model's view.
+        const known = new Set([...(schema?.fields ?? []).map((f) => f.key), "title"]);
+        const extra = Object.entries(b.properties ?? {}).filter(
+          ([k, v]) => !known.has(k) && v != null && v !== "",
+        );
+        if (described.length || extra.length) {
           lines.push("", "Properties:");
-          for (const [k, v] of props) lines.push(`- ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+          lines.push(...described);
+          for (const [k, v] of extra) lines.push(`- ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
         }
       }
       if (info.tags.length) lines.push("", `Tags: ${info.tags.map((t) => `#${t}`).join(" ")}`);

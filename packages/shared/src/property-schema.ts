@@ -39,8 +39,17 @@ export const fieldDefSchema = z.object({
   order: z.number().int(),
   /** whether this field's value is concatenated into embed_source */
   includeEmbed: z.boolean().default(false),
-  /** for select/status fields */
+  /**
+   * for select/status fields — the values actually stored on a block. What the
+   * reader sees can differ: see `optionLabels`.
+   */
   options: z.array(z.string()).optional(),
+  /**
+   * select/status fields: per-option display label (option value -> label). Only
+   * holds the entries that differ; a value with no entry here is its own label,
+   * which is why every type predating this keeps working untouched.
+   */
+  optionLabels: z.record(z.string()).optional(),
   /** status fields: per-option Lucide icon key (option value -> kebab icon key) */
   optionIcons: z.record(z.string()).optional(),
   /** status fields: per-option color (option value -> color) */
@@ -50,6 +59,8 @@ export const fieldDefSchema = z.object({
   /** for datespan fields: labels for the two endpoints (e.g. "Available" / "Due") */
   startLabel: z.string().optional(),
   endLabel: z.string().optional(),
+  /** for number fields: a unit shown after the value, e.g. "minutes" */
+  units: z.string().optional(),
   required: z.boolean().optional(),
   /** built-in core field: can be edited but not removed from the type. */
   locked: z.boolean().optional(),
@@ -108,6 +119,16 @@ export function deriveEmbedSource(
     .filter((v): v is string | number => v !== null && v !== undefined && v !== "")
     .map((v) => String(v))
     .join("\n");
+}
+
+/**
+ * What to show for a select/status option. Falls back to the stored value with
+ * underscores opened out, so an option that was never given a label reads the way
+ * it always did.
+ */
+export function optionLabel(field: FieldDef, value: string): string {
+  const custom = field.optionLabels?.[value];
+  return custom && custom.trim() ? custom : value.replace(/_/g, " ");
 }
 
 /** Whether a block's current status counts as complete (doc §7). */

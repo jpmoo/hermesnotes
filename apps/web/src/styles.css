@@ -5807,6 +5807,45 @@ input.cv-add-input {
   flex: 1;
   min-width: 0;
 }
+/* Short numeric field: narrow box, stacked steppers, optional trailing unit. */
+.num-field {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+.num-input {
+  width: 5.5em;
+  flex: 0 0 auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.num-steps {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+.num-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 50%;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.num-step:first-child { border-radius: 5px 5px 0 0; border-bottom: none; }
+.num-step:last-child { border-radius: 0 0 5px 5px; }
+.num-step:hover { color: var(--accent); border-color: var(--border-strong); }
+.num-units {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
 .field-open {
   display: inline-flex;
   align-items: center;

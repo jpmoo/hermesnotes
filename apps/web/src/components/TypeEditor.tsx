@@ -45,6 +45,7 @@ interface EditField {
   refTypeId?: string; // for reference fields
   startLabel?: string; // for datespan
   endLabel?: string; // for datespan
+  units?: string; // for number
   locked?: boolean; // built-in core field: editable but not removable
 }
 
@@ -60,19 +61,51 @@ function toEditFields(schema: PropertySchema | null): EditField[] {
       // legacy date-only fields become Date/Time.
       type: f.type === "date" ? "datetime" : f.type,
       includeEmbed: f.includeEmbed,
-      options: (f.options ?? []).join(", "),
+      options: formatOptionSpec(f.options, f.optionLabels),
       refTypeId: f.refTypeId,
       startLabel: f.startLabel,
       endLabel: f.endLabel,
+      units: f.units,
       locked: f.locked,
     }));
 }
 
-const parseOptions = (s: string) =>
-  s
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
+/**
+ * Options are written as a comma-separated list, where an entry may name the
+ * stored value separately from what the reader sees:
+ *
+ *     Not started = todo, In progress = doing, Done
+ *
+ * The part before `=` is the label, the part after is the value stored on the
+ * block; with no `=`, the two are the same. Splitting them matters when the label
+ * should change without rewriting every block that already holds the old value.
+ */
+function parseOptionSpec(s: string): { values: string[]; labels: Record<string, string> } {
+  const values: string[] = [];
+  const labels: Record<string, string> = {};
+  for (const entry of s.split(",")) {
+    const [rawLabel, ...rest] = entry.split("=");
+    const label = (rawLabel ?? "").trim();
+    const value = rest.join("=").trim() || label;
+    if (!value) continue;
+    if (values.includes(value)) continue; // a value can only mean one thing
+    values.push(value);
+    if (label && label !== value) labels[value] = label;
+  }
+  return { values, labels };
+}
+
+/** Turn stored options back into the editable "Label = value" list. */
+function formatOptionSpec(values: string[] | undefined, labels: Record<string, string> | undefined) {
+  return (values ?? [])
+    .map((v) => {
+      const label = labels?.[v];
+      return label && label !== v ? `${label} = ${v}` : v;
+    })
+    .join(", ");
+}
+
+const parseOptions = (s: string) => parseOptionSpec(s).values;
 
 export function TypeEditor({
   initial,
@@ -153,7 +186,14 @@ export function TypeEditor({
         order: i,
         includeEmbed: f.includeEmbed,
         options:
-          f.type === "select" || f.type === "status" ? parseOptions(f.options) : undefined,
+          f.type === "select" || f.type === "status" ? parseOptionSpec(f.options).values : undefined,
+        optionLabels:
+          f.type === "select" || f.type === "status"
+            ? (() => {
+                const labels = parseOptionSpec(f.options).labels;
+                return Object.keys(labels).length ? labels : undefined;
+              })()
+            : undefined,
         optionIcons:
           activeStatus && f.key === activeStatus.key && Object.keys(optIcons).length
             ? optIcons
@@ -163,6 +203,7 @@ export function TypeEditor({
             ? optColors
             : undefined,
         refTypeId: f.type === "reference" ? f.refTypeId : undefined,
+        units: f.type === "number" ? f.units?.trim() || undefined : undefined,
         startLabel: f.type === "datespan" ? f.startLabel?.trim() || undefined : undefined,
         endLabel: f.type === "datespan" ? f.endLabel?.trim() || undefined : undefined,
         locked: f.locked || undefined,
@@ -259,9 +300,19 @@ export function TypeEditor({
               {(f.type === "select" || f.type === "status") && (
                 <input
                   className="f-options"
-                  placeholder="option1, option2"
+                  placeholder="Option one, Shown label = stored_value"
+                  title={"Comma-separated. Write \"Label = value\" to show one thing and store another; with no \"=\", the option is its own label."}
                   value={f.options}
                   onChange={(e) => setField(i, { options: e.target.value })}
+                />
+              )}
+              {f.type === "number" && (
+                <input
+                  className="f-options"
+                  placeholder="units (optional), e.g. minutes"
+                  title={'Shown after the number, e.g. "30 minutes".'}
+                  value={f.units ?? ""}
+                  onChange={(e) => setField(i, { units: e.target.value })}
                 />
               )}
               {f.type === "datespan" && (

@@ -1,10 +1,12 @@
 import type { FieldDef } from "@hermes/shared";
 import { ExternalLink } from "lucide-react";
+import { optionLabel } from "@hermes/shared";
 import type { ReactNode } from "react";
 import { AttachmentsField } from "./AttachmentsField.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 import { LongTextField } from "./LongTextField.tsx";
 import { MentionTextInput } from "./MentionTextInput.tsx";
+import { NumberField } from "./NumberField.tsx";
 import { isOverdue } from "../lib/display.ts";
 import { RecurrenceField } from "./RecurrenceField.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
@@ -125,14 +127,7 @@ export function FieldInput({
       );
     }
     case "number":
-      return (
-        <input
-          type="number"
-          autoComplete="off"
-          value={str}
-          onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        />
-      );
+      return <NumberField value={value} onChange={onChange} units={field.units} />;
     case "url":
       return (
         <WithOpenLink href={urlHref(str)}>
@@ -148,7 +143,7 @@ export function FieldInput({
           <option value="">—</option>
           {(field.options ?? []).map((o) => (
             <option key={o} value={o}>
-              {o.replace(/_/g, " ")}
+              {optionLabel(field, o)}
             </option>
           ))}
         </select>

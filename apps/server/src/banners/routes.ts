@@ -1,10 +1,79 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { banners } from "@hermes/db";
+import { banners, blocks, userSettings } from "@hermes/db";
 import { db } from "../db.js";
-import { badRequest, notFound } from "../lib/errors.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
+
+/** Landing pages that can carry a banner, and how to name them to a reader. */
+const PAGE_LABELS: Record<string, string> = {
+  today: "Today",
+  favorites: "Favorites",
+  blocks: "All blocks",
+  collections: "Collections",
+  types: "Types",
+  review: "Weekly review",
+  archive: "Archive",
+  settings: "Settings",
+};
+
+/** How a block referencing a banner should be described in the gallery. */
+function usageLabel(row: {
+  properties: unknown;
+  collectionKind: string | null;
+}): string {
+  const props = (row.properties ?? {}) as Record<string, unknown>;
+  if (typeof props.today_note === "string") return `Daily note · ${props.today_note}`;
+  if (typeof props.review_reflection === "string")
+    return `Weekly review · week ending ${props.review_reflection}`;
+  const title = typeof props.title === "string" && props.title.trim() ? props.title : "Untitled";
+  return row.collectionKind ? `${title} (collection)` : title;
+}
+
+/**
+ * Everywhere each of this account's banners is currently used: blocks and
+ * collections that reference it (daily notes and weekly reflections named as
+ * such), landing pages, and the page-background fallback.
+ */
+async function usageByBanner(userId: string): Promise<Map<string, string[]>> {
+  const used = new Map<string, string[]>();
+  const add = (id: string, label: string) => {
+    const list = used.get(id);
+    if (list) list.push(label);
+    else used.set(id, [label]);
+  };
+
+  const rows = await db
+    .select({
+      bannerId: sql<string>`${blocks.properties} -> 'banner' ->> 'id'`,
+      properties: blocks.properties,
+      collectionKind: blocks.collectionKind,
+    })
+    .from(blocks)
+    .where(
+      and(
+        eq(blocks.ownerId, userId),
+        sql`${blocks.properties} -> 'banner' ->> 'id' IS NOT NULL`,
+      ),
+    );
+  for (const row of rows) if (row.bannerId) add(row.bannerId, usageLabel(row));
+
+  const [settings] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const prefs = (settings?.preferences ?? {}) as Record<string, unknown>;
+  const pageBanners = (prefs.banners ?? {}) as Record<string, { id?: string } | null>;
+  for (const [key, value] of Object.entries(pageBanners)) {
+    if (value?.id) add(value.id, `${PAGE_LABELS[key] ?? key} page`);
+  }
+  const fallback = prefs.bg_fallback as { id?: string } | null | undefined;
+  if (fallback?.id) add(fallback.id, "Page background");
+
+  return used;
+}
 
 const OK_MIME = new Set(["image/png", "image/jpeg", "image/gif"]);
 
@@ -37,12 +106,82 @@ export async function bannerRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get("/banners", { preHandler: authenticate }, async (req) => {
     const userId = requireUser(req);
-    return db
+    const rows = await db
       .select({ id: banners.id, mime: banners.mime, size: banners.size, createdAt: banners.createdAt })
       .from(banners)
       .where(eq(banners.ownerId, userId))
       .orderBy(desc(banners.createdAt))
       .limit(200);
+    const used = await usageByBanner(userId);
+    return rows.map((r) => ({ ...r, usedBy: used.get(r.id) ?? [] }));
+  });
+
+  /**
+   * Delete a banner and every reference to it. Deliberately not a soft delete:
+   * the image is the thing being discarded, so the blocks, pages and background
+   * that pointed at it are cleared in the same transaction rather than left
+   * pointing at nothing.
+   */
+  app.delete("/banners/:id", { preHandler: authenticate }, async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    // Destroying an image is browser-session-only, as with a block hard delete:
+    // an access key (so, an AI agent) must not be able to erase artwork.
+    if (req.authKind !== "cookie") throw forbidden("deleting an image requires a browser session");
+
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ id: banners.id })
+        .from(banners)
+        .where(and(eq(banners.id, id), eq(banners.ownerId, userId)))
+        .limit(1);
+      if (!row) throw notFound("banner");
+
+      // Blocks and collections carrying it.
+      await tx
+        .update(blocks)
+        .set({
+          properties: sql`${blocks.properties} - 'banner'`,
+          version: sql`${blocks.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(blocks.ownerId, userId),
+            sql`${blocks.properties} -> 'banner' ->> 'id' = ${id}`,
+          ),
+        );
+
+      // Landing pages and the background fallback.
+      const [settings] = await tx
+        .select({ preferences: userSettings.preferences })
+        .from(userSettings)
+        .where(eq(userSettings.userId, userId))
+        .limit(1);
+      const prefs = { ...((settings?.preferences ?? {}) as Record<string, unknown>) };
+      const pageBanners = { ...((prefs.banners ?? {}) as Record<string, { id?: string } | null>) };
+      let touched = false;
+      for (const [key, value] of Object.entries(pageBanners)) {
+        if (value?.id === id) {
+          delete pageBanners[key];
+          touched = true;
+        }
+      }
+      if ((prefs.bg_fallback as { id?: string } | null | undefined)?.id === id) {
+        delete prefs.bg_fallback;
+        touched = true;
+      }
+      if (touched) {
+        prefs.banners = pageBanners;
+        await tx
+          .update(userSettings)
+          .set({ preferences: prefs, updatedAt: new Date() })
+          .where(eq(userSettings.userId, userId));
+      }
+
+      await tx.delete(banners).where(and(eq(banners.id, id), eq(banners.ownerId, userId)));
+    });
+    return { ok: true };
   });
 
   app.get("/banners/:id", { preHandler: authenticate }, async (req, reply) => {

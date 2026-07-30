@@ -1,7 +1,8 @@
-import { ImagePlus, Move, X, ZoomIn } from "lucide-react";
+import { ImagePlus, Move, Trash2, X, ZoomIn } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { api, apiBase } from "../api.ts";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 /**
  * Banner value: which uploaded image, and how it's framed. `zoom` scales the
@@ -113,6 +114,8 @@ interface BannerInfo {
   mime: string;
   size: number;
   createdAt: string;
+  /** Everywhere it's currently used — blocks, collections, pages, background. */
+  usedBy: string[];
 }
 
 /**
@@ -131,17 +134,21 @@ function BannerPicker({
   const [items, setItems] = useState<BannerInfo[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<BannerInfo | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   // Held in a ref so the effect below doesn't re-run (and refetch) whenever the
   // caller hands us a fresh closure.
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
-  useEffect(() => {
-    void api
+  const reload = () =>
+    api
       .get<BannerInfo[]>("/banners")
       .then(setItems)
       .catch(() => setItems([]));
+
+  useEffect(() => {
+    void reload();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeRef.current();
     };
@@ -178,14 +185,36 @@ function BannerPicker({
         ) : (
           <div className="banner-gallery">
             {items.map((b) => (
-              <button
-                key={b.id}
-                className="banner-thumb"
-                title="Use this banner"
-                onClick={() => onPick({ id: b.id, zoom: 1, x: 50, y: 50 })}
-              >
-                <img src={`${apiBase}/banners/${b.id}`} alt="" loading="lazy" />
-              </button>
+              <div key={b.id} className={`banner-cell${b.usedBy.length ? " in-use" : ""}`}>
+                <button
+                  className="banner-thumb"
+                  /* Listing where it's used matters before deleting one: the same
+                     image can sit on several notes and pages at once. */
+                  title={
+                    b.usedBy.length
+                      ? `In use on:\n${b.usedBy.map((u) => `• ${u}`).join("\n")}`
+                      : "Not used anywhere yet"
+                  }
+                  onClick={() => onPick({ id: b.id, zoom: 1, x: 50, y: 50 })}
+                >
+                  <img src={`${apiBase}/banners/${b.id}`} alt="" loading="lazy" />
+                </button>
+                {b.usedBy.length > 0 && (
+                  <span className="banner-used-badge" aria-hidden>
+                    {b.usedBy.length}
+                  </span>
+                )}
+                <button
+                  className="icon-btn banner-del"
+                  title="Delete this image"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPendingDelete(b);
+                  }}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -199,6 +228,26 @@ function BannerPicker({
             {busy ? "Uploading…" : "Upload new image"}
           </button>
         </div>
+        <ConfirmDialog
+          open={pendingDelete !== null}
+          title="Delete this image?"
+          message={
+            pendingDelete?.usedBy.length
+              ? `It's in use on ${pendingDelete.usedBy.length} place(s) — ${pendingDelete.usedBy.join(", ")} — and will be removed from each. This can't be undone.`
+              : "It isn't used anywhere. This can't be undone."
+          }
+          confirmLabel="Delete"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const target = pendingDelete;
+            setPendingDelete(null);
+            if (!target) return;
+            void api
+              .del(`/banners/${target.id}`)
+              .then(reload)
+              .catch((e) => setErr(e instanceof Error ? e.message : "Couldn't delete that image"));
+          }}
+        />
         <input
           ref={fileRef}
           type="file"

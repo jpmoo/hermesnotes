@@ -88,7 +88,22 @@ export function MarkdownEditor({
         linkOnPaste: true,
         protocols: ["block", "tag"],
       }),
-      TaskList,
+      // tiptap-markdown marks lists "tight" (items on consecutive lines) via a
+      // global attribute, but only registers it for bulletList and orderedList —
+      // so a checklist serialized loose, putting a blank line between every item
+      // in the raw markdown. Carry the same attribute here.
+      TaskList.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            tight: {
+              default: true,
+              parseHTML: (el) => el.getAttribute("data-tight") !== "false",
+              renderHTML: (attrs) => (attrs.tight ? { "data-tight": "true" } : {}),
+            },
+          };
+        },
+      }),
       // Same source-line allowance for checklist items.
       TaskItem.extend({
         content() {

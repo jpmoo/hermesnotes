@@ -389,8 +389,7 @@ export const ActiveLineSource = Extension.create({
           // must not present as raw markdown. Unfocused → everything renders.
           // A selection kept WITHIN one line (same parent textblock) keeps that
           // line as editable source, so double-click / drag can select text in
-          // the raw line. A selection that SPANS blocks renders everything —
-          // swapping the head block mid-drag would collapse a multi-line range.
+          // the raw line.
           //
           // The active line is the textblock DIRECTLY containing the cursor, at
           // any depth — so a paragraph inside a list item or blockquote counts,
@@ -398,6 +397,15 @@ export const ActiveLineSource = Extension.create({
           const sel = newState.selection;
           const focused = editor.view?.hasFocus() ?? false;
           const sameLine = sel.$anchor.sameParent($head);
+
+          // A live selection spanning more than one line: change nothing at all.
+          // Rendering the raw line the range began in replaces its DOM node and
+          // takes the selection with it — which is why a drag starting on a line
+          // showing its markdown vanished on release. Whatever is raw stays raw
+          // until the selection collapses again; blur still renders everything,
+          // since `focused` is false by then.
+          if (focused && !sel.empty && !sameLine) return null;
+
           const activePos = focused && sameLine && $head.depth >= 1 ? $head.before($head.depth) : -1;
           const activeParent = activePos >= 0 ? $head.parent : null;
 

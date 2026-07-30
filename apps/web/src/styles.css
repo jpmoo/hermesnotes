@@ -21,6 +21,7 @@
   --danger: #b5525f;
   --cal-today: #c8901a; /* today ring — deliberately not the accent, which marks a day that has a note */
 
+  --panel-blur: none; /* set from the panel-blur preference */
   --radius-card: 12px;
   --radius-control: 9px;
   /* Cast down AND to the right, as if lit from the upper left, so anything
@@ -154,6 +155,8 @@ label,
   /* Cast inward, over the page. A down-and-right shadow would fall off the
      window entirely from this edge. */
   box-shadow: -6px 0 18px var(--shadow-color);
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
   padding: 18px 16px;
   overflow-y: auto;
   transition: width 0.16s ease, box-shadow 0.16s ease;
@@ -952,6 +955,8 @@ label,
   border-right: 1px solid var(--border);
   /* Cast inward, over the page — the same direction the light implies here. */
   box-shadow: 6px 0 18px var(--shadow-color);
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
   /* Same padding in both states so the logo/icons don't shift on expand —
      only the width animates. */
   padding: 18px 11px;

@@ -13,6 +13,7 @@ export function BackgroundSettings() {
   // Stored as opacity (1 = opaque); shown as transparency (0% = opaque).
   const imgTransp = Math.round((1 - (prefs.bg_opacity == null ? 1 : Number(prefs.bg_opacity))) * 100);
   const panelT = Math.max(0, Math.min(100, Number(prefs.panel_transparency) || 0));
+  const panelBlur = panelT > 0 && prefs.panel_blur === true;
   const fallback = prefs.bg_fallback as BannerValue | null | undefined;
 
   const check = (key: string, checked: boolean, label: string, hint?: string) => (
@@ -75,6 +76,23 @@ export function BackgroundSettings() {
           onChange={(e) => setPref("panel_transparency", Number(e.target.value))}
           style={{ width: "100%" }}
         />
+        {/* Nothing shows through an opaque panel, so there'd be nothing to blur. */}
+        <label className="row bg-opt" style={{ marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={panelBlur}
+            disabled={panelT === 0}
+            onChange={(e) => setPref("panel_blur", e.target.checked)}
+          />
+          <span className={panelT === 0 ? "hint" : undefined}>
+            Blur behind panels
+            <span className="hint bg-opt-hint">
+              {panelT === 0
+                ? " — needs some panel transparency first"
+                : " — frosts whatever shows through, so panel text stays readable"}
+            </span>
+          </span>
+        </label>
       </div>
 
       <div className="field" style={{ marginTop: 14 }}>

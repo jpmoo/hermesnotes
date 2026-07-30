@@ -99,7 +99,11 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const t = Math.max(0, Math.min(100, Number(prefs.panel_transparency) || 0));
     document.documentElement.style.setProperty("--panel-alpha", String(1 - t / 100));
-  }, [prefs.panel_transparency]);
+    // Frosting only means anything when something shows through, so an opaque
+    // panel drops the filter entirely rather than paying for a no-op composite.
+    const blur = t > 0 && prefs.panel_blur === true;
+    document.documentElement.style.setProperty("--panel-blur", blur ? "blur(12px)" : "none");
+  }, [prefs.panel_transparency, prefs.panel_blur]);
 
   // Apply the synced theme once prefs load (and keep localStorage in step for
   // the next no-flash boot). Keyed by device type.

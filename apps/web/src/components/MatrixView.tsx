@@ -264,7 +264,7 @@ function Chip({
   onRemove?: (id: string) => void;
   onStatus?: (item: Item, field: FieldDef, next: string) => void;
 }) {
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
   const { types } = useMatrixTypes();
   const drag = useDraggable({
     id: `${item.member ? "m" : "c"}:${item.id}`,
@@ -318,7 +318,7 @@ function Chip({
       onClick={(e) => {
         e.stopPropagation();
         clearTip();
-        selectBlock(item.id);
+        selectOrOpen(item.id);
       }}
     >
       <div className="chip-row">
@@ -527,7 +527,7 @@ export function MatrixView({
   typesStore = types;
   typesSubs.forEach((f) => f());
 
-  const { selectBlock, refreshInfo, bottomSlotEl, selectedBlockId } = usePanels();
+  const { selectBlock, selectOrOpen, refreshInfo, bottomSlotEl, selectedBlockId } = usePanels();
   // Collection-level interactions make the collection the active block (so its
   // query tools show); card interactions make the card active instead.
   const selectCollection = () => selectBlock(collection.id, { collection: true });

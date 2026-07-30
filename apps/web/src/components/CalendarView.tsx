@@ -117,7 +117,7 @@ function Chip({
   types: BlockType[];
   onStatus: (item: Item, field: FieldDef, next: string) => void;
 }) {
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
   const t = item.blockTypeId ? types.find((x) => x.id === item.blockTypeId) : undefined;
   const statusField = statusFieldOf(t);
   const status = statusField ? String(item.props[statusField.key] ?? "") : "";
@@ -134,7 +134,7 @@ function Chip({
       className="cal-chip"
       onClick={(e) => {
         e.stopPropagation();
-        selectBlock(item.id);
+        selectOrOpen(item.id);
       }}
     >
       {statusField ? (
@@ -324,7 +324,7 @@ export function CalendarView({
   types: BlockType[];
   onChanged: () => void;
 }) {
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
   const selectCollection = () => selectBlock(collection.id, { collection: true });
   const props = collection.properties;
   const isSmart = props.membership_mode === "smart";

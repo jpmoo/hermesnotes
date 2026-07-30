@@ -16,7 +16,7 @@ export function CollapsedRow({
   block: Block;
   type: BlockType | undefined;
 }) {
-  const { selectBlock } = usePanels();
+  const { selectOrOpen } = usePanels();
   const isText = !type || type.isText;
   const origin = useBlockOrigin();
   const [props, setProps] = useState<Record<string, unknown>>(block.properties);
@@ -69,7 +69,7 @@ export function CollapsedRow({
   );
 
   const row = (
-    <div className="blk-collapsed" onClick={() => selectBlock(block.id)}>
+    <div className="blk-collapsed" onClick={() => selectOrOpen(block.id)}>
       {icon}
       <span className="blk-collapsed-title">{oneLineText(props, block.content) || "Untitled"}</span>
     </div>
@@ -79,14 +79,14 @@ export function CollapsedRow({
   // either way.
   if (banner) {
     return (
-      <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
+      <div className="blk-collapsed-card" onClick={() => selectOrOpen(block.id)}>
         <Banner value={banner} height={56} className="banner-slice collapsed" />
         {row}
       </div>
     );
   }
   return (
-    <div className="blk-collapsed-card" onClick={() => selectBlock(block.id)}>
+    <div className="blk-collapsed-card" onClick={() => selectOrOpen(block.id)}>
       {row}
       <div className="blk-collapsed-preview">{previewOf(block, props, isText)}</div>
     </div>

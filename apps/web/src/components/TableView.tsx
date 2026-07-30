@@ -115,7 +115,7 @@ function TableRow({
   onRemove: (blockId: string) => void;
   onMemberChange: (id: string, patch: { properties?: Record<string, unknown> }) => void;
 }) {
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
   const [props, setProps] = useState<Record<string, unknown>>(member.properties ?? {});
   const versionRef = useRef(member.version);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -163,7 +163,7 @@ function TableRow({
       return isText ? (
         <span
           className="tv-note li-md"
-          onClick={() => selectBlock(member.id)}
+          onClick={() => selectOrOpen(member.id)}
           dangerouslySetInnerHTML={{
             __html: oneLineHtml(props, member.content) || '<span class="li-empty">Empty note</span>',
           }}

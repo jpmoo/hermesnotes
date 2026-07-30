@@ -28,6 +28,13 @@ interface PanelsApi {
   selectedFeedEvent: FeedEvent | null; // a read-only calendar-feed event, if current
   selectFeedEvent: (ev: FeedEvent | null) => void; // show a feed event in the info panel
   selectBlock: (id: string, opts?: { collection?: boolean }) => void; // log an interaction (no route change)
+  /**
+   * Tapping a block's representation — a row, chip, card or canvas node. On a
+   * phone that opens it as a full page: the info panel is an off-screen drawer
+   * there, so merely selecting would look like nothing happened. On a desktop,
+   * where the panel is visible beside the content, it just selects.
+   */
+  selectOrOpen: (id: string, opts?: { collection?: boolean }) => void;
   selectToday: (date: string, noteId: string) => void; // log the Today page for a date
   selectPage: (page: RailPage) => void; // log a rail page as the current location
   openBlock: (id: string, opts?: { collection?: boolean }) => void; // log + open as a full page
@@ -182,6 +189,17 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     append(entry);
     navigate(pageOf(entry));
   };
+  const selectOrOpen = (id: string, opts?: { collection?: boolean }) => {
+    // Matches useIsMobile's breakpoint; read at call time so a resize is honoured
+    // without this context re-rendering every consumer.
+    let phone = false;
+    try {
+      phone = window.matchMedia("(max-width: 720px)").matches;
+    } catch {
+      /* no matchMedia: treat as desktop */
+    }
+    return phone ? openBlock(id, opts) : selectBlock(id, opts);
+  };
   const selectFeedEvent = (ev: FeedEvent | null) => setSelectedFeedEvent(ev);
   const clearSelection = () => {
     setSelectedFeedEvent(null);
@@ -221,6 +239,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       selectedFeedEvent,
       selectFeedEvent,
       selectBlock,
+      selectOrOpen,
       selectToday,
       selectPage,
       openBlock,

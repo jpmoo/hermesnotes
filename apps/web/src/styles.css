@@ -4568,6 +4568,9 @@ input.matrix-axis-y::placeholder {
 /* Favorites: info-panel star + page bits. */
 .info-pane {
   position: relative;
+  /* A band for the action icons, which are positioned over this corner. Without
+     it the title sits directly under them and the whole header reads cramped. */
+  padding-top: 30px;
 }
 /* Anchors the actions menu under its button. Lifecycle actions live in here
    rather than as bare icons: they belong nowhere near the favourite star, and a
@@ -4588,7 +4591,9 @@ input.matrix-axis-y::placeholder {
   right: 0;
   z-index: 2;
   display: flex;
-  gap: 2px;
+  /* Enough that the three are distinguishable at a glance — they were nearly
+     touching, which is part of why archive felt like it sat on the star. */
+  gap: 5px;
 }
 .info-actions .icon-btn {
   width: 26px;

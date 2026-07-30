@@ -28,7 +28,8 @@ export const CheckboxInput = Extension.create({
   },
 });
 
-const STEP_EM = 1.5;
+/** Deepest outline level with an indent rule in the stylesheet (see .hi-N). */
+const MAX_OUTLINE = 6;
 
 /**
  * The heading level a top-level block contributes, or null if it isn't a
@@ -98,11 +99,13 @@ export const HeadingIndent = Extension.create({
                 indent = contentIndent;
               }
               if (indent > 0) {
-                // margin-left (not padding) so lists keep their bullet/checkbox
-                // gutter; the block just shifts right as a whole.
+                // A class, not an inline margin: the stylesheet pairs the shift
+                // with a matching --outline-indent, which a list's gutter reads so
+                // its controls and row banding can back the shift out and still
+                // line up with the note's left edge (see .hi-N in styles.css).
                 decos.push(
                   Decoration.node(offset, offset + node.nodeSize, {
-                    style: `margin-left:${(indent * STEP_EM).toFixed(2)}em`,
+                    class: `hi-${Math.min(indent, MAX_OUTLINE)}`,
                   }),
                 );
               }

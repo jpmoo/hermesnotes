@@ -2407,6 +2407,20 @@ input.li-text:focus {
 }
 /* Both sit left of the WIDEST marker — an ordered list's "10." at -1.8em — so one
    set of offsets clears bullets, numbers and checkboxes without overlapping any. */
+/* Outline indentation: a heading and its section shift right one step per level.
+   Each step also publishes --outline-indent, which inherits into the section's
+   content so a list inside it can subtract the shift and keep its controls and row
+   banding aligned to the note's left edge rather than the section's. */
+.note-editor {
+  --hi-step: 1.5em;
+}
+.note-editor .hi-1 { margin-left: var(--hi-step); --outline-indent: var(--hi-step); }
+.note-editor .hi-2 { margin-left: calc(var(--hi-step) * 2); --outline-indent: calc(var(--hi-step) * 2); }
+.note-editor .hi-3 { margin-left: calc(var(--hi-step) * 3); --outline-indent: calc(var(--hi-step) * 3); }
+.note-editor .hi-4 { margin-left: calc(var(--hi-step) * 4); --outline-indent: calc(var(--hi-step) * 4); }
+.note-editor .hi-5 { margin-left: calc(var(--hi-step) * 5); --outline-indent: calc(var(--hi-step) * 5); }
+.note-editor .hi-6 { margin-left: calc(var(--hi-step) * 6); --outline-indent: calc(var(--hi-step) * 6); }
+
 /* Each row is tagged with its nesting level (li-lvl-N) by the plugin; the indent
    that level implies is declared here once, and both the control offsets and the
    banding reach are derived from it. Keeping this in CSS rather than writing
@@ -2424,14 +2438,14 @@ input.li-text:focus {
 
 .li-drag {
   /* Back out the row's indent so every grip lands in the same column. */
-  left: calc(2px - var(--row-indent, 48px));
+  left: calc(2px - var(--row-indent, 48px) - var(--outline-indent, 0px));
   font-size: 12px;
   cursor: grab;
 }
 .li-drag:active,
 .li-drag.dragging { cursor: grabbing; opacity: 1; color: var(--accent); }
 .li-fold {
-  left: calc(16px - var(--row-indent, 48px));
+  left: calc(16px - var(--row-indent, 48px) - var(--outline-indent, 0px));
   font-size: 11px;
   cursor: pointer;
   transition: opacity 0.12s, transform 0.12s, color 0.12s;
@@ -2469,8 +2483,8 @@ input.li-text:focus {
     height: 26px;
     opacity: 0.8;
   }
-  .li-drag { left: calc(2px - var(--row-indent, 56px)); font-size: 14px; }
-  .li-fold { left: calc(19px - var(--row-indent, 56px)); font-size: 13px; }
+  .li-drag { left: calc(2px - var(--row-indent, 56px) - var(--outline-indent, 0px)); font-size: 14px; }
+  .li-fold { left: calc(19px - var(--row-indent, 56px) - var(--outline-indent, 0px)); font-size: 13px; }
 }
 
 /* Where a row being dragged by touch would land. */
@@ -2504,8 +2518,8 @@ input.li-text:focus {
   /* Reach back out over the marker and the control gutter to the note's left edge,
      using the same per-level indent the controls are placed with. The line already
      runs to the right edge. */
-  margin-left: calc(-1 * var(--row-indent, 48px));
-  padding-left: var(--row-indent, 48px);
+  margin-left: calc(-1 * (var(--row-indent, 48px) + var(--outline-indent, 0px)));
+  padding-left: calc(var(--row-indent, 48px) + var(--outline-indent, 0px));
 }
 /* The row picked up by its grip — shows exactly what a drag will move, including
    anything nested inside it. (.li-dragging is the touch path, which marks the row

@@ -1386,7 +1386,9 @@ button.nav-link:hover {
   --main-pad-b: 80px;
   grid-column: 2;
   overflow-y: auto;
-  padding: 28px 32px var(--main-pad-b);
+  /* Top padding also houses the hover-revealed nav row (see .top-nav), which sits
+     in it rather than taking a row of its own above the content. */
+  padding: 40px 32px var(--main-pad-b);
   /* Reserve gutter on both edges so the right-side scrollbar doesn't shift
      content left (which made the left margin look narrower than the right). */
   scrollbar-gutter: stable both-edges;
@@ -3745,22 +3747,27 @@ input.matrix-axis-y::placeholder {
 }
 /* Global navigation cluster (top-left of the window). */
 /* Lifted out of the flow and into the page's top padding, so no page carries an
-   empty row above its banner or title. It fades in while the pointer is anywhere
-   in the page, and stays put for keyboard users via :focus-within. Ignores the
+   empty row above its banner or title. Sits a little below the window edge rather
+   than jammed against it, and still clears the content beneath. Ignores the
    pointer while hidden so it can never swallow a click meant for the content. */
 .top-nav {
   display: flex;
   align-items: center;
   gap: 2px;
   position: absolute;
-  top: -26px;
+  top: -34px;
   left: 0;
   z-index: 6;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.14s;
 }
-.main-inner:hover > .top-nav,
+/* Triggered from .main, not .main-inner: the row sits in .main's padding, ABOVE
+   .main-inner's box, so keying off the inner element meant reaching for the row
+   left it and made it vanish just as you went to click it. `.top-nav:hover` then
+   keeps it up once the pointer is on it, and :focus-within for keyboard users. */
+.main:hover .top-nav,
+.top-nav:hover,
 .top-nav:focus-within {
   opacity: 1;
   pointer-events: auto;

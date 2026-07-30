@@ -95,9 +95,54 @@ const READONLY_TOOLS = new Set([
 ]);
 
 /**
+ * Titles for whatever a block's reference fields point at, so they can be named
+ * rather than printed as uuids. Capped: a block with hundreds of references
+ * shouldn't turn one read into hundreds of requests. An id that won't resolve is
+ * simply absent, and renders as the id.
+ */
+async function refTitleMap(
+  api: Api,
+  schema: PropertySchema | null | undefined,
+  props: Record<string, unknown>,
+): Promise<Map<string, string>> {
+  const ids = new Set<string>();
+  for (const f of schema?.fields ?? []) {
+    if (f.type !== "reference") continue;
+    const v = props[f.key];
+    for (const id of Array.isArray(v) ? v : [v]) {
+      if (typeof id === "string" && id) ids.add(id);
+    }
+  }
+  const out = new Map<string, string>();
+  for (const id of [...ids].slice(0, 25)) {
+    try {
+      const target = await api.get<HermesBlock>(`/blocks/${id}`);
+      const t = (target.properties as Record<string, unknown>)?.title;
+      if (typeof t === "string" && t.trim()) out.set(id, t);
+    } catch {
+      /* unresolvable (deleted, or not ours) — the id is shown as-is */
+    }
+  }
+  return out;
+}
+
+/** Every stored property the schema doesn't declare, so nothing is hidden. */
+function fmtExtraProps(
+  schema: PropertySchema | null | undefined,
+  props: Record<string, unknown>,
+  skip: string[] = [],
+): string[] {
+  const known = new Set([...(schema?.fields ?? []).map((f) => f.key), "title", ...skip]);
+  return Object.entries(props)
+    .filter(([k, v]) => !known.has(k) && v != null && v !== "")
+    .map(([k, v]) => `- ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+}
+
+/**
  * Render a block's schema-defined fields the way a reader sees them: the field's
  * LABEL rather than its storage key, a select's option label rather than the value
- * stored underneath, and a number's unit alongside it.
+ * stored underneath, a number's unit alongside it, and a reference named rather
+ * than shown as a uuid.
  *
  * An empty number renders as "-" rather than being dropped, so an unset number is
  * visibly unset and can never be read back as zero.
@@ -362,6 +407,16 @@ export function defineTools(api: Api): ToolDef[] {
       );
       const p = b.properties as Record<string, unknown>;
       const span = (p[ctx.spanKey] ?? {}) as { start?: string; end?: string };
+      // The task type's own schema, so a field somebody added to it — "duration",
+      // "energy", whatever — is reported rather than quietly dropped. Anything
+      // this tool already spells out in task terms is skipped below, so nothing
+      // appears twice.
+      const types = await api.get<{ id: string; propertySchema: PropertySchema | null }[]>(
+        "/block-types",
+      );
+      const schema = types.find((t) => t.id === ctx.taskTypeId)?.propertySchema ?? null;
+      const refTitles = await refTitleMap(api, schema, p);
+
       const out = [
         `Task: ${String(p.title ?? "Untitled")}`,
         `Id: ${b.id}`,
@@ -370,20 +425,22 @@ export function defineTools(api: Api): ToolDef[] {
         span.end ? `Due: ${fmtDate(span.end)}` : null,
         info.tags.length ? `Tags: ${info.tags.map((t) => `#${t.name}`).join(" ")}` : null,
         info.inCollections.length ? `Collections: ${info.inCollections.map((c) => c.label).join(", ")}` : null,
-        p.description ? `Notes:\n${String(p.description)}` : null,
-      ].filter(Boolean);
+      ].filter(Boolean) as string[];
+
       if (ctx.projectRefKey && Array.isArray(p[ctx.projectRefKey]) && (p[ctx.projectRefKey] as string[]).length) {
-        const names: string[] = [];
-        for (const id of p[ctx.projectRefKey] as string[]) {
-          try {
-            const pb = await api.get<HermesBlock>(`/blocks/${id}`);
-            names.push(String((pb.properties as Record<string, unknown>).title ?? id));
-          } catch {
-            names.push(id);
-          }
-        }
+        const names = (p[ctx.projectRefKey] as string[]).map((id) => refTitles.get(id) ?? id);
         out.splice(3, 0, `Projects: ${names.join(", ")}`);
       }
+
+      const shown = [ctx.statusKey, ctx.spanKey, "description", ...(ctx.projectRefKey ? [ctx.projectRefKey] : [])];
+      const rest = [
+        ...fmtSchemaFields(schema, p, shown, refTitles),
+        ...fmtExtraProps(schema, p, shown),
+      ];
+      if (rest.length) out.push("", "Fields:", ...rest);
+
+      // Long-form last, so the scannable facts aren't buried under it.
+      if (p.description) out.push("", `Notes:\n${String(p.description)}`);
       return out.join("\n");
     }),
   );
@@ -548,8 +605,25 @@ export function defineTools(api: Api): ToolDef[] {
       const out = [
         `Project: ${String(p.title ?? "Untitled")}${isArchivedProject(ctx, proj) ? " (archived)" : ""}`,
         `Id: ${proj.id}`,
-        p.description ? `About:\n${String(p.description)}` : null,
       ].filter(Boolean) as string[];
+
+      // The project type's own schema, so its status and any field somebody added
+      // to it are reported rather than dropped. Previously only the title, id and
+      // description came through, which meant asking about anything else sent the
+      // caller back for a second, deeper read.
+      const types = await api.get<{ id: string; propertySchema: PropertySchema | null }[]>(
+        "/block-types",
+      );
+      const schema = types.find((t) => t.id === ctx.projectTypeId)?.propertySchema ?? null;
+      const refTitles = await refTitleMap(api, schema, p);
+      const shown = ["description"]; // rendered below, in full
+      const rest = [
+        ...fmtSchemaFields(schema, p, shown, refTitles),
+        ...fmtExtraProps(schema, p, shown),
+      ];
+      if (rest.length) out.push("", "Fields:", ...rest);
+      // Long-form after the scannable facts, and before the task lists.
+      if (p.description) out.push("", `About:\n${String(p.description)}`);
       if (ctx.projectRefKey) {
         const tasks = await api.post<HermesBlock[]>("/blocks/query", {
           filterQuery: group([
@@ -741,38 +815,14 @@ export function defineTools(api: Api): ToolDef[] {
           "/block-types",
         );
         const schema = types.find((t) => t.id === b.blockTypeId)?.propertySchema ?? null;
-        // Look up the titles behind any reference fields, so they read as names.
-        // Capped: a block with hundreds of references shouldn't turn one read into
-        // hundreds of requests.
-        const refIds = new Set<string>();
-        for (const f of schema?.fields ?? []) {
-          if (f.type !== "reference") continue;
-          const v = (b.properties ?? {})[f.key];
-          for (const id of Array.isArray(v) ? v : [v]) {
-            if (typeof id === "string" && id) refIds.add(id);
-          }
-        }
-        const refTitles = new Map<string, string>();
-        for (const id of [...refIds].slice(0, 25)) {
-          try {
-            const target = await api.get<HermesBlock>(`/blocks/${id}`);
-            const t = (target.properties as Record<string, unknown>)?.title;
-            if (typeof t === "string" && t.trim()) refTitles.set(id, t);
-          } catch {
-            /* unresolvable (deleted, or not ours) — the id is shown as-is */
-          }
-        }
+        const refTitles = await refTitleMap(api, schema, b.properties ?? {});
         const described = fmtSchemaFields(schema, b.properties ?? {}, [], refTitles);
         // Anything the schema does not declare still gets shown, so no stored
         // value silently disappears from the model's view.
-        const known = new Set([...(schema?.fields ?? []).map((f) => f.key), "title"]);
-        const extra = Object.entries(b.properties ?? {}).filter(
-          ([k, v]) => !known.has(k) && v != null && v !== "",
-        );
+        const extra = fmtExtraProps(schema, b.properties ?? {});
         if (described.length || extra.length) {
           lines.push("", "Properties:");
-          lines.push(...described);
-          for (const [k, v] of extra) lines.push(`- ${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+          lines.push(...described, ...extra);
         }
       }
       if (info.tags.length) lines.push("", `Tags: ${info.tags.map((t) => `#${t}`).join(" ")}`);

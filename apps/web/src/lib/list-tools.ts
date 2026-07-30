@@ -50,119 +50,28 @@ const GUTTER_KEY = new PluginKey<number[]>("listGutter");
 const TOGGLE_FOLD = "listGutterToggleFold";
 
 /**
- * Gutter geometry, in px, mirroring the list padding in styles.css. Every row's
- * controls are placed in ONE column down the left edge regardless of nesting
- * depth, rather than stepping right with each level — the row striping is what
- * ties a control back to its row, so they don't need to sit beside it.
+ * How many lists enclose the row at `pos` (1 = a top-level list).
  *
- * Because a control is positioned within its own row, landing it in that shared
- * column means offsetting it by however far the row is indented, which is why
- * these have to be known here and not just in CSS.
+ * The level is all the plugin contributes to layout: it goes on the row as a
+ * class, and the stylesheet turns it into the row's indent (`--row-indent`),
+ * which in turn places the controls in their shared column and tells the banding
+ * how far to reach. Doing the arithmetic in JS and writing the result to each
+ * element's style would mean mutating attributes INSIDE the contenteditable, and
+ * ProseMirror's DOM observer reads those as foreign edits and re-syncs — which
+ * collapses a drag-selection in progress. Keeping it declarative avoids that
+ * entirely, and costs no layout measurement.
  */
-const METRICS = {
-  // `task: 0` — a checklist indents exactly like any other list. The fold twisty
-  // used to be crowded against the wider checkbox marker; that's solved by sitting
-  // the whole column slightly further left, which costs no indent at all, rather
-  // than by pushing checklist rows right.
-  //
-  // `top` is the floor for two always-visible controls plus a marker: the grip and
-  // twisty columns, then the bullet/number/checkbox. Trimming it further means
-  // giving one of those up (e.g. revealing the grip only on hover).
-  fine: { top: 48, nested: 20, task: 0, gripX: 2, foldX: 16 },
-  coarse: { top: 56, nested: 24, task: 0, gripX: 2, foldX: 19 },
-};
-
-const isCoarsePointer = (): boolean => {
-  try {
-    return window.matchMedia("(pointer: coarse)").matches;
-  } catch {
-    return false;
-  }
-};
-
-/**
- * How far the row at `pos` is indented from the editor's left edge, by summing the
- * padding of each enclosing list exactly as the stylesheet applies it — the first
- * list carries the control gutter, the rest one marker's width, and a checklist a
- * few px more for its wider checkbox.
- */
-function rowIndent(state: EditorState, pos: number): number {
-  const m = isCoarsePointer() ? METRICS.coarse : METRICS.fine;
+function listLevel(state: EditorState, pos: number): number {
   const $pos = state.doc.resolve(pos);
-  let indent = 0;
   let level = 0;
   for (let d = 1; d <= $pos.depth; d++) {
-    const node = $pos.node(d);
-    if (!LIST_TYPES.has(node.type.name)) continue;
-    level++;
-    indent += (level === 1 ? m.top : m.nested) + (node.type.name === "taskList" ? m.task : 0);
+    if (LIST_TYPES.has($pos.node(d).type.name)) level++;
   }
-  return indent || m.top;
+  return Math.min(Math.max(1, level), MAX_LEVEL);
 }
 
-/** `left` for a control on a row at this indent, in the row's own coordinates. */
-function gutterLeft(indent: number, which: "grip" | "fold"): number {
-  const m = isCoarsePointer() ? METRICS.coarse : METRICS.fine;
-  return (which === "grip" ? m.gripX : m.foldX) - indent;
-}
-
-/** One pending measurement pass per editor, so bursts of updates collapse into one. */
-const pendingSync = new WeakMap<EditorView, number>();
-
-/**
- * Align the gutter against reality: place every control in the shared column and
- * tell every banded row how far its band must reach to meet the note's edge.
- *
- * Measured rather than derived, because a row's true indent isn't only its list
- * padding — a list under a sub-heading also carries the outline indentation, which
- * lives in a decoration.
- *
- * Reads are done for ALL rows before any write. Interleaving them (measure a row,
- * style it, measure the next) invalidates layout on each pass and forces a reflow
- * per row — which on a long list, on every keystroke, is enough to make typing
- * crawl. The pass is also coalesced to one per frame.
- */
-function syncGutter(view: EditorView): void {
-  if (pendingSync.has(view)) return;
-  pendingSync.set(
-    view,
-    requestAnimationFrame(() => {
-      pendingSync.delete(view);
-      if (!view.dom.isConnected) return;
-      const box = view.dom.getBoundingClientRect();
-      // Not laid out yet (a collapsed panel, say) — measuring now would bake in
-      // meaningless offsets, and the next update will come back through here.
-      if (box.width === 0) return;
-      const m = isCoarsePointer() ? METRICS.coarse : METRICS.fine;
-
-      // ── read ──
-      const indents = new Map<HTMLElement, number>();
-      const indentOf = (li: HTMLElement): number => {
-        let value = indents.get(li);
-        if (value === undefined) {
-          value = li.getBoundingClientRect().left - box.left;
-          indents.set(li, value);
-        }
-        return value;
-      };
-      const controls: { el: HTMLElement; left: number }[] = [];
-      view.dom.querySelectorAll<HTMLElement>(".li-drag, .li-fold").forEach((el) => {
-        const li = el.closest("li");
-        if (!li) return;
-        const base = el.classList.contains("li-drag") ? m.gripX : m.foldX;
-        controls.push({ el, left: base - indentOf(li) });
-      });
-      const bands: { li: HTMLElement; reach: number }[] = [];
-      view.dom.querySelectorAll<HTMLElement>("li.li-stripe").forEach((li) => {
-        bands.push({ li, reach: Math.max(0, indentOf(li)) });
-      });
-
-      // ── write ──
-      for (const { el, left } of controls) el.style.left = `${left}px`;
-      for (const { li, reach } of bands) li.style.setProperty("--stripe-indent", `${reach}px`);
-    }),
-  );
-}
+/** Deepest nesting level with its own indent rule in the stylesheet. */
+const MAX_LEVEL = 8;
 
 /** The nested lists directly inside a list item, as absolute ranges. */
 function nestedLists(item: PMNode, itemPos: number): { from: number; to: number }[] {
@@ -287,10 +196,9 @@ function moveItem(view: EditorView, from: number, to: number): void {
   view.dispatch(tr);
 }
 
-function buildGrip(view: EditorView, indent: number): HTMLElement {
+function buildGrip(view: EditorView): HTMLElement {
   const grip = document.createElement("span");
   grip.className = "li-drag";
-  grip.style.left = `${gutterLeft(indent, "grip")}px`;
   grip.draggable = true;
   grip.contentEditable = "false";
   grip.setAttribute("aria-hidden", "true");
@@ -378,10 +286,9 @@ function buildGrip(view: EditorView, indent: number): HTMLElement {
   return grip;
 }
 
-function buildTwisty(view: EditorView, indent: number, collapsed: boolean): HTMLElement {
+function buildTwisty(view: EditorView, collapsed: boolean): HTMLElement {
   const twisty = document.createElement("span");
   twisty.className = `li-fold${collapsed ? " collapsed" : ""}`;
-  twisty.style.left = `${gutterLeft(indent, "fold")}px`;
   twisty.contentEditable = "false";
   twisty.setAttribute("aria-hidden", "true");
   twisty.title = collapsed ? "Expand" : "Collapse";
@@ -438,17 +345,6 @@ export const ListGutter = Extension.create({
             return next;
           },
         },
-        view(editorView) {
-          syncGutter(editorView);
-          // Rows shift when the note is edited AND when the pane is resized, which
-          // produces no transaction — hence the observer alongside update().
-          const ro = new ResizeObserver(() => syncGutter(editorView));
-          ro.observe(editorView.dom);
-          return {
-            update: (v) => syncGutter(v),
-            destroy: () => ro.disconnect(),
-          };
-        },
         props: {
           decorations(state) {
             if (!editor.isEditable) return DecorationSet.empty; // nothing to drag or fold
@@ -465,36 +361,37 @@ export const ListGutter = Extension.create({
                 return !node.isTextblock;
               }
               const isCollapsed = collapsed.has(pos);
-              const indent = rowIndent(state, pos);
               rowNumber += 1;
-              if (rowNumber % 2 === 0) {
-                // How far the band reaches back is measured after layout
-                // (syncGutter), not derived from METRICS: a list under a
-                // sub-heading is shifted further right by the outline
-                // indentation, which only the DOM knows about.
-                decos.push(Decoration.node(pos, pos + node.nodeSize, { class: "li-stripe" }));
-              }
+              // One class carries both the row's indent (which the stylesheet
+              // turns into the control offsets and how far the band reaches) and
+              // whether this row is banded.
+              const banded = rowNumber % 2 === 0;
+              decos.push(
+                Decoration.node(pos, pos + node.nodeSize, {
+                  class: `li-lvl-${listLevel(state, pos)}${banded ? " li-stripe" : ""}`,
+                }),
+              );
               // Keys carry no position on purpose: ProseMirror reuses a widget
               // whose key is unchanged, so editing elsewhere in the note doesn't
               // tear down and rebuild every control. Rebuilding them mid-gesture
-              // used to collapse drag-selections across rows. The indent IS in the
-              // key, since it decides the control's offset — and it only changes
-              // when the row is actually indented or outdented.
+              // used to collapse drag-selections across rows — and now nothing
+              // about a control depends on where its row sits, so the keys are
+              // constant and the elements simply persist.
               decos.push(
-                Decoration.widget(pos + 1, (view) => buildGrip(view, indent), {
+                Decoration.widget(pos + 1, (view) => buildGrip(view), {
                   side: -1,
                   // The controls aren't content: never let them affect the selection.
                   ignoreSelection: true,
-                  key: `li-drag:${indent}`,
+                  key: "li-drag",
                 }),
               );
               const kids = nestedLists(node, pos);
               if (kids.length) {
                 decos.push(
-                  Decoration.widget(pos + 1, (view) => buildTwisty(view, indent, isCollapsed), {
+                  Decoration.widget(pos + 1, (view) => buildTwisty(view, isCollapsed), {
                     side: -2, // ahead of the grip
                     ignoreSelection: true,
-                    key: `li-fold:${indent}:${isCollapsed}`,
+                    key: `li-fold:${isCollapsed}`,
                   }),
                 );
                 if (isCollapsed) {

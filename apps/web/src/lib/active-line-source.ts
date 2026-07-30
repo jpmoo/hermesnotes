@@ -387,26 +387,23 @@ export const ActiveLineSource = Extension.create({
           // Only a FOCUSED editor shows a source line: a freshly mounted (or
           // merely rendered) note has a selection at its first block, and that
           // must not present as raw markdown. Unfocused → everything renders.
-          // A selection kept WITHIN one line (same parent textblock) keeps that
-          // line as editable source, so double-click / drag can select text in
-          // the raw line.
-          //
           // The active line is the textblock DIRECTLY containing the cursor, at
           // any depth — so a paragraph inside a list item or blockquote counts,
           // and only that line reveals its markdown while the rest stay rendered.
           const sel = newState.selection;
           const focused = editor.view?.hasFocus() ?? false;
-          const sameLine = sel.$anchor.sameParent($head);
 
-          // A live selection spanning more than one line: change nothing at all.
-          // Rendering the raw line the range began in replaces its DOM node and
-          // takes the selection with it — which is why a drag starting on a line
-          // showing its markdown vanished on release. Whatever is raw stays raw
-          // until the selection collapses again; blur still renders everything,
-          // since `focused` is false by then.
-          if (focused && !sel.empty && !sameLine) return null;
+          // While ANY selection is live, change nothing. Every swap — sourcing a
+          // rendered line or rendering a raw one — replaces that line's DOM node,
+          // and the selection goes with it. That killed a drag across lines, and
+          // equally a range inside a single formatted line, where converting to
+          // raw markdown on release cleared it. Lines hold their current form
+          // until the selection collapses to a caret. Blur is unaffected:
+          // `focused` is false by then, so an unfocused note renders everything.
+          if (focused && !sel.empty) return null;
 
-          const activePos = focused && sameLine && $head.depth >= 1 ? $head.before($head.depth) : -1;
+          // Past here the selection is a caret, so anchor and head share a parent.
+          const activePos = focused && $head.depth >= 1 ? $head.before($head.depth) : -1;
           const activeParent = activePos >= 0 ? $head.parent : null;
 
           // Render every source line except the active one; source the active

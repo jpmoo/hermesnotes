@@ -354,11 +354,7 @@ export function TypedBlockCard({
               Delete
             </button>
           </>
-        ) : (
-          <button className="ghost" onClick={() => setConfirm("archive")}>
-            Archive
-          </button>
-        )}
+        ) : null}
       </div>
 
       <ConfirmDialog

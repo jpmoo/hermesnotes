@@ -282,11 +282,7 @@ export function TextBlockEditor({
                 Delete
               </button>
             </>
-          ) : (
-            <button className="ghost" onClick={() => setConfirm("archive")}>
-              Archive
-            </button>
-          ))}
+          ) : null)}
       </div>
 
       {canDelete && (

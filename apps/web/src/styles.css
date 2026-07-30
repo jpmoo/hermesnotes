@@ -4569,6 +4569,19 @@ input.matrix-axis-y::placeholder {
 .info-pane {
   position: relative;
 }
+/* Anchors the actions menu under its button. Lifecycle actions live in here
+   rather than as bare icons: they belong nowhere near the favourite star, and a
+   menu leaves room for more of them later. */
+.info-menu {
+  position: relative;
+  display: inline-flex;
+}
+/* Red TEXT, not the filled danger button: reusing .danger here turned the row
+   into a solid red bar with unreadable text. */
+.menu-item.menu-danger {
+  color: var(--danger);
+}
+
 .info-actions {
   position: absolute;
   top: 0;

@@ -1,5 +1,5 @@
 import { isPeriodicNote } from "@hermes/shared";
-import { Archive, ArchiveRestore, CalendarDays, Copy, Maximize2, Star, X } from "lucide-react";
+import { CalendarDays, Copy, Maximize2, MoreHorizontal, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
@@ -144,7 +144,9 @@ export function BlockInfoPane({
   const [block, setBlock] = useState<Block | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
   const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
-  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirming, setConfirming] = useState<null | "archive" | "delete">(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const nav = useNavigate();
   const { infoTick, openBlock } = usePanels();
@@ -182,6 +184,15 @@ export function BlockInfoPane({
   useBlockChanged(blockId, () =>
     void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => {}),
   );
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
 
   const loadBlock = () =>
     api
@@ -261,20 +272,31 @@ export function BlockInfoPane({
   // resolves it by that marker regardless of archived state. The server refuses
   // these too — this just keeps a dead button off the panel.
   const autoNote = isPeriodicNote(block?.properties);
-  const canArchive = block != null && !titleOverride && !editable && !autoNote;
+  // Every block and collection, whether or not the panel is hosting its editor —
+  // one place to look, rather than an icon here and a footer button there.
+  const canManage = block != null && !titleOverride && !autoNote;
 
+  const leaveIfShowing = () => {
+    // Acting on what you're looking at would otherwise leave you on a page for
+    // something no longer in any normal view.
+    if (pathname === fullPage) nav(isCollection ? "/collections" : "/blocks");
+  };
   const archive = async () => {
     await api.post(`/blocks/${blockId}/archive`, {});
     emitBlockDeleted(blockId);
-    // Archiving what you're looking at would otherwise leave you on a page for
-    // something no longer in any normal view.
-    if (pathname === fullPage) nav(isCollection ? "/collections" : "/blocks");
-    else void loadBlock();
+    leaveIfShowing();
+    void loadBlock();
   };
   const unarchive = async () => {
     await api.post(`/blocks/${blockId}/unarchive`, {});
     emitBlockDeleted(blockId); // drops it from the Archive listing
     void loadBlock();
+  };
+  const destroy = async () => {
+    await api.del(isCollection ? `/collections/${blockId}` : `/blocks/${blockId}`);
+    emitBlockDeleted(blockId);
+    onDeleted?.();
+    leaveIfShowing();
   };
   return (
     <div className="info-pane">
@@ -299,24 +321,53 @@ export function BlockInfoPane({
             its own Archive button, and two would be one too many. This covers the
             cases that had none — anything open full-viewport (its editor is over
             there, not here) and any collection, which never edits in the panel. */}
-        {canArchive &&
-          (isArchived ? (
+        {canManage && (
+          <div className="info-menu" ref={menuRef}>
             <button
-              className="icon-btn info-archive"
-              title="Unarchive"
-              onClick={() => void unarchive()}
+              className="icon-btn"
+              title="More actions"
+              onClick={() => setMenuOpen((o) => !o)}
             >
-              <ArchiveRestore size={15} />
+              <MoreHorizontal size={15} />
             </button>
-          ) : (
-            <button
-              className="icon-btn info-archive"
-              title={isCollection ? "Archive this collection" : "Archive this block"}
-              onClick={() => setConfirmArchive(true)}
-            >
-              <Archive size={15} />
-            </button>
-          ))}
+            {menuOpen && (
+              <div className="menu">
+                {isArchived ? (
+                  <>
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void unarchive();
+                      }}
+                    >
+                      Unarchive
+                    </button>
+                    <button
+                      className="menu-item menu-danger"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setConfirming("delete");
+                      }}
+                    >
+                      Delete permanently
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="menu-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setConfirming("archive");
+                    }}
+                  >
+                    {isCollection ? "Archive collection" : "Archive"}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       {editable && block ? (
         <div className="panel-editor">
@@ -398,19 +449,33 @@ export function BlockInfoPane({
       </dl>
 
       <ConfirmDialog
-        open={confirmArchive}
-        title={isCollection ? "Archive this collection?" : "Archive this block?"}
-        message={
-          isCollection
-            ? "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
-            : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
+        open={confirming !== null}
+        title={
+          confirming === "delete"
+            ? isCollection
+              ? "Delete this collection?"
+              : "Delete this block?"
+            : isCollection
+              ? "Archive this collection?"
+              : "Archive this block?"
         }
-        confirmLabel="Archive"
-        danger={false}
-        onCancel={() => setConfirmArchive(false)}
+        message={
+          confirming === "delete"
+            ? isCollection
+              ? "This permanently removes the collection. Blocks that aren't in any other collection become Unattached. This can't be undone."
+              : "This permanently removes the block and its embedding. This can't be undone."
+            : isCollection
+              ? "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+              : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
+        }
+        confirmLabel={confirming === "delete" ? "Delete" : "Archive"}
+        danger={confirming === "delete"}
+        onCancel={() => setConfirming(null)}
         onConfirm={() => {
-          setConfirmArchive(false);
-          void archive();
+          const action = confirming;
+          setConfirming(null);
+          if (action === "delete") void destroy();
+          else if (action === "archive") void archive();
         }}
       />
 

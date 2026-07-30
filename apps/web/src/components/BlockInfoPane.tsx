@@ -1,13 +1,14 @@
-import { CalendarDays, Copy, Maximize2, Star, X } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarDays, Copy, Maximize2, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
-import { emitBlockChange, useBlockChanged, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
+import { emitBlockChange, emitBlockDeleted, useBlockChanged, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { useEditorMounted } from "../lib/editor-registry.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { LongTextField } from "./LongTextField.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
@@ -142,7 +143,9 @@ export function BlockInfoPane({
   const [block, setBlock] = useState<Block | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
   const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const { pathname } = useLocation();
+  const nav = useNavigate();
   const { infoTick, openBlock } = usePanels();
   const { isFavorite, toggleFavorite } = usePreferences();
   // If this block already has a live editor in the viewport, the panel shows a
@@ -251,6 +254,24 @@ export function BlockInfoPane({
   // there (its own full page) or is a daily note (shown beside the Today page).
   const fullPage = isCollection ? `/collections/${blockId}` : `/block/${blockId}`;
   const canExpand = block != null && !titleOverride && pathname !== fullPage;
+  const isArchived = block?.archivedAt != null;
+  // A daily note is excluded: its scratchpad belongs to the day, not to a list you
+  // file away.
+  const canArchive = block != null && !titleOverride && !editable;
+
+  const archive = async () => {
+    await api.post(`/blocks/${blockId}/archive`, {});
+    emitBlockDeleted(blockId);
+    // Archiving what you're looking at would otherwise leave you on a page for
+    // something no longer in any normal view.
+    if (pathname === fullPage) nav(isCollection ? "/collections" : "/blocks");
+    else void loadBlock();
+  };
+  const unarchive = async () => {
+    await api.post(`/blocks/${blockId}/unarchive`, {});
+    emitBlockDeleted(blockId); // drops it from the Archive listing
+    void loadBlock();
+  };
   return (
     <div className="info-pane">
       <div className="info-actions">
@@ -270,6 +291,28 @@ export function BlockInfoPane({
             <Maximize2 size={15} />
           </button>
         )}
+        {/* Only when the panel ISN'T hosting an editable card: that card carries
+            its own Archive button, and two would be one too many. This covers the
+            cases that had none — anything open full-viewport (its editor is over
+            there, not here) and any collection, which never edits in the panel. */}
+        {canArchive &&
+          (isArchived ? (
+            <button
+              className="icon-btn info-archive"
+              title="Unarchive"
+              onClick={() => void unarchive()}
+            >
+              <ArchiveRestore size={15} />
+            </button>
+          ) : (
+            <button
+              className="icon-btn info-archive"
+              title={isCollection ? "Archive this collection" : "Archive this block"}
+              onClick={() => setConfirmArchive(true)}
+            >
+              <Archive size={15} />
+            </button>
+          ))}
       </div>
       {editable && block ? (
         <div className="panel-editor">
@@ -349,6 +392,23 @@ export function BlockInfoPane({
           </button>
         </dd>
       </dl>
+
+      <ConfirmDialog
+        open={confirmArchive}
+        title={isCollection ? "Archive this collection?" : "Archive this block?"}
+        message={
+          isCollection
+            ? "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+            : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
+        }
+        confirmLabel="Archive"
+        danger={false}
+        onCancel={() => setConfirmArchive(false)}
+        onConfirm={() => {
+          setConfirmArchive(false);
+          void archive();
+        }}
+      />
 
       <div className="info-conns">
         <div className="panel-h">Connections</div>

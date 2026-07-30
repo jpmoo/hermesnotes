@@ -4564,6 +4564,11 @@ input.matrix-axis-y::placeholder {
   background: transparent;
   color: var(--accent-ink);
 }
+/* Archive/unarchive sits with the other panel actions; danger tint on hover so
+   it reads as consequential next to the star and expand. */
+.info-archive:hover {
+  color: var(--danger);
+}
 .fav-star.on {
   color: #d9a514;
 }

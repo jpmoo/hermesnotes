@@ -100,7 +100,10 @@ export function MarkdownEditor({
       // the live-preview round-trip for notes that contain markup. Raw-HTML XSS is
       // already contained by the CSP (script-src 'self', no inline) — not worth
       // trading content fidelity for.
-      Markdown.configure({ breaks: true, transformPastedText: true }),
+      // transformCopiedText: the plain-text flavour on the clipboard is the note's
+      // markdown, so pasting into another app carries `- [ ]` and emphasis rather
+      // than a flattened line, and pasting back in re-parses to the real thing.
+      Markdown.configure({ breaks: true, transformPastedText: true, transformCopiedText: true }),
       Placeholder.configure({ placeholder }),
       CheckboxInput,
       SmartEnter,

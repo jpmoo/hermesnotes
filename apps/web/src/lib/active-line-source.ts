@@ -1,5 +1,5 @@
 import { Extension, mergeAttributes, Node } from "@tiptap/core";
-import { DOMParser as PMDOMParser, Fragment, type Node as PMNode, type Schema } from "@tiptap/pm/model";
+import { DOMParser as PMDOMParser, Fragment, Slice, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 
 /**
@@ -223,11 +223,37 @@ export const ActiveLineSource = Extension.create({
         const offset = $head.parentOffset;
         const before = text.slice(0, offset);
         const after = text.slice(offset);
+
+        /**
+         * One Enter is one newline. It stays INSIDE this block rather than
+         * starting a new one, so what the markdown holds matches what you did:
+         * previously every Enter ended the block, and a block break is a blank
+         * line in markdown — so a single keypress showed up as two line breaks in
+         * raw view, and carried that doubled spacing into anything copied out.
+         * (`breaks: true` on the parser means a lone newline renders as a line
+         * break, so this round-trips.)
+         *
+         * A second Enter — the caret already sitting on an empty line — ends the
+         * block, which is the real paragraph break. Same rule SmartEnter applies
+         * to rendered text; it never got a say here because this handler runs
+         * first on a raw line.
+         */
+        if (before !== "" && !before.endsWith("\n")) {
+          return editor.commands.command(({ tr, dispatch }) => {
+            tr.insertText("\n", $head.pos);
+            tr.setMeta(META, true);
+            if (dispatch) dispatch(tr);
+            return true;
+          });
+        }
+
+        // Paragraph break: drop the blank line the caret is on, then split.
+        const kept = before.replace(/\n$/, "");
         const from = $head.before();
         const to = $head.after();
 
-        const rendered = before.trim().length
-          ? mdToFragment(schema, md, before)
+        const rendered = kept.trim().length
+          ? mdToFragment(schema, md, kept)
           : Fragment.from(paraType.create());
         const newSource = sourceType.create(null, after.length ? [schema.text(after)] : []);
 
@@ -268,6 +294,41 @@ export const ActiveLineSource = Extension.create({
         // Focus changes don't produce transactions, so ping one through —
         // appendTransaction below re-evaluates and renders/sources accordingly.
         props: {
+          /**
+           * A line showing its markdown is a code node, so copying a range that
+           * includes one puts raw markdown on the clipboard — which is why a
+           * pasted checklist arrived as plain `- [ ]` text. Render any such line
+           * back to real nodes in the copied slice, so what's carried is the
+           * formatting you can see rather than its source.
+           */
+          transformCopied: (slice) => {
+            const schema = editor.schema;
+            const sourceType = schema.nodes.sourceBlock;
+            if (!sourceType) return slice;
+            const md = editor.storage.markdown as MdStorage;
+            let changed = false;
+            const convert = (fragment: Fragment): Fragment => {
+              const out: PMNode[] = [];
+              fragment.forEach((child) => {
+                if (child.type === sourceType) {
+                  changed = true;
+                  mdToFragment(schema, md, child.textContent).forEach((n) => out.push(n));
+                } else if (child.content.size) {
+                  out.push(child.copy(convert(child.content)));
+                } else {
+                  out.push(child);
+                }
+              });
+              return Fragment.fromArray(out);
+            };
+            const content = convert(slice.content);
+            if (!changed) return slice;
+            try {
+              return new Slice(content, slice.openStart, slice.openEnd);
+            } catch {
+              return slice; // rather than risk a malformed paste
+            }
+          },
           handleDOMEvents: {
             mousedown: (view) => {
               pointerDown = true;

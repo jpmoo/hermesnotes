@@ -95,21 +95,23 @@ function valueFor(b: Viewable, key: SortKey): string {
 }
 
 /** A masonry card: compact preview. Clicking selects the block, whose full
- * editable card lives in the right panel (no inline expand needed). */
+ * editable card lives in the right panel — or opens it as a page on a phone,
+ * where that panel is an off-screen drawer. */
 function MasonryCard({ blockId, render }: { blockId: string; render: (compact: boolean) => ReactNode }) {
-  const { selectBlock } = usePanels();
+  const { selectOrOpen } = usePanels();
   return (
-    <div className="masonry-item" onClick={() => selectBlock(blockId)}>
+    <div className="masonry-item" onClick={() => selectOrOpen(blockId)}>
       {render(true)}
     </div>
   );
 }
 
 /** Constant-size chip: status/type icon + a slice of the title. Clicking selects
- * the block into the info panel; the status glyph stays interactive. A div (not
- * a button) so the status button isn't nested inside another button. */
+ * the block into the info panel — or opens it as a page on a phone; the status
+ * glyph stays interactive. A div (not a button) so the status button isn't
+ * nested inside another button. */
 function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | undefined; grip?: ReactNode }) {
-  const { selectBlock } = usePanels();
+  const { selectOrOpen } = usePanels();
   const text = oneLineText(item.properties, item.content);
   return (
     <div
@@ -117,11 +119,11 @@ function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | und
       role="button"
       tabIndex={0}
       title={text}
-      onClick={() => selectBlock(item.id)}
+      onClick={() => selectOrOpen(item.id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          selectBlock(item.id);
+          selectOrOpen(item.id);
         }
       }}
     >
@@ -175,10 +177,10 @@ function ManualRow({ id, children }: { id: string; children: ReactNode }) {
 /** A draggable masonry cell in manual mode: the card with a corner grip. */
 function ManualMasonryItem({ id, children }: { id: string; children: ReactNode }) {
   const s = useSortable({ id });
-  const { selectBlock } = usePanels();
+  const { selectOrOpen } = usePanels();
   const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
-    <div ref={s.setNodeRef} style={style} className="masonry-item" onClick={() => selectBlock(id)}>
+    <div ref={s.setNodeRef} style={style} className="masonry-item" onClick={() => selectOrOpen(id)}>
       <button className="drag-handle masonry-grip" {...s.attributes} {...s.listeners} title="Drag to arrange">
         <GripVertical size={15} />
       </button>

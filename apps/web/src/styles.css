@@ -1388,9 +1388,10 @@ button.nav-link:hover {
   --main-pad-b: 80px;
   grid-column: 2;
   overflow-y: auto;
-  /* Top padding also houses the hover-revealed nav row (see .top-nav), which sits
-     in it rather than taking a row of its own above the content. */
-  padding: 40px 32px var(--main-pad-b);
+  /* Only as much top padding as the page itself wants. The hover-revealed nav row
+     (see .top-nav) is allowed to overlap the top of the content rather than have
+     space reserved for it — it's only on screen while you're reaching for it. */
+  padding: 24px 32px var(--main-pad-b);
   /* Reserve gutter on both edges so the right-side scrollbar doesn't shift
      content left (which made the left margin look narrower than the right). */
   scrollbar-gutter: stable both-edges;
@@ -3799,18 +3800,23 @@ input.matrix-axis-y::placeholder {
   white-space: nowrap;
 }
 /* Global navigation cluster (top-left of the window). */
-/* Lifted out of the flow and into the page's top padding, so no page carries an
-   empty row above its banner or title. Sits a little below the window edge rather
-   than jammed against it, and still clears the content beneath. Ignores the
-   pointer while hidden so it can never swallow a click meant for the content. */
+/* Lifted out of the flow, so no page carries an empty row above its banner or
+   title. It sits clear of the window edge and is allowed to overlap the first few
+   px of content — it's only visible while the pointer is up here, and a small
+   backdrop keeps it legible over whatever it covers. Ignores the pointer while
+   hidden so it can never swallow a click meant for the content. */
 .top-nav {
   display: flex;
   align-items: center;
   gap: 2px;
   position: absolute;
-  top: -34px;
-  left: 0;
+  top: -18px;
+  left: -4px;
   z-index: 6;
+  padding: 1px 4px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(2px);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.14s;
@@ -3822,10 +3828,13 @@ input.matrix-axis-y::placeholder {
    (it covers the strip while visible), and :focus-within serves the keyboard. */
 .top-nav-zone {
   position: absolute;
-  top: -40px;
+  /* Exactly the page's top padding, and no further: extending it over the content
+     would let it swallow clicks meant for a banner or title. Once the row is up it
+     keeps itself up, so reaching the part that overhangs the content still works. */
+  top: -24px;
   left: 0;
   width: 210px;
-  height: 40px;
+  height: 24px;
   z-index: 5;
 }
 .top-nav-zone:hover ~ .top-nav,

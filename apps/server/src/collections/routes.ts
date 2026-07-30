@@ -279,8 +279,13 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   // Live preview of a query (for the builder) — count + a sample of matches.
   app.post("/collections/query-preview", async (req) => {
     const userId = requireUser(req);
-    const { filterQuery } = z.object({ filterQuery: filterQuerySchema }).parse(req.body);
-    const matches = await runQuery(userId, filterQuery);
+    // `archived` matters: a preview that always counts live blocks reports a
+    // number the caller's own list will never show. The Archive asks for the
+    // archived side.
+    const { filterQuery, archived } = z
+      .object({ filterQuery: filterQuerySchema, archived: z.boolean().optional() })
+      .parse(req.body);
+    const matches = await runQuery(userId, filterQuery, archived ?? false);
     return {
       count: matches.length,
       blocks: matches.slice(0, 50).map((b) => ({

@@ -30,7 +30,13 @@ export const propertyOpSchema = z.enum([
 export type PropertyOp = z.infer<typeof propertyOpSchema>;
 
 export const conditionSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("blockType"), typeId: z.string().uuid() }),
+  // `op` is optional so every filter saved before it existed still parses, and
+  // reads as "is" — which is what it meant.
+  z.object({
+    kind: z.literal("blockType"),
+    typeId: z.string().uuid(),
+    op: z.enum(["is", "isNot"]).optional(),
+  }),
   z.object({ kind: z.literal("created"), op: z.enum(["before", "after"]), date: z.string() }),
   z.object({ kind: z.literal("edited"), op: z.enum(["before", "after"]), date: z.string() }),
   z.object({

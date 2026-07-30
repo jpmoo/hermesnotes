@@ -275,13 +275,22 @@ function ConditionRow({
       <span className="cond-kind">{KIND_LABELS[c.kind]}</span>
 
       {c.kind === "blockType" && (
-        <select value={c.typeId} onChange={(e) => onChange({ ...c, typeId: e.target.value })}>
-          {types.map((t) => (
-            <option key={t.id} value={t.id} style={{ textTransform: "capitalize" }}>
-              {t.name}
-            </option>
-          ))}
-        </select>
+        <>
+          <select
+            value={c.op ?? "is"}
+            onChange={(e) => onChange({ ...c, op: e.target.value as "is" | "isNot" })}
+          >
+            <option value="is">is</option>
+            <option value="isNot">is not</option>
+          </select>
+          <select value={c.typeId} onChange={(e) => onChange({ ...c, typeId: e.target.value })}>
+            {types.map((t) => (
+              <option key={t.id} value={t.id} style={{ textTransform: "capitalize" }}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </>
       )}
 
       {(c.kind === "created" || c.kind === "edited") && (
@@ -552,11 +561,15 @@ export function QueryBuilder({
   onChange,
   types,
   tags,
+  archived = false,
 }: {
   value: FilterGroup;
   onChange: (v: FilterGroup) => void;
   types: BlockType[];
   tags: string[];
+  /** Count against archived blocks instead of live ones — the Archive's filter
+   *  is describing that side, and a count of the other is just wrong. */
+  archived?: boolean;
 }) {
   const [count, setCount] = useState<number | null>(null);
 
@@ -598,12 +611,12 @@ export function QueryBuilder({
   useEffect(() => {
     const t = setTimeout(() => {
       void api
-        .post<{ count: number }>("/collections/query-preview", { filterQuery: value })
+        .post<{ count: number }>("/collections/query-preview", { filterQuery: value, archived })
         .then((r) => setCount(r.count))
         .catch(() => setCount(null));
     }, 400);
     return () => clearTimeout(t);
-  }, [value]);
+  }, [value, archived]);
 
   return (
     <div>
@@ -617,7 +630,7 @@ export function QueryBuilder({
       />
       {count !== null && (
         <div className="hint" style={{ marginTop: 8 }}>
-          {count} block(s) match
+          {count} {archived ? "archived " : ""}block(s) match
         </div>
       )}
       <datalist id="hn-tags">

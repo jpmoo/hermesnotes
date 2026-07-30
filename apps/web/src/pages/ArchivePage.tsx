@@ -254,7 +254,7 @@ export function ArchivePage() {
           <>
             <div className="panel-divider" />
             <div className="panel-h">Filter</div>
-            <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} />
+            <QueryBuilder value={filter} onChange={setFilter} types={types} tags={tags} archived />
           </>,
           bottomSlotEl,
         )}

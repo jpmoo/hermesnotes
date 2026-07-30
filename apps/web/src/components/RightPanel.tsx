@@ -1,5 +1,6 @@
 import { Info, PanelRight, Pin, PinOff, Share2, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useAiConfig } from "../lib/ai-config.tsx";
 import { useAssistant } from "../lib/assistant.tsx";
@@ -45,6 +46,7 @@ export function RightPanel() {
     clearSelection,
   } = usePanels();
   const asideRef = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
 
   // Keep-open is driven by the pointer's geometry, not mouseenter/leave — the
   // latter misfired with the panel's width transition and portaled content
@@ -125,7 +127,27 @@ export function RightPanel() {
   };
   // With no inference model configured, the AI tab is hidden — fall back to Info.
   const activeTab: Tab = tab === "ai" && !aiEnabled ? "info" : tab;
-  const tabTitle = activeTab === "graph" ? "Graph" : activeTab === "ai" ? "AI" : "Info";
+  // Which page the panel is sitting beside. The tools it offers (a filter, a
+  // layout) belong to that page rather than to anything selected, and on a narrow
+  // window the page's own heading may not be in view at all.
+  const pageName = (() => {
+    if (pathname.startsWith("/today")) return "Today";
+    if (pathname.startsWith("/blocks")) return "All blocks";
+    if (pathname.startsWith("/favorites")) return "Favorites";
+    if (pathname.startsWith("/collections")) return "Collections";
+    if (pathname.startsWith("/types")) return "Types";
+    if (pathname.startsWith("/review")) return "Weekly review";
+    if (pathname.startsWith("/archive")) return "Archive";
+    if (pathname.startsWith("/settings")) return "Settings";
+    return null;
+  })();
+  const baseTitle = activeTab === "graph" ? "Graph" : activeTab === "ai" ? "AI" : "Info";
+  // Only when the panel is showing the page's own tools: with a block selected
+  // it's describing that block, and naming the page would misattribute it.
+  const tabTitle =
+    activeTab === "info" && pageName && !showInfo && !showFeedEvent
+      ? `${baseTitle} · ${pageName}`
+      : baseTitle;
 
   return (
     <aside ref={asideRef} className={`right-panel${expanded ? " expanded" : ""}`}>
@@ -182,7 +204,7 @@ export function RightPanel() {
             <div className="panel-bottom-slot" ref={setBottomSlotEl} />
             {!hasContent && !showInfo && !showFeedEvent && (
               <div className="panel-placeholder">
-                Select a block or collection to see and edit information here.
+                Select something to see information here.
               </div>
             )}
           </div>

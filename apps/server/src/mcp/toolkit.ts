@@ -126,6 +126,33 @@ async function refTitleMap(
   return out;
 }
 
+/**
+ * Project id -> title for every project these tasks reference, in one pass. Same
+ * cap and failure behaviour as refTitleMap: an id that won't resolve is rendered
+ * as the id rather than dropped.
+ */
+async function projectNamesFor(api: Api, ctx: Ctx, tasks: HermesBlock[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ctx.projectRefKey) return out;
+  const ids = new Set<string>();
+  for (const task of tasks) {
+    const raw = (task.properties as Record<string, unknown>)[ctx.projectRefKey];
+    for (const id of Array.isArray(raw) ? raw : [raw]) {
+      if (typeof id === "string" && id) ids.add(id);
+    }
+  }
+  for (const id of [...ids].slice(0, 25)) {
+    try {
+      const pb = await api.get<HermesBlock>(`/blocks/${id}`);
+      const title = (pb.properties as Record<string, unknown>)?.title;
+      if (typeof title === "string" && title.trim()) out.set(id, title);
+    } catch {
+      /* unresolvable — the id is shown as-is */
+    }
+  }
+  return out;
+}
+
 /** Every stored property the schema doesn't declare, so nothing is hidden. */
 function fmtExtraProps(
   schema: PropertySchema | null | undefined,
@@ -350,7 +377,9 @@ export function defineTools(api: Api): ToolDef[] {
         if (!otherFilters) {
           const tasks = pool.filter((m) => scopeIds!.has(m.id));
           const limit = a.limit ?? 50;
-          return tasks.slice(0, limit).map((b) => fmtTaskLine(ctx, b)).join("\n");
+          const shownTasks = tasks.slice(0, limit);
+          const names = await projectNamesFor(api, ctx, shownTasks);
+          return shownTasks.map((b) => fmtTaskLine(ctx, b, names)).join("\n");
         }
       } else if (a.region) {
         throw new Error("region requires list (the matrix collection to look in).");
@@ -387,7 +416,9 @@ export function defineTools(api: Api): ToolDef[] {
       if (scopeIds) blocks = blocks.filter((b) => scopeIds!.has(b.id));
       const limit = a.limit ?? 50;
       if (!blocks.length) return scopeLabel ? `No matching tasks in "${scopeLabel}".` : "No matching tasks.";
-      const lines = blocks.slice(0, limit).map((b) => fmtTaskLine(ctx, b));
+      const shown = blocks.slice(0, limit);
+      const names = await projectNamesFor(api, ctx, shown);
+      const lines = shown.map((b) => fmtTaskLine(ctx, b, names));
       const more = blocks.length > limit ? `\n…and ${blocks.length - limit} more (raise limit to see them).` : "";
       return lines.join("\n") + more;
     }),

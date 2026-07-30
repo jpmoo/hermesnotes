@@ -198,7 +198,17 @@ const todayStr = (tz: string | null) => {
 };
 
 /** One-line task summary: [status] Title — due …, id. */
-export function fmtTaskLine(ctx: Ctx, b: HermesBlock): string {
+export function fmtTaskLine(
+  ctx: Ctx,
+  b: HermesBlock,
+  /**
+   * Project id -> title. Passed in rather than looked up here because this renders
+   * one line of a list and the titles live on other blocks: resolving per line
+   * would mean a request per row. Omit it where every row shares one project
+   * (project_info's own task lists) and the label would just repeat.
+   */
+  projectNames?: Map<string, string>,
+): string {
   const p = b.properties as Record<string, unknown>;
   const span = (p[ctx.spanKey] ?? {}) as { start?: string; end?: string };
   const status = String(p[ctx.statusKey] ?? "");
@@ -209,5 +219,15 @@ export function fmtTaskLine(ctx: Ctx, b: HermesBlock): string {
     bits.push(`due ${fmtDate(span.end)}${overdue}`);
   }
   if (span.start) bits.push(`from ${fmtDate(span.start)}`);
-  return `[${status || "—"}] ${String(p.title ?? "Untitled")}${bits.length ? ` — ${bits.join(", ")}` : ""} (${b.id})`;
+  // After the dates, behind a separator so a project containing a comma can't be
+  // mistaken for another date bit.
+  let projects = "";
+  if (projectNames && ctx.projectRefKey) {
+    const raw = p[ctx.projectRefKey];
+    const names = (Array.isArray(raw) ? raw : [raw])
+      .filter((v): v is string => typeof v === "string" && Boolean(v))
+      .map((id) => projectNames.get(id) ?? id);
+    if (names.length) projects = ` · ${names.join(", ")}`;
+  }
+  return `[${status || "—"}] ${String(p.title ?? "Untitled")}${bits.length ? ` — ${bits.join(", ")}` : ""}${projects} (${b.id})`;
 }

@@ -2,10 +2,11 @@ import type { FilterGroup } from "@hermes/shared";
 import { Archive, ChevronDown, ChevronUp } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
-import { api, type Block, type BlockType } from "../api.ts";
+import { api, type Block, type BlockType, type Collection } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
+import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import { useCollapse } from "../components/CollapsibleCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -22,6 +23,10 @@ import { useBlockView } from "../lib/useBlockView.tsx";
 export function ArchivePage() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [types, setTypes] = useState<BlockType[]>([]);
+  // Collections are archivable too, and a card built for a block can't represent
+  // one — so they get their own list with the same two actions.
+  const [archivedCollections, setArchivedCollections] = useState<Collection[]>([]);
+  const [pendingCollection, setPendingCollection] = useState<Collection | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
   const [loading, setLoading] = useState(true);
@@ -33,6 +38,7 @@ export function ArchivePage() {
   useBlockDeleted((bid) => setBlocks((prev) => prev.filter((b) => b.id !== bid)));
 
   useEffect(() => {
+    void api.get<Collection[]>("/collections/archived").then(setArchivedCollections).catch(() => {});
     void api.get<BlockType[]>("/block-types").then(setTypes);
     void api.get<{ name: string }[]>("/tags").then((t) => setTags(t.map((x) => x.name)));
   }, []);
@@ -93,6 +99,39 @@ export function ArchivePage() {
         <span className="hint">{blocks.length} archived block(s)</span>
       </div>
 
+      {archivedCollections.length > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="panel-h">Archived collections</div>
+          {archivedCollections.map((c) => (
+            <div className="row archived-collection" key={c.id}>
+              <span className="archived-collection-name">
+                {String(c.properties?.title ?? "Untitled")}
+                <span className="hint">
+                  {" "}
+                  · {c.collectionKind === "document" ? "spread" : c.collectionKind}
+                </span>
+              </span>
+              <button
+                className="ghost"
+                onClick={() =>
+                  void api
+                    .post(`/blocks/${c.id}/unarchive`, {})
+                    .then(() =>
+                      api.get<Collection[]>("/collections/archived").then(setArchivedCollections),
+                    )
+                    .catch(() => {})
+                }
+              >
+                Unarchive
+              </button>
+              <button className="danger" onClick={() => setPendingCollection(c)}>
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {blocks.length > 0 && toolbar}
 
       {loading ? (
@@ -131,6 +170,23 @@ export function ArchivePage() {
           );
         })
       )}
+
+      <ConfirmDialog
+        open={pendingCollection !== null}
+        title={`Delete “${String(pendingCollection?.properties?.title ?? "Untitled")}”?`}
+        message="This permanently removes the collection. Blocks that aren't in any other collection become Unattached. This can't be undone."
+        confirmLabel="Delete"
+        onCancel={() => setPendingCollection(null)}
+        onConfirm={() => {
+          const target = pendingCollection;
+          setPendingCollection(null);
+          if (!target) return;
+          void api
+            .del(`/collections/${target.id}`)
+            .then(() => api.get<Collection[]>("/collections/archived").then(setArchivedCollections))
+            .catch(() => {});
+        }}
+      />
 
       {bottomSlotEl &&
         createPortal(

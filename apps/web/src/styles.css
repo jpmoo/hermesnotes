@@ -5808,6 +5808,21 @@ input.cv-add-input {
   min-width: 0;
 }
 /* Short numeric field: narrow box, stacked steppers, optional trailing unit. */
+/* Archived collections list (Archive page). */
+.archived-collection {
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.archived-collection:last-child { border-bottom: none; }
+.archived-collection-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .num-field {
   display: inline-flex;
   align-items: stretch;

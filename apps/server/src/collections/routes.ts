@@ -13,7 +13,7 @@ import {
 import { blocks, blockTypes, memberships } from "@hermes/db";
 import { db } from "../db.js";
 import { sha256 } from "../lib/hash.js";
-import { badRequest, conflict, notFound } from "../lib/errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
 import { runQuery } from "./query.js";
@@ -90,7 +90,31 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     return db
       .select(collectionView)
       .from(blocks)
-      .where(and(eq(blocks.ownerId, userId), sql`${blocks.collectionKind} IS NOT NULL`))
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.collectionKind} IS NOT NULL`,
+          // Archived collections are out of sight everywhere but the Archive,
+          // exactly like archived blocks.
+          sql`${blocks.archivedAt} IS NULL`,
+        ),
+      )
+      .orderBy(sql`${blocks.updatedAt} DESC`);
+  });
+
+  /** Archived collections, for the Archive screen. */
+  app.get("/collections/archived", async (req) => {
+    const userId = requireUser(req);
+    return db
+      .select(collectionView)
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.collectionKind} IS NOT NULL`,
+          sql`${blocks.archivedAt} IS NOT NULL`,
+        ),
+      )
       .orderBy(sql`${blocks.updatedAt} DESC`);
   });
 
@@ -322,9 +346,30 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     return row;
   });
 
+  /**
+   * Permanent delete. Only an archived collection may be deleted, so the only
+   * route to real deletion is via the Archive screen — the same rule blocks
+   * follow, enforced here rather than in the UI so it holds for direct callers.
+   */
   app.delete("/collections/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    // Irreversible deletion is a browser-session-only action: an access key (so,
+    // an AI agent, which can be prompt-injected) can archive but never destroy.
+    if (req.authKind !== "cookie") throw forbidden("hard delete requires a browser session");
+    const [existing] = await db
+      .select({ archivedAt: blocks.archivedAt })
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.id, id),
+          eq(blocks.ownerId, userId),
+          sql`${blocks.collectionKind} IS NOT NULL`,
+        ),
+      )
+      .limit(1);
+    if (!existing) throw notFound("collection");
+    if (!existing.archivedAt) throw badRequest("archive the collection before deleting it");
     // Memberships cascade; members with no other parent become unattached.
     const res = await db
       .delete(blocks)

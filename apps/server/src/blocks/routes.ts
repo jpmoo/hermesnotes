@@ -1356,7 +1356,6 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .limit(1);
     if (!block) throw notFound("block");
-    if (block.collectionKind) throw badRequest("collections can't be archived");
     // The "Do weekly review" task can't be filed away half-finished — it stays
     // archivable only once it's complete. Use isComplete (any complete value) so
     // a review closed as "wont_do" is archivable, and so this agrees with the

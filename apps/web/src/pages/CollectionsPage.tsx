@@ -52,8 +52,10 @@ export function CollectionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const remove = async (c: Collection) => {
-    await api.del(`/collections/${c.id}`);
+  // Archive, not delete: a collection now follows the same path as a block —
+  // out of sight but recoverable, with permanent deletion only from the Archive.
+  const archive = async (c: Collection) => {
+    await api.post(`/blocks/${c.id}/archive`, {});
     setDeleting(null);
     void load();
   };
@@ -189,8 +191,9 @@ export function CollectionsPage() {
                 className="ghost"
                 style={{ color: text ?? undefined }}
                 onClick={() => setDeleting(c)}
+                title="Archive this collection"
               >
-                Delete
+                Archive
               </button>
             </div>
           );
@@ -199,11 +202,12 @@ export function CollectionsPage() {
 
       <ConfirmDialog
         open={deleting !== null}
-        title={`Delete “${deleting ? title(deleting) : ""}”?`}
-        message="The collection is removed. Blocks that aren't in any other collection become Unattached. This can't be undone."
-        confirmLabel="Delete"
+        title={`Archive “${deleting ? title(deleting) : ""}”?`}
+        message="It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+        confirmLabel="Archive"
+        danger={false}
         onCancel={() => setDeleting(null)}
-        onConfirm={() => deleting && void remove(deleting)}
+        onConfirm={() => deleting && void archive(deleting)}
       />
 
     </>

@@ -1,8 +1,8 @@
 import type { FilterGroup } from "@hermes/shared";
-import { Archive, ChevronDown, ChevronUp } from "lucide-react";
+import { Archive, ChevronDown, ChevronUp, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
-import { api, type Block, type BlockType, type Collection } from "../api.ts";
+import { api, type Block, type BlockType, type Collection, type Settings } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
@@ -16,7 +16,7 @@ import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
 
 /**
- * The Archive: an All-blocks page over archived items only. Cards offer
+ * The Archive: an All-blocks page over archived blocks AND collections. Cards offer
  * Unarchive (restore in place) and permanent Delete (with confirmation). This is
  * the ONLY place a block can be hard-deleted.
  */
@@ -27,6 +27,9 @@ export function ArchivePage() {
   // one — so they get their own list with the same two actions.
   const [archivedCollections, setArchivedCollections] = useState<Collection[]>([]);
   const [pendingCollection, setPendingCollection] = useState<Collection | null>(null);
+  const [search, setSearch] = useState("");
+  // Similarity floor for the search box's semantic pass — matches global search.
+  const [simFloor, setSimFloor] = useState(0.75);
   const [tags, setTags] = useState<string[]>([]);
   const [filter, setFilter] = useState<FilterGroup>(emptyGroup());
   const [loading, setLoading] = useState(true);
@@ -34,11 +37,43 @@ export function ArchivePage() {
   const { banner, setBanner } = usePreferences();
 
   const typeById = new Map(types.map((t) => [t.id, t]));
+
+  // The search box ANDs a (keyword OR semantic) match onto the builder's filter,
+  // exactly as All blocks does — so a name you half-remember still finds the thing.
+  const term = search.trim();
+  const effectiveFilter: FilterGroup = term
+    ? {
+        kind: "group",
+        match: "all",
+        items: [
+          ...filter.items,
+          {
+            kind: "group",
+            match: "any",
+            items: [
+              { kind: "text", value: term },
+              { kind: "semantic", value: term, floor: simFloor },
+            ],
+          },
+        ],
+      }
+    : filter;
+
+  // Collections aren't part of the block query, so their names are matched here.
+  const shownCollections = term
+    ? archivedCollections.filter((c) =>
+        String(c.properties?.title ?? "").toLowerCase().includes(term.toLowerCase()),
+      )
+    : archivedCollections;
   // Archive/unarchive/delete all fire the delete event to drop the card here.
   useBlockDeleted((bid) => setBlocks((prev) => prev.filter((b) => b.id !== bid)));
 
   useEffect(() => {
     void api.get<Collection[]>("/collections/archived").then(setArchivedCollections).catch(() => {});
+    void api
+      .get<Settings>("/settings")
+      .then((st) => setSimFloor(st.defaultSimilarity ?? 0.75))
+      .catch(() => {});
     void api.get<BlockType[]>("/block-types").then(setTypes);
     void api.get<{ name: string }[]>("/tags").then((t) => setTags(t.map((x) => x.name)));
   }, []);
@@ -46,12 +81,13 @@ export function ArchivePage() {
   useEffect(() => {
     const t = setTimeout(() => {
       void api
-        .post<Block[]>("/blocks/query", { filterQuery: filter, archived: true })
+        .post<Block[]>("/blocks/query", { filterQuery: effectiveFilter, archived: true })
         .then(setBlocks)
         .finally(() => setLoading(false));
     }, 300);
     return () => clearTimeout(t);
-  }, [filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, search, simFloor]);
 
   useEffect(() => {
     setHasContent(true);
@@ -62,7 +98,7 @@ export function ArchivePage() {
 
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
   const reload = () =>
-    void api.post<Block[]>("/blocks/query", { filterQuery: filter, archived: true }).then(setBlocks);
+    void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter, archived: true }).then(setBlocks);
 
   const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "archive" });
 
@@ -86,8 +122,8 @@ export function ArchivePage() {
         )}
       </div>
       <p className="page-sub">
-        Archived blocks — hidden from every normal view. Unarchive to restore in place, or delete
-        permanently (only here).
+        Archived blocks and collections — hidden from every normal view. Unarchive to restore in
+        place, or delete permanently (only here).
       </p>
 
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
@@ -96,13 +132,32 @@ export function ArchivePage() {
             {allCollapsed ? "Expand all" : "Collapse all"}
           </button>
         )}
-        <span className="hint">{blocks.length} archived block(s)</span>
+        <span className="hint">
+          {blocks.length} block(s)
+          {shownCollections.length > 0 && ` · ${shownCollections.length} collection(s)`}
+          {term && " matching"}
+        </span>
       </div>
 
-      {archivedCollections.length > 0 && (
+      <div className="allblocks-search">
+        <Search size={16} className="allblocks-search-icon" />
+        <input
+          className="allblocks-search-input"
+          placeholder="Search the archive by name (keyword + similar)…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {search && (
+          <button className="icon-btn" title="Clear search" onClick={() => setSearch("")}>
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      {shownCollections.length > 0 && (
         <div className="card" style={{ marginBottom: 14 }}>
           <div className="panel-h">Archived collections</div>
-          {archivedCollections.map((c) => (
+          {shownCollections.map((c) => (
             <div className="row archived-collection" key={c.id}>
               <span className="archived-collection-name">
                 {String(c.properties?.title ?? "Untitled")}
@@ -137,7 +192,13 @@ export function ArchivePage() {
       {loading ? (
         <div className="hint">Loading…</div>
       ) : blocks.length === 0 ? (
-        <div className="hint">Nothing archived.</div>
+        <div className="hint">
+          {term
+            ? "Nothing in the archive matches that."
+            : shownCollections.length > 0
+              ? "No archived blocks — just the collections above."
+              : "Nothing archived."}
+        </div>
       ) : (
         renderList((b, compact) => {
           const col = collapsed.has(b.id);

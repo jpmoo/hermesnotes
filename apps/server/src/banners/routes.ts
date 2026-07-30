@@ -22,13 +22,18 @@ const PAGE_LABELS: Record<string, string> = {
 function usageLabel(row: {
   properties: unknown;
   collectionKind: string | null;
+  archivedAt: Date | null;
 }): string {
   const props = (row.properties ?? {}) as Record<string, unknown>;
-  if (typeof props.today_note === "string") return `Daily note · ${props.today_note}`;
+  // Archived blocks still hold their banner, so they count as a use — worth
+  // saying which ones they are, since deleting the image reaches into the
+  // Archive too and those aren't in front of you.
+  const suffix = row.archivedAt ? " (archived)" : "";
+  if (typeof props.today_note === "string") return `Daily note · ${props.today_note}${suffix}`;
   if (typeof props.review_reflection === "string")
-    return `Weekly review · week ending ${props.review_reflection}`;
+    return `Weekly review · week ending ${props.review_reflection}${suffix}`;
   const title = typeof props.title === "string" && props.title.trim() ? props.title : "Untitled";
-  return row.collectionKind ? `${title} (collection)` : title;
+  return row.collectionKind ? `${title} (collection)${suffix}` : `${title}${suffix}`;
 }
 
 /**
@@ -49,6 +54,9 @@ async function usageByBanner(userId: string): Promise<Map<string, string[]>> {
       bannerId: sql<string>`${blocks.properties} -> 'banner' ->> 'id'`,
       properties: blocks.properties,
       collectionKind: blocks.collectionKind,
+      // Deliberately unfiltered by archivedAt: an archived note keeps its banner,
+      // so it's a real use and the label marks it as archived.
+      archivedAt: blocks.archivedAt,
     })
     .from(blocks)
     .where(

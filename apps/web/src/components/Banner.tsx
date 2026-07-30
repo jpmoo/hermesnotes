@@ -248,6 +248,26 @@ function BannerPicker({
               .catch((e) => setErr(e instanceof Error ? e.message : "Couldn't delete that image"));
           }}
         />
+        <ConfirmDialog
+          open={pendingDelete !== null}
+          title="Delete this image?"
+          message={
+            pendingDelete?.usedBy.length
+              ? `It's in use on ${pendingDelete.usedBy.length} place(s) — ${pendingDelete.usedBy.join(", ")} — and will be removed from each. This can't be undone.`
+              : "It isn't used anywhere. This can't be undone."
+          }
+          confirmLabel="Delete"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const target = pendingDelete;
+            setPendingDelete(null);
+            if (!target) return;
+            void api
+              .del(`/banners/${target.id}`)
+              .then(reload)
+              .catch((e) => setErr(e instanceof Error ? e.message : "Couldn't delete that image"));
+          }}
+        />
         <input
           ref={fileRef}
           type="file"

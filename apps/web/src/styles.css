@@ -2228,7 +2228,59 @@ input.li-text:focus {
 .banner-cell {
   position: relative;
 }
+.banner-cell.in-use /* A gallery cell: the thumbnail, an in-use count, and a hover-revealed delete.
+   Relative so both overlays anchor to the image. */
+.banner-cell {
+  position: relative;
+}
+.banner-cell .banner-thumb {
+  width: 100%;
+}
+/* An image in use is ringed, so it is obvious before you reach for delete. */
 .banner-cell.in-use .banner-thumb {
+  border-color: var(--accent);
+}
+.banner-used-badge {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.banner-del {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(2px);
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+.banner-cell:hover .banner-del,
+.banner-del:focus-visible {
+  opacity: 1;
+}
+.banner-del:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.banner-thumb {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }

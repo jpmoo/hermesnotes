@@ -2314,12 +2314,25 @@ input.li-text:focus {
      text wraps. */
   position: absolute;
   right: 100%;
-  margin-right: 0.35em;
+  margin-right: 4px;
   top: 0;
   display: inline-flex;
   align-items: center;
   height: 1.55em;
   user-select: none;
+}
+/* Sized so the checkbox and its gap fit the same marker column a bullet or number
+   uses — the column's width is what sets every list's indent. */
+.note-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+@media (pointer: coarse) {
+  .note-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+  }
 }
 .note-editor ul[data-type="taskList"] li > div {
   min-width: 0;
@@ -2355,12 +2368,12 @@ input.li-text:focus {
 /* NOTE: these paddings are mirrored by METRICS in lib/list-tools.ts, which offsets
    each row's controls into the shared gutter column. Change them together. */
 .note-editor ul,
-.note-editor ol { margin: 0 0 0.55em; padding-left: 22px; }
+.note-editor ol { margin: 0 0 0.55em; padding-left: 20px; }
 /* Only a TOP-LEVEL list reserves the control gutter — deeper rows put their
    controls in that same column rather than indenting for their own. Kept on the
    list rather than the editor so paragraphs and headings aren't pushed over. */
 .note-editor > ul,
-.note-editor > ol { padding-left: 56px; }
+.note-editor > ol { padding-left: 48px; }
 .note-editor li { position: relative; margin: 0.15em 0; }
 
 /* List gutter controls. Kept muted rather than hover-only so the affordance is
@@ -2377,7 +2390,7 @@ input.li-text:focus {
   position: absolute;
   top: 0;
   height: 22px;
-  width: 13px;
+  width: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2418,12 +2431,12 @@ input.li-text:focus {
    The per-level indent barely grows — only the one-off left inset does. */
 @media (pointer: coarse) {
   .note-editor ul,
-  .note-editor ol { padding-left: 26px; }
+  .note-editor ol { padding-left: 24px; }
   .note-editor > ul,
-  .note-editor > ol { padding-left: 68px; }
+  .note-editor > ol { padding-left: 56px; }
   .li-drag,
   .li-fold {
-    width: 16px;
+    width: 15px;
     height: 26px;
     opacity: 0.8;
   }

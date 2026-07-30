@@ -62,10 +62,14 @@ const TOGGLE_FOLD = "listGutterToggleFold";
 const METRICS = {
   // `task: 0` — a checklist indents exactly like any other list. The fold twisty
   // used to be crowded against the wider checkbox marker; that's solved by sitting
-  // the whole column slightly further left (below), which costs no indent at all,
-  // rather than by pushing checklist rows right.
-  fine: { top: 56, nested: 22, task: 0, gripX: 2, foldX: 18 },
-  coarse: { top: 68, nested: 26, task: 0, gripX: 2, foldX: 22 },
+  // the whole column slightly further left, which costs no indent at all, rather
+  // than by pushing checklist rows right.
+  //
+  // `top` is the floor for two always-visible controls plus a marker: the grip and
+  // twisty columns, then the bullet/number/checkbox. Trimming it further means
+  // giving one of those up (e.g. revealing the grip only on hover).
+  fine: { top: 48, nested: 20, task: 0, gripX: 2, foldX: 16 },
+  coarse: { top: 56, nested: 24, task: 0, gripX: 2, foldX: 19 },
 };
 
 const isCoarsePointer = (): boolean => {

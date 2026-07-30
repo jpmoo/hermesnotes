@@ -127,7 +127,10 @@ function Shell() {
       <main className={`main${themed ? " themed" : ""}`} style={style}>
         {themed && <div className="section-shade" aria-hidden />}
         <div className="main-inner">
-          <NavBar />
+          {/* Mobile has these in its own bar; on desktop the row is revealed on
+              hover (see .top-nav) so it doesn't hold an empty slot above every
+              page's banner or title. */}
+          {!isMobile && <NavBar />}
           <Routes>
             {/* Wait for the preferences bag: this redirect fires once, so acting
                 before it arrives would always send you to the default start page

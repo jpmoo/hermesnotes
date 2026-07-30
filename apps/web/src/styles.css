@@ -1401,6 +1401,8 @@ button.nav-link:hover {
 .main-inner {
   max-width: none;
   margin: 0;
+  /* Anchors the hover-revealed nav row (see .top-nav). */
+  position: relative;
 }
 
 /* Section theming: a soft band at the top of the window tinted with the
@@ -3742,11 +3744,26 @@ input.matrix-axis-y::placeholder {
   white-space: nowrap;
 }
 /* Global navigation cluster (top-left of the window). */
+/* Lifted out of the flow and into the page's top padding, so no page carries an
+   empty row above its banner or title. It fades in while the pointer is anywhere
+   in the page, and stays put for keyboard users via :focus-within. Ignores the
+   pointer while hidden so it can never swallow a click meant for the content. */
 .top-nav {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-bottom: 26px;
+  position: absolute;
+  top: -26px;
+  left: 0;
+  z-index: 6;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s;
+}
+.main-inner:hover > .top-nav,
+.top-nav:focus-within {
+  opacity: 1;
+  pointer-events: auto;
 }
 .top-nav .menu {
   left: 0;

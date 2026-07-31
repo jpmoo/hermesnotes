@@ -1119,7 +1119,8 @@ export function MatrixView({
   const layoutControls = (
     <div className="matrix-panel-controls">
       {!bound && !dateMode && (
-        <>
+        // Two halves of one decision — the grid's shape — so they share a line.
+        <div className="matrix-dims-row">
           <span className="cols-ctl">
             <span className="hint">Columns</span>
             <button className="icon-btn" onClick={() => resize(cols - 1, rows)}>−</button>
@@ -1132,7 +1133,7 @@ export function MatrixView({
             <span className="cols-n">{rows}</span>
             <button className="icon-btn" onClick={() => resize(cols, rows + 1)}>+</button>
           </span>
-        </>
+        </div>
       )}
       {isSmart && (
         <label className="matrix-bind">

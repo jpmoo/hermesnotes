@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 /** Numbers only, allowing a lone "-" or trailing "." while still being typed. */
@@ -13,6 +13,11 @@ const NUMERIC = /^-?\d*\.?\d*$/;
  * (a placeholder), so what reaches the API, MCP and the assistant is a number or
  * null, never "-". Stepping an empty field counts from zero, so the first press
  * gives 1 or -1.
+ *
+ * Once it holds a number there's a clear button back to that empty state. The
+ * rocker can only ever land on a number, and "no value" is a different thing
+ * from zero — without this the only way back was to select the text and delete
+ * it, which isn't a route anyone finds (and is fiddly on a phone).
  */
 export function NumberField({
   value,
@@ -65,6 +70,19 @@ export function NumberField({
           setText(stored === null ? "" : String(stored)); // tidy "1." / "-" away
         }}
       />
+      {stored !== null && (
+        <button
+          type="button"
+          className="num-clear"
+          title="Clear"
+          onClick={() => {
+            setText("");
+            onChange(null);
+          }}
+        >
+          <X size={12} />
+        </button>
+      )}
       <span className="num-steps">
         <button type="button" className="num-step" title="Increase" onClick={() => step(1)}>
           <ChevronUp size={11} />

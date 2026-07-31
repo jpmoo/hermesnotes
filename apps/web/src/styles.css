@@ -3545,6 +3545,19 @@ input.matrix-axis-y::placeholder {
   gap: 10px;
   margin-top: 8px;
 }
+/* Columns and Rows, half the row each. */
+.matrix-dims-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.matrix-dims-row .cols-ctl {
+  min-width: 0;
+}
+.matrix-dims-row .hint {
+  min-width: 0; /* the label sits next to its rocker, not on a fixed column */
+}
+
 .matrix-panel-controls .cols-ctl,
 .matrix-panel-controls .matrix-bind,
 .matrix-panel-controls .matrix-span-ctl {
@@ -6109,6 +6122,26 @@ input.cv-add-input {
   flex: 0 0 auto;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+/* Back to no value at all, which the rocker can't reach — it only ever lands
+   on a number, and an empty counter isn't the same as a zero. */
+.num-clear {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.num-clear:hover {
+  color: var(--danger);
+  background: none;
 }
 .num-steps {
   display: flex;

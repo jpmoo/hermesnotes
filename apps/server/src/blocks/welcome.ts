@@ -67,7 +67,13 @@ export async function seedWelcomeContent(db: Db, ownerId: string): Promise<void>
     .limit(1);
   if (!textType) return;
 
-  const textBlock = async (content: string) => {
+  // Everything here is written within the same instant, and every listing is
+  // newest-first — so left alone, a new account opens on the last thing seeded
+  // and reads the tour backwards. Stamping them puts the welcome note on top.
+  const t0 = Date.now();
+  const at = (secondsAgo: number) => new Date(t0 - secondsAgo * 1000);
+
+  const textBlock = async (content: string, when: Date) => {
     const [row] = await db
       .insert(blocks)
       .values({
@@ -78,6 +84,8 @@ export async function seedWelcomeContent(db: Db, ownerId: string): Promise<void>
         embedSource: computeEmbedSource(textType, { content }),
         embedSourceHash: null,
         blockTypeSchemaVersion: textType.schemaVersion,
+        createdAt: when,
+        updatedAt: when,
       })
       .returning({ id: blocks.id });
     return row!.id;
@@ -88,6 +96,7 @@ export async function seedWelcomeContent(db: Db, ownerId: string): Promise<void>
     title: string,
     description: string,
     extra: Record<string, unknown>,
+    when: Date,
   ) => {
     const properties = {
       title,
@@ -106,6 +115,8 @@ export async function seedWelcomeContent(db: Db, ownerId: string): Promise<void>
         properties,
         embedSource: collectionEmbed(title, description),
         embedSourceHash: null,
+        createdAt: when,
+        updatedAt: when,
       })
       .returning({ id: blocks.id });
     return row!.id;
@@ -131,22 +142,27 @@ export async function seedWelcomeContent(db: Db, ownerId: string): Promise<void>
     "Getting started",
     "A short tour of Hermes, as a checklist.",
     { list_format: "checklist", sort_mode: "manual", sync_checkbox_with_status: true },
+    at(30),
   );
   const stepIds: string[] = [];
-  for (const step of CHECKLIST_ITEMS) stepIds.push(await textBlock(step));
+  // Oldest of the lot, and in step order among themselves once reversed.
+  for (const [i, step] of CHECKLIST_ITEMS.entries()) stepIds.push(await textBlock(step, at(60 + i)));
   await addMembers(
     checklistId,
     stepIds.map((blockId) => ({ blockId, context: { checked: false } })),
   );
 
   // The spread that fronts everything.
-  const welcomeId = await textBlock(WELCOME_NOTE);
-  const collectionsNoteId = await textBlock(COLLECTIONS_NOTE);
+  // Newest last-to-first: the welcome note, then the checklist, then the
+  // collections explainer — the order they're meant to be read in.
+  const welcomeId = await textBlock(WELCOME_NOTE, at(1));
+  const collectionsNoteId = await textBlock(COLLECTIONS_NOTE, at(20));
   const spreadId = await collection(
     "document",
     "Start here",
     "How to use Hermes: blocks, the info panel, mentions, favorites, and every collection kind.",
     {},
+    at(0),
   );
   await addMembers(spreadId, [
     { blockId: welcomeId },

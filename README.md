@@ -38,8 +38,64 @@ You don't need to be a developer. If you can install a couple of tools and run a
 **You'll need**
 
 - **Node.js 22+** and **pnpm 9+** — install pnpm with `npm install -g pnpm`.
-- **PostgreSQL 14+** running somewhere the app can reach. On first run, Hermes' setup wizard can create its own database and install the bits it needs (the `vector` and `pgcrypto` extensions) for you — for that, give it a Postgres **admin/superuser** login (e.g. the default `postgres` user). Or point it at a database you've already made.
+- **PostgreSQL 14+** with the **pgvector** extension available, running somewhere the app can reach. Hermes keeps note embeddings in a `vector` column, so pgvector is required — [installing it](#installing-postgresql-and-pgvector) is one command. On first run, Hermes' setup wizard creates its own database and turns on the extensions it needs (`vector` and `pgcrypto`) — for that, give it a Postgres **admin/superuser** login (e.g. the default `postgres` user). Or point it at a database you've already made.
 - *(Optional)* **[Ollama](https://ollama.com)** — only if you want semantic search and the AI assistant. Then pull a model, e.g. `ollama pull nomic-embed-text`.
+
+### Installing PostgreSQL and pgvector
+
+The setup wizard can *enable* pgvector, but it can't install it — the files have to be on the database server first. If they aren't, setup stops with "PostgreSQL doesn't have the pgvector extension installed".
+
+The package is named for the PostgreSQL major version it belongs to, so check that first.
+
+**Debian / Ubuntu**
+
+```bash
+sudo apt install -y postgresql
+psql --version
+```
+
+`psql (PostgreSQL) 16.4` means the major version is **16** — install the matching package:
+
+```bash
+sudo apt install -y postgresql-16-pgvector
+```
+
+Or let the shell fill the version in for you:
+
+```bash
+sudo apt install -y "postgresql-$(pg_lsclusters -h | awk '{print $1; exit}')-pgvector"
+```
+
+If apt can't find that package, your distro's repository doesn't carry it — add the official PostgreSQL one and try again:
+
+```bash
+sudo apt install -y curl ca-certificates
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+sudo apt update
+```
+
+**macOS (Homebrew)**
+
+```bash
+brew install postgresql@16 pgvector
+brew services start postgresql@16
+```
+
+**Docker** — use the pgvector image in place of `postgres`; it's the stock image with the extension already in it:
+
+```bash
+docker run -d --name hermes-pg -p 5432:5432 -e POSTGRES_PASSWORD=choose-one pgvector/pgvector:pg16
+```
+
+**Check it worked.** No restart is needed — the extension is just files on disk until a database turns it on:
+
+```bash
+sudo -u postgres psql -c "SELECT name, default_version FROM pg_available_extensions WHERE name = 'vector'"
+```
+
+One row back means Hermes' setup wizard can take it from here. Nothing back means the package didn't land for the version PostgreSQL is actually running.
 
 **Run it**
 

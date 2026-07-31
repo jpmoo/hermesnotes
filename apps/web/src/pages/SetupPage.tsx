@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, ApiError } from "../api.ts";
+import { api, describeRequestFailure } from "../api.ts";
 
 /**
  * First-run wizard. Collects a privileged Postgres connection (used once to
@@ -40,7 +40,7 @@ export function SetupPage({ onDone }: { onDone: () => void }) {
       });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "setup failed");
+      setError(describeRequestFailure(err).message);
     } finally {
       setBusy(false);
     }
@@ -121,7 +121,9 @@ export function SetupPage({ onDone }: { onDone: () => void }) {
           />
         </label>
 
-        {error && <div className="error">{error}</div>}
+        {/* These run to a few sentences — what failed, and what to do — so the
+            box wraps and keeps its line breaks rather than truncating. */}
+        {error && <div className="error setup-error">{error}</div>}
         <button className="primary" type="submit" disabled={busy} style={{ width: "100%" }}>
           {busy ? "Creating database…" : "Create database & continue"}
         </button>

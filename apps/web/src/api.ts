@@ -16,22 +16,60 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Everything that can go wrong before a reply arrives, said plainly. A fetch
+ * that rejects never reached the server; a body that isn't JSON came from
+ * something in between (a proxy's error page). Both used to surface as a raw
+ * TypeError or SyntaxError, which callers reported as a generic failure.
+ */
+export const describeRequestFailure = (err: unknown): ApiError =>
+  err instanceof ApiError
+    ? err
+    : new ApiError(
+        0,
+        "Couldn't reach the server — it may not be running, or the address may be wrong.",
+      );
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    credentials: "include",
-    headers: {
-      "x-client-id": CLIENT_ID,
-      ...(body !== undefined ? { "content-type": "application/json" } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
-  if (!res.ok) {
-    throw new ApiError(res.status, (data && (data.error as string)) || res.statusText);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      credentials: "include",
+      headers: {
+        "x-client-id": CLIENT_ID,
+        ...(body !== undefined ? { "content-type": "application/json" } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw describeRequestFailure(null);
   }
+  const text = await res.text();
+  let data: unknown;
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    throw new ApiError(
+      res.status,
+      res.ok
+        ? "The server's reply wasn't the expected format."
+        : `The server answered ${res.status} with ${text.trim().slice(0, 200) || "an empty reply"}.`,
+    );
+  }
+  if (!res.ok) throw new ApiError(res.status, errorText(data) || res.statusText);
   return data as T;
+}
+
+/** The message out of an error body, including which field a rejection was about. */
+function errorText(data: unknown): string {
+  const d = (data ?? {}) as { error?: unknown; issues?: unknown };
+  const base = typeof d.error === "string" ? d.error : "";
+  if (base !== "validation" || !Array.isArray(d.issues)) return base;
+  const parts = (d.issues as Array<{ path?: unknown[]; message?: string }>)
+    .map((i) => `${(i.path ?? []).join(".") || "value"}: ${i.message ?? "invalid"}`)
+    .slice(0, 4);
+  return parts.length ? `Some values weren't accepted — ${parts.join("; ")}` : base;
 }
 
 /** Absolute API base (subpath-aware). Use for links/downloads and file uploads. */

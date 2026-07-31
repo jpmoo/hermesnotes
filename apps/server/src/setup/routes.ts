@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db, isDbReady } from "../db.js";
 import { getAllowRegistration, saveDatabaseUrl } from "../config.js";
-import { conflict } from "../lib/errors.js";
+import { conflict, HttpError } from "../lib/errors.js";
 import { provisionDatabase } from "./pg-admin.js";
 
 const identifier = z
@@ -68,8 +68,28 @@ export async function setupRoutes(app: FastifyInstance): Promise<void> {
       },
     );
 
-    await runMigrations(url);
-    await saveDatabaseUrl(url);
+    // Provisioning is only the first half; a failure after it is just as fatal
+    // and used to come back as a bare 500 with nothing in it.
+    try {
+      await runMigrations(url);
+    } catch (err) {
+      throw new HttpError(
+        500,
+        `The database was created, but setting up its tables failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    try {
+      await saveDatabaseUrl(url);
+    } catch (err) {
+      throw new HttpError(
+        500,
+        `The database is ready, but the connection couldn't be saved — check that the server can write its config directory: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
 
     reply.code(201);
     return { ok: true };

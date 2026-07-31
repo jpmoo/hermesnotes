@@ -1675,6 +1675,19 @@ button:disabled {
   font-family: var(--font-chrome);
   margin: 6px 0;
 }
+/* A setup failure is an explanation, not a label: it names what went wrong and
+   what to do about it, sometimes with a command to run. */
+.setup-error {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .hint {
   color: var(--text-faint);
   font-size: 12px;

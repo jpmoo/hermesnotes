@@ -1,6 +1,6 @@
 import { DAILY_NOTE_TYPE_ID, type Condition, type FieldDef, type FilterGroup, type PropertyOp } from "@hermes/shared";
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
 
 /** Synthetic "type" so a query can target Daily Notes (which have no real block
@@ -69,6 +69,8 @@ function defaultCondition(kind: Kind, types: BlockType[], fields: FieldDef[]): C
       return { kind, has: true };
   }
 }
+
+const EMPTY_TYPES: Set<string> = new Set();
 
 /** Collect all block-type ids referenced anywhere in the tree. */
 function collectTypeIds(g: FilterGroup, out: Set<string>): void {
@@ -340,6 +342,12 @@ function ConditionRow({
               onChange({ ...c, key, op, value: "" });
             }}
           >
+            {/* A key the group no longer offers — a saved query written before
+                the types changed, or under a different match mode — stays
+                listed, so opening the panel can't quietly rewrite it. */}
+            {c.key && !fields.some((f) => f.key === c.key) && (
+              <option value={c.key}>{c.key.replace(/_/g, " ")} (not shared)</option>
+            )}
             {fields.map((f) => (
               <option key={f.key} value={f.key}>
                 {f.label?.trim() || f.key.replace(/_/g, " ")}
@@ -421,7 +429,8 @@ function GroupEditor({
   onRemove,
   types,
   tags,
-  fields,
+  fieldsFor,
+  inheritedTypes,
   isRoot,
 }: {
   group: FilterGroup;
@@ -429,9 +438,20 @@ function GroupEditor({
   onRemove?: () => void;
   types: BlockType[];
   tags: string[];
-  fields: FieldDef[];
+  /** What this group may filter on, given the types in play and how it matches. */
+  fieldsFor: (typeIds: Set<string>, match: FilterGroup["match"]) => FieldDef[];
+  /** The enclosing group's types, for a group that names none of its own. */
+  inheritedTypes: Set<string>;
   isRoot: boolean;
 }) {
+  // The types this group is talking about: those named anywhere inside it, or —
+  // when it names none — whatever the group around it was working with.
+  const localTypes = useMemo(() => {
+    const s = new Set<string>();
+    collectTypeIds(group, s);
+    return s.size ? s : inheritedTypes;
+  }, [group, inheritedTypes]);
+  const fields = fieldsFor(localTypes, group.match);
   const [menuOpen, setMenuOpen] = useState(false);
   // Open upward by default (fits the modal); flip downward when the button sits
   // near the viewport top (e.g. the right panel), where an upward menu would be
@@ -493,7 +513,8 @@ function GroupEditor({
             onRemove={() => removeItem(i)}
             types={types}
             tags={tags}
-            fields={fields}
+            fieldsFor={fieldsFor}
+            inheritedTypes={localTypes}
             isRoot={false}
           />
         ) : (
@@ -576,20 +597,11 @@ export function QueryBuilder({
   // Daily Note is offered everywhere alongside the real types.
   const allTypes = useMemo(() => [...types, DAILY_NOTE_TYPE], [types]);
 
-  // Fields available to "Field" conditions = union of the selected types' fields.
-  const typeIds = new Set<string>();
-  collectTypeIds(value, typeIds);
-  const byKey = new Map<string, FieldDef>();
-  for (const t of allTypes) {
-    if (typeIds.has(t.id) && t.propertySchema) {
-      for (const f of t.propertySchema.fields) if (!byKey.has(f.key)) byKey.set(f.key, f);
-    }
-  }
   // A datespan is an object ({start,end}); surface its two endpoints as separate
   // date properties (dotted keys the server reads as a json path), each carrying
   // the user's start/end labels.
   const pretty = (k: string) => k.replace(/_/g, " ");
-  const fields: FieldDef[] = [...byKey.values()].flatMap((f) => {
+  const expand = (f: FieldDef): FieldDef[] => {
     if (f.type !== "datespan") return [f];
     const base = f.label?.trim() || pretty(f.key);
     return [
@@ -606,7 +618,31 @@ export function QueryBuilder({
         label: `${base} · ${f.endLabel?.trim() || "End"}`,
       },
     ];
-  });
+  };
+
+  /**
+   * What a group's "Field" conditions may talk about. Under ANY a block needs to
+   * satisfy just one condition, so anything any of the types in play defines is
+   * fair game. Under ALL it has to satisfy every one at once, so only keys all of
+   * them define can ever match — offering the rest only invites empty results.
+   */
+  const fieldsFor = useCallback(
+    (typeIds: Set<string>, match: FilterGroup["match"]): FieldDef[] => {
+      const inPlay = allTypes.filter((t) => typeIds.has(t.id) && t.propertySchema);
+      const byKey = new Map<string, FieldDef>();
+      for (const t of inPlay) {
+        for (const f of t.propertySchema!.fields) if (!byKey.has(f.key)) byKey.set(f.key, f);
+      }
+      const shared =
+        match === "all" && inPlay.length > 1
+          ? [...byKey.values()].filter((f) =>
+              inPlay.every((t) => t.propertySchema!.fields.some((x) => x.key === f.key)),
+            )
+          : [...byKey.values()];
+      return shared.flatMap(expand);
+    },
+    [allTypes],
+  );
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -625,7 +661,8 @@ export function QueryBuilder({
         onChange={onChange}
         types={allTypes}
         tags={tags}
-        fields={fields}
+        fieldsFor={fieldsFor}
+        inheritedTypes={EMPTY_TYPES}
         isRoot
       />
       {count !== null && (

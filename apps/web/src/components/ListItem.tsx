@@ -202,7 +202,7 @@ export function ListItem({
   // its left (no header row) and a hover remove button.
   if (asCard) {
     return (
-      <div ref={sortable.setNodeRef} style={style} className="list-item-wrap block-item block-row">
+      <div ref={sortable.setNodeRef} style={style} data-block-id={member.id} className="list-item-wrap block-item block-row">
         {!readonly && (
           <button
             className="drag-handle bv-grip"
@@ -236,7 +236,7 @@ export function ListItem({
   }
 
   return (
-    <div ref={sortable.setNodeRef} style={style} className="list-item-wrap">
+    <div ref={sortable.setNodeRef} style={style} data-block-id={member.id} className="list-item-wrap">
       <div className={`list-item${boxChecked && format === "checklist" ? " done" : ""}`}>
         {!readonly && (
           <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">

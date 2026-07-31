@@ -213,7 +213,7 @@ export function CollectionSection({
   const typeById = new Map(types.map((t) => [t.id, t]));
   const title = oneLineText(state.collection.properties) || "Untitled";
   return (
-    <section className="today-section">
+    <section className="today-section" data-block-id={collectionId}>
       <h2 className="today-h sec-head">
         <span className="sec-title">{title}</span>
         <button

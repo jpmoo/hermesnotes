@@ -100,7 +100,7 @@ function valueFor(b: Viewable, key: SortKey): string {
 function MasonryCard({ blockId, render }: { blockId: string; render: (compact: boolean) => ReactNode }) {
   const { selectOrOpen } = usePanels();
   return (
-    <div className="masonry-item" onClick={() => selectOrOpen(blockId)}>
+    <div className="masonry-item" data-block-id={blockId} onClick={() => selectOrOpen(blockId)}>
       {render(true)}
     </div>
   );
@@ -116,6 +116,7 @@ function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | und
   return (
     <div
       className="bv-chip"
+      data-block-id={item.id}
       role="button"
       tabIndex={0}
       title={text}
@@ -587,7 +588,7 @@ export function useBlockView<T extends Viewable>(
       return (
         <div className="block-stack">
           {sorted.map((it) => (
-            <div key={it.id}>{renderCard(it, false)}</div>
+            <div key={it.id} data-block-id={it.id}>{renderCard(it, false)}</div>
           ))}
         </div>
       );

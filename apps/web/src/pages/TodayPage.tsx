@@ -16,6 +16,7 @@ import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
+import { useOriginScroll } from "../lib/origin-scroll.ts";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayStr = () => {
@@ -70,7 +71,7 @@ function NoteSection({
   const block = ref.block;
   const typeById = new Map(types.map((t) => [t.id, t]));
   return (
-    <section className="today-section note-embed">
+    <section className="today-section note-embed" data-block-id={blockId}>
       <button
         className="icon-btn sec-open-btn note-open-btn"
         title="Open note"
@@ -189,6 +190,10 @@ export function TodayPage() {
       .catch(() => {});
   };
 
+  // Arriving from something the day shows — an embedded collection, a note
+  // section, the scratchpad itself — puts it back in front of you.
+  useOriginScroll(!loading && sheet != null);
+
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
   const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
   // Relevant/created cards default to collapsed and remember each block's choice
@@ -236,7 +241,7 @@ export function TodayPage() {
     switch (s.t) {
       case "scratchpad":
         return sheet ? (
-          <section key="scratchpad" className="today-section">
+          <section key="scratchpad" className="today-section" data-block-id={sheet.note.id}>
             <h2 className="today-h">Scratchpad</h2>
             <TextBlockEditor
               key={sheet.note.id}

@@ -1099,6 +1099,7 @@ export function CanvasView({
   const nodeBox = (id: string, r: NodeCtx, body: ReactNode, isNote: boolean) => (
     <div
       key={id}
+      data-block-id={id}
       className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}${r.color ? " cv-shaded" : ""}`}
       style={{
         left: r.x,

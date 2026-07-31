@@ -34,9 +34,17 @@ export interface PeriodicNoteKind {
   describe: (period: string) => string;
 }
 
+/**
+ * The daily note's marker. Named on its own because this is the one kind with a
+ * page of its own: a daily note is reached as `/today/<date>`, so anything
+ * holding one — history, recents — has to route to the day rather than to the
+ * scratchpad block.
+ */
+export const DAILY_NOTE_MARKER = "today_note";
+
 export const PERIODIC_NOTE_KINDS: readonly PeriodicNoteKind[] = [
   {
-    marker: "today_note",
+    marker: DAILY_NOTE_MARKER,
     label: "daily note",
     describe: (period) => `Daily note · ${period}`,
   },
@@ -63,6 +71,15 @@ export function periodicKindOf(
     if (typeof period === "string" && period) return { kind, period };
   }
   return null;
+}
+
+/**
+ * The day a daily note belongs to, or null for anything else — including the
+ * other periodic kinds, which have no page to route to.
+ */
+export function dailyNotePeriod(properties: unknown): string | null {
+  const v = (properties as Record<string, unknown> | null | undefined)?.[DAILY_NOTE_MARKER];
+  return typeof v === "string" && v ? v : null;
 }
 
 /** Whether this note belongs to a period rather than being filed by hand. */

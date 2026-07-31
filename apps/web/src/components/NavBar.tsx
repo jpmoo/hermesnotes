@@ -1,8 +1,9 @@
 import { Archive, CalendarDays, ChevronLeft, ChevronRight, Clock, Layers, Library, ListChecks, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type Block, type BlockType } from "../api.ts";
-import { oneLineText } from "../lib/display.ts";
+import { dailyNotePeriod } from "@hermes/shared";
+import { api, type BlockType } from "../api.ts";
+import { blockBrief, type BlockBrief } from "../lib/block-brief.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
@@ -10,48 +11,12 @@ import { usePreferences } from "../lib/preferences.tsx";
 const fmtDay = (date: string) =>
   new Date(`${date}T00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-interface RecentInfo {
-  label: string;
-  blockTypeId: string | null;
-  properties?: Record<string, unknown>;
-  document?: boolean;
-  matrix?: boolean;
-  table?: boolean;
-  canvas?: boolean;
-  calendar?: boolean;
-  smart?: boolean;
-}
-
-// Cache recent-entry labels so the dropdown doesn't refetch each open.
-const infoCache = new Map<string, Promise<RecentInfo>>();
-const getInfo = (id: string) =>
-  infoCache.get(id) ??
-  infoCache
-    .set(
-      id,
-      api
-        .get<Block>(`/blocks/${id}`)
-        .then((b) => ({
-          label: oneLineText(b.properties, b.content) || "Untitled",
-          blockTypeId: b.blockTypeId,
-          properties: b.properties,
-          document: b.collectionKind === "document",
-          matrix: b.collectionKind === "matrix",
-          table: b.collectionKind === "table",
-          canvas: b.collectionKind === "canvas",
-          calendar: b.collectionKind === "calendar",
-          smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
-        }))
-        .catch(() => ({ label: "(unknown)", blockTypeId: null })),
-    )
-    .get(id)!;
-
 function RecentsMenu() {
-  const { recents, selectedBlockId, selectedToday, openBlock } = usePanels();
+  const { recents, selectedBlockId, selectedToday, openBlock, rememberOrigin } = usePanels();
   const { colors } = usePreferences();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
-  const [info, setInfo] = useState<Record<string, RecentInfo>>({});
+  const [info, setInfo] = useState<Record<string, BlockBrief>>({});
   const [types, setTypes] = useState<BlockType[]>([]);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -60,7 +25,7 @@ function RecentsMenu() {
     void api.get<BlockType[]>("/block-types").then(setTypes);
     recents.forEach((e) => {
       if (e.kind === "today" || e.kind === "page" || info[e.id]) return;
-      void getInfo(e.id).then((v) => setInfo((m) => ({ ...m, [e.id]: v })));
+      void blockBrief(e.id).then((v) => setInfo((m) => ({ ...m, [e.id]: v })));
     });
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -69,6 +34,22 @@ function RecentsMenu() {
     return () => document.removeEventListener("mousedown", onDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, recents]);
+
+  /** A day: the calendar glyph and the whole page, never the scratchpad alone. */
+  const todayItem = (date: string) => (
+    <button
+      key={`t:${date}`}
+      className={`menu-item recent-item${date === selectedToday ? " active" : ""}`}
+      onClick={() => {
+        rememberOrigin();
+        nav(`/today/${date}`);
+        setOpen(false);
+      }}
+    >
+      <CalendarDays size={14} color={colors("today_colors").icon ?? undefined} />
+      <span className="recent-label">Today · {fmtDay(date)}</span>
+    </button>
+  );
 
   return (
     <div className="nav-kebab" ref={ref} style={{ position: "relative" }}>
@@ -97,6 +78,7 @@ function RecentsMenu() {
                     key={`p:${e.page}`}
                     className="menu-item recent-item"
                     onClick={() => {
+                      rememberOrigin();
                       nav(`/${e.page}`);
                       setOpen(false);
                     }}
@@ -106,22 +88,10 @@ function RecentsMenu() {
                   </button>
                 );
               }
-              if (e.kind === "today") {
-                return (
-                  <button
-                    key={`t:${e.date}`}
-                    className={`menu-item recent-item${e.date === selectedToday ? " active" : ""}`}
-                    onClick={() => {
-                      nav(`/today/${e.date}`);
-                      setOpen(false);
-                    }}
-                  >
-                    <CalendarDays size={14} color={colors("today_colors").icon ?? undefined} />
-                    <span className="recent-label">Today · {fmtDay(e.date)}</span>
-                  </button>
-                );
-              }
+              if (e.kind === "today") return todayItem(e.date);
               const it = info[e.id];
+              const day = dailyNotePeriod(it?.properties);
+              if (day) return todayItem(day);
               const active = e.id === selectedBlockId && !selectedToday;
               if (e.kind === "collection") {
                 return (

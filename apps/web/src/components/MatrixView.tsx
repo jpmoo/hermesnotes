@@ -324,6 +324,7 @@ function Chip({
       {...drag.attributes}
       {...drag.listeners}
       className={`matrix-chip${drag.isDragging ? " dragging" : ""}${chipDrop.isOver ? " chip-over" : ""}`}
+      data-block-id={item.id}
       onMouseEnter={armTip}
       onMouseLeave={clearTip}
       onClick={(e) => {

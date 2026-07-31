@@ -36,6 +36,7 @@ import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useSetRouteBanner } from "../lib/route-banner.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
+import { useOriginScroll } from "../lib/origin-scroll.ts";
 
 /** A draggable document section row (a full card with a grip handle). */
 function DocSection({
@@ -51,7 +52,7 @@ function DocSection({
   // Translate (not Transform) so variable-height cards don't stretch mid-drag.
   const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
-    <div ref={s.setNodeRef} style={style} className="doc-section-row">
+    <div ref={s.setNodeRef} style={style} data-block-id={id} className="doc-section-row">
       {draggable && (
         <button className="drag-handle doc-grip" {...s.attributes} {...s.listeners} title="Drag to reorder">
           <GripVertical size={15} />
@@ -277,6 +278,9 @@ export function CollectionView() {
   }));
 
   useSetRouteBanner(collection ? (collection.properties as Record<string, unknown>).banner : null);
+  // Coming back from a member lands on that member rather than at the top of a
+  // list you then have to re-find your place in.
+  useOriginScroll(!loading && collection != null);
 
   if (loading) return <div className="hint">Loading…</div>;
   if (!collection) return <div className="hint">Collection not found.</div>;

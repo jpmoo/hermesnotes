@@ -1,6 +1,8 @@
 import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { dailyNotePeriod } from "@hermes/shared";
 import type { FeedEvent } from "../api.ts";
+import { blockBrief } from "./block-brief.ts";
 
 /**
  * Shared panel state: the right panel's content slot, pin state, and the global
@@ -44,6 +46,14 @@ interface PanelsApi {
   canBack: boolean;
   canForward: boolean;
   recents: RecentEntry[];
+  /**
+   * The block the current navigation came from, for the page being opened to
+   * scroll to if it shows it (a member of the collection, a section of the day).
+   * Bumped per navigation so landing twice on the same page still scrolls.
+   */
+  scrollTarget: { id: string; nonce: number } | null;
+  /** Record where we're leaving from — for navigations made outside here. */
+  rememberOrigin: () => void;
 
   // Bumped when the selected block changes out-of-band (e.g. matrix region
   // actions edited its tags/status); the info pane refetches on change.
@@ -113,6 +123,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [nav, setNav] = useState<{ stack: NavEntry[]; pos: number }>({ stack: [], pos: -1 });
   const [selectedFeedEvent, setSelectedFeedEvent] = useState<FeedEvent | null>(null);
   const [recents, setRecents] = useState<RecentEntry[]>(() => readRecents("hn.recents"));
+  const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
+  const scrollNonce = useRef(0);
   const [infoTick, setInfoTick] = useState(0);
   const refreshInfo = () => setInfoTick((t) => t + 1);
 
@@ -152,17 +164,68 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const selectedToday = cur?.today ?? null;
   const selectedPage = cur?.page ?? null;
 
+  const saveRecents = (next: RecentEntry[]) => {
+    try {
+      localStorage.setItem("hn.recents", JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+    return next;
+  };
   const addRecent = (e: RecentEntry) =>
     setRecents((prev) => {
       const k = recentKey(e);
-      const next = [e, ...prev.filter((x) => recentKey(x) !== k)].slice(0, 10);
-      try {
-        localStorage.setItem("hn.recents", JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
+      return saveRecents([e, ...prev.filter((x) => recentKey(x) !== k)].slice(0, 10));
     });
+
+  /**
+   * A daily note's scratchpad is not a loose block: it's the day. It's reached by
+   * date, wears the calendar glyph, and opening it should give the whole page —
+   * calendar, sections and all — not one text box out of context.
+   *
+   * Which block is one of these isn't known at the point of selection (a card, a
+   * chip, a URL all hand over an id and nothing else), so the entry is logged as
+   * a block and rewritten here once the block itself says so. That keeps every
+   * call site honest without teaching each one about periodic notes.
+   */
+  const adoptDaily = async (id: string) => {
+    const date = dailyNotePeriod((await blockBrief(id)).properties);
+    if (!date) return;
+    setNav((n) => {
+      const rewritten = n.stack.map((e) =>
+        !e.page && !e.collection && !e.today && e.id === id ? { ...e, today: date } : e,
+      );
+      // Selecting the scratchpad while already on its own day appended a second
+      // entry; now that both name the same day, one of them is just a step in the
+      // history that goes nowhere.
+      const stack: NavEntry[] = [];
+      let pos = n.pos;
+      rewritten.forEach((e, i) => {
+        const prev = stack[stack.length - 1];
+        if (prev && sameEntity(prev, e)) {
+          if (i <= n.pos) pos -= 1;
+          return;
+        }
+        stack.push(e);
+      });
+      return { stack, pos: Math.min(Math.max(pos, stack.length ? 0 : -1), stack.length - 1) };
+    });
+    setRecents((prev) => {
+      const seen = new Set<string>();
+      return saveRecents(
+        prev
+          .map((e): RecentEntry => (e.kind === "block" && e.id === id ? { kind: "today", date } : e))
+          .filter((e) => {
+            const k = recentKey(e);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          }),
+      );
+    });
+    // Already looking at the bare scratchpad (opened from a chip, or by URL).
+    if (pathRef.current === `/block/${id}`) navigate(`/today/${date}`, { replace: true });
+  };
 
   // Log an entity as current: append to the history (dropping any forward
   // entries), unless it already is current.
@@ -176,7 +239,19 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     });
     if (entry.page) addRecent({ kind: "page", page: entry.page });
     else if (entry.today) addRecent({ kind: "today", date: entry.today });
-    else addRecent({ kind: entry.collection ? "collection" : "block", id: entry.id });
+    else {
+      addRecent({ kind: entry.collection ? "collection" : "block", id: entry.id });
+      if (!entry.collection) void adoptDaily(entry.id);
+    }
+  };
+
+  /**
+   * Note where this navigation is leaving from, so the page we land on can put
+   * that block back in front of you — the member you were reading in a list, the
+   * section you were in on a day — rather than dropping you at the top.
+   */
+  const rememberOrigin = () => {
+    setScrollTarget(cur && !cur.page ? { id: cur.id, nonce: ++scrollNonce.current } : null);
   };
 
   const selectBlock = (id: string, opts?: { collection?: boolean }) =>
@@ -186,6 +261,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const selectPage = (page: RailPage) => append({ id: `page:${page}`, collection: false, page });
   const openBlock = (id: string, opts?: { collection?: boolean }) => {
     const entry: NavEntry = { id, collection: opts?.collection ?? false };
+    rememberOrigin();
     append(entry);
     navigate(pageOf(entry));
   };
@@ -208,6 +284,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const back = () => {
     if (nav.pos > 0) {
       const target = nav.stack[nav.pos - 1]!;
+      rememberOrigin();
       setNav((n) => (n.pos > 0 ? { ...n, pos: n.pos - 1 } : n));
       navigate(pageOf(target));
     }
@@ -215,6 +292,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const forward = () => {
     if (nav.pos < nav.stack.length - 1) {
       const target = nav.stack[nav.pos + 1]!;
+      rememberOrigin();
       setNav((n) => (n.pos < n.stack.length - 1 ? { ...n, pos: n.pos + 1 } : n));
       navigate(pageOf(target));
     }
@@ -249,11 +327,13 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       canBack: nav.pos > 0,
       canForward: nav.pos < nav.stack.length - 1,
       recents,
+      scrollTarget,
+      rememberOrigin,
       infoTick,
       refreshInfo,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, selectedFeedEvent, recents, infoTick],
+    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, selectedFeedEvent, recents, scrollTarget, infoTick],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

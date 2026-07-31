@@ -224,7 +224,7 @@ function TableRow({
   };
 
   return (
-    <tr onPointerDownCapture={() => selectBlock(member.id)}>
+    <tr data-block-id={member.id} onPointerDownCapture={() => selectBlock(member.id)}>
       {rowNumber !== null && <td className="tv-num">{rowNumber}</td>}
       {columns.map((key) => (
         <td key={key} className={key === "tags" ? "tv-cell tv-cell-tags" : "tv-cell"}>

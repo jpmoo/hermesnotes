@@ -132,6 +132,7 @@ function Chip({
   return (
     <div
       className="cal-chip"
+      data-block-id={item.id}
       onClick={(e) => {
         e.stopPropagation();
         selectOrOpen(item.id);

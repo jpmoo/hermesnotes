@@ -1427,6 +1427,23 @@ button.nav-link:hover {
   position: relative;
 }
 
+/* Marks the row/section a back/forward/history jump scrolled to, so the landing
+   position reads as deliberate rather than as a page that loaded halfway down.
+   A ring rather than a fill: it sits over rows that already have their own
+   background (striping, status colors) without repainting them. */
+@keyframes origin-flash {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+.origin-flash {
+  border-radius: 8px;
+  animation: origin-flash 1.5s ease-out;
+}
+
 /* Section theming: a soft band at the top of the window tinted with the
    active section's rail colors, plus a matching title text/icon color. */
 .main.themed {

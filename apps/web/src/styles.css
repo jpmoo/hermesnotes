@@ -6146,8 +6146,11 @@ input.cv-add-input {
    Rail becomes a drop-down menu; the right panel becomes an Info sheet.
    Both stay mounted (slots/plumbing intact) — this only reshapes them. */
 /* ── Matrix on mobile ────────────────────────────────────────── */
-/* Pin the drawer to the very bottom of the screen (it floated above, docked to
-   the short page content). */
+/* Pin the drawer to the bottom of the screen. Sticky rather than fixed: fixed
+   positions against the layout viewport, whose bottom on a phone is behind the
+   browser's own toolbar — a drawer this short vanished under it completely.
+   Sticky keeps it inside the scrollport, which the shell sizes to what's
+   actually visible, and .main-inner's min-height holds it down on short pages. */
 .app-shell.mobile .matrix-drawer {
   position: fixed;
   left: 0;
@@ -6155,7 +6158,19 @@ input.cv-add-input {
   bottom: 0;
   margin: 0;
   border-radius: 12px 12px 0 0;
+  /* Sit clear of the home indicator / browser toolbar rather than under it —
+     the handle is about as tall as that strip, so it disappeared entirely. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 60;
+}
+/* An embedded matrix keeps its drawer inline here too. Pinning it to the screen
+   tore it away from the matrix it belongs to — and two matrices on one page
+   landed their drawers on top of each other. */
+.app-shell.mobile .matrix-embed .matrix-drawer {
+  position: static;
+  margin: 0;
+  border-radius: 12px;
+  padding-bottom: 0;
 }
 /* Let a card's title wrap to two lines so it's readable in narrow columns —
    dates drop to their own line beneath it. */
@@ -6188,8 +6203,12 @@ input.cv-add-input {
   min-width: 0; /* let the grid child shrink instead of overflowing */
   max-width: 100vw;
   overflow-x: hidden;
+  /* Keep the fixed bottom bits (the matrix drawer) off the end of the content:
+     a literal pad, not --main-pad-b, which a matrix page zeroes for the desktop
+     sticky drawer. */
   padding: 64px 16px 80px;
 }
+
 /* Wide toolbars/rows scroll inside themselves rather than widening the page. */
 .app-shell.mobile .main .sort-bar,
 .app-shell.mobile .main .segmented {

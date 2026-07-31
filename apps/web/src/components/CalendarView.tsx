@@ -1,5 +1,5 @@
 import type { FieldDef, PropertySchema } from "@hermes/shared";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -8,6 +8,7 @@ import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { FeedDiagnostics } from "./FeedDiagnostics.tsx";
 
 /**
  * Calendar collection: a month / week / 3-day date view. Smart-query fed —
@@ -349,6 +350,10 @@ export function CalendarView({
   const [convertedKeys, setConvertedKeys] = useState<Set<string>>(new Set());
   const [feedTick, setFeedTick] = useState(0);
   const [feeds, setFeeds] = useState<CalendarFeed[]>([]);
+  const [diagFeed, setDiagFeed] = useState<CalendarFeed | null>(null);
+  // Bumped on its own (not feedTick) so refreshing the feed list can't loop
+  // back into refetching events.
+  const [feedStatusTick, setFeedStatusTick] = useState(0);
   const hiddenKey = `hn.cal.hidden.${collection.id}`;
   const [hiddenFeeds, setHiddenFeeds] = useState<Set<string>>(() => {
     try {
@@ -415,12 +420,21 @@ export function CalendarView({
   // Subscribed calendar-feed events overlapping the visible range (read-only).
   useEffect(() => {
     let alive = true;
+    let again: ReturnType<typeof setTimeout> | undefined;
     void api
-      .get<{ events: FeedEvent[] }>(`/calendar/events?start=${rangeStart}&end=${rangeEnd}`)
-      .then((r) => alive && setFeedEvents(r.events))
+      .get<{ events: FeedEvent[]; stale?: boolean }>(`/calendar/events?start=${rangeStart}&end=${rangeEnd}`)
+      .then((r) => {
+        if (!alive) return;
+        setFeedEvents(r.events);
+        // The server answered from its stored copy while it refreshes behind us.
+        // Come back for what arrives, and pick up any error it recorded.
+        if (r.stale) again = setTimeout(() => alive && setFeedTick((t) => t + 1), 6000);
+        setFeedStatusTick((t) => t + 1);
+      })
       .catch(() => alive && setFeedEvents([]));
     return () => {
       alive = false;
+      clearTimeout(again);
     };
   }, [rangeStart, rangeEnd, feedTick]);
 
@@ -435,7 +449,7 @@ export function CalendarView({
     return () => {
       alive = false;
     };
-  }, [feedTick]);
+  }, [feedTick, feedStatusTick]);
 
   // A feed event synced from the info panel disappears from the feed: drop it
   // optimistically, then refetch feeds + block matches to reconcile (the new
@@ -574,7 +588,19 @@ export function CalendarView({
     return (
       <div key={d} className={`cal-cell${d === today ? " today" : ""}${d === anchor && view !== "month" ? " anchor" : ""}`}>
         <div className="cal-cell-head">
-          {view === "month" ? (
+          {diagFeed && (
+        <FeedDiagnostics
+          feed={diagFeed}
+          onClose={() => setDiagFeed(null)}
+          onChanged={(next) => {
+            setDiagFeed(next);
+            setFeeds((fs) => fs.map((x) => (x.id === next.id ? next : x)));
+            setFeedTick((t) => t + 1); // a fix should put the events back straight away
+          }}
+        />
+      )}
+
+      {view === "month" ? (
             <span className="cal-daynum">{dd.getDate()}</span>
           ) : (
             <>
@@ -632,16 +658,26 @@ export function CalendarView({
           {feeds.map((f) => {
             const hidden = hiddenFeeds.has(f.id);
             return (
-              <button
-                key={f.id}
-                className={`cal-feed-toggle${hidden ? " off" : ""}`}
-                style={{ ["--feed-color" as string]: f.color }}
-                title={hidden ? `Show ${f.name}` : `Hide ${f.name}`}
-                onClick={() => toggleFeed(f.id)}
-              >
-                <span className="cal-feed-toggle-dot" style={{ background: f.color }} />
-                {f.name}
-              </button>
+              <span key={f.id} className="cal-feed-toggle-wrap">
+                <button
+                  className={`cal-feed-toggle${hidden ? " off" : ""}`}
+                  style={{ ["--feed-color" as string]: f.color }}
+                  title={hidden ? `Show ${f.name}` : `Hide ${f.name}`}
+                  onClick={() => toggleFeed(f.id)}
+                >
+                  <span className="cal-feed-toggle-dot" style={{ background: f.color }} />
+                  {f.name}
+                </button>
+                {f.lastError && (
+                  <button
+                    className="icon-btn cal-feed-warn"
+                    title={`${f.name} isn't updating — ${f.lastError}`}
+                    onClick={() => setDiagFeed(f)}
+                  >
+                    <AlertTriangle size={13} />
+                  </button>
+                )}
+              </span>
             );
           })}
         </div>

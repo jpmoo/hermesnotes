@@ -155,10 +155,26 @@ async function applySyncUpdates(userId: string, targets: Map<string, SyncTarget>
   }
 }
 
-/** In-memory raw-ICS cache, keyed by feed id. Refetched past the TTL. */
-const CACHE = new Map<string, { fetchedAt: number; text: string }>();
+/**
+ * A feed body we've already read, with the validators to ask about it again.
+ * Held in this process for speed and on the feed row for a restart.
+ */
+interface Cached {
+  text: string;
+  fetchedAt: number;
+  etag: string | null;
+  lastModified: string | null;
+}
+
+/** In-memory raw-ICS cache, keyed by feed id. Refreshed past the TTL. */
+const CACHE = new Map<string, Cached>();
 const TTL_MS = 10 * 60 * 1000;
-const FETCH_TIMEOUT_MS = 15000;
+/**
+ * Generous, because nothing waits on it any more: a stale copy is served while
+ * the refresh runs. Outlook in particular can take the better part of a minute
+ * the first time it's asked for a published calendar.
+ */
+const FETCH_TIMEOUT_MS = 45000;
 /** Hard cap on a feed body. Parsing is synchronous, so an unbounded document
  * would block the event loop; 5 MB is far above any real calendar. */
 const MAX_ICS_BYTES = 5 * 1024 * 1024;
@@ -226,7 +242,86 @@ async function readCapped(res: Response): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function fetchIcs(url: string): Promise<string> {
+/** A failure worth showing someone: what happened, and what to do about it. */
+class FeedError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null = null,
+    readonly detail: string | null = null,
+    /** Transient things (timeouts, 5xx) are worth one more try straight away. */
+    readonly retryable = false,
+  ) {
+    super(message);
+    this.name = "FeedError";
+  }
+}
+
+const STATUS_TEXT: Record<number, string> = {
+  400: "Bad Request",
+  401: "Unauthorized",
+  403: "Forbidden",
+  404: "Not Found",
+  410: "Gone",
+  429: "Too Many Requests",
+  500: "Internal Server Error",
+  502: "Bad Gateway",
+  503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
+
+const REPUBLISH_HINT =
+  "The calendar host rejected this address. A published link stops working once the calendar is unpublished, republished, or its sharing is changed — Outlook in particular issues a brand-new address each time. Open the calendar's sharing settings, copy the ICS address again, and paste it in above.";
+
+function statusHint(status: number): string | null {
+  if (status === 400 || status === 403 || status === 404 || status === 410) return REPUBLISH_HINT;
+  if (status === 401)
+    return "This address needs credentials, which a subscription can't supply. Use the calendar's secret/private ICS address instead of one behind a sign-in.";
+  if (status === 429)
+    return "The calendar host is asking us to slow down. Feeds refresh every 10 minutes; this should clear on its own.";
+  if (status >= 500)
+    return "The calendar host is having trouble at its end. The last copy we read is still being shown, and the refresh will be retried.";
+  return null;
+}
+
+/** Turn whatever fetch threw into something a person can act on. */
+function describeFailure(err: unknown): { message: string; status: number | null; detail: string | null } {
+  if (err instanceof FeedError) return { message: err.message, status: err.status, detail: err.detail };
+  const name = err instanceof Error ? err.name : "";
+  if (name === "AbortError" || name === "TimeoutError") {
+    return {
+      message: `no response within ${Math.round(FETCH_TIMEOUT_MS / 1000)}s`,
+      status: null,
+      detail:
+        "The calendar host didn't answer in time. Outlook can be slow the first time it's asked for a published calendar; the refresh runs again in the background, so this often clears by itself.",
+    };
+  }
+  const code = (err as { cause?: { code?: unknown } })?.cause?.code;
+  const codes: Record<string, string> = {
+    ENOTFOUND: "That host doesn't exist — check the address for a typo.",
+    EAI_AGAIN: "The host couldn't be looked up. This is usually a DNS hiccup on our side.",
+    ECONNREFUSED: "The host refused the connection.",
+    ECONNRESET: "The host closed the connection partway through.",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "The host's TLS certificate couldn't be verified.",
+    CERT_HAS_EXPIRED: "The host's TLS certificate has expired.",
+  };
+  if (typeof code === "string") {
+    return { message: `couldn't reach the calendar host (${code})`, status: null, detail: codes[code] ?? null };
+  }
+  return {
+    message: err instanceof Error ? err.message : "fetch failed",
+    status: null,
+    detail: null,
+  };
+}
+
+interface FetchResult {
+  /** null when the host said 304: what we already hold is still current. */
+  text: string | null;
+  etag: string | null;
+  lastModified: string | null;
+}
+
+async function fetchIcs(url: string, have: Cached | null): Promise<FetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -236,38 +331,194 @@ async function fetchIcs(url: string): Promise<string> {
     // internal-address rules above.
     for (let hop = 0; ; hop++) {
       const target = await assertPublicUrl(next);
-      const res = await fetch(target, {
-        signal: controller.signal,
-        headers: { "User-Agent": "HermesNotes/1.0", Accept: "text/calendar, text/plain, */*" },
-        redirect: "manual",
-      });
+      const headers: Record<string, string> = {
+        "User-Agent": "HermesNotes/1.0",
+        Accept: "text/calendar, text/plain, */*",
+      };
+      // Ask only for what's changed. Hosts that honour this answer 304 with no
+      // body at all, which is what makes a frequent refresh cheap.
+      if (have?.etag) headers["If-None-Match"] = have.etag;
+      if (have?.lastModified) headers["If-Modified-Since"] = have.lastModified;
+      const res = await fetch(target, { signal: controller.signal, headers, redirect: "manual" });
+      if (res.status === 304 && have) {
+        return { text: null, etag: have.etag, lastModified: have.lastModified };
+      }
       if (res.status >= 300 && res.status < 400) {
         const loc = res.headers.get("location");
-        if (!loc) throw new Error(`feed responded ${res.status}`);
-        if (hop >= MAX_REDIRECTS) throw new Error("too many redirects");
+        if (!loc) throw new FeedError(`redirect with no destination (${res.status})`, res.status);
+        if (hop >= MAX_REDIRECTS) throw new FeedError("too many redirects");
         next = new URL(loc, target).toString();
         continue;
       }
-      if (!res.ok) throw new Error(`feed responded ${res.status}`);
-      return await readCapped(res);
+      if (!res.ok) {
+        // Some hosts explain themselves in the body; Outlook sends nothing at
+        // all, which is itself worth showing rather than a bare status.
+        const body = await res.text().catch(() => "");
+        const snippet = body.trim().slice(0, 300);
+        const hint = statusHint(res.status);
+        const label = STATUS_TEXT[res.status] ?? "";
+        throw new FeedError(
+          `the calendar host answered ${res.status}${label ? ` ${label}` : ""}`,
+          res.status,
+          snippet ? `${hint ? `${hint}\n\n` : ""}The host said: ${snippet}` : hint,
+          res.status >= 500 || res.status === 429,
+        );
+      }
+      return {
+        text: await readCapped(res),
+        etag: res.headers.get("etag"),
+        lastModified: res.headers.get("last-modified"),
+      };
     }
+  } catch (err) {
+    if (err instanceof FeedError) throw err;
+    const name = err instanceof Error ? err.name : "";
+    if (name === "AbortError" || name === "TimeoutError") throw err; // described upstream
+    throw Object.assign(err as Error, { retryable: true });
   } finally {
     clearTimeout(timer);
   }
 }
 
-/** Get a feed's ICS text (cached), refetching past the TTL or when forced. */
-async function icsFor(feed: { id: string; url: string }, force: boolean): Promise<string> {
-  const hit = CACHE.get(feed.id);
-  if (!force && hit && Date.now() - hit.fetchedAt < TTL_MS) return hit.text;
-  const text = await fetchIcs(feed.url);
+/** Feed columns the fetching machinery needs (not the ones sent to the client). */
+const feedRow = {
+  id: calendarFeeds.id,
+  url: calendarFeeds.url,
+  cacheText: calendarFeeds.cacheText,
+  cachedAt: calendarFeeds.cachedAt,
+  etag: calendarFeeds.etag,
+  lastModified: calendarFeeds.lastModified,
+  lastError: calendarFeeds.lastError,
+  lastStatus: calendarFeeds.lastStatus,
+  lastDetail: calendarFeeds.lastDetail,
+  lastErrorAt: calendarFeeds.lastErrorAt,
+};
+interface FeedRow {
+  id: string;
+  url: string;
+  cacheText: string | null;
+  cachedAt: Date | null;
+  etag: string | null;
+  lastModified: string | null;
+  lastError: string | null;
+  lastStatus: number | null;
+  lastDetail: string | null;
+  lastErrorAt: Date | null;
+}
+
+/** What we hold for a feed: this process's copy, or the one on its row. */
+function held(feed: FeedRow): Cached | null {
+  const mem = CACHE.get(feed.id);
+  if (mem) return mem;
+  if (feed.cacheText == null || !feed.cachedAt) return null;
+  const entry: Cached = {
+    text: feed.cacheText,
+    fetchedAt: feed.cachedAt.getTime(),
+    etag: feed.etag,
+    lastModified: feed.lastModified,
+  };
+  remember(feed.id, entry);
+  return entry;
+}
+
+function remember(id: string, entry: Cached): void {
   // Evict the oldest entry once the cache is full (Map preserves insertion order).
-  if (!CACHE.has(feed.id) && CACHE.size >= MAX_CACHE_ENTRIES) {
+  if (!CACHE.has(id) && CACHE.size >= MAX_CACHE_ENTRIES) {
     const oldest = CACHE.keys().next().value;
     if (oldest) CACHE.delete(oldest);
   }
-  CACHE.set(feed.id, { fetchedAt: Date.now(), text });
-  return text;
+  CACHE.set(id, entry);
+}
+
+type Refresh = { ok: true; entry: Cached } | { ok: false; failure: ReturnType<typeof describeFailure> };
+
+/** One refresh per feed at a time, however many callers ask for it. */
+const inflight = new Map<string, Promise<Refresh>>();
+
+/**
+ * Pull the feed and store what came back — body, validators, and the outcome —
+ * on the feed row. Never throws: a failure is recorded and reported, because the
+ * caller's job is usually to carry on with the copy it already has.
+ */
+function refreshFeed(feed: FeedRow): Promise<Refresh> {
+  const running = inflight.get(feed.id);
+  if (running) return running;
+  const run = (async (): Promise<Refresh> => {
+    const have = held(feed);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const res = await fetchIcs(feed.url, have);
+        const unchanged = res.text === null && have !== null;
+        const entry: Cached = unchanged
+          ? { ...have!, fetchedAt: Date.now() }
+          : { text: res.text ?? "", fetchedAt: Date.now(), etag: res.etag, lastModified: res.lastModified };
+        remember(feed.id, entry);
+        await db
+          .update(calendarFeeds)
+          .set({
+            // A 304 means the body on the row is still the right one — no point
+            // rewriting a few hundred KB to say so.
+            ...(unchanged ? {} : { cacheText: entry.text, etag: entry.etag, lastModified: entry.lastModified }),
+            cachedAt: new Date(entry.fetchedAt),
+            lastFetchedAt: new Date(),
+            lastError: null,
+            lastStatus: null,
+            lastDetail: null,
+            lastErrorAt: null,
+          })
+          .where(eq(calendarFeeds.id, feed.id));
+        return { ok: true, entry };
+      } catch (err) {
+        const retryable =
+          (err instanceof FeedError && err.retryable) ||
+          (err as { retryable?: boolean })?.retryable === true;
+        if (retryable && attempt === 0) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        const failure = describeFailure(err);
+        await db
+          .update(calendarFeeds)
+          .set({
+            lastError: failure.message,
+            lastStatus: failure.status,
+            lastDetail: failure.detail,
+            lastErrorAt: new Date(),
+          })
+          .where(eq(calendarFeeds.id, feed.id));
+        return { ok: false, failure };
+      }
+    }
+  })().finally(() => inflight.delete(feed.id));
+  inflight.set(feed.id, run);
+  return run;
+}
+
+/**
+ * A feed's ICS text. Anything we already hold is handed back straight away and
+ * refreshed behind the request — waiting on someone else's calendar server is
+ * what made opening a calendar feel slow. `force` (the refresh button) waits for
+ * the real thing; only a feed we've never read successfully has to.
+ */
+async function icsFor(feed: FeedRow, force: boolean): Promise<{ text: string; stale: boolean }> {
+  const have = held(feed);
+  const fail = (r: Refresh & { ok: false }): never => {
+    throw new FeedError(r.failure.message, r.failure.status, r.failure.detail);
+  };
+  if (force) {
+    const res = await refreshFeed(feed);
+    if (res.ok) return { text: res.entry.text, stale: false };
+    if (have) return { text: have.text, stale: true };
+    return fail(res);
+  }
+  if (have && Date.now() - have.fetchedAt < TTL_MS) return { text: have.text, stale: false };
+  if (have) {
+    void refreshFeed(feed); // stale-while-revalidate
+    return { text: have.text, stale: true };
+  }
+  const res = await refreshFeed(feed);
+  if (res.ok) return { text: res.entry.text, stale: false };
+  return fail(res);
 }
 
 const feedView = {
@@ -278,11 +529,54 @@ const feedView = {
   enabled: calendarFeeds.enabled,
   lastFetchedAt: calendarFeeds.lastFetchedAt,
   lastError: calendarFeeds.lastError,
+  lastStatus: calendarFeeds.lastStatus,
+  lastDetail: calendarFeeds.lastDetail,
+  lastErrorAt: calendarFeeds.lastErrorAt,
+  cachedAt: calendarFeeds.cachedAt,
   sort: calendarFeeds.sort,
 };
 
 export async function calendarRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
+
+  /**
+   * Keep the stored copies warm in the background, so opening a calendar reads
+   * from disk rather than waiting on someone else's server. A feed that just
+   * failed is left alone for a while: a revoked publish link would otherwise be
+   * retried every few minutes forever, and the answer wouldn't change.
+   */
+  const SWEEP_MS = 5 * 60 * 1000;
+  const ERROR_BACKOFF_MS = 30 * 60 * 1000;
+  const SWEEP_CONCURRENCY = 3;
+  let sweeping = false;
+  const sweep = async () => {
+    if (sweeping) return;
+    sweeping = true;
+    try {
+      const all = await db.select(feedRow).from(calendarFeeds).where(eq(calendarFeeds.enabled, true));
+      const now = Date.now();
+      const due = all.filter((f) => {
+        if (f.lastErrorAt && now - f.lastErrorAt.getTime() < ERROR_BACKOFF_MS) return false;
+        return !f.cachedAt || now - f.cachedAt.getTime() > TTL_MS;
+      });
+      for (let i = 0; i < due.length; i += SWEEP_CONCURRENCY) {
+        await Promise.all(due.slice(i, i + SWEEP_CONCURRENCY).map((f) => refreshFeed(f)));
+      }
+    } catch (err) {
+      app.log.warn({ err }, "calendar feed sweep failed");
+    } finally {
+      sweeping = false;
+    }
+  };
+  let sweepTimer: ReturnType<typeof setInterval> | undefined;
+  app.addHook("onReady", async () => {
+    sweepTimer = setInterval(() => void sweep(), SWEEP_MS);
+    sweepTimer.unref?.();
+    void sweep(); // warm on boot: the first calendar opened shouldn't be the one that waits
+  });
+  app.addHook("onClose", async () => {
+    if (sweepTimer) clearInterval(sweepTimer);
+  });
 
   /** List the user's calendar feeds. */
   app.get("/calendar/feeds", async (req) => {
@@ -329,13 +623,44 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     if (body.url !== undefined) patch.url = body.url;
     if (body.color !== undefined) patch.color = body.color;
     if (body.enabled !== undefined) patch.enabled = body.enabled;
-    if (body.url !== undefined) CACHE.delete(id);
+    if (body.url !== undefined) {
+      // A new address is a different calendar: the stored body, its validators
+      // and any complaint about the old one all stop applying.
+      CACHE.delete(id);
+      patch.cacheText = null;
+      patch.cachedAt = null;
+      patch.etag = null;
+      patch.lastModified = null;
+      patch.lastError = null;
+      patch.lastStatus = null;
+      patch.lastDetail = null;
+      patch.lastErrorAt = null;
+    }
     const [row] = await db
       .update(calendarFeeds)
       .set(patch)
       .where(and(eq(calendarFeeds.id, id), eq(calendarFeeds.ownerId, userId)))
       .returning(feedView);
     if (!row) throw notFound("feed");
+    return row;
+  });
+
+  /**
+   * Fetch this feed now and report what happened — the diagnostics dialog's
+   * "Try again", and the only way to find out whether a fix worked without
+   * waiting for the next sweep.
+   */
+  app.post("/calendar/feeds/:id/refresh", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const [feed] = await db
+      .select(feedRow)
+      .from(calendarFeeds)
+      .where(and(eq(calendarFeeds.id, id), eq(calendarFeeds.ownerId, userId)))
+      .limit(1);
+    if (!feed) throw notFound("feed");
+    await refreshFeed(feed);
+    const [row] = await db.select(feedView).from(calendarFeeds).where(eq(calendarFeeds.id, id)).limit(1);
     return row;
   });
 
@@ -370,7 +695,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     const force = q.refresh === "1";
 
     const feeds = await db
-      .select(feedView)
+      .select({ ...feedRow, name: calendarFeeds.name, color: calendarFeeds.color })
       .from(calendarFeeds)
       .where(and(eq(calendarFeeds.ownerId, userId), eq(calendarFeeds.enabled, true)));
 
@@ -415,34 +740,46 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     const out: Array<ParsedEvent & { feedId: string; feedName: string; color: string }> = [];
     // blockId → the feed instance the synced event should mirror (nearest to now).
     const syncTargets = new Map<string, SyncTarget>();
-    for (const feed of feeds) {
-      try {
-        const text = await icsFor(feed, force);
-        const events = eventsInRange(text, q.start, q.end).map((e) => zoneEvent(e, tz));
-        for (const ev of events) {
-          const link = syncByKey.get(`${feed.id}|${ev.uid}`);
-          if (link) {
-            // Hidden from the feed; the linked block mirrors the nearest instance.
-            const prev = syncTargets.get(link.blockId);
-            const dist = (e: EventLike) => Math.abs(new Date(e.start).getTime() - nowMs);
-            if (!prev || dist(ev) < dist(prev.ev)) {
-              syncTargets.set(link.blockId, { ev, linkId: link.linkId, lastFeed: link.lastFeed });
+    // True when at least one feed is showing a stored copy while it refreshes
+    // behind us: the client asks again shortly to pick up what arrives.
+    let stale = false;
+    // All feeds at once. Serially, a single slow calendar host held up every
+    // other one — and it only takes one Outlook feed to make the whole page wait.
+    await Promise.all(
+      feeds.map(async (feed) => {
+        try {
+          const got = await icsFor(feed, force);
+          if (got.stale) stale = true;
+          const events = eventsInRange(got.text, q.start, q.end).map((e) => zoneEvent(e, tz));
+          for (const ev of events) {
+            const link = syncByKey.get(`${feed.id}|${ev.uid}`);
+            if (link) {
+              // Hidden from the feed; the linked block mirrors the nearest instance.
+              const prev = syncTargets.get(link.blockId);
+              const dist = (e: EventLike) => Math.abs(new Date(e.start).getTime() - nowMs);
+              if (!prev || dist(ev) < dist(prev.ev)) {
+                syncTargets.set(link.blockId, { ev, linkId: link.linkId, lastFeed: link.lastFeed });
+              }
+              continue;
             }
-            continue;
+            out.push({ ...ev, feedId: feed.id, feedName: feed.name, color: feed.color });
           }
-          out.push({ ...ev, feedId: feed.id, feedName: feed.name, color: feed.color });
+        } catch (err) {
+          // A fetch failure has already been recorded against the feed, in more
+          // detail than we could reconstruct here; anything else is the parse.
+          if (err instanceof FeedError) return;
+          await db
+            .update(calendarFeeds)
+            .set({
+              lastError: "the calendar couldn't be read",
+              lastDetail:
+                "The address answered, but what came back isn't a calendar we can parse. Check that it's the ICS address rather than a web page.",
+              lastErrorAt: new Date(),
+            })
+            .where(eq(calendarFeeds.id, feed.id));
         }
-        await db
-          .update(calendarFeeds)
-          .set({ lastFetchedAt: new Date(), lastError: null })
-          .where(eq(calendarFeeds.id, feed.id));
-      } catch (err) {
-        await db
-          .update(calendarFeeds)
-          .set({ lastError: err instanceof Error ? err.message : "fetch failed" })
-          .where(eq(calendarFeeds.id, feed.id));
-      }
-    }
+      }),
+    );
 
     // Push feed changes into the synced blocks (feed is the source of truth for
     // these). Only writes when a value actually changed, so the steady state is
@@ -450,7 +787,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     if (syncTargets.size) await applySyncUpdates(userId, syncTargets);
 
     out.sort((a, b) => a.start.localeCompare(b.start));
-    return { events: out };
+    return { events: out, stale };
   });
 
   /**

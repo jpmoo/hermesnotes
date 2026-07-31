@@ -5620,6 +5620,24 @@ input.cv-add-input {
   gap: 6px;
   margin: -2px 0 10px;
 }
+/* The toggle and its complaint travel together: the warning sits beside the
+   pill rather than inside it, so hiding the feed and asking what's wrong stay
+   two separate clicks. */
+.cal-feed-toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.cal-feed-warn {
+  color: var(--danger);
+  width: 22px;
+  height: 22px;
+}
+.cal-feed-warn:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
 .cal-feed-toggle {
   display: inline-flex;
   align-items: center;
@@ -5861,6 +5879,63 @@ input.cv-add-input {
   font-size: 11px;
   color: var(--danger);
   margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.cal-feed-error:hover {
+  text-decoration: underline;
+}
+
+/* Feed diagnostics dialog. Wider than a confirmation because the material is
+   an address and a paragraph of explanation, not a yes/no question. */
+.feed-diag {
+  max-width: 520px;
+}
+.feed-diag .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.feed-diag-bad {
+  color: var(--danger);
+  flex: none;
+}
+.feed-diag-ok {
+  color: var(--ok, #3fb950);
+  flex: none;
+}
+.feed-diag-headline {
+  margin: 2px 0 8px;
+  font-size: 13px;
+  color: var(--danger);
+}
+.feed-diag-detail {
+  white-space: pre-wrap;
+}
+.feed-diag-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 14px 0 0;
+  font-size: 12px;
+}
+.feed-diag-facts dt {
+  color: var(--text-muted);
+}
+.feed-diag-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.feed-diag-url {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+}
+.feed-diag-note {
+  margin-top: 14px;
+  font-size: 11px;
 }
 .cal-feed-add {
   display: flex;

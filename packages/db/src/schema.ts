@@ -209,6 +209,20 @@ export const calendarFeeds = pgTable("calendar_feeds", {
   enabled: boolean("enabled").notNull().default(true),
   lastFetchedAt: timestamp("last_fetched_at", { withTimezone: true }),
   lastError: text("last_error"),
+  /** What the calendar host actually said, for the diagnostics dialog. */
+  lastStatus: integer("last_status"),
+  lastDetail: text("last_detail"),
+  lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+  /**
+   * The last ICS body we successfully read, and the validators to ask about it
+   * with. Kept so the calendar can render immediately from the stored copy while
+   * a refresh happens behind it — an empty calendar waiting on someone else's
+   * server is the thing this avoids.
+   */
+  cacheText: text("cache_text"),
+  cachedAt: timestamp("cached_at", { withTimezone: true }),
+  etag: text("etag"),
+  lastModified: text("last_modified"),
   sort: integer("sort").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

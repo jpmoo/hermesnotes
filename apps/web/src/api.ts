@@ -224,6 +224,12 @@ export interface CalendarFeed {
   enabled: boolean;
   lastFetchedAt: string | null;
   lastError: string | null;
+  /** What the calendar host said, and when — the diagnostics dialog's material. */
+  lastStatus: number | null;
+  lastDetail: string | null;
+  lastErrorAt: string | null;
+  /** When the stored copy the calendar renders from was last confirmed. */
+  cachedAt: string | null;
   sort: number;
 }
 

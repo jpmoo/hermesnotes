@@ -1,6 +1,7 @@
 import { AlertTriangle, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type CalendarFeed } from "../api.ts";
+import { FeedDiagnostics } from "./FeedDiagnostics.tsx";
 
 const SWATCHES = [
   "#6b7cff", "#e6584d", "#f5a623", "#3fb950", "#22b8cf",
@@ -16,6 +17,7 @@ export function CalendarFeedsSettings() {
   const [color, setColor] = useState(SWATCHES[0]!);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [diag, setDiag] = useState<CalendarFeed | null>(null);
 
   const load = () => {
     void api
@@ -94,9 +96,9 @@ export function CalendarFeedsSettings() {
                 </span>
                 <span className="cal-feed-url">{feed.url}</span>
                 {feed.lastError && (
-                  <span className="cal-feed-error">
+                  <button className="cal-feed-error" title="What went wrong" onClick={() => setDiag(feed)}>
                     <AlertTriangle size={12} /> {feed.lastError}
-                  </span>
+                  </button>
                 )}
               </span>
               <button className="icon-btn" title="Remove" onClick={() => remove(feed.id)}>
@@ -140,6 +142,16 @@ export function CalendarFeedsSettings() {
         </div>
       </div>
       {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+      {diag && (
+        <FeedDiagnostics
+          feed={diag}
+          onClose={() => setDiag(null)}
+          onChanged={(next) => {
+            setDiag(next);
+            setFeeds((f) => f.map((x) => (x.id === next.id ? next : x)));
+          }}
+        />
+      )}
     </div>
   );
 }

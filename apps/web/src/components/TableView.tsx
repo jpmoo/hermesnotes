@@ -224,7 +224,22 @@ function TableRow({
   };
 
   return (
-    <tr data-block-id={member.id} onPointerDownCapture={() => selectBlock(member.id)}>
+    <tr
+      data-block-id={member.id}
+      onPointerDownCapture={() => selectBlock(member.id)}
+      // A typed row is made of editable cells, so there was nothing to tap that
+      // meant "show me this block" — on a phone, where the info panel is an
+      // off-screen drawer, selecting a row looked like nothing happened. A tap
+      // that isn't aimed at a control now opens it, the way a card or chip does.
+      // (On a desktop this is the same selection the capture above already made.)
+      onClick={(e) => {
+        const el = e.target as HTMLElement;
+        if (el.closest("input, textarea, select, button, a, [contenteditable='true'], .dtp, .mention-chip")) {
+          return;
+        }
+        selectOrOpen(member.id);
+      }}
+    >
       {rowNumber !== null && <td className="tv-num">{rowNumber}</td>}
       {columns.map((key) => (
         <td key={key} className={key === "tags" ? "tv-cell tv-cell-tags" : "tv-cell"}>

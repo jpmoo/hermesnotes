@@ -7,7 +7,7 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 > I'm a vibe-coder, and Claude did all of the heavy lifting here. Expect some hard edges here and there!
 
 <p align="center">
-  <a href="https://www.buymeacoffee.com/jpmoo" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="41" width="174"></a>
+  <a href="https://www.buymeacoffee.com/jpmoo" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="41" width="174"></a>&nbsp;<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/86e58c5b-e261-43ae-830e-33e34555548f" />
 </p>
 
 ---

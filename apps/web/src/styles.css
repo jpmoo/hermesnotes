@@ -3554,8 +3554,12 @@ input.matrix-axis-y::placeholder {
 .matrix-dims-row .cols-ctl {
   min-width: 0;
 }
-.matrix-dims-row .hint {
-  min-width: 0; /* the label sits next to its rocker, not on a fixed column */
+/* Each label sits the same 8px from its own rocker. The panel's 62px label
+   column (below) is what a stack of rows needs to line up; on this shared line
+   it only padded "Rows" out to the width of "Columns", so the two halves looked
+   spaced differently. Two classes deep to outrank it. */
+.matrix-panel-controls .matrix-dims-row .hint {
+  min-width: 0;
 }
 
 .matrix-panel-controls .cols-ctl,

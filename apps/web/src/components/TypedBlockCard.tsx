@@ -290,6 +290,7 @@ export function TypedBlockCard({
               f.type === "longtext" ||
               f.type === "url" ||
               f.type === "datespan" ||
+              f.type === "reference" ||
               f.type === "attachments";
             // A native <label> forwards clicks to its first form control, which
             // hijacks clicks inside rich fields (e.g. a longtext checklist's

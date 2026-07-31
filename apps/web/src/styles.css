@@ -155,12 +155,26 @@ label,
   /* Cast inward, over the page. A down-and-right shadow would fall off the
      window entirely from this edge. */
   box-shadow: -6px 0 18px var(--shadow-color);
-  backdrop-filter: var(--panel-blur);
-  -webkit-backdrop-filter: var(--panel-blur);
   padding: 18px 16px;
   overflow-y: auto;
   transition: width 0.16s ease, box-shadow 0.16s ease;
 }
+/* The blur sits on a layer of its own, never on the panel. A backdrop-filter
+   makes its element the containing block for every fixed-position descendant,
+   so the popups inside a panel — the date picker, reference dropdowns, the
+   mention menu — stopped positioning against the window and were clipped by the
+   panel the moment blur was switched on. The layer covers the panel (neither of
+   these scrolls itself; .panel-scroll does) and takes no part in layout. */
+.right-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
+}
+
 .right-panel.expanded {
   box-shadow: -2px 0 16px rgba(0, 0, 0, 0.1);
 }
@@ -955,8 +969,6 @@ label,
   border-right: 1px solid var(--border);
   /* Cast inward, over the page — the same direction the light implies here. */
   box-shadow: 6px 0 18px var(--shadow-color);
-  backdrop-filter: var(--panel-blur);
-  -webkit-backdrop-filter: var(--panel-blur);
   /* Same padding in both states so the logo/icons don't shift on expand —
      only the width animates. */
   padding: 18px 11px;
@@ -965,6 +977,21 @@ label,
   gap: 6px;
   white-space: nowrap;
   transition: width 0.16s ease, box-shadow 0.16s ease;
+}
+/* The blur sits on a layer of its own, never on the panel. A backdrop-filter
+   makes its element the containing block for every fixed-position descendant,
+   so the popups inside a panel — the date picker, reference dropdowns, the
+   mention menu — stopped positioning against the window and were clipped by the
+   panel the moment blur was switched on. The layer covers the panel (neither of
+   these scrolls itself; .panel-scroll does) and takes no part in layout. */
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  backdrop-filter: var(--panel-blur);
+  -webkit-backdrop-filter: var(--panel-blur);
 }
 .sidebar.expanded {
   box-shadow: 2px 0 16px rgba(0, 0, 0, 0.1);
@@ -3347,14 +3374,15 @@ input.matrix-axis-y::placeholder {
 
 /* Date/Time span: two labeled legs. */
 .span-field {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 .span-leg {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0; /* let the triggers shrink and ellipsize rather than overflow */
 }
 .span-label {
   font-size: 11px;

@@ -235,6 +235,7 @@ export function TextBlockEditor({
                 f.type === "longtext" ||
                 f.type === "url" ||
                 f.type === "datespan" ||
+                f.type === "reference" ||
                 f.type === "attachments"
                   ? " full"
                   : ""

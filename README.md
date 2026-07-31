@@ -12,6 +12,10 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 
 ---
 
+## Couple o' Screenshots
+<img width="50%" height="50%" alt="image" src="https://github.com/user-attachments/assets/76f03741-4268-4657-8666-5652af969126" />
+
+
 ## Highlights
 
 - **Block-first data model.** Define your own block types (Task, Project, Person, Book…) with typed fields — text, long-text (Markdown), dates & date-spans, numbers, selects, status, references to other blocks, and file attachments.

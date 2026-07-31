@@ -20,7 +20,7 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 
 - **Block-first data model.** Define your own block types (Task, Project, Person, Book…) with typed fields — text, long-text (Markdown), dates & date-spans, numbers, selects, status, references to other blocks, and file attachments.
 - **Everything links.** Inline `@`/`#`/`|` mentions, reference fields, and a live backlinks/connections panel. Links to deleted blocks are surfaced so you can clean them up.
-- **Collections, many shapes.** Group blocks as a **list**, **table**, **kanban matrix** (rows × columns × regions), **calendar**, **document**, or **infinite canvas** — including *smart* collections driven by a query builder.
+- **Collections, many shapes.** Group blocks as a **list**, **table**, **kanban matrix** (rows × columns × regions), **calendar**, **spread**, or **infinite canvas** — including *smart* collections driven by a query builder.
 - **Tasks & projects.** Statuses, due/scheduled date-spans, recurrence, and project relations. On a canvas, drawing a link from a task to a project files it under that project.
 - **Daily notes & weekly review.** A dated scratchpad per day, plus a configurable weekly-review flow with reflections.
 - **Semantic + keyword search.** Full-text search everywhere, backed by vector embeddings (via your own Ollama model) for "find things like this."

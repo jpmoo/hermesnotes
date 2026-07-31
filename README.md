@@ -13,8 +13,8 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 ---
 
 ## Couple o' Screenshots
-<center><img width="30%" height="30%" alt="image" src="https://github.com/user-attachments/assets/76f03741-4268-4657-8666-5652af969126" />
-&nbsp;<img width="30%" height="30%" alt="image" src="https://github.com/user-attachments/assets/86e58c5b-e261-43ae-830e-33e34555548f" /></center>
+<p align="center"><img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/76f03741-4268-4657-8666-5652af969126" />
+&nbsp;<img width="35%" height="35%" alt="image" src="https://github.com/user-attachments/assets/86e58c5b-e261-43ae-830e-33e34555548f" /></p>
 
 ## Highlights
 

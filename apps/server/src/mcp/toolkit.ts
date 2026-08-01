@@ -1257,9 +1257,11 @@ export function defineTools(api: Api): ToolDef[] {
 
   // ---------- today sheet layout ----------
 
-  const todayISO = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const todayISO = async () => {
+    const s = await api.get<{ timezone: string | null }>("/settings").catch(() => ({ timezone: null }));
+    // en-CA formats as YYYY-MM-DD. With no timezone set, fall back to the
+    // server's own clock, which is what this always used.
+    return new Intl.DateTimeFormat("en-CA", s.timezone ? { timeZone: s.timezone } : {}).format(new Date());
   };
   // A canvas/table/etc. is a collection; anything else resolves as a note block.
   const resolveSection = async (
@@ -1313,7 +1315,7 @@ export function defineTools(api: Api): ToolDef[] {
     "Read the daily note (the Today page's scratchpad) for a date — creating it if that day has never been opened, so this never comes back empty-handed. date defaults to today (YYYY-MM-DD). Use this rather than searching for a note by its date: daily notes are kept out of ordinary block listings.",
     { date: ISO_DATE.optional() },
     run(async (a) => {
-      const date = a.date?.trim() || todayISO();
+      const date = a.date?.trim() || (await todayISO());
       const note = await dailyNote(date);
       const body = (note.content ?? "").trim();
       return `Daily note ${date} [${note.id}]\n\n${body || "(empty)"}`;
@@ -1325,7 +1327,7 @@ export function defineTools(api: Api): ToolDef[] {
     "Add text to the end of a day's daily note (the Today page's scratchpad), creating the note if that day has never been opened. Markdown — use \"- \" for a bullet, \"- [ ] \" for a checklist item. date defaults to today. To replace the whole note instead, read it with daily_note_get and write it with block_update.",
     { text: z.string().min(1), date: ISO_DATE.optional() },
     run(async (a) => {
-      const date = a.date?.trim() || todayISO();
+      const date = a.date?.trim() || (await todayISO());
       const note = await dailyNote(date);
       const before = (note.content ?? "").replace(/\s+$/, "");
       const addition = a.text.trim();
@@ -1343,7 +1345,7 @@ export function defineTools(api: Api): ToolDef[] {
     "Show the section layout of a Today sheet (which collections/notes are pinned, and whether each is just this day or on all Dailies). date defaults to today (YYYY-MM-DD).",
     { date: ISO_DATE.optional() },
     run(async (a) => {
-      const date = a.date?.trim() || todayISO();
+      const date = a.date?.trim() || (await todayISO());
       const { sections } = await api.get<{ sections: LayoutSection[] }>(`/today/${date}/layout`);
       const lines = sections.map((s) => {
         if (s.source === "standard") return `- ${s.label} (standard)`;
@@ -1373,7 +1375,7 @@ export function defineTools(api: Api): ToolDef[] {
       date: ISO_DATE.optional(),
     },
     run(async (a) => {
-      const date = a.date?.trim() || todayISO();
+      const date = a.date?.trim() || (await todayISO());
       const section = await resolveSection(a.item, a.as);
       await api.post(`/today/${date}/layout/add`, { section, after: a.after, scope: a.scope });
       return `Added "${a.item}" below ${a.after} ${scopePhrase(a.scope, date)}.`;
@@ -1390,7 +1392,7 @@ export function defineTools(api: Api): ToolDef[] {
       date: ISO_DATE.optional(),
     },
     run(async (a) => {
-      const date = a.date?.trim() || todayISO();
+      const date = a.date?.trim() || (await todayISO());
       const section = await resolveSection(a.item, a.as);
       await api.post(`/today/${date}/layout/remove`, { section, scope: a.scope });
       return `Removed "${a.item}" ${scopePhrase(a.scope, date)}.`;
@@ -1402,7 +1404,7 @@ export function defineTools(api: Api): ToolDef[] {
     "Reorder this day's own sections (standard sections and day-only pins). Place `item` right after `after` (a section title/id, or a standard section name); omit `after` to move it to the top. Sections that come from all-Dailies defaults are anchored under a standard section and can't be moved here. date defaults to today.",
     { item: z.string().min(1), after: z.string().optional(), date: ISO_DATE.optional() },
     run(async (a) => {
-      const date = a.date?.trim() || todayISO();
+      const date = a.date?.trim() || (await todayISO());
       const { sections } = await api.get<{ sections: LayoutSection[] }>(`/today/${date}/layout`);
       const keyOf = (s: LayoutSection) => (s.t === "collection" || s.t === "block" ? `${s.t}:${s.id}` : s.t);
       // Day-owned sections only (defaults are anchored, not reorderable here).
@@ -1436,8 +1438,7 @@ export function defineTools(api: Api): ToolDef[] {
       let start = a.date ?? a.start ?? "";
       let end = a.date ?? a.end ?? "";
       if (!start || !end) {
-        const s = await api.get<{ timezone: string | null }>("/settings").catch(() => ({ timezone: null }));
-        const today = new Intl.DateTimeFormat("en-CA", { timeZone: s.timezone || "UTC" }).format(new Date());
+        const today = await todayISO();
         if (!start) start = today;
         if (!end) end = start;
       }

@@ -91,6 +91,11 @@ const DESTRUCTIVE_TOOLS = new Set(["tag_delete"]);
 const READONLY_TOOLS = new Set([
   "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
   "task_find", "task_info", "project_list", "project_archived", "project_info", "today_layout_get",
+  // Reads a day, which brings that day's scratchpad into being if nobody has
+  // opened it — the same thing today_layout_get has always done, and the same
+  // thing visiting the page does. Nothing the caller had is changed by it, and
+  // an untouched note is swept away again.
+  "daily_note_get",
   "calendar_events",
 ]);
 
@@ -1287,6 +1292,51 @@ export function defineTools(api: Api): ToolDef[] {
     scope?: "all" | "today_forward" | "range" | null;
     range?: { from: string | null; until: string | null };
   }
+
+  /**
+   * The day's scratchpad, brought into being if nobody has opened that day yet.
+   * A daily note isn't something you create — it exists because someone went to
+   * the day, and asking for it over MCP is that same act. Without this an agent
+   * asked to "put this in today's note" would search, find nothing, and either
+   * give up or invent an ordinary note that the Today page never shows.
+   */
+  interface DailyNote {
+    id: string;
+    content: string | null;
+    version: number;
+    properties: Record<string, unknown>;
+  }
+  const dailyNote = (date: string) => api.get<DailyNote>(`/today/${date}/note`);
+
+  tool(
+    "daily_note_get",
+    "Read the daily note (the Today page's scratchpad) for a date — creating it if that day has never been opened, so this never comes back empty-handed. date defaults to today (YYYY-MM-DD). Use this rather than searching for a note by its date: daily notes are kept out of ordinary block listings.",
+    { date: ISO_DATE.optional() },
+    run(async (a) => {
+      const date = a.date?.trim() || todayISO();
+      const note = await dailyNote(date);
+      const body = (note.content ?? "").trim();
+      return `Daily note ${date} [${note.id}]\n\n${body || "(empty)"}`;
+    }),
+  );
+
+  tool(
+    "daily_note_append",
+    "Add text to the end of a day's daily note (the Today page's scratchpad), creating the note if that day has never been opened. Markdown — use \"- \" for a bullet, \"- [ ] \" for a checklist item. date defaults to today. To replace the whole note instead, read it with daily_note_get and write it with block_update.",
+    { text: z.string().min(1), date: ISO_DATE.optional() },
+    run(async (a) => {
+      const date = a.date?.trim() || todayISO();
+      const note = await dailyNote(date);
+      const before = (note.content ?? "").replace(/\s+$/, "");
+      const addition = a.text.trim();
+      // A blank line between what was there and what's arriving: two paragraphs
+      // run together otherwise, and a bullet list appended to a paragraph would
+      // swallow the first item.
+      const content = before ? `${before}\n\n${addition}\n` : `${addition}\n`;
+      await api.patch(`/blocks/${note.id}`, { content, version: note.version });
+      return `Added to the daily note for ${date}.`;
+    }),
+  );
 
   tool(
     "today_layout_get",

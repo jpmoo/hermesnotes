@@ -265,6 +265,19 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     return [...new Set(rows.map((r) => r.d).filter(Boolean))];
   });
 
+  /**
+   * Just the day's note, brought into being if this is the first time anyone has
+   * asked for it. A daily note exists because someone opened the day — an agent
+   * asking for one over MCP is the same act, and it shouldn't have to build the
+   * note itself (or discover that "today's note" doesn't exist and give up).
+   * Registered before "/today/:date" so the literal path wins.
+   */
+  app.get("/today/:date/note", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    return findOrCreateNote(userId, date);
+  });
+
   /** The Today sheet for a date: scratchpad note + relevant + activity blocks. */
   app.get("/today/:date", async (req) => {
     const userId = requireUser(req);

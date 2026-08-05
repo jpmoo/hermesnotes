@@ -159,7 +159,6 @@ export function DateTimePicker({
     const ahead = ((target - now.getDay() + 6) % 7) + 1;
     goTo(new Date(now.getFullYear(), now.getMonth(), now.getDate() + ahead));
     setDowOpen(false);
-    setOpen(false); // "next Tuesday" is a choice, not a nudge like +1 day
   };
 
   return (
@@ -210,16 +209,15 @@ export function DateTimePicker({
                   (c.key === parts.date ? " sel" : "") +
                   (c.key === today ? " today" : "")
                 }
-                // Picking a day is what this is for, so it's also the end of
-                // it. The time controls below don't close — you're not choosing
-                // a date then — and neither does paging between months.
+                // Stays open on a day: the time controls are below it, and a
+                // date and a time are usually chosen in one visit. Done (or a
+                // click outside) closes it.
                 onClick={() => {
                   if (!c.inMonth) {
                     const d = new Date(`${c.key}T00:00`);
                     setView({ y: d.getFullYear(), m: d.getMonth() });
                   }
                   emit({ date: c.key });
-                  setOpen(false);
                 }}
               >
                 {c.day}

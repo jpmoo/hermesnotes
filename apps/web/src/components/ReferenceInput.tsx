@@ -122,6 +122,9 @@ export function ReferenceInput({
       onChange([...ids, o.id]);
     }
     setQuery("");
+    // You picked the thing you came for. Adding a second one is a new act —
+    // clicking the field again (or its input) opens the list back up.
+    setOpen(false);
   };
   const remove = (id: string) => onChange(ids.filter((x) => x !== id));
 

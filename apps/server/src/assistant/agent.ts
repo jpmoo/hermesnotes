@@ -194,7 +194,14 @@ export async function summarizeConversation(
   return message.content?.trim() || "";
 }
 
-const MAX_STEPS = 8;
+/**
+ * Turns allowed on one message. A turn is one exchange with the model, not one
+ * tool: a model that batches three calls into a message spends one, and a model
+ * that calls them one at a time spends three — which is what local models
+ * mostly do, so this has to be generous to be useful. It exists at all so a
+ * confused model can't loop forever, each iteration carrying the whole history.
+ */
+const DEFAULT_MAX_STEPS = 20;
 
 const normArgs = (raw: unknown): unknown => {
   if (typeof raw !== "string") return raw ?? {};
@@ -228,6 +235,8 @@ export async function runAgent(opts: {
   messages: { role: "user" | "assistant"; content: string }[];
   confirmDestructive?: boolean;
   numCtx?: number;
+  /** Turns allowed for this message; see DEFAULT_MAX_STEPS. */
+  maxSteps?: number;
   /** A line appended to the system prompt (e.g. the authoritative current date
    * in the user's timezone) so the model never has to guess it. */
   systemExtra?: string;
@@ -245,10 +254,13 @@ export async function runAgent(opts: {
   let promptTokens = 0;
   const onToken = opts.onEvent ? (t: string) => opts.onEvent!({ type: "token", text: t }) : undefined;
 
-  for (let i = 0; i < MAX_STEPS; i++) {
+  const maxSteps = Math.min(50, Math.max(1, opts.maxSteps ?? DEFAULT_MAX_STEPS));
+  let lastText = "";
+  for (let i = 0; i < maxSteps; i++) {
     const { message: msg, promptTokens: pt } = await ollamaChat(opts.url, opts.model, messages, tools, opts.numCtx, onToken);
     promptTokens = pt || promptTokens;
     messages.push(msg);
+    if (msg.content?.trim()) lastText = msg.content.trim();
     const calls = msg.tool_calls ?? [];
     if (!calls.length) return { reply: msg.content?.trim() || "", steps, promptTokens };
 
@@ -267,7 +279,16 @@ export async function runAgent(opts: {
     }
     if (pending.length) return { reply: msg.content?.trim() || "", steps, pending, promptTokens };
   }
-  return { reply: "I stopped after several steps — ask me to continue if needed.", steps, promptTokens };
+  // Out of turns, mid-task. Saying so is not enough on its own: "continue" is a
+  // guess unless it's clear what was already done and what was left.
+  const used = [...new Set(steps.map((s) => s.tool))];
+  const reply = [
+    `I used all ${maxSteps} steps allowed for one message before finishing.`,
+    used.length ? ` So far: ${used.join(", ")}.` : "",
+    lastText ? `\n\n${lastText}` : "",
+    `\n\nTell me to continue and I'll pick up from here — or raise the limit in Settings → AI if this keeps happening.`,
+  ].join("");
+  return { reply, steps, promptTokens };
 }
 
 /** Execute a set of user-confirmed calls (destructive tools only). */

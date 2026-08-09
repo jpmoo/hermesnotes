@@ -64,6 +64,10 @@ export const userSettings = pgTable("user_settings", {
   // Auto-archive completed tasks this many days after they were marked done.
   // Null or 0 = off. A daily job (like backups) runs the sweep.
   autoarchiveDoneDays: integer("autoarchive_done_days"),
+  // Turns the assistant may take on one message before stopping to ask. Null =
+  // the built-in default; a model that calls one tool at a time needs more of
+  // them than one that batches, so it's per-user.
+  assistantMaxSteps: integer("assistant_max_steps"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -28,6 +28,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
       defaultSimilarity: row.defaultSimilarity,
       timezone: row.timezone,
       autoarchiveDoneDays: row.autoarchiveDoneDays,
+      assistantMaxSteps: row.assistantMaxSteps,
       connected: Boolean(row.ollamaUrl && row.embedModel),
     };
   });
@@ -118,6 +119,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         defaultSimilarity: z.number().min(0).max(1).optional(),
         timezone: z.string().nullable().optional(),
         autoarchiveDoneDays: z.number().int().min(0).max(3650).nullable().optional(),
+        assistantMaxSteps: z.number().int().min(1).max(50).nullable().optional(),
       })
       .parse(req.body);
 
@@ -180,6 +182,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
             body.autoarchiveDoneDays !== undefined
               ? body.autoarchiveDoneDays
               : current.autoarchiveDoneDays,
+          assistantMaxSteps:
+            body.assistantMaxSteps !== undefined ? body.assistantMaxSteps : current.assistantMaxSteps,
           updatedAt: new Date(),
         })
         .where(eq(userSettings.userId, userId));

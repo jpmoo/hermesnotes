@@ -23,14 +23,24 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
 
   const requireModel = async (userId: string) => {
     const [settings] = await db
-      .select({ url: userSettings.ollamaUrl, model: userSettings.inferenceModel, timezone: userSettings.timezone })
+      .select({
+        url: userSettings.ollamaUrl,
+        model: userSettings.inferenceModel,
+        timezone: userSettings.timezone,
+        maxSteps: userSettings.assistantMaxSteps,
+      })
       .from(userSettings)
       .where(eq(userSettings.userId, userId))
       .limit(1);
     if (!settings?.url) throw badRequest("No Ollama URL configured for this instance.");
     if (!settings.model)
       throw badRequest("No inference model set. Choose a tool-capable model (e.g. llama3.1, qwen2.5) in Settings.");
-    return { url: settings.url, model: settings.model, timezone: settings.timezone };
+    return {
+      url: settings.url,
+      model: settings.model,
+      timezone: settings.timezone,
+      maxSteps: settings.maxSteps ?? undefined,
+    };
   };
 
   /** The authoritative "Today is …" line for the system prompt: the current date
@@ -90,7 +100,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
 
     void (async () => {
       try {
-        const { url, model, timezone } = await requireModel(userId);
+        const { url, model, timezone, maxSteps } = await requireModel(userId);
         await appendMessage(userId, "user", body.message);
         const thread = await loadThread(userId);
         const numCtx = await modelContext(url, model);
@@ -102,6 +112,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
           messages: buildContext(thread),
           confirmDestructive: true,
           numCtx,
+          maxSteps,
           systemExtra: todayLine(timezone),
           onEvent: send,
         });

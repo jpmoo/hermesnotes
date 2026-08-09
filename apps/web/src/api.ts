@@ -127,6 +127,7 @@ export interface Settings {
   defaultSimilarity: number;
   timezone: string | null;
   autoarchiveDoneDays: number | null;
+  assistantMaxSteps: number | null;
   connected: boolean;
 }
 

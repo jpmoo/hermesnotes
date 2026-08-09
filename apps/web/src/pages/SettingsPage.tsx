@@ -86,6 +86,7 @@ export function SettingsPage() {
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [embedModel, setEmbedModel] = useState("");
   const [inferenceModel, setInferenceModel] = useState("");
+  const [maxSteps, setMaxSteps] = useState(0);
   const [similarity, setSimilarity] = useState(0.75);
   const [timezone, setTimezone] = useState("");
   const [autoDays, setAutoDays] = useState(0);
@@ -178,6 +179,7 @@ export function SettingsPage() {
       setUrl(s.ollamaUrl ?? "");
       setEmbedModel(s.embedModel ?? "");
       setInferenceModel(s.inferenceModel ?? "");
+      setMaxSteps(s.assistantMaxSteps ?? 0);
       setSimilarity(s.defaultSimilarity ?? 0.75);
       setTimezone(s.timezone ?? "");
       setAutoDays(s.autoarchiveDoneDays ?? 0);
@@ -390,6 +392,31 @@ export function SettingsPage() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="field">
+              <span>Assistant steps per message</span>
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={maxSteps}
+                  style={{ width: 90 }}
+                  onChange={(e) => {
+                    const v = Math.min(50, Math.max(0, Number(e.target.value) || 0));
+                    setMaxSteps(v);
+                    autoSaveSetting({ assistantMaxSteps: v > 0 ? v : null });
+                  }}
+                />
+                <span className="hint">0 = default (20)</span>
+              </div>
+              <span className="hint">
+                How many turns the assistant may take on one message before it stops and asks whether
+                to keep going. A turn is one exchange with the model, not one tool — a model that
+                calls tools one at a time gets through these quickly, so raise it if you often see it
+                stop mid-task.
+              </span>
             </label>
 
             <div className="row" style={{ marginTop: 12 }}>

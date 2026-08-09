@@ -646,7 +646,7 @@ export function MatrixView({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSmart, JSON.stringify(props.filter_query), collection.updatedAt, queryTick]);
+  }, [isSmart, JSON.stringify(props.filter_query), collection.updatedAt, queryTick, asOf]);
 
   const memberIds = useMemo(() => new Set(members.map((m) => m.id)), [members]);
   const matchIds = useMemo(() => new Set(matches.map((b) => b.id)), [matches]);
@@ -696,27 +696,28 @@ export function MatrixView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bound, isSmart, matches, matchIds, members, count, bindKey, boundOptions.join("|")]);
 
-  // Drawer candidates (unbound only): smart → query matches (fetched eagerly so
-  // the closed drawer can show its count); manual → search once opened.
+  // Drawer candidates (unbound only). A smart matrix's candidates are exactly
+  // its query matches, which this component already holds in full — asking the
+  // preview endpoint for them again cost a round trip and only ever returned
+  // the first 50, so anything past that was missing from the drawer with no
+  // sign that it had been cut. A manual matrix has no query, so its drawer is
+  // a block search instead, run once the drawer is open.
   useEffect(() => {
-    if (bound || dateMode) return;
-    if (!isSmart && !drawerOpen) return;
+    if (bound || dateMode || !isSmart) return;
+    setCandidates(matches.filter((b) => !memberIds.has(b.id)).map(blockToItem));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSmart, bound, dateMode, matches, memberIds]);
+
+  useEffect(() => {
+    if (bound || dateMode || isSmart) return;
+    if (!drawerOpen) return;
     let alive = true;
     const t = setTimeout(async () => {
       try {
-        let found: Item[] = [];
-        if (isSmart) {
-          const res = await api.post<{ blocks: { id: string; blockTypeId: string | null; label: string }[] }>(
-            "/collections/query-preview",
-            { filterQuery: normalizeFilter(props.filter_query) },
-          );
-          found = res.blocks.map((b) => ({ ...b, member: false, rawLabel: b.label }));
-        } else {
-          const res = await api.get<{ id: string; blockTypeId: string | null; label: string }[]>(
-            `/blocks/search?q=${encodeURIComponent(q)}`,
-          );
-          found = res.map((b) => ({ ...b, member: false, rawLabel: b.label }));
-        }
+        const res = await api.get<{ id: string; blockTypeId: string | null; label: string }[]>(
+          `/blocks/search?q=${encodeURIComponent(q)}`,
+        );
+        const found: Item[] = res.map((b) => ({ ...b, member: false, rawLabel: b.label }));
         if (alive) setCandidates(found.filter((b) => !memberIds.has(b.id)));
       } catch {
         if (alive) setCandidates([]);
@@ -726,7 +727,7 @@ export function MatrixView({
       alive = false;
       clearTimeout(t);
     };
-  }, [drawerOpen, q, isSmart, bound, memberIds, props.filter_query]);
+  }, [drawerOpen, q, isSmart, bound, dateMode, memberIds]);
 
   /** Date mode: the row-region a card sits in (matrix_lanes, clamped). */
   const rowOfCard = (id: string): number => {

@@ -399,7 +399,7 @@ export function CalendarView({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSmart, JSON.stringify(props.filter_query), collection.updatedAt, queryTick]);
+  }, [isSmart, JSON.stringify(props.filter_query), collection.updatedAt, queryTick, asOf]);
 
   const setViewMode = (v: ViewMode) => {
     setView(v);

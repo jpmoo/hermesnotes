@@ -217,6 +217,11 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.get("/collections/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    // A Today page passes its own date, so a smart collection embedded there
+    // reads as of that day rather than the real one.
+    const { as_of: asOf } = z
+      .object({ as_of: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+      .parse(req.query ?? {});
     const [collection] = await db
       .select(collectionView)
       .from(blocks)
@@ -233,7 +238,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       props.smart_mode === "dynamic" &&
       collection.collectionKind !== "matrix"
     ) {
-      const matched = await runQuery(userId, safeFilter(props.filter_query));
+      const matched = await runQuery(userId, safeFilter(props.filter_query), false, asOf);
       const members = matched.map((b, i) => ({
         membershipId: `q:${b.id}`,
         position: String(i).padStart(6, "0"),

@@ -154,10 +154,25 @@ function collectSemantic(g: FilterGroup, out: Condition[]): void {
 /** Run a smart-collection filter (a group tree), returning matching blocks.
  * `archived` flips the whole query to the Archive view (archived blocks only);
  * every normal caller leaves it false. */
+/**
+ * The moment a query's relative dates ("today", "today+7", "now") count from.
+ * Normally the user's actual now; on a Today page it's that page's day, so an
+ * embedded list of "due today" means due on the day you're reading, not the day
+ * you happen to be reading it. The clock time carries over so "now" still has
+ * an hour to compare against.
+ */
+function asOfNow(tz: string | null, asOf?: string | null): Date {
+  const now = userLocalNow(tz);
+  if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return now;
+  const [y, m, d] = asOf.split("-").map(Number) as [number, number, number];
+  return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+}
+
 export async function runQuery(
   userId: string,
   filter: FilterQuery,
   archived = false,
+  asOf?: string | null,
 ): Promise<QueriedBlock[]> {
   const root = normalizeFilter(filter);
   const semConds: Condition[] = [];
@@ -191,7 +206,7 @@ export async function runQuery(
     .from(userSettings)
     .where(eq(userSettings.userId, userId))
     .limit(1);
-  const combined = groupSql(root, sem, userLocalNow(tzRow?.tz ?? null));
+  const combined = groupSql(root, sem, asOfNow(tzRow?.tz ?? null, asOf));
 
   return db
     .select({

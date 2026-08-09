@@ -17,6 +17,7 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
 import { useOriginScroll } from "../lib/origin-scroll.ts";
+import { AsOfProvider } from "../lib/as-of.tsx";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayStr = () => {
@@ -320,7 +321,9 @@ export function TodayPage() {
   };
 
   return (
-    <>
+    // Everything on this page is about this day: embedded queries resolve
+    // "today" to it, and date-driven views count from it.
+    <AsOfProvider date={date}>
       {(banner("today") as BannerValue | null) && (
         <Banner
           value={banner("today") as BannerValue}
@@ -394,6 +397,6 @@ export function TodayPage() {
           </div>,
           bottomSlotEl,
         )}
-    </>
+    </AsOfProvider>
   );
 }

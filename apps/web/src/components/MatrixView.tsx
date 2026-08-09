@@ -24,6 +24,7 @@ import { MentionText } from "./MentionText.tsx";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useAsOf, useToday } from "../lib/as-of.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { DateTimePicker } from "./DateTimePicker.tsx";
 
@@ -93,14 +94,15 @@ const SPAN_MAX = 31; // day-column cap for a custom range
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
-/** The visible day columns (YYYY-MM-DD) for a date mode. All include today. */
-function dayList(mode: string, count: number): string[] {
+/** The visible day columns (YYYY-MM-DD) for a date mode. All include `today`,
+ * which is the page's own day when this is embedded on a Today sheet. */
+function dayList(mode: string, count: number, today: string): string[] {
   const n = Math.min(DAYS_MAX, Math.max(1, count));
   let startOffset = 0;
   if (mode === "@days_before") startOffset = -(n - 1);
   else if (mode === "@days_around") startOffset = -Math.floor((n - 1) / 2);
   return Array.from({ length: n }, (_, i) => {
-    const d = new Date();
+    const d = new Date(`${today}T00:00`);
     d.setDate(d.getDate() + startOffset + i);
     return ymd(d);
   });
@@ -540,6 +542,10 @@ export function MatrixView({
   typesSubs.forEach((f) => f());
 
   const { selectBlock, selectOrOpen, refreshInfo, bottomSlotEl, selectedBlockId } = usePanels();
+  // "Today" here is the day the page is about — the real one everywhere except
+  // a Today sheet, where an embedded matrix should count from that sheet's date.
+  const today = useToday();
+  const asOf = useAsOf();
   // Collection-level interactions make the collection the active block (so its
   // query tools show); card interactions make the card active instead.
   const selectCollection = () => selectBlock(collection.id, { collection: true });
@@ -557,9 +563,9 @@ export function MatrixView({
       dateMode
         ? bindKey === "@days_span"
           ? daySpan(spanStart, spanEnd)
-          : dayList(bindKey, dayCount)
+          : dayList(bindKey, dayCount, today)
         : [],
-    [dateMode, bindKey, dayCount, spanStart, spanEnd],
+    [dateMode, bindKey, dayCount, spanStart, spanEnd, today],
   );
   const lanesMap = useMemo(
     () => (props.matrix_lanes && typeof props.matrix_lanes === "object" ? (props.matrix_lanes as Record<string, number>) : {}),
@@ -631,7 +637,7 @@ export function MatrixView({
     if (!isSmart) return;
     let alive = true;
     void api
-      .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query) })
+      .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query), asOf })
       .then((r) => {
         if (alive) setMatches(r);
       })
@@ -1251,7 +1257,7 @@ export function MatrixView({
               {days.map((d, i) => (
                 <div
                   key={d}
-                  className={`date-head${d === ymd(new Date()) ? " today" : ""}`}
+                  className={`date-head${d === today ? " today" : ""}`}
                   style={{ gridColumn: i + 1, gridRow: 1 }}
                 >
                   {fmtDayHead(d)}

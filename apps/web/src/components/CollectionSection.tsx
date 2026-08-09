@@ -13,6 +13,7 @@ import { api, type Block, type BlockType, type Collection, type Member } from ".
 import { oneLineText } from "../lib/display.ts";
 import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useAsOf } from "../lib/as-of.tsx";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { CalendarView } from "./CalendarView.tsx";
@@ -178,17 +179,22 @@ export function CollectionSection({
 }) {
   const [state, setState] = useState<{ collection: Collection; members: Member[] } | null>(null);
   const { openBlock } = usePanels();
+  // On a Today page, a smart collection's query counts its relative dates from
+  // that page's day rather than the real one.
+  const asOf = useAsOf();
 
   const load = useCallback(() => {
     void api
-      .get<{ collection: Collection; members: Member[] }>(`/collections/${collectionId}`)
+      .get<{ collection: Collection; members: Member[] }>(
+        `/collections/${collectionId}${asOf ? `?as_of=${asOf}` : ""}`,
+      )
       .then((d) => {
         setState(d);
         reportLabel?.(oneLineText(d.collection.properties) || "Untitled");
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collectionId]);
+  }, [collectionId, asOf]);
   useEffect(load, [load]);
 
   const setMembers: SetMembers = (fn) =>

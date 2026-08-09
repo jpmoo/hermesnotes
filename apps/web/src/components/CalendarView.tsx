@@ -8,6 +8,7 @@ import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useAsOf, useToday } from "../lib/as-of.tsx";
 import { FeedDiagnostics } from "./FeedDiagnostics.tsx";
 
 /**
@@ -342,8 +343,16 @@ export function CalendarView({
     setView(v === "week" || v === "day3" ? v : "month");
   }, [collection.properties.calendar_view]);
 
-  // Anchor date (today by default); prev/next steps by view size.
-  const [anchor, setAnchor] = useState(() => ymd(new Date()));
+  // The day this view is about: the real today, or — embedded on a Today sheet
+  // — that sheet's date, so the calendar opens where the page already is.
+  const today = useToday();
+  const asOf = useAsOf();
+  // Anchor date (the page's day by default); prev/next steps by view size.
+  const [anchor, setAnchor] = useState(today);
+  // Walking from one Daily to the next keeps this view mounted, so follow the
+  // page's day rather than staying parked on the one it opened with. (Off a
+  // Today page this never changes, so paging months is undisturbed.)
+  useEffect(() => setAnchor(today), [today]);
   const [matches, setMatches] = useState<Block[]>([]);
   const [queryTick, setQueryTick] = useState(0);
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
@@ -383,7 +392,7 @@ export function CalendarView({
     }
     let alive = true;
     void api
-      .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query) })
+      .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query), asOf })
       .then((r) => alive && setMatches(r))
       .catch(() => {});
     return () => {
@@ -398,7 +407,6 @@ export function CalendarView({
     void api.patch(`/collections/${collection.id}`, { calendar_view: v }).then(onChanged);
   };
 
-  const today = ymd(new Date());
   const anchorDate = new Date(`${anchor}T00:00`);
 
   // Visible days for the current view.

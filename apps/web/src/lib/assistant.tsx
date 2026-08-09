@@ -16,6 +16,9 @@ interface AssistantValue {
   busy: boolean;
   error: string | null;
   send: (text: string) => Promise<void>;
+  /** Abandon the turn in flight. The server sees the stream drop and stops the
+   * model too, keeping whatever it had already written and done. */
+  stop: () => void;
   resolvePending: (idx: number, approve: boolean) => Promise<void>;
   clear: () => Promise<void>;
 }
@@ -32,6 +35,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loaded = useRef(false);
+  const inflight = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (loaded.current) return;
@@ -54,11 +58,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       setMsgs((m) => m.map((x, i) => (i === m.length - 1 ? fn(x) : x)));
 
     try {
+      const ctrl = new AbortController();
+      inflight.current = ctrl;
       const res = await fetch(`${apiBase}/assistant/chat`, {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json", "x-client-id": CLIENT_ID },
         body: JSON.stringify({ message: t }),
+        signal: ctrl.signal,
       });
       if (res.status === 400) throw new ApiError(400, (await res.json().catch(() => ({})))?.error ?? "bad request");
       if (!res.ok || !res.body) throw new ApiError(res.status, "The assistant is unavailable.");
@@ -100,11 +107,21 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       }
       patchLast((a) => ({ ...a, streaming: false }));
     } catch (e) {
-      setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "The assistant is unavailable.");
+      // Stopping isn't a failure: the turn ends where it ends, and the server
+      // has already kept the part that happened.
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "The assistant is unavailable.");
+      }
       patchLast((a) => ({ ...a, streaming: false }));
     } finally {
+      inflight.current = null;
       setBusy(false);
     }
+  };
+
+  const stop = () => {
+    inflight.current?.abort();
+    inflight.current = null;
   };
 
   const resolvePending = async (idx: number, approve: boolean) => {
@@ -134,7 +151,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ msgs, busy, error, send, resolvePending, clear }}>{children}</Ctx.Provider>
+    <Ctx.Provider value={{ msgs, busy, error, send, stop, resolvePending, clear }}>{children}</Ctx.Provider>
   );
 }
 

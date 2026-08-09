@@ -98,6 +98,16 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
     });
     const send = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
+    // Stopping is the client dropping the stream. Nothing else can reach a turn
+    // that's already streaming — the response is hijacked and the loop is deep
+    // in a model call — so the disconnect is the signal, and it aborts the run
+    // rather than leaving the model generating into a socket nobody is reading.
+    const stop = new AbortController();
+    let finished = false;
+    res.on("close", () => {
+      if (!finished) stop.abort();
+    });
+
     void (async () => {
       try {
         const { url, model, timezone, maxSteps } = await requireModel(userId);
@@ -113,21 +123,30 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
           confirmDestructive: true,
           numCtx,
           maxSteps,
+          signal: stop.signal,
           systemExtra: todayLine(timezone),
           onEvent: send,
         });
 
         // Persist the reply (pending destructive calls stay transient — they're
-        // resolved via /confirm, which persists their outcome).
-        await appendMessage(userId, "assistant", result.reply, result.steps);
-        await maybeSummarize({ userId, url, model, numCtx, promptTokens: result.promptTokens ?? 0 });
-        send({ type: "done", reply: result.reply, steps: result.steps, pending: result.pending });
+        // resolved via /confirm, which persists their outcome). A stopped turn
+        // is persisted too: the tools it ran really ran, and a thread that ends
+        // with a question and no answer reads like the app lost the reply.
+        const reply = result.stopped
+          ? `${result.reply ? `${result.reply}\n\n` : ""}_(stopped)_`
+          : result.reply;
+        await appendMessage(userId, "assistant", reply, result.steps);
+        if (!result.stopped) {
+          await maybeSummarize({ userId, url, model, numCtx, promptTokens: result.promptTokens ?? 0 });
+        }
+        send({ type: "done", reply, steps: result.steps, pending: result.pending, stopped: result.stopped });
       } catch (e) {
         send({
           type: "error",
           message: e instanceof ApiError ? e.body.slice(0, 300) : e instanceof Error ? e.message : "assistant failed",
         });
       } finally {
+        finished = true;
         res.end();
       }
     })();

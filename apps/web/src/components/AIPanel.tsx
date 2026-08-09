@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUp, Sparkles, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowUp, Sparkles, Square, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAssistant } from "../lib/assistant.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -9,7 +9,7 @@ import { Markdown } from "./Markdown.tsx";
  * tab switches. This component only owns the composer text and scroll position.
  */
 export function AIPanel() {
-  const { msgs, busy, error, send, resolvePending } = useAssistant();
+  const { msgs, busy, error, send, stop, resolvePending } = useAssistant();
   const [input, setInput] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -111,9 +111,15 @@ export function AIPanel() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button className="icon-btn ai-send" title="Send" disabled={busy || !input.trim()} onClick={submit}>
-          <ArrowUp size={16} />
-        </button>
+        {busy ? (
+          <button className="icon-btn ai-send ai-stop" title="Stop" onClick={stop}>
+            <Square size={13} fill="currentColor" />
+          </button>
+        ) : (
+          <button className="icon-btn ai-send" title="Send" disabled={!input.trim()} onClick={submit}>
+            <ArrowUp size={16} />
+          </button>
+        )}
       </div>
     </div>
   );

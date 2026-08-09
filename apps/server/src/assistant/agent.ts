@@ -48,6 +48,8 @@ export interface AgentResult {
   pending?: PendingCall[];
   /** Actual prompt tokens the model reported for the final turn (for context mgmt). */
   promptTokens?: number;
+  /** The user stopped this turn: whatever's here is as far as it got. */
+  stopped?: boolean;
 }
 
 /** Progress emitted during a streamed turn: reply tokens as the model writes
@@ -73,10 +75,19 @@ async function ollamaChat(
   tools: ReturnType<typeof toOllamaTools>,
   numCtx?: number,
   onToken?: (t: string) => void,
+  signal?: AbortSignal,
 ): Promise<{ message: OllamaMessage; promptTokens: number }> {
   const base = url.replace(/\/+$/, "");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
+  // Stopping has to reach the model, not just the loop around it: a local model
+  // mid-generation will run on for a long while otherwise, holding the GPU and
+  // the turn open after the user has given up on it.
+  const onOuterAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", onOuterAbort, { once: true });
+  }
   const stream = Boolean(onToken);
   try {
     const res = await fetch(`${base}/api/chat`, {
@@ -139,6 +150,7 @@ async function ollamaChat(
     };
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", onOuterAbort);
   }
 }
 
@@ -237,6 +249,9 @@ export async function runAgent(opts: {
   numCtx?: number;
   /** Turns allowed for this message; see DEFAULT_MAX_STEPS. */
   maxSteps?: number;
+  /** Aborted when the user stops the turn — checked between steps, and passed
+   * into the generation itself. */
+  signal?: AbortSignal;
   /** A line appended to the system prompt (e.g. the authoritative current date
    * in the user's timezone) so the model never has to guess it. */
   systemExtra?: string;
@@ -256,8 +271,28 @@ export async function runAgent(opts: {
 
   const maxSteps = Math.min(50, Math.max(1, opts.maxSteps ?? DEFAULT_MAX_STEPS));
   let lastText = "";
+  const stopped = (): AgentResult => ({ reply: lastText, steps, promptTokens, stopped: true });
+
   for (let i = 0; i < maxSteps; i++) {
-    const { message: msg, promptTokens: pt } = await ollamaChat(opts.url, opts.model, messages, tools, opts.numCtx, onToken);
+    if (opts.signal?.aborted) return stopped();
+    let msg: OllamaMessage;
+    let pt = 0;
+    try {
+      ({ message: msg, promptTokens: pt } = await ollamaChat(
+        opts.url,
+        opts.model,
+        messages,
+        tools,
+        opts.numCtx,
+        onToken,
+        opts.signal,
+      ));
+    } catch (err) {
+      // The abort we asked for arrives here as a failed fetch; anything else is
+      // a real error and belongs to the caller.
+      if (opts.signal?.aborted) return stopped();
+      throw err;
+    }
     promptTokens = pt || promptTokens;
     messages.push(msg);
     if (msg.content?.trim()) lastText = msg.content.trim();
@@ -276,6 +311,9 @@ export async function runAgent(opts: {
       steps.push(step);
       opts.onEvent?.({ type: "step", step });
       messages.push({ role: "tool", content: step.result });
+      // A tool already in flight finishes and is kept — its work is done, and
+      // the user should see what happened — but nothing new starts after a stop.
+      if (opts.signal?.aborted) return stopped();
     }
     if (pending.length) return { reply: msg.content?.trim() || "", steps, pending, promptTokens };
   }

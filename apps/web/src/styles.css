@@ -944,6 +944,13 @@ label,
 .ai-send:disabled {
   opacity: 0.45;
 }
+/* The same button, while a turn is running: stop rather than send. Muted, so
+   the panel doesn't read as though the accent colour were inviting a click. */
+.ai-stop,
+.ai-stop:hover {
+  background: var(--text-muted);
+  color: var(--surface);
+}
 .panel-head {
   display: flex;
   align-items: center;

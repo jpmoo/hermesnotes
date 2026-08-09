@@ -231,6 +231,10 @@ export function fmtTaskLine(
    * (project_info's own task lists) and the label would just repeat.
    */
   projectNames?: Map<string, string>,
+  /** The day to call things overdue against; defaults to the user's today. A
+   * review of another date has to judge by that date, or every task on a past
+   * day comes back marked overdue. */
+  asOf?: string,
 ): string {
   const p = b.properties as Record<string, unknown>;
   const span = (p[ctx.spanKey] ?? {}) as { start?: string; end?: string };
@@ -238,7 +242,9 @@ export function fmtTaskLine(
   const bits: string[] = [];
   if (span.end) {
     const overdue =
-      !ctx.completeValues.includes(status) && span.end.slice(0, 10) < todayStr(ctx.timezone) ? " OVERDUE" : "";
+      !ctx.completeValues.includes(status) && span.end.slice(0, 10) < (asOf || todayStr(ctx.timezone))
+        ? " OVERDUE"
+        : "";
     bits.push(`due ${fmtDate(span.end)}${overdue}`);
   }
   if (span.start) bits.push(`from ${fmtDate(span.start)}`);

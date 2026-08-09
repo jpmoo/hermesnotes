@@ -99,6 +99,7 @@ const READONLY_TOOLS = new Set([
   // an untouched note is swept away again.
   "daily_note_get",
   "calendar_events",
+  "daily_review",
 ]);
 
 /**
@@ -1470,6 +1471,158 @@ export function defineTools(api: Api): ToolDef[] {
     }),
   );
 
+  /**
+   * The day's actual schedule: subscribed feed events merged with Hermes 'event'
+   * blocks. Shared by calendar_events and daily_review — a feed read that fails
+   * is reported, never quietly dropped, because "no events" and "we couldn't
+   * look" are the same sentence to a reader and opposite facts.
+   */
+  const gatherCalendar = async (start: string, end: string): Promise<{ events: CalItem[]; failed: string | null }> => {
+    let failed: string | null = null;
+    const feed = await api
+      .get<{ events: CalFeedEvent[] }>(
+        `/calendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      )
+      .catch((e: unknown) => {
+        failed = e instanceof Error ? e.message : String(e);
+        return { events: [] as CalFeedEvent[] };
+      });
+    const events: CalItem[] = feed.events.map((e) => ({
+      start: e.start,
+      allDay: e.allDay,
+      title: e.summary || "Untitled",
+      location: e.location || "",
+      source: e.feedName || "feed",
+    }));
+
+    const types = await api
+      .get<{ id: string; name: string; propertySchema?: { fields: { key: string; type: string }[] } | null }[]>(
+        "/block-types",
+      )
+      .catch(() => []);
+    const eventType = types.find((t) => t.name.trim().toLowerCase() === "event");
+    if (eventType) {
+      const dateFields = (eventType.propertySchema?.fields ?? []).filter(
+        (f) => f.type === "date" || f.type === "datetime" || f.type === "datespan",
+      );
+      const rows = await api.get<HermesBlock[]>(`/blocks/of-type/${eventType.id}`).catch(() => []);
+      for (const b of rows) {
+        const props = b.properties as Record<string, unknown>;
+        const r = eventDates(props, dateFields);
+        if (r && r.startDay <= end && r.endDay >= start) {
+          events.push({
+            start: r.startRaw,
+            allDay: !/T\d/.test(r.startRaw),
+            title: String(props.title ?? "Untitled"),
+            location: typeof props.location === "string" ? props.location : "",
+            source: "event",
+            id: b.id,
+          });
+        }
+      }
+    }
+    events.sort((x, y) => x.start.localeCompare(y.start));
+    return { events, failed };
+  };
+
+  tool(
+    "daily_review",
+    "Everything bearing on one day, in one call: the calendar (subscribed feeds + Hermes event blocks), tasks overdue as of that day, tasks due that day, tasks available to work on, anything else whose dates land on it, and the day's note. date defaults to today (YYYY-MM-DD). Use this for \"how does my day look\", a morning or evening review, or planning a specific date — it answers in one call what calendar_events + several task_find calls would.",
+    { date: ISO_DATE.optional() },
+    run(async (a) => {
+      const date = a.date?.trim() || (await todayISO());
+      const ctx = await loadContext(api);
+      const out: string[] = [];
+      const label = new Date(`${date}T00:00`).toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      out.push(`Daily review — ${label} (${date})`);
+
+      // ── Calendar ────────────────────────────────────────────────────
+      const cal = await gatherCalendar(date, date);
+      out.push("", "Calendar:");
+      if (cal.failed) {
+        // Loud, and never as an empty calendar: the assistant saying "your day
+        // is clear" when the feeds simply couldn't be read is the worst
+        // possible failure of a tool like this.
+        out.push(
+          `- COULD NOT READ THE CALENDAR FEEDS (${cal.failed}). Feed events are MISSING below — do not tell the user their calendar is clear.`,
+        );
+      }
+      if (!cal.events.length && !cal.failed) out.push("- nothing scheduled");
+      for (const e of cal.events) {
+        const time = e.allDay ? "all day" : fmtEventTime(e.start);
+        const loc = e.location ? ` @ ${e.location}` : "";
+        out.push(`- ${time} — ${e.title}${loc} [${e.source}]${e.id ? ` (${e.id})` : ""}`);
+      }
+
+      // ── Tasks, all judged as of the day under review ────────────────
+      // asOf makes "today" inside these filters mean the reviewed date, so a
+      // review of last Tuesday reports what was overdue THEN, not now.
+      const openTask = (extra: (Condition | FilterGroup)[]) =>
+        api.post<HermesBlock[]>("/blocks/query", {
+          filterQuery: group([
+            { kind: "blockType", typeId: ctx.taskTypeId } as Condition,
+            ...openConds(ctx),
+            ...extra,
+          ]),
+          asOf: date,
+        });
+      const endKey = `${ctx.spanKey}.end`;
+      const startKey = `${ctx.spanKey}.start`;
+      // Everything due by end of that day — overdue and due-that-day together,
+      // which is how the dates compare; split below by their own end date.
+      const dueBy = await openTask([prop(endKey, "lt", "today+1")]);
+      const endDay = (b: HermesBlock) => {
+        const span = ((b.properties as Record<string, unknown>)[ctx.spanKey] ?? {}) as { end?: string };
+        return typeof span.end === "string" ? span.end.slice(0, 10) : "";
+      };
+      const overdue = dueBy.filter((b) => endDay(b) && endDay(b) < date);
+      const dueToday = dueBy.filter((b) => endDay(b) === date);
+      // Started (or starting that day) and not already listed above.
+      const listed = new Set(dueBy.map((b) => b.id));
+      const started = await openTask([prop(startKey, "lt", "today+1")]);
+      const available = started.filter((b) => !listed.has(b.id));
+
+      const names = await projectNamesFor(api, ctx, [...overdue, ...dueToday, ...available]);
+      const section = (title: string, rows: HermesBlock[]) => {
+        out.push("", `${title}:`);
+        if (!rows.length) out.push("- none");
+        for (const b of rows) out.push(`- ${fmtTaskLine(ctx, b, names, date)}`);
+      };
+      section(`Overdue as of ${date}`, overdue);
+      section("Due that day", dueToday);
+      section("Available (started, not yet due)", available);
+
+      // ── Anything else the day touches ───────────────────────────────
+      // The Today sheet's own notion of relevance: any date or datespan field
+      // landing on the day, whatever the type. Tasks and events are already
+      // above, so only the rest is new information here.
+      const sheet = await api
+        .get<{ note: { content: string | null }; relevant: HermesBlock[] }>(`/today/${date}`)
+        .catch(() => null);
+      if (sheet) {
+        const seen = new Set([...dueBy, ...available].map((b) => b.id));
+        for (const e of cal.events) if (e.id) seen.add(e.id);
+        const others = sheet.relevant.filter((b) => !seen.has(b.id) && b.blockTypeId !== ctx.taskTypeId);
+        if (others.length) {
+          out.push("", "Also dated to that day:");
+          for (const b of others) {
+            const p = b.properties as Record<string, unknown>;
+            out.push(`- ${String(p.title ?? "Untitled")} (${b.id})`);
+          }
+        }
+        const note = (sheet.note?.content ?? "").trim();
+        out.push("", `Daily note: ${note ? `\n${note}` : "(empty)"}`);
+      }
+
+      return out.join("\n");
+    }),
+  );
+
   tool(
     "calendar_events",
     "The user's actual schedule for a day or range: their subscribed calendar FEED events (Google/Outlook/iCloud/school ICS) merged with their Hermes 'event' blocks, in time order. Use this for ANY question about the calendar, schedule, meetings, availability, or 'what's on today' — task_find and today_layout_get do NOT include calendar events, so never assume the calendar is clear without calling this. Dates are YYYY-MM-DD: pass `date` for one day, `start`+`end` for a range, or omit for today.",
@@ -1484,54 +1637,7 @@ export function defineTools(api: Api): ToolDef[] {
       }
       if (end < start) [start, end] = [end, start];
 
-      // Feed events (already excludes ones converted to Hermes blocks). A failure
-      // here must NOT look like an empty calendar — reporting "no events" when we
-      // simply couldn't read the feeds is exactly how the assistant ends up
-      // telling the user their day is clear when it isn't.
-      let feedFailed: string | null = null;
-      const feed = await api
-        .get<{ events: CalFeedEvent[] }>(
-          `/calendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-        )
-        .catch((e: unknown) => {
-          feedFailed = e instanceof Error ? e.message : String(e);
-          return { events: [] as CalFeedEvent[] };
-        });
-      const events: CalItem[] = feed.events.map((e) => ({
-        start: e.start,
-        allDay: e.allDay,
-        title: e.summary || "Untitled",
-        location: e.location || "",
-        source: e.feedName || "feed",
-      }));
-
-      // Hermes 'event' blocks whose date/datespan overlaps the range.
-      const types = await api
-        .get<{ id: string; name: string; propertySchema?: { fields: { key: string; type: string }[] } | null }[]>(
-          "/block-types",
-        )
-        .catch(() => []);
-      const eventType = types.find((t) => t.name.trim().toLowerCase() === "event");
-      if (eventType) {
-        const dateFields = (eventType.propertySchema?.fields ?? []).filter(
-          (f) => f.type === "date" || f.type === "datetime" || f.type === "datespan",
-        );
-        const rows = await api.get<HermesBlock[]>(`/blocks/of-type/${eventType.id}`).catch(() => []);
-        for (const b of rows) {
-          const props = b.properties as Record<string, unknown>;
-          const r = eventDates(props, dateFields);
-          if (r && r.startDay <= end && r.endDay >= start) {
-            events.push({
-              start: r.startRaw,
-              allDay: !/T\d/.test(r.startRaw),
-              title: String(props.title ?? "Untitled"),
-              location: typeof props.location === "string" ? props.location : "",
-              source: "event",
-              id: b.id,
-            });
-          }
-        }
-      }
+      const { events, failed: feedFailed } = await gatherCalendar(start, end);
 
       const range = start === end ? `on ${start}` : `from ${start} to ${end}`;
       if (feedFailed)
@@ -1540,7 +1646,6 @@ export function defineTools(api: Api): ToolDef[] {
             `not tell the user their calendar is clear — say the feeds couldn't be read and retry.`,
         );
       if (!events.length) return `No calendar events ${range}.`;
-      events.sort((x, y) => x.start.localeCompare(y.start));
       const multiDay = start !== end;
       const line = (e: CalItem) => {
         const date = multiDay ? `${e.start.slice(0, 10)} ` : "";

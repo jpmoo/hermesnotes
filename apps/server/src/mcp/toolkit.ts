@@ -88,6 +88,8 @@ const HEX_COLOR = z.string().regex(/^#[0-9a-fA-F]{3,8}$/, "color must be a hex v
 // Archiving is reversible, so those tools aren't destructive. Only hard-deletes
 // are (tags here; blocks can no longer be deleted via MCP at all).
 const DESTRUCTIVE_TOOLS = new Set(["tag_delete"]);
+// Properties every block can carry regardless of its type's fields.
+const SYSTEM_PROP_KEYS = ["title", "banner", "icon_key", "icon_color"];
 const READONLY_TOOLS = new Set([
   "search", "block_get", "list_types", "list_lists", "tag_list", "collection_members",
   "task_find", "task_info", "project_list", "project_archived", "project_info", "today_layout_get",
@@ -262,7 +264,11 @@ export function defineTools(api: Api): ToolDef[] {
     run(async (a) => {
       const ctx = await loadContext(api);
       const properties: Record<string, unknown> = { title: a.title };
-      if (a.notes) properties.description = a.notes;
+      if (a.notes) {
+        if (!ctx.notesKey)
+          throw new Error("The task type has no long-text field, so there's nowhere to put notes.");
+        properties[ctx.notesKey] = a.notes;
+      }
       if (a.available_date || a.due_date)
         properties[ctx.spanKey] = {
           ...(a.available_date ? { start: a.available_date } : {}),
@@ -468,7 +474,12 @@ export function defineTools(api: Api): ToolDef[] {
         out.splice(3, 0, `Projects: ${names.join(", ")}`);
       }
 
-      const shown = [ctx.statusKey, ctx.spanKey, "description", ...(ctx.projectRefKey ? [ctx.projectRefKey] : [])];
+      const shown = [
+        ctx.statusKey,
+        ctx.spanKey,
+        ...(ctx.notesKey ? [ctx.notesKey] : []),
+        ...(ctx.projectRefKey ? [ctx.projectRefKey] : []),
+      ];
       const rest = [
         ...fmtSchemaFields(schema, p, shown, refTitles),
         ...fmtExtraProps(schema, p, shown),
@@ -476,7 +487,8 @@ export function defineTools(api: Api): ToolDef[] {
       if (rest.length) out.push("", "Fields:", ...rest);
 
       // Long-form last, so the scannable facts aren't buried under it.
-      if (p.description) out.push("", `Notes:\n${String(p.description)}`);
+      const taskNotes = ctx.notesKey ? p[ctx.notesKey] : null;
+      if (taskNotes) out.push("", `Notes:\n${String(taskNotes)}`);
       return out.join("\n");
     }),
   );
@@ -506,7 +518,9 @@ export function defineTools(api: Api): ToolDef[] {
         changed.push("title");
       }
       if (a.notes !== undefined) {
-        p.description = a.notes;
+        if (!ctx.notesKey)
+          throw new Error("The task type has no long-text field, so there's nowhere to put notes.");
+        p[ctx.notesKey] = a.notes;
         changed.push("notes");
       }
       if (a.status !== undefined) {
@@ -579,7 +593,11 @@ export function defineTools(api: Api): ToolDef[] {
     run(async (a) => {
       const ctx = await loadContext(api);
       const properties: Record<string, unknown> = { title: a.title };
-      if (a.description) properties.description = a.description;
+      if (a.description) {
+        if (!ctx.projectNotesKey)
+          throw new Error("The project type has no long-text field, so there's nowhere to put a description.");
+        properties[ctx.projectNotesKey] = a.description;
+      }
       const b = await api.post<{ id: string }>("/blocks", { blockTypeId: ctx.projectTypeId, properties });
       return `Created project "${a.title}" (${b.id}).`;
     }),
@@ -652,14 +670,15 @@ export function defineTools(api: Api): ToolDef[] {
       );
       const schema = types.find((t) => t.id === ctx.projectTypeId)?.propertySchema ?? null;
       const refTitles = await refTitleMap(api, schema, p);
-      const shown = ["description"]; // rendered below, in full
+      const shown = ctx.projectNotesKey ? [ctx.projectNotesKey] : []; // rendered below, in full
       const rest = [
         ...fmtSchemaFields(schema, p, shown, refTitles),
         ...fmtExtraProps(schema, p, shown),
       ];
       if (rest.length) out.push("", "Fields:", ...rest);
       // Long-form after the scannable facts, and before the task lists.
-      if (p.description) out.push("", `About:\n${String(p.description)}`);
+      const about = ctx.projectNotesKey ? p[ctx.projectNotesKey] : null;
+      if (about) out.push("", `About:\n${String(about)}`);
       if (ctx.projectRefKey) {
         const tasks = await api.post<HermesBlock[]>("/blocks/query", {
           filterQuery: group([
@@ -911,6 +930,27 @@ export function defineTools(api: Api): ToolDef[] {
           changed.push("title");
         }
         if (a.properties) {
+          // A key the type doesn't define is stored happily and shown nowhere:
+          // the app renders a block from its schema, so the text is gone as far
+          // as anyone can tell, while this tool reports success and block_get
+          // dutifully reads it back. Refuse instead, and say what the fields
+          // actually are — the caller can then write to the right one.
+          const type = (
+            await api.get<{ id: string; propertySchema: { fields: { key: string }[] } | null }[]>(
+              "/block-types",
+            )
+          ).find((t) => t.id === b.blockTypeId);
+          const fields = type?.propertySchema?.fields ?? null;
+          if (fields) {
+            const known = new Set([...fields.map((f) => f.key), ...SYSTEM_PROP_KEYS]);
+            const unknown = Object.keys(a.properties).filter((k) => !known.has(k));
+            if (unknown.length) {
+              throw new Error(
+                `This block's type has no field ${unknown.map((k) => `"${k}"`).join(", ")}. ` +
+                  `Its fields are: ${fields.map((f) => f.key).join(", ")}. Nothing was written.`,
+              );
+            }
+          }
           Object.assign(p, a.properties);
           changed.push(...Object.keys(a.properties));
         }

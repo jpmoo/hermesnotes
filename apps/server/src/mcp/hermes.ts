@@ -16,6 +16,15 @@ export interface Ctx {
   projectTypeId: string;
   personTypeId: string | null; // type named "person", for @-mention auto-create
   projectRefKey: string | null; // reference field on task pointing at project
+  /**
+   * Where a task's / project's prose lives. Derived like every other key here,
+   * because "description" is only the name the built-in types happen to use —
+   * a renamed or hand-built type calls it something else, and writing to the
+   * wrong key put the text somewhere the app never reads. Null when the type has
+   * no long-text field at all, which is worth refusing rather than guessing.
+   */
+  notesKey: string | null;
+  projectNotesKey: string | null;
   projectStatusKey: string | null;
   projectArchivedValue: string | null;
   projectDefaultStatus: string | null;
@@ -81,6 +90,18 @@ export async function loadContext(api: Api): Promise<Ctx> {
 
   const refField = schema.fields.find((f) => f.type === "reference" && f.refTypeId === project.id);
 
+  // The body field, by the names the built-ins use first, then by type — so a
+  // type with one long-text field called "Notes" or "Detail" still works.
+  const bodyKey = (fields: FieldDef[] | undefined): string | null => {
+    const long = (fields ?? []).filter((f) => f.type === "longtext");
+    return (
+      long.find((f) => f.key === "description")?.key ??
+      long.find((f) => f.key === "notes")?.key ??
+      long[0]?.key ??
+      null
+    );
+  };
+
   const projSchema = project.propertySchema;
   const projStatusKey = projSchema?.status_field ?? null;
   const projStatusField = projStatusKey ? projSchema?.fields.find((f) => f.key === projStatusKey) : null;
@@ -95,6 +116,8 @@ export async function loadContext(api: Api): Promise<Ctx> {
     projectTypeId: project.id,
     personTypeId: person?.id ?? null,
     projectRefKey: refField?.key ?? null,
+    notesKey: bodyKey(schema.fields),
+    projectNotesKey: bodyKey(projSchema?.fields),
     projectStatusKey: archivedOpt ? projStatusKey : null,
     projectArchivedValue: archivedOpt,
     projectDefaultStatus: projSchema?.default_value ?? null,

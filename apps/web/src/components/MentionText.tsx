@@ -3,8 +3,12 @@ import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { parseMentions, useMentionTarget } from "../lib/mention-resolve.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
-/** One mention, outside the editor: same chip, but nothing to keep in sync. */
-function ReadonlyChip({ href, label }: { href: string; label: string }) {
+/**
+ * One mention, outside the editor: same chip, but nothing to keep in sync.
+ * Exported because the assistant's replies carry the same references — a title
+ * it reports back is the stored title, mentions and all.
+ */
+export function MentionChip({ href, label }: { href: string; label: string }) {
   const isTag = href.startsWith("tag:");
   const personName = href.startsWith("person:") ? href.slice(7) : "";
   const staticId = href.startsWith("block:") ? href.slice(6) : "";
@@ -73,7 +77,7 @@ export function MentionText({ text }: { text: string }) {
         p.kind === "text" ? (
           <span key={i}>{p.text}</span>
         ) : (
-          <ReadonlyChip key={i} href={p.href} label={p.label} />
+          <MentionChip key={i} href={p.href} label={p.label} />
         ),
       )}
     </>

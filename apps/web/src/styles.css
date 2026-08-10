@@ -2840,6 +2840,11 @@ input.region-title:focus {
   flex-direction: column;
   gap: 6px;
   flex: 1;
+  /* Room above the first card for its drop bar, which would otherwise be
+     clipped by this scrollport; the negative margin keeps the layout where it
+     was. */
+  padding-top: 5px;
+  margin-top: -5px;
 }
 .matrix-chip {
   display: flex;
@@ -2858,9 +2863,25 @@ input.region-title:focus {
   min-width: 0;
   flex-shrink: 0;
 }
-/* Drop-above indicator while reordering onto this card. */
+/* Where the card will land, while reordering onto this one. This used to be a
+   2px inset line, which sat under the card's own border and inside its rounded
+   corners — technically present, invisible in practice once cards had borders
+   and a shadow of their own. It's now a bar in the gap above the card, the way
+   an insertion point reads everywhere else, plus an accent edge so the target
+   card itself is unmistakable. */
 .matrix-chip.chip-over {
-  box-shadow: inset 0 2px 0 var(--accent);
+  position: relative;
+  border-color: var(--accent);
+}
+.matrix-chip.chip-over::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -5px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 .chip-row {
   display: flex;

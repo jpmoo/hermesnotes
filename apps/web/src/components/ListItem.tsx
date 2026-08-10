@@ -39,7 +39,7 @@ export function ListItem({
 }) {
   const sortable = useSortable({ id: member.id });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
 
   const isText = !type || type.isText;
   const schema = type?.propertySchema ?? null;
@@ -237,7 +237,19 @@ export function ListItem({
 
   return (
     <div ref={sortable.setNodeRef} style={style} data-block-id={member.id} className="list-item-wrap">
-      <div className={`list-item${boxChecked && format === "checklist" ? " done" : ""}`}>
+      <div
+        className={`list-item${boxChecked && format === "checklist" ? " done" : ""}`}
+        // On a phone, tapping the row (anywhere that isn't a control or the
+        // row's own editable text) opens the block as a page — the info panel
+        // is an off-screen drawer there, so selecting looks like nothing.
+        onClick={(e) => {
+          const el = e.target as HTMLElement;
+          if (el.closest("input, textarea, select, button, a, [contenteditable='true'], .dtp, .mention-chip")) {
+            return;
+          }
+          selectOrOpen(member.id);
+        }}
+      >
         {!readonly && (
           <button className="drag-handle" {...sortable.attributes} {...sortable.listeners} title="Drag to reorder">
             <GripVertical size={15} />

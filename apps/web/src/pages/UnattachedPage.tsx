@@ -2,6 +2,7 @@ import { Unlink } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Block, type BlockType, type Settings } from "../api.ts";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
@@ -49,6 +50,8 @@ export function UnattachedPage() {
   };
 
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
+  // Archived or deleted anywhere else — drop it here too, at once.
+  useBlockDeleted(onDeleted);
 
   const { toolbar, renderList } = useBlockView(blocks, types, { scope: "unattached" });
 

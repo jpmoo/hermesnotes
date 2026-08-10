@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { useBlockView } from "../lib/useBlockView.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 
@@ -27,6 +28,8 @@ export function TypeBlockList({ type }: { type: BlockType }) {
   }, [load]);
 
   const onDeleted = (id: string) => setBlocks((b) => b.filter((x) => x.id !== id));
+  // Archived or deleted anywhere else — drop it here too, at once.
+  useBlockDeleted(onDeleted);
   const { toolbar, renderList } = useBlockView(blocks, [type], { scope: `type-${type.id}` });
 
   return (

@@ -97,7 +97,7 @@ export function TypedBlockCard({
   // Any field in this card holding focus also holds off remote updates — a pause
   // longer than the debounce must not let one remount the editor under the caret.
   const focusedRef = useRef(false);
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
 
   // Cross-surface sync: announce saves; adopt foreign edits of this block — but
   // hold a remote edit while you have unsaved changes here, so it can't overwrite
@@ -245,7 +245,11 @@ export function TypedBlockCard({
   return (
     <div
       className="card typed-card"
-      onPointerDownCapture={() => selectBlock(block.id)}
+      // A compact card is a preview (a canvas node, a masonry tile), so a tap on
+      // it means "open this" — and on a phone that has to be a page, since the
+      // info panel is an off-screen drawer. A full card IS the editor; tapping
+      // into one is editing and must never navigate away.
+      onPointerDownCapture={() => (compact ? selectOrOpen(block.id) : selectBlock(block.id))}
       onFocusCapture={() => {
         focusedRef.current = true;
       }}

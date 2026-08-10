@@ -20,9 +20,18 @@ export function emitBlockChange(blockId: string, origin: string): void {
   for (const l of [...listeners]) l(blockId, origin);
 }
 
-/** A block was permanently deleted — every surface drops it immediately. */
+/**
+ * A block left every normal view — archived, or permanently deleted. Surfaces
+ * holding it drop it immediately.
+ *
+ * This also fires the ordinary change listeners, because a block leaving is a
+ * change to anything whose contents are computed: a smart list, a matrix, a
+ * calendar. Without it those surfaces kept showing an archived card until
+ * something else happened to make them re-run.
+ */
 export function emitBlockDeleted(blockId: string): void {
   for (const l of [...deleteListeners]) l(blockId);
+  for (const l of [...listeners]) l(blockId, "deleted");
 }
 
 /**

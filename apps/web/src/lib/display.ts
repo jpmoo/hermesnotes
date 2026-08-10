@@ -56,18 +56,27 @@ export function oneLineHtml(
   return inlineMarkdown(oneLineText(properties, content));
 }
 
-/** True when a stored date/datetime string is in the past (date-only values
- * only become overdue after their day ends). */
-export function isOverdue(v: string | null | undefined): boolean {
+/**
+ * True when a stored date/datetime string is in the past (date-only values only
+ * become overdue after their day ends).
+ *
+ * `today` is the day to judge against — the page's own date on a Daily, where a
+ * task that was due that afternoon shouldn't be flagged as late by the fact that
+ * you're reading it a week later. Defaults to the real today.
+ */
+export function isOverdue(v: string | null | undefined, today?: string | null): boolean {
   if (!v) return false;
+  const pad = (n: number) => String(n).padStart(2, "0");
   const now = new Date();
+  const day = today || `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   if (v.includes("T")) {
+    // Against another day, compare by date: the hour of a day you aren't living
+    // through says nothing about whether the task was late on it.
+    if (today) return v.slice(0, 10) < day;
     const d = new Date(v);
     return !Number.isNaN(d.getTime()) && d.getTime() < now.getTime();
   }
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return v < today;
+  return v < day;
 }
 
 /** Perceived-luminance check: true when dark text reads well on `color`. */

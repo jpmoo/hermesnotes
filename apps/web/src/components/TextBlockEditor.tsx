@@ -60,7 +60,7 @@ export function TextBlockEditor({
   // (leaving the note before the 700ms fired must not drop the change).
   const pendingContent = useRef<string | null>(null);
   const pendingProps = useRef<Record<string, unknown> | null>(null);
-  const { selectBlock } = usePanels();
+  const { selectBlock, selectOrOpen } = usePanels();
 
   // Cross-surface sync. The markdown editor owns its content, so foreign
   // updates remount it (keyed) with the fresh text — but not while you're typing
@@ -192,7 +192,14 @@ export function TextBlockEditor({
 
   const banner = (props.banner as BannerValue | null) ?? null;
   return (
-    <div className="card" onPointerDownCapture={() => selectBlock(block.id)}>
+    <div
+      className="card"
+      // A compact card is a preview (a canvas node, a masonry tile), so a tap on
+      // it means "open this" — and on a phone that has to be a page, since the
+      // info panel is an off-screen drawer. A full card IS the editor; tapping
+      // into one is editing and must never navigate away.
+      onPointerDownCapture={() => (compact ? selectOrOpen(block.id) : selectBlock(block.id))}
+    >
       {!hideBanner && !compact && banner && (
         <Banner value={banner} editable onChange={(v) => updateField("banner", v ?? null)} height={150} />
       )}

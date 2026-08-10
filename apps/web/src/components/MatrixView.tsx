@@ -178,7 +178,12 @@ interface DateBit {
 
 /** Short display strings for any dated fields on the block. A datespan's due
  * (end) date in the past marks the bit overdue — unless the block is complete. */
-function dateBits(schema: PropertySchema | null | undefined, props: Record<string, unknown>): DateBit[] {
+function dateBits(
+  schema: PropertySchema | null | undefined,
+  props: Record<string, unknown>,
+  /** The Daily's date when this is embedded on one; null = judge against now. */
+  asOf: string | null,
+): DateBit[] {
   const statusKey = schema?.status_field;
   // Only status-bearing (task-like) blocks can be "overdue" — an event's end
   // date just passes, it isn't overdue.
@@ -199,7 +204,7 @@ function dateBits(schema: PropertySchema | null | undefined, props: Record<strin
       if (s || e) {
         out.push({
           text: s && e ? `${s} – ${e}` : s || e,
-          overdue: overdueEligible && isOverdue(span.end),
+          overdue: overdueEligible && isOverdue(span.end, asOf),
         });
       }
     }
@@ -299,7 +304,8 @@ function Chip({
   const t = item.blockTypeId ? types.find((x) => x.id === item.blockTypeId) : undefined;
   const statusField = item.props && onStatus ? statusFieldOf(t) : null;
   const status = statusField ? String(item.props?.[statusField.key] ?? "") : "";
-  const dates = item.props ? dateBits(t?.propertySchema ?? null, item.props) : [];
+  const asOf = useAsOf();
+  const dates = item.props ? dateBits(t?.propertySchema ?? null, item.props, asOf) : [];
 
   const cycle = () => {
     if (!statusField || !onStatus) return;

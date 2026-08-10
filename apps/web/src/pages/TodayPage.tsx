@@ -16,6 +16,7 @@ import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
+import { useBlockDeleted } from "../lib/block-events.ts";
 import { useOriginScroll } from "../lib/origin-scroll.ts";
 import { AsOfProvider } from "../lib/as-of.tsx";
 
@@ -194,6 +195,16 @@ export function TodayPage() {
   // Arriving from something the day shows — an embedded collection, a note
   // section, the scratchpad itself — puts it back in front of you.
   useOriginScroll(!loading && sheet != null);
+
+  // Archiving something from anywhere takes it off the day at once, rather
+  // than leaving it listed until the next load.
+  useBlockDeleted((bid) =>
+    setSheet((s) =>
+      s
+        ? { ...s, relevant: s.relevant.filter((b) => b.id !== bid), activity: s.activity.filter((b) => b.id !== bid) }
+        : s,
+    ),
+  );
 
   const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
   const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });

@@ -8,6 +8,7 @@ import { LongTextField } from "./LongTextField.tsx";
 import { MentionTextInput } from "./MentionTextInput.tsx";
 import { NumberField } from "./NumberField.tsx";
 import { isOverdue } from "../lib/display.ts";
+import { useAsOf } from "../lib/as-of.tsx";
 import { RecurrenceField } from "./RecurrenceField.tsx";
 import { ReferenceInput } from "./ReferenceInput.tsx";
 
@@ -68,6 +69,8 @@ export function FieldInput({
   showOverdue?: boolean;
 }) {
   const str = value == null ? "" : String(value);
+  // On a Daily, "overdue" means overdue as of that day.
+  const asOf = useAsOf();
 
   switch (field.type) {
     case "attachments":
@@ -115,7 +118,7 @@ export function FieldInput({
           <div className="span-leg">
             <span className="span-label">
               {field.endLabel?.trim() || "End"}
-              {showOverdue && isOverdue(span.end) && <span className="overdue-pill">Overdue</span>}
+              {showOverdue && isOverdue(span.end, asOf) && <span className="overdue-pill">Overdue</span>}
             </span>
             <DateTimePicker
               value={span.end ?? ""}

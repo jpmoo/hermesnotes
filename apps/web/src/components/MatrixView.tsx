@@ -592,7 +592,10 @@ export function MatrixView({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [q, setQ] = useState("");
   const [candidates, setCandidates] = useState<Item[]>([]);
-  const [matches, setMatches] = useState<Block[]>([]); // smart: full query matches
+  const [matches, setMatches] = useState<Block[]>([]);
+  // How many blocks the query actually matches, when that's more than one
+  // request returns. A board silently missing its tail looks complete.
+  const [matchTotal, setMatchTotal] = useState<{ total: number; limit: number } | null>(null); // smart: full query matches
   const [queryTick, setQueryTick] = useState(0); // bump to re-run the query
   // A block edited anywhere (e.g. the info pane) may fall in/out of the query,
   // so re-run it — this is what drops a completed task's chip without a reload.
@@ -644,14 +647,17 @@ export function MatrixView({
     if (!isSmart) return;
     let alive = true;
     void api
-      .post<Block[]>("/blocks/query", {
+      .post<{ blocks: Block[]; total: number; limit: number }>("/blocks/query", {
         filterQuery: normalizeFilter(props.filter_query),
         // Only when there is one: off a Today page this is null, and a null here
         // is a different thing from an absent one to a validator.
         ...(asOf ? { asOf } : {}),
+        withCount: true,
       })
       .then((r) => {
-        if (alive) setMatches(r);
+        if (!alive) return;
+        setMatches(r.blocks);
+        setMatchTotal(r.total > r.blocks.length ? { total: r.total, limit: r.limit } : null);
       })
       .catch((err: unknown) => {
         // Swallowing this entirely is how a rejected query looked like a
@@ -1405,6 +1411,11 @@ export function MatrixView({
           <span className={`drawer-count${drawerItems.length ? "" : " empty"}`}>
             {drawerItems.length}
           </span>
+          {matchTotal && (
+            <span className="drawer-capped" title={`The query matches ${matchTotal.total} blocks; a view shows at most ${matchTotal.limit}.`}>
+              showing {matchTotal.limit} of {matchTotal.total} — narrow the query
+            </span>
+          )}
           <span className="hint" style={{ marginLeft: "auto" }}>
             {!canExpand
               ? "everything placed"

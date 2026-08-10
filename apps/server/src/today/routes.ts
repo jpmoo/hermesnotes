@@ -252,6 +252,10 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
   /** Dates that have a non-empty scratchpad note (for the calendar). */
   app.get("/today/dates", async (req) => {
     const userId = requireUser(req);
+    // A day is "used" if anything was done to it that a default day wouldn't
+    // have: text written, a section pinned or suppressed just for that day, or a
+    // banner set. Text alone left a day you'd deliberately set up — a matrix
+    // pinned to next Friday, say — looking identical to one nobody had touched.
     const rows = await db
       .select({ d: sql<string>`${blocks.properties}->>'today_note'` })
       .from(blocks)
@@ -259,7 +263,13 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(blocks.ownerId, userId),
           sql`jsonb_exists(${blocks.properties}, 'today_note')`,
-          sql`COALESCE(${blocks.content}, '') <> ''`,
+          sql`${blocks.archivedAt} IS NULL`,
+          sql`(
+            COALESCE(${blocks.content}, '') <> ''
+            OR jsonb_array_length(COALESCE(${blocks.properties}->'layout', '[]'::jsonb)) > 0
+            OR jsonb_array_length(COALESCE(${blocks.properties}->'layout_suppress', '[]'::jsonb)) > 0
+            OR jsonb_exists(${blocks.properties}, 'banner')
+          )`,
         ),
       );
     return [...new Set(rows.map((r) => r.d).filter(Boolean))];

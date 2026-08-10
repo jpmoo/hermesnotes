@@ -16,7 +16,7 @@ import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
-import { runQuery } from "./query.js";
+import { runQuery, runQueryCounted } from "./query.js";
 
 const ICON_BY_KIND: Record<string, string> = {
   document: "file-text",
@@ -290,9 +290,9 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const { filterQuery, archived } = z
       .object({ filterQuery: filterQuerySchema, archived: z.boolean().optional() })
       .parse(req.body);
-    const matches = await runQuery(userId, filterQuery, archived ?? false);
+    const { rows: matches, total } = await runQueryCounted(userId, filterQuery, archived ?? false);
     return {
-      count: matches.length,
+      count: total,
       blocks: matches.slice(0, 50).map((b) => ({
         id: b.id,
         blockTypeId: b.blockTypeId,

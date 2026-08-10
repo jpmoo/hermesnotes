@@ -168,12 +168,35 @@ function asOfNow(tz: string | null, asOf?: string | null): Date {
   return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
 }
 
+/**
+ * Most rows one query will return. A board of more than this stops being usable
+ * before the number matters, and an unbounded query ("every block") would pour
+ * the whole database into a grid. Callers that show the result should say when
+ * they're showing a slice of it — see runQueryCounted.
+ */
+export const QUERY_LIMIT = 500;
+
 export async function runQuery(
   userId: string,
   filter: FilterQuery,
   archived = false,
   asOf?: string | null,
 ): Promise<QueriedBlock[]> {
+  return (await runQueryCounted(userId, filter, archived, asOf)).rows;
+}
+
+/**
+ * The same query, plus how many blocks actually match. The count costs a second
+ * query, so it's only run when the first came back full — that's the only case
+ * where the answer differs from the rows in hand, and the only case where
+ * anyone needs telling.
+ */
+export async function runQueryCounted(
+  userId: string,
+  filter: FilterQuery,
+  archived = false,
+  asOf?: string | null,
+): Promise<{ rows: QueriedBlock[]; total: number; limit: number }> {
   const root = normalizeFilter(filter);
   const semConds: Condition[] = [];
   collectSemantic(root, semConds);
@@ -208,7 +231,8 @@ export async function runQuery(
     .limit(1);
   const combined = groupSql(root, sem, asOfNow(tzRow?.tz ?? null, asOf));
 
-  return db
+  const where = and(scope, combined);
+  const rows = await db
     .select({
       id: blocks.id,
       blockTypeId: blocks.blockTypeId,
@@ -219,7 +243,14 @@ export async function runQuery(
       updatedAt: blocks.updatedAt,
     })
     .from(blocks)
-    .where(and(scope, combined))
+    .where(where)
     .orderBy(sql`${blocks.updatedAt} DESC`)
-    .limit(500);
+    .limit(QUERY_LIMIT);
+
+  if (rows.length < QUERY_LIMIT) return { rows, total: rows.length, limit: QUERY_LIMIT };
+  const [counted] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(blocks)
+    .where(where);
+  return { rows, total: Number(counted?.n ?? rows.length), limit: QUERY_LIMIT };
 }

@@ -3237,6 +3237,17 @@ input.matrix-axis-y::placeholder {
   color: var(--text);
   cursor: pointer;
 }
+/* Says the board is a slice, not the whole set. Warm rather than red: it's a
+   limit being reported, not a fault. */
+.drawer-capped {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--warn-ink, #8a5a00);
+  background: color-mix(in srgb, #f5a623 18%, transparent);
+  white-space: nowrap;
+}
+
 .drawer-body {
   padding: 0 14px 12px;
 }

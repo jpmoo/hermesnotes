@@ -14,7 +14,7 @@ import {
 } from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
-import { runQuery, semanticIds } from "../collections/query.js";
+import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
@@ -460,7 +460,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
    */
   app.post("/blocks/query", async (req) => {
     const userId = requireUser(req);
-    const { filterQuery, archived, asOf } = z
+    const { filterQuery, archived, asOf, withCount } = z
       .object({
         filterQuery: filterQuerySchema.optional(),
         archived: z.boolean().optional(),
@@ -471,10 +471,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           .regex(/^\d{4}-\d{2}-\d{2}$/)
           .nullable()
           .optional(),
+        /** Answer as { blocks, total, limit } instead of a bare array. */
+        withCount: z.boolean().optional(),
       })
       .parse(req.body ?? {});
-    const matched = await runQuery(userId, normalizeFilter(filterQuery), archived ?? false, asOf);
-    return matched.map((b) => ({
+    const counted = await runQueryCounted(userId, normalizeFilter(filterQuery), archived ?? false, asOf);
+    const matched = counted.rows;
+    const rows = matched.map((b) => ({
       id: b.id,
       blockTypeId: b.blockTypeId,
       collectionKind: null,
@@ -486,6 +489,9 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       createdAt: b.createdAt,
       updatedAt: b.updatedAt,
     }));
+    // The array shape is what every existing caller expects; a caller that wants
+    // to know whether it's looking at all of them asks for the count.
+    return withCount ? { blocks: rows, total: counted.total, limit: counted.limit } : rows;
   });
 
   /**

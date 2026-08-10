@@ -12,6 +12,7 @@ import {
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
@@ -273,15 +274,25 @@ function rawTitle(properties: Record<string, unknown> | null | undefined, conten
   return typeof title === "string" && title.trim() ? title.trim() : oneLineText(properties, content) || "Untitled";
 }
 
+/** Where a drop would land: before the chip at `index` of `region`'s list, or
+ *  at the end when index === list.length. */
+interface DropAt {
+  region: number;
+  index: number;
+}
+
 /** One draggable chip: status (interactive), label, dates, remove. */
 function Chip({
   item,
   onRemove,
   onStatus,
+  landing,
 }: {
   item: Item;
   onRemove?: (id: string) => void;
   onStatus?: (item: Item, field: FieldDef, next: string) => void;
+  /** Draw the landing strip above this card (the drop would land here). */
+  landing?: boolean;
 }) {
   const { selectBlock, selectOrOpen } = usePanels();
   const { types } = useMatrixTypes();
@@ -332,7 +343,7 @@ function Chip({
       ref={setRef}
       {...drag.attributes}
       {...drag.listeners}
-      className={`matrix-chip${drag.isDragging ? " dragging" : ""}${chipDrop.isOver ? " chip-over" : ""}`}
+      className={`matrix-chip${drag.isDragging ? " dragging" : ""}${landing ? " chip-over" : ""}`}
       data-block-id={item.id}
       onMouseEnter={armTip}
       onMouseLeave={clearTip}
@@ -427,6 +438,7 @@ function RegionCell({
   onRemove,
   onStatus,
   onInteract,
+  dropIndex,
 }: {
   index: number;
   title: string;
@@ -441,6 +453,8 @@ function RegionCell({
   onRemove?: (id: string) => void;
   onStatus?: (item: Item, field: FieldDef, next: string) => void;
   onInteract?: () => void;
+  /** Insertion point within this region while a card is being dragged over it. */
+  dropIndex?: number | null;
 }) {
   const drop = useDroppable({ id: `r:${index}` });
   return (
@@ -490,9 +504,12 @@ function RegionCell({
         <span className="region-count">{items.length || ""}</span>
       </div>
       <div className="region-body">
-        {items.map((it) => (
-          <Chip key={it.id} item={it} onRemove={onRemove} onStatus={onStatus} />
+        {items.map((it, i) => (
+          <Chip key={it.id} item={it} onRemove={onRemove} onStatus={onStatus} landing={dropIndex === i} />
         ))}
+        {/* The end of the list is a real landing place — without a strip there,
+            dropping below the last card looked like dropping nowhere. */}
+        {dropIndex === items.length && <div className="chip-landing-end" />}
       </div>
     </div>
   );
@@ -603,6 +620,7 @@ export function MatrixView({
     if (isSmart) setQueryTick((t) => t + 1);
   });
   const [active, setActive] = useState<Item | null>(null);
+  const [dropAt, setDropAt] = useState<DropAt | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -1024,8 +1042,42 @@ export function MatrixView({
   const onDragStart = (e: DragStartEvent) => {
     setActive((e.active.data.current as unknown as Item) ?? null);
   };
+  /**
+   * Where the card would land right now. Taken from the dragged card's centre
+   * against the card it's over: past the midpoint means below it, which is what
+   * a reorder is usually reaching for. Hovering a region rather than a card
+   * means the end of that region's list.
+   */
+  const onDragMove = (e: DragMoveEvent) => {
+    const item = e.active.data.current as unknown as Item | undefined;
+    const over = e.over;
+    if (!item || !over || bound || dateMode) return setDropAt(null);
+    const id = String(over.id);
+    const listFor = (region: number) =>
+      (placement.map.get(region) ?? []).filter((x) => x.id !== item.id);
+    if (id.startsWith("chip:")) {
+      const targetId = id.slice(5);
+      const region = regionOf(targetId);
+      if (region == null) return setDropAt(null);
+      const list = listFor(region);
+      const idx = list.findIndex((x) => x.id === targetId);
+      if (idx < 0) return setDropAt(null);
+      const rect = e.active.rect.current.translated;
+      const mid = over.rect.top + over.rect.height / 2;
+      const below = rect ? rect.top + rect.height / 2 > mid : false;
+      return setDropAt({ region, index: below ? idx + 1 : idx });
+    }
+    if (id.startsWith("r:")) {
+      const region = Number(id.slice(2));
+      return setDropAt(Number.isInteger(region) ? { region, index: listFor(region).length } : null);
+    }
+    setDropAt(null);
+  };
+
   const onDragEnd = (e: DragEndEvent) => {
     setActive(null);
+    const landing = dropAt;
+    setDropAt(null);
     const item = e.active.data.current as unknown as Item | undefined;
     const overId = e.over?.id;
     if (!item || overId == null) return;
@@ -1048,20 +1100,24 @@ export function MatrixView({
       }
       return;
     }
-    // Dropped onto another card → reorder there (and move region if different).
-    if (over.startsWith("chip:")) {
+    // Dropped onto a card (or into a region's empty tail) → land exactly where
+    // the strip was, which means naming BOTH neighbours: a position is generated
+    // between them, and sending only the one below would put the card at the top
+    // of the region instead of above that card.
+    if (landing && (over.startsWith("chip:") || over.startsWith("r:"))) {
       if (bound) return; // bound matrices order by status value, not manually
-      const targetId = over.slice(5);
-      if (targetId === item.id) return;
-      const targetRegion = regionOf(targetId);
-      if (targetRegion == null) return;
+      const targetRegion = landing.region;
+      const list = (placement.map.get(targetRegion) ?? []).filter((x) => x.id !== item.id);
+      const afterId = list[landing.index - 1]?.id ?? null;
+      const beforeId = list[landing.index]?.id ?? null;
       const m = members.find((x) => x.id === item.id);
       if (item.member) {
         const prev = regionOf(item.id);
         void api
           .patch(`/collections/${collection.id}/members/${item.id}`, {
             context: { ...(m?.context ?? {}), region: targetRegion },
-            beforeId: targetId,
+            afterId,
+            beforeId,
           })
           .then(async () => {
             if (prev !== targetRegion) {
@@ -1076,7 +1132,9 @@ export function MatrixView({
         void api
           .post(`/collections/${collection.id}/members`, { blockId: item.id, context: { region: targetRegion } })
           .then(async () => {
-            await api.patch(`/collections/${collection.id}/members/${item.id}`, { beforeId: targetId }).catch(() => {});
+            await api
+              .patch(`/collections/${collection.id}/members/${item.id}`, { afterId, beforeId })
+              .catch(() => {});
             await applyRegionEnter(item, targetRegion);
             onChanged();
             refreshInfo();
@@ -1242,7 +1300,17 @@ export function MatrixView({
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={matrixCollision} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={matrixCollision}
+      onDragStart={onDragStart}
+      onDragMove={onDragMove}
+      onDragEnd={onDragEnd}
+      onDragCancel={() => {
+        setActive(null);
+        setDropAt(null);
+      }}
+    >
       {header && <div className="row" style={{ margin: "0 0 12px", gap: 14, flexWrap: "wrap" }}>{header}</div>}
       {bottomSlotEl &&
         selectedBlockId === collection.id &&
@@ -1372,6 +1440,7 @@ export function MatrixView({
                   size={def.size}
                   editable={!bound}
                   items={placement.map.get(i) ?? []}
+                  dropIndex={dropAt?.region === i ? dropAt.index : null}
                   onTitle={onTitle}
                   onColor={setColorEdit}
                   onActions={openActions}

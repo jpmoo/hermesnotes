@@ -2883,6 +2883,17 @@ input.region-title:focus {
   border-radius: 2px;
   background: var(--accent);
 }
+/* The same bar after the last card, for a drop at the end of a region. Without
+   it, dropping below the last card showed nothing and read as dropping nowhere —
+   the one landing place with no indicator. */
+.chip-landing-end {
+  height: 3px;
+  margin-top: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex: none;
+}
+
 .chip-row {
   display: flex;
   align-items: center;

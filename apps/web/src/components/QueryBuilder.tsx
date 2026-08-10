@@ -1,4 +1,4 @@
-import { DAILY_NOTE_TYPE_ID, type Condition, type FieldDef, type FilterGroup, type PropertyOp } from "@hermes/shared";
+import { DAILY_NOTE_TYPE_ID, optionLabel, type Condition, type FieldDef, type FilterGroup, type PropertyOp } from "@hermes/shared";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
@@ -249,7 +249,7 @@ function ValueInput({
         <option value="">—</option>
         {field.options.map((o) => (
           <option key={o} value={o}>
-            {o.replace(/_/g, " ")}
+            {optionLabel(field, o)}
           </option>
         ))}
       </select>

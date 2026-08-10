@@ -1,3 +1,4 @@
+import { optionLabel } from "@hermes/shared";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -143,7 +144,7 @@ function Chip({
       {statusField ? (
         <button
           className="chip-status"
-          title={status ? `Status: ${pretty(status)} — click to cycle` : "Set status"}
+          title={status ? `Status: ${optionLabel(statusField!, status)} — click to cycle` : "Set status"}
           onClick={(e) => {
             e.stopPropagation();
             cycle();

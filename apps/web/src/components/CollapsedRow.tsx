@@ -1,3 +1,4 @@
+import { optionLabel } from "@hermes/shared";
 import { useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
@@ -51,7 +52,7 @@ export function CollapsedRow({
   const icon = statusField ? (
     <button
       className="li-status blk-collapsed-status"
-      title={`Status: ${status.replace(/_/g, " ")}`}
+      title={`Status: ${statusField ? optionLabel(statusField, status) : status.replace(/_/g, " ")}`}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();

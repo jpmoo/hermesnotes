@@ -1,3 +1,4 @@
+import { optionLabel } from "@hermes/shared";
 import {
   closestCenter,
   DndContext,
@@ -339,7 +340,7 @@ function Chip({
         {statusField ? (
           <button
             className="chip-status"
-            title={status ? `Status: ${pretty(status)} — click to cycle` : "Set status"}
+            title={status ? `Status: ${optionLabel(statusField!, status)} — click to cycle` : "Set status"}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -1125,7 +1126,7 @@ export function MatrixView({
   const gridCols = bound ? boundOptions.length || 1 : cols;
   const regionList: { title: string; color: string | null; size?: RegionSize }[] = bound
     ? boundOptions.map((o) => ({
-        title: o,
+        title: boundField ? optionLabel(boundField, o) : pretty(o),
         color: boundField?.optionColors?.[o] ?? null,
       }))
     : regions;

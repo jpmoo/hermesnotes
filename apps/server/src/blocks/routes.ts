@@ -466,7 +466,11 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         archived: z.boolean().optional(),
         // The day to treat as "today" — a Today page's own date, so what it
         // embeds reads as of that day (see runQuery).
-        asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        asOf: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
       })
       .parse(req.body ?? {});
     const matched = await runQuery(userId, normalizeFilter(filterQuery), archived ?? false, asOf);

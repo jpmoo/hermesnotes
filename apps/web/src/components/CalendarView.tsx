@@ -392,9 +392,18 @@ export function CalendarView({
     }
     let alive = true;
     void api
-      .post<Block[]>("/blocks/query", { filterQuery: normalizeFilter(props.filter_query), asOf })
+      .post<Block[]>("/blocks/query", {
+        filterQuery: normalizeFilter(props.filter_query),
+        // Only when there is one: off a Today page this is null, and a null here
+        // is a different thing from an absent one to a validator.
+        ...(asOf ? { asOf } : {}),
+      })
       .then((r) => alive && setMatches(r))
-      .catch(() => {});
+      .catch((err: unknown) => {
+        // Swallowing this entirely is how a rejected query looked like a
+        // collection with nothing in it.
+        console.error("collection query failed", err);
+      });
     return () => {
       alive = false;
     };

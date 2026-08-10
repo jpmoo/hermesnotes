@@ -438,7 +438,7 @@ function RegionCell({
   onRemove,
   onStatus,
   onInteract,
-  dropIndex,
+  landingBefore,
 }: {
   index: number;
   title: string;
@@ -453,8 +453,13 @@ function RegionCell({
   onRemove?: (id: string) => void;
   onStatus?: (item: Item, field: FieldDef, next: string) => void;
   onInteract?: () => void;
-  /** Insertion point within this region while a card is being dragged over it. */
-  dropIndex?: number | null;
+  /**
+   * Where the strip goes while a card is dragged over this region: the id of the
+   * card it sits above, null for the end of the list, or undefined when the drag
+   * is somewhere else. An id rather than an index, because the two sides were
+   * counting different lists — this one can't drift.
+   */
+  landingBefore?: string | null;
 }) {
   const drop = useDroppable({ id: `r:${index}` });
   return (
@@ -504,12 +509,18 @@ function RegionCell({
         <span className="region-count">{items.length || ""}</span>
       </div>
       <div className="region-body">
-        {items.map((it, i) => (
-          <Chip key={it.id} item={it} onRemove={onRemove} onStatus={onStatus} landing={dropIndex === i} />
+        {items.map((it) => (
+          <Chip
+            key={it.id}
+            item={it}
+            onRemove={onRemove}
+            onStatus={onStatus}
+            landing={landingBefore !== undefined && landingBefore === it.id}
+          />
         ))}
         {/* The end of the list is a real landing place — without a strip there,
             dropping below the last card looked like dropping nowhere. */}
-        {dropIndex === items.length && <div className="chip-landing-end" />}
+        {landingBefore === null && <div className="chip-landing-end" />}
       </div>
     </div>
   );
@@ -1181,6 +1192,17 @@ export function MatrixView({
     }
   };
 
+  /**
+   * The strip's position as a card id: above `beforeId`, or at the end when it's
+   * null. Derived from the same list the drop uses (the region's cards without
+   * the one in hand), so what's drawn and what's saved can't disagree.
+   */
+  const landingAt = useMemo(() => {
+    if (!dropAt || !active) return null;
+    const list = (placement.map.get(dropAt.region) ?? []).filter((x) => x.id !== active.id);
+    return { region: dropAt.region, beforeId: list[dropAt.index]?.id ?? null };
+  }, [dropAt, active, placement]);
+
   const drawerDrop = useDroppable({ id: "drawer" });
   const drawerItems = dateMode
     ? dateData.loose
@@ -1440,7 +1462,7 @@ export function MatrixView({
                   size={def.size}
                   editable={!bound}
                   items={placement.map.get(i) ?? []}
-                  dropIndex={dropAt?.region === i ? dropAt.index : null}
+                  landingBefore={landingAt?.region === i ? landingAt.beforeId : undefined}
                   onTitle={onTitle}
                   onColor={setColorEdit}
                   onActions={openActions}

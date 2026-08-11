@@ -87,6 +87,18 @@ export function TextBlockEditor({
     () => focusedRef.current || dirty(),
   );
 
+  // See TypedBlockCard: adopt a newer snapshot from the surface that owns this
+  // editor, but never over the top of unsaved work.
+  useEffect(() => {
+    if (block.version === versionRef.current) return;
+    if (focusedRef.current || dirty()) return;
+    setProps(block.properties ?? {});
+    versionRef.current = block.version;
+    setUpdatedAt(block.updatedAt);
+    setExt((e) => ({ content: block.content ?? "", nonce: e.nonce + 1 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.id, block.version]);
+
   // The body IS the "description" field; any other schema fields render below it.
   const extraFields = [...(type?.propertySchema?.fields ?? [])]
     .filter((f) => f.key !== "description")

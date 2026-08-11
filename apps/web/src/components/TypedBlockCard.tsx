@@ -120,6 +120,20 @@ export function TypedBlockCard({
     () => focusedRef.current || dirty(),
   );
 
+  // A newer snapshot from whoever owns this card (the info panel refetches when
+  // it takes over editing, and hands the fresh block down). Adopted only when
+  // nothing here is in flight — the same hold the sync bus uses — so it can't
+  // overwrite what you're in the middle of.
+  useEffect(() => {
+    if (block.version === versionRef.current) return;
+    if (focusedRef.current || dirty()) return;
+    setProps(block.properties ?? {});
+    versionRef.current = block.version;
+    setUpdatedAt(block.updatedAt);
+    setExt((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.id, block.version]);
+
   const schema = type.propertySchema;
   const fields = [...(schema?.fields ?? [])].sort((a, b) => a.order - b.order);
   const titleField = fields.find((f) => f.key === "title");
@@ -287,7 +301,7 @@ export function TypedBlockCard({
       </div>
 
       {bodyFields.length > 0 && (
-        <div className="typed-fields" key={ext}>
+        <div className="typed-fields">
           {bodyFields.map((f) => {
             const full =
               f.type === "text" ||
@@ -308,7 +322,18 @@ export function TypedBlockCard({
               f.type === "status";
             const Tag = simple ? "label" : "div";
             return (
-              <Tag className={`field typed-field${full ? " full" : ""}`} key={f.key}>
+              // Only the long-text fields carry the remount nonce. Their editor
+              // owns its content internally, so a changed value prop alone won't
+              // update it — but keying the WHOLE field list by that nonce tore
+              // down every other field with it, and a foreign edit lands here
+              // constantly (this card adopts the viewport's saves). That took the
+              // reference field's search box apart mid-word: its query, its
+              // results and its open state are component state, so a remount
+              // silently emptied them and the list stopped answering.
+              <Tag
+                className={`field typed-field${full ? " full" : ""}`}
+                key={f.type === "longtext" ? `${f.key}:${ext}` : f.key}
+              >
                 <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
                 <FieldInput
                   field={f}

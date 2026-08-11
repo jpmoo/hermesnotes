@@ -9,28 +9,31 @@ export function useHoverIntent(enterDelay = 320, leaveDelay = 220) {
   const enterTimer = useRef<ReturnType<typeof setTimeout>>();
   /** When the running dwell started and how long it's for, so a quicker one can
    *  overtake it and a slower one can't push it back. */
-  const pending = useRef<{ at: number; delay: number } | null>(null);
+  const pending = useRef<{ at: number; delay: number; kind: string } | null>(null);
   const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   // Arm the reveal after a dwell. Callers can pass a delay to override the
   // default per-region (e.g. a longer dwell over clickable icons — where the
   // cursor is likely just passing to a click — and a shorter one over empty
   // rail space, where a hover almost always means "open me").
-  const arm = (delay = enterDelay) => {
+  /**
+   * Arm the reveal after a dwell. `kind` names the sort of place the pointer is
+   * in, and it's what decides whether a running dwell is disturbed:
+   *
+   * - same kind — leave it alone. mouseover fires again for every descendant
+   *   crossed (an icon, its glyph, its label), and restarting each time meant
+   *   the countdown never finished over a row of icons.
+   * - a different kind — start again on the new terms. Crossing from a gap onto
+   *   an icon really is a change of mind about what you're doing, and should
+   *   buy the icon its longer wait rather than coast in on the quick one.
+   */
+  const arm = (delay = enterDelay, kind = "default") => {
     if (leaveTimer.current) clearTimeout(leaveTimer.current);
-    // A dwell already running is left alone unless the new one would open
-    // sooner. Two things depend on this: mouseover fires again for every
-    // descendant the pointer crosses (an icon, its glyph, its label), and
-    // restarting each time meant the countdown never finished over a row of
-    // icons; while moving from a slow region to a quick one — off an icon into
-    // the gap beside it — should still speed the reveal up rather than serve
-    // out the longer wait.
     if (enterTimer.current && pending.current) {
-      const remaining = pending.current.at + pending.current.delay - Date.now();
-      if (delay >= remaining) return;
+      if (pending.current.kind === kind) return;
       clearTimeout(enterTimer.current);
     }
-    pending.current = { at: Date.now(), delay };
+    pending.current = { at: Date.now(), delay, kind };
     enterTimer.current = setTimeout(() => {
       enterTimer.current = undefined;
       pending.current = null;

@@ -89,7 +89,11 @@ export function Sidebar() {
   const onRailOver = (e: React.MouseEvent) => {
     if (hovered) return; // already open — nothing to arm
     const overIcon = !!(e.target as HTMLElement).closest(".nav-link, .nav-row, button");
-    arm(overIcon ? RAIL_OPEN_OVER_ICON : RAIL_OPEN_OVER_GAP);
+    // The kind matters as much as the delay: arriving over the rail's own
+    // background and then settling on an icon has to start the icon's wait,
+    // or every approach to an icon crosses a gap first and comes in on the
+    // quick one — which is why the dwell never seemed to happen.
+    arm(overIcon ? RAIL_OPEN_OVER_ICON : RAIL_OPEN_OVER_GAP, overIcon ? "icon" : "gap");
   };
 
   // The rail expands when pinned, when hovering an empty area, or while a

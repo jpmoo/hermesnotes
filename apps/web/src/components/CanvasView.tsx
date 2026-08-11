@@ -535,6 +535,8 @@ export function CanvasView({
     | null
   >(null);
   const [linking, setLinking] = useState<{ from: string; side: Side; x: number; y: number } | null>(null);
+  const linkingRef = useRef(linking);
+  linkingRef.current = linking;
   const hoverNode = useRef<string | null>(null);
 
   // Fully functional updates so rapid wheel events never read a stale zoom
@@ -684,13 +686,103 @@ export function CanvasView({
     drag.current = { kind: "region", id, sx: p.x, sy: p.y, starts, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
-  const onPointerMove = (e: ReactPointerEvent) => {
-    if (pinchRef.current) return;
-    if (linking) {
+  /**
+   * Land the connection being drawn at a point on screen. Kept apart from the
+   * pointer plumbing because what it decides — which side of the target to meet,
+   * whether this is a real relation or a note's dotted line — is the interesting
+   * part, and it's reached from the window listener above.
+   */
+  const finishLink = (clientX: number, clientY: number) => {
+    const link = linkingRef.current;
+    setLinking(null);
+    if (!link) return;
+    // What's under the pointer, by position. Hover tracking can't be trusted
+    // here: enter/leave stop firing for the rest of a drag once a pointer is
+    // captured, which touch does implicitly on the first move. Every node
+    // carries its id, ephemeral notes included.
+    const under = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const target = under?.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? hoverNode.current;
+    if (!target || target === link.from) return;
+    const tr = rectOf(target);
+    const src = rectOf(link.from);
+    if (!tr || !src) return;
+    // Meet the target on the side facing the source anchor.
+    const sa = anchor(src, link.side);
+    const dxc = sa.x - (tr.x + tr.w / 2);
+    const dyc = sa.y - (tr.y + tr.h / 2);
+    const toSide: Side =
+      Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
+    // A live link needs two real blocks — anything touching an ephemeral note is
+    // forced ephemeral (dotted).
+    const eph = link.from.startsWith("n:") || target.startsWith("n:");
+    // A live link whose target type matches a relation field on the source sets
+    // that relation (and reveals it as a toggleable "existing connection")
+    // instead of drawing a standalone edge that would linger after the relation
+    // is removed. Otherwise, draw the edge.
+    if (!eph && fileUnderRelation(link.from, target)) return;
+    const edgeId = uid();
+    saveEdges([
+      ...edges,
+      {
+        id: edgeId,
+        from: link.from,
+        to: target,
+        fromSide: link.side,
+        toSide,
+        arrow: "forward",
+        live: !eph,
+        ...(eph ? { dash: "dotted" as const } : {}),
+      },
+    ]);
+    // The line's own settings, where it was dropped: dashes, arrows and label
+    // are decisions you've just made, and right-clicking the line afterwards is
+    // a step people don't find.
+    setEdgeMenu({ id: edgeId, x: clientX, y: clientY });
+  };
+
+  /**
+   * Drawing a connection is a gesture on the WINDOW, not on the canvas element.
+   * Relying on the move and the release reaching the canvas meant anything that
+   * took them away — a native drag starting, the pointer crossing out of the
+   * canvas, an element between us and it — ended the gesture with no line, no
+   * error and nothing to go on. The window sees every one of them.
+   *
+   * Everything the finish needs is read from refs at release time, so the
+   * listeners can be attached once for the gesture rather than re-attached on
+   * every move.
+   */
+  useEffect(() => {
+    if (!linking) return;
+    const move = (e: PointerEvent) => {
       const p = toCanvas(e.clientX, e.clientY);
       setLinking((l) => (l ? { ...l, x: p.x, y: p.y } : l));
-      return;
-    }
+    };
+    const up = (e: PointerEvent) => finishLink(e.clientX, e.clientY);
+    const cancel = () => setLinking(null);
+    // A native drag would steal the pointer mid-gesture; there's nothing on a
+    // canvas worth dragging that way.
+    const noDrag = (e: Event) => e.preventDefault();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLinking(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("dragstart", noDrag);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("dragstart", noDrag);
+      window.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(linking)]);
+
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (pinchRef.current) return;
+    if (linking) return; // the window owns this gesture
     const d = drag.current;
     if (!d) return;
     if (d.kind === "pan") {
@@ -742,61 +834,9 @@ export function CanvasView({
       else setLocal((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] ?? (r as NodeCtx)), ...r } }));
     }
   };
-  const onPointerUp = (ev?: ReactPointerEvent) => {
+  const onPointerUp = () => {
     const d = drag.current;
     drag.current = null;
-    if (linking) {
-      // Ask the document what's under the pointer, and only fall back to the
-      // hover tracking. Enter/leave stop firing for the rest of a drag once a
-      // pointer is captured — which touch does implicitly, on the first move —
-      // so hoverNode can be null exactly when the line is being drawn. Every
-      // node carries its id, ephemeral notes included.
-      const under = ev ? (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null) : null;
-      const target = under?.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? hoverNode.current;
-      if (target && target !== linking.from) {
-        // Pick the target side facing the source anchor.
-        const tr = rectOf(target);
-        const src = rectOf(linking.from);
-        if (tr && src) {
-          const sa = anchor(src, linking.side);
-          const dxc = sa.x - (tr.x + tr.w / 2);
-          const dyc = sa.y - (tr.y + tr.h / 2);
-          const toSide: Side =
-            Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
-          // A live link needs two real blocks — anything touching an
-          // ephemeral note is forced ephemeral (dotted).
-          const eph = linking.from.startsWith("n:") || target.startsWith("n:");
-          // A live link whose target type matches a relation field on the source
-          // sets that relation (and reveals it as a toggleable "existing
-          // connection") instead of drawing a standalone edge that would linger
-          // after the relation is removed. Otherwise, draw the edge.
-          if (!eph && fileUnderRelation(linking.from, target)) {
-            /* handled: relation set + connection revealed by fileUnderRelation */
-          } else {
-            const edgeId = uid();
-            saveEdges([
-              ...edges,
-              {
-                id: edgeId,
-                from: linking.from,
-                to: target,
-                fromSide: linking.side,
-                toSide,
-                arrow: "forward",
-                live: !eph,
-                ...(eph ? { dash: "dotted" as const } : {}),
-              },
-            ]);
-            // Open the line's own menu where it was dropped: style, arrows and
-            // label are all decisions you've just made in your head, and
-            // right-clicking the line afterwards is a step people don't find.
-            if (ev) setEdgeMenu({ id: edgeId, x: ev.clientX, y: ev.clientY });
-          }
-        }
-      }
-      setLinking(null);
-      return;
-    }
     if (!d) return;
     if (d.kind === "marquee") {
       if (marquee) {
@@ -1155,11 +1195,9 @@ export function CanvasView({
             if (locked || e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
-            // Capture: the move and the release are ours for the rest of the
-            // gesture, whatever the pointer passes over. (They still bubble to
-            // the canvas, so the handlers there run as before — and since
-            // capture stops enter/leave firing elsewhere, the drop target is
-            // resolved from the pointer's position, not from hover.)
+            // Capture, so the events keep coming even if what's under the
+            // pointer changes or disappears. They still reach the window, which
+            // is where the rest of this gesture lives (see finishLink).
             (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             const p = toCanvas(e.clientX, e.clientY);
             setLinking({ from: id, side: sd, x: p.x, y: p.y });

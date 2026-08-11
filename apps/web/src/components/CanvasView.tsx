@@ -78,6 +78,9 @@ const NOTE_H = 120;
 // Ephemeral notes are opaque sticky notes — post-it yellow by default so one
 // never renders see-through (a note created without a color still gets this).
 const NOTE_COLOR = "#fdf3d8";
+/** How much canvas the edge layer covers, centred on the origin. Generous
+ *  enough that nothing is ever drawn outside it, small enough to stay cheap. */
+const EDGE_SPAN = 20000;
 const MIN_W = 140;
 const MIN_H = 80;
 const NODE_COLORS = ["#ffffff", "#fdf3d8", "#e7f1e4", "#e3edf5", "#f5e3e7", "#ece5f6", "#eef4f6"];
@@ -1265,7 +1268,20 @@ export function CanvasView({
             </div>
           );
         })}
-        <svg className="cv-svg" width={0} height={0}>
+        {/* A real viewport, centred on the canvas origin, rather than a 0×0 one
+            painting outside itself. "overflow: visible" on an <svg> root is
+            honoured by browsers but not by every engine — one that clips to the
+            viewport instead drops every edge, which looks exactly like
+            connections not working while the lines are in fact all there. The
+            viewBox matches the box, so canvas coordinates still map 1:1 and no
+            path maths changes. */}
+        <svg
+          className="cv-svg"
+          width={EDGE_SPAN}
+          height={EDGE_SPAN}
+          viewBox={`${-EDGE_SPAN / 2} ${-EDGE_SPAN / 2} ${EDGE_SPAN} ${EDGE_SPAN}`}
+          style={{ left: -EDGE_SPAN / 2, top: -EDGE_SPAN / 2 }}
+        >
           <defs>
             {edges.map((e) => (
               <marker

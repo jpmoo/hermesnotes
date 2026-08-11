@@ -1,4 +1,5 @@
 import { bodyFieldKey } from "@hermes/shared";
+import { createPortal } from "react-dom";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
@@ -339,9 +340,16 @@ export function MarkdownEditor({
       </button>
       {sug && <MentionMenu state={sug} keydown={keydown} onClose={() => setSug(null)} />}
 
-      {extract && (
-        <div
-          className="menu extract-menu"
+      {/* Out to the body: "fixed" is measured against the nearest transformed
+          ancestor, not the window, and a canvas node lives inside a layer that
+          pans and zooms by transform — so a popup positioned at window
+          coordinates landed a screen away from the field that opened it, at the
+          wrong scale. Nothing else needs to know; the coordinates are already
+          the right ones. */}
+      {extract &&
+        createPortal(
+          <div
+            className="menu extract-menu"
           style={{
             position: "fixed",
             left: extract.x,
@@ -365,8 +373,9 @@ export function MarkdownEditor({
                 <span style={{ textTransform: "capitalize" }}>{t.name}</span>
               </button>
             ))}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Date/Time picker: a month calendar (today highlighted) plus a 12-hour time
@@ -75,6 +76,7 @@ export function DateTimePicker({
   const [dowOpen, setDowOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
   const parts = parse(value);
 
   // The popup is position:fixed so scroll containers (table view, right
@@ -108,7 +110,11 @@ export function DateTimePicker({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // The popup lives at the end of the body now, so "inside the trigger"
+      // isn't the whole story — a click in the calendar has to count as inside.
+      if (wrapRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -181,8 +187,20 @@ export function DateTimePicker({
         )}
       </button>
 
-      {open && pos && (
-        <div className="dtp-pop" style={{ position: "fixed", left: pos.left, top: pos.top }}>
+      {/* Out to the body: "fixed" is measured against the nearest transformed
+          ancestor, not the window, and a canvas node lives inside a layer that
+          pans and zooms by transform — so a popup positioned at window
+          coordinates landed a screen away from the field that opened it, at the
+          wrong scale. Nothing else needs to know; the coordinates are already
+          the right ones. */}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            className="dtp-pop"
+            ref={popRef}
+            style={{ position: "fixed", left: pos.left, top: pos.top }}
+          >
           <div className="dtp-cal-head">
             <button type="button" className="icon-btn" onClick={() => stepMonth(-1)} title="Previous month">
               <ChevronLeft size={16} />
@@ -327,8 +345,9 @@ export function DateTimePicker({
               Done
             </button>
           </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

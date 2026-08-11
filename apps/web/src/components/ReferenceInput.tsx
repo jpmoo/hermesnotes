@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, type Block, type BlockRef, type BlockType } from "../api.ts";
 import { firstLineHtml } from "../lib/markdown-excerpt.ts";
@@ -32,6 +33,7 @@ export function ReferenceInput({
   const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
   const fetched = useRef<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
 
   // The target type's icon labels every result (all hits share the type).
   useEffect(() => {
@@ -107,7 +109,10 @@ export function ReferenceInput({
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // The list is portaled to the body — a click in it is still "inside".
+      if (ref.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -180,9 +185,18 @@ export function ReferenceInput({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      {open && rect && (
-        <div
-          className="menu ref-results"
+      {/* Out to the body: "fixed" is measured against the nearest transformed
+          ancestor, not the window, and a canvas node lives inside a layer that
+          pans and zooms by transform — so a popup positioned at window
+          coordinates landed a screen away from the field that opened it, at the
+          wrong scale. Nothing else needs to know; the coordinates are already
+          the right ones. */}
+      {open &&
+        rect &&
+        createPortal(
+          <div
+            className="menu ref-results"
+            ref={popRef}
           style={{
             position: "fixed",
             left: rect.left,
@@ -207,8 +221,9 @@ export function ReferenceInput({
                 No matches.
               </div>
             ))}
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

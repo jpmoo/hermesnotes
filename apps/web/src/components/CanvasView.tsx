@@ -1,4 +1,4 @@
-import { GripHorizontal, Minus, Plus, Lock, Unlock } from "lucide-react";
+import { GripHorizontal, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "../lib/useIsMobile.ts";
@@ -83,7 +83,11 @@ const NOTE_COLOR = "#fdf3d8";
 const EDGE_SPAN = 20000;
 const MIN_W = 140;
 const MIN_H = 80;
+// Two rows: the pale papers a card is normally written on, and a muted set for
+// when a canvas has enough cards that colour has to carry meaning. Both stay
+// light enough for dark text, which is what the node styling assumes.
 const NODE_COLORS = ["#ffffff", "#fdf3d8", "#e7f1e4", "#e3edf5", "#f5e3e7", "#ece5f6", "#eef4f6"];
+const NODE_COLORS_MUTED = ["#e4d9b8", "#c9d8c4", "#bfd0dd", "#ddc3c9", "#cfc6e0", "#c8d6da", "#d6d3ce"];
 const REGION_COLORS = [
   "rgba(95, 164, 181, 0.12)",
   "rgba(222, 184, 72, 0.14)",
@@ -91,6 +95,16 @@ const REGION_COLORS = [
   "rgba(181, 82, 95, 0.10)",
   "rgba(106, 90, 205, 0.10)",
 ];
+// The same five at roughly twice the strength, for a region that needs to read
+// as a place rather than a tint.
+const REGION_COLORS_MUTED = [
+  "rgba(95, 164, 181, 0.26)",
+  "rgba(222, 184, 72, 0.30)",
+  "rgba(47, 109, 79, 0.22)",
+  "rgba(181, 82, 95, 0.22)",
+  "rgba(106, 90, 205, 0.22)",
+];
+
 const REGION_PAD = 22;
 const REGION_TOP = 44;
 const EDGE_COLORS = ["#5f6b74", "#5fa4b5", "#b5525f", "#2f6d4f", "#8a6d1f", "#6a5acd"];
@@ -1297,6 +1311,15 @@ export function CanvasView({
     }
     saveEdges(edges.filter((e) => e.from !== id && e.to !== id));
   };
+  /** A node's current colour, for the native picker to open on. */
+  const colorOf = (id: string): string | null => {
+    if (id.startsWith("n:")) return notes.find((n) => n.id === id)?.color ?? null;
+    return (local[id] ?? ctxOf(members.find((m) => m.id === id) ?? ({} as Member)))?.color ?? null;
+  };
+  /** <input type="color"> only speaks #rrggbb; a region's tints are rgba(). */
+  const hexOf = (c: string | null | undefined): string | null =>
+    c && /^#[0-9a-f]{6}$/i.test(c.trim()) ? c.trim() : null;
+
   const setNodeColor = (id: string, color: string | null) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.map((n) => (n.id === id ? { ...n, color } : n)));
@@ -1940,6 +1963,31 @@ export function CanvasView({
                 />
               ))}
             </div>
+            <div className="cv-menu-row">
+              {NODE_COLORS_MUTED.map((c) => (
+                <button
+                  key={c}
+                  className="cv-swatch"
+                  style={{ background: c }}
+                  onClick={() => {
+                    setNodeColor(nodeMenu.id, c);
+                    setNodeMenu(null);
+                  }}
+                />
+              ))}
+              {/* Anything else: the system's own picker, which on a Mac is the
+                  one with the eyedropper and the palettes people already keep.
+                  The menu stays open while it's up — closing it would take the
+                  input away and the picker with it. */}
+              <label className="cv-swatch cv-swatch-custom" title="Custom colour…">
+                <Pipette size={12} />
+                <input
+                  type="color"
+                  value={colorOf(nodeMenu.id) ?? "#ffffff"}
+                  onChange={(e) => setNodeColor(nodeMenu.id, e.target.value)}
+                />
+              </label>
+            </div>
             {menuNote && (
               <>
                 <div className="menu-sep" />
@@ -2157,6 +2205,24 @@ export function CanvasView({
                     onClick={() => patchRegion(rg.id, { color: c })}
                   />
                 ))}
+              </div>
+              <div className="cv-menu-row">
+                {REGION_COLORS_MUTED.map((c) => (
+                  <button
+                    key={c}
+                    className="cv-swatch"
+                    style={{ background: c }}
+                    onClick={() => patchRegion(rg.id, { color: c })}
+                  />
+                ))}
+                <label className="cv-swatch cv-swatch-custom" title="Custom colour…">
+                  <Pipette size={12} />
+                  <input
+                    type="color"
+                    value={hexOf(rg.color) ?? "#5fa4b5"}
+                    onChange={(e) => patchRegion(rg.id, { color: e.target.value })}
+                  />
+                </label>
               </div>
               <div className="menu-sep" />
               <div className="hint" style={{ padding: "4px 10px" }}>Create collection from region…</div>

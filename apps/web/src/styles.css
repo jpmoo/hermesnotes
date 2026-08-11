@@ -5473,6 +5473,36 @@ input.cv-zoom {
   background: var(--surface-2);
   border-color: var(--border-strong);
 }
+/* The custom-colour swatch: the same square, but it opens the system picker.
+   The input itself is invisible and fills the square, so the click lands on it
+   — a button that then tries to open a colour input can't, since the system
+   picker only opens from a real user gesture on the input. */
+.cv-swatch-custom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background:
+    conic-gradient(from 0deg, #e6584d, #f5a623, #3fb950, #22b8cf, #6b7cff, #a970ff, #e6584d);
+  cursor: pointer;
+}
+.cv-swatch-custom svg {
+  position: relative;
+  z-index: 1;
+  color: #26282b;
+}
+.cv-swatch-custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .cv-swatch {
   width: 20px;
   height: 20px;

@@ -773,10 +773,11 @@ export function CanvasView({
           if (!eph && fileUnderRelation(linking.from, target)) {
             /* handled: relation set + connection revealed by fileUnderRelation */
           } else {
+            const edgeId = uid();
             saveEdges([
               ...edges,
               {
-                id: uid(),
+                id: edgeId,
                 from: linking.from,
                 to: target,
                 fromSide: linking.side,
@@ -786,6 +787,10 @@ export function CanvasView({
                 ...(eph ? { dash: "dotted" as const } : {}),
               },
             ]);
+            // Open the line's own menu where it was dropped: style, arrows and
+            // label are all decisions you've just made in your head, and
+            // right-clicking the line afterwards is a step people don't find.
+            if (ev) setEdgeMenu({ id: edgeId, x: ev.clientX, y: ev.clientY });
           }
         }
       }
@@ -1150,6 +1155,12 @@ export function CanvasView({
             if (locked || e.button !== 0) return;
             e.preventDefault();
             e.stopPropagation();
+            // Capture: the move and the release are ours for the rest of the
+            // gesture, whatever the pointer passes over. (They still bubble to
+            // the canvas, so the handlers there run as before — and since
+            // capture stops enter/leave firing elsewhere, the drop target is
+            // resolved from the pointer's position, not from hover.)
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
             const p = toCanvas(e.clientX, e.clientY);
             setLinking({ from: id, side: sd, x: p.x, y: p.y });
           }}
@@ -1165,6 +1176,10 @@ export function CanvasView({
       style={wrapH != null ? { height: wrapH } : undefined}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        setLinking(null);
+        drag.current = null;
+      }}
       onPointerDown={onBgPointerDown}
       onDoubleClick={(e) => {
         if (!locked && e.target === e.currentTarget) addNote(toCanvas(e.clientX, e.clientY));

@@ -720,6 +720,17 @@ export function CanvasView({
     // instead of drawing a standalone edge that would linger after the relation
     // is removed. Otherwise, draw the edge.
     if (!eph && fileUnderRelation(link.from, target)) return;
+    // Two things are either connected or they aren't — a second line between the
+    // same pair says nothing the first doesn't, and they overlap so you can't
+    // tell there are two. Drawing one again opens the existing line's settings,
+    // which is what you were reaching for anyway.
+    const existing = edges.find(
+      (e) => (e.from === link.from && e.to === target) || (e.from === target && e.to === link.from),
+    );
+    if (existing) {
+      setEdgeMenu({ id: existing.id, x: clientX, y: clientY });
+      return;
+    }
     const edgeId = uid();
     saveEdges([
       ...edges,
@@ -1165,10 +1176,9 @@ export function CanvasView({
         top: r.y,
         width: r.w,
         height: r.h,
-        // Notes are post-its: yellow unless they've been given a colour of
-        // their own. Set here rather than in CSS because this style is inline
-        // and would win anyway.
-        background: r.color || (isNote ? "var(--postit)" : "var(--surface)"),
+        // A note's colour is on its paper (above), so the cut corner shows what's
+        // behind the note rather than more note.
+        background: isNote ? "transparent" : r.color || "var(--surface)",
       }}
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}
@@ -1179,10 +1189,18 @@ export function CanvasView({
         setNodeMenu({ id, x: e.clientX, y: e.clientY });
       }}
     >
-      <div className="cv-grab" onPointerDown={(e) => startNodeDrag(id, e)} title="Drag to move">
-        <GripHorizontal size={13} />
+      {/* The paper. Separate from the node because a note's corner is cut away,
+          and a cut on the node itself would take the connect handles and resize
+          corners with it — they sit a few pixels outside its box. */}
+      <div
+        className="cv-paper"
+        style={isNote ? { background: r.color || "var(--postit)" } : undefined}
+      >
+        <div className="cv-grab" onPointerDown={(e) => startNodeDrag(id, e)} title="Drag to move">
+          <GripHorizontal size={13} />
+        </div>
+        <div className="cv-body">{body}</div>
       </div>
-      <div className="cv-body">{body}</div>
       {(["nw", "ne", "sw", "se"] as const).map((c) => (
         <span key={c} className={`cv-corner cv-${c}`} onPointerDown={(e) => startResize(id, c, e)} />
       ))}

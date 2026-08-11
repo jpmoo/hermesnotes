@@ -5218,43 +5218,56 @@ input.matrix-axis-y::placeholder {
   background: transparent;
 }
 
-/* Ephemeral notes look like what they are: a post-it with its corner turned
-   down. Square-ish corners and a flatter shadow — a post-it lies flat.
-   The fold is drawn INSIDE the corner rather than cut out of it with a
-   clip-path: the connect handles and resize corners sit a few pixels outside
-   the node's box, and a clip would take them with it — no more drawing a line
-   from a note. */
+/* Ephemeral notes look like what they are: a post-it with a turned corner.
+   Same construction as Brigid's canvas notes, for the same reason: the note is
+   only a frame — it positions things and carries the connect handles and resize
+   grips, which sit outside its box — while the paper inside it is what gets
+   cut. Clipping the note itself would take those with it.
+
+   The shadow is a drop-shadow filter rather than a box-shadow, so it follows
+   the cut corner instead of outlining a rectangle that isn't there. */
 .cv-note {
-  --fold: 16px;
-  border-radius: 2px;
-  border-color: color-mix(in srgb, var(--postit-edge) 70%, transparent);
-  box-shadow: 1px 2px 5px var(--shadow-color);
+  --fold: 14px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(1px 2px 5px var(--shadow-color));
 }
-.cv-note::after {
+.cv-paper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.cv-note .cv-paper {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  /* The turned corner, cut from the sheet rather than drawn on it. */
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--fold)),
+    calc(100% - var(--fold)) 100%,
+    0 100%
+  );
+}
+/* The underside of the turned corner. A square, which the clip above cuts into
+   the triangle — so the fold and the cut can't disagree about where they are. */
+.cv-note .cv-paper::after {
   content: "";
   position: absolute;
-  top: 0;
   right: 0;
+  bottom: 0;
   width: var(--fold);
   height: var(--fold);
-  /* The turned-down corner: a real triangle, cut by the clip rather than
-     approximated by where a gradient happens to fade. A gradient's stops run
-     along its own axis, not along the diagonal of the box, so shading alone came
-     out as a lopsided wedge instead of a fold.
-     Right angle at the corner, hypotenuse along the crease; the shading runs
-     from the crease (lit) to the corner (in shadow), which is the direction a
-     lifted flap actually catches light. */
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
   background: linear-gradient(
-    225deg,
-    color-mix(in srgb, #000 26%, var(--postit-edge)),
-    var(--postit-edge)
+    315deg,
+    color-mix(in srgb, var(--postit) 70%, #000) 0%,
+    color-mix(in srgb, var(--postit) 92%, #000) 100%
   );
   pointer-events: none;
-}
-/* The grab strip's rounded top would show through the square corners. */
-.cv-note .cv-grab {
-  border-radius: 2px 2px 0 0;
 }
 
 /* The embedded card sheds its chrome — the node box is the chrome. */

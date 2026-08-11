@@ -88,6 +88,15 @@ export function DateTimePicker({
   const popRef = useRef<HTMLDivElement>(null);
   const parts = parse(value);
   const hint = placeholder ?? (withTime ? "Set date & time" : "Set date");
+  /**
+   * A date-only field still shows the time controls if the value it's holding
+   * already has one — a field whose type was changed from datetime to date, or
+   * anything written before that distinction was made. The rule is "don't offer
+   * to add a time here", not "make an existing one unreachable": hiding the
+   * controls over a value that has a time would leave it uneditable and
+   * unclearable, which is worse than the inconsistency it was tidying up.
+   */
+  const showTime = withTime || parts.hasTime;
 
   // The popup is position:fixed so scroll containers (table view, right
   // panel) can't clip it — measured from the trigger, flipped when the
@@ -246,7 +255,9 @@ export function DateTimePicker({
                     setView({ y: d.getFullYear(), m: d.getMonth() });
                   }
                   emit({ date: c.key });
-                  if (!withTime) setOpen(false);
+                  // Nothing else to choose here — unless this value carries a
+                  // time that's still editable below.
+                  if (!showTime) setOpen(false);
                 }}
               >
                 {c.day}
@@ -254,7 +265,7 @@ export function DateTimePicker({
             ))}
           </div>
 
-          {withTime && <div className="dtp-time">
+          {showTime && <div className="dtp-time">
             <div className="dtp-spin">
               <button type="button" className="icon-btn" onClick={() => setHour(parts.h + 1)}>
                 <ChevronUp size={14} />
@@ -349,7 +360,7 @@ export function DateTimePicker({
             >
               {withTime ? "Now" : "Today"}
             </button>
-            {withTime && parts.hasTime && parts.date && (
+            {showTime && parts.hasTime && parts.date && (
               <button type="button" className="ghost" onClick={() => emit({ hasTime: false })}>
                 Clear time
               </button>

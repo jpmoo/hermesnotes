@@ -1284,9 +1284,17 @@ label,
 .sidebar-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* Pin first, in the rail column; the brand follows it. */
+  justify-content: flex-start;
+  gap: 8px;
   height: 40px;
   margin-bottom: 14px;
+}
+/* The same width as a rail icon, so it lines up with the column below it
+   rather than floating in the header. */
+.sidebar .panel-pin {
+  flex: none;
+  width: 34px;
 }
 .brand {
   display: flex;

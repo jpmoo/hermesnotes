@@ -299,6 +299,17 @@ export function Sidebar() {
   return (
     <aside className={`sidebar${expanded ? " expanded" : ""}`} onMouseLeave={collapse}>
       <div className="sidebar-head">
+        {/* The pin sits in the rail column, over the icons it belongs to. On the
+            right-hand panel the same button lands over its own rail because the
+            rail is on that side; here it was at the far end of the header, as
+            far from the rail as the panel allows. */}
+        <button
+          className="icon-btn panel-pin"
+          title={leftPinned ? "Collapse sidebar" : "Expand sidebar"}
+          onClick={() => (leftPinned ? unpin() : setLeftPinned(true))}
+        >
+          {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
+        </button>
         <div className="brand">
           <img
             className="logo"
@@ -307,13 +318,6 @@ export function Sidebar() {
           />
           <span className="brand-name">Hermes Notes</span>
         </div>
-        <button
-          className="icon-btn panel-pin"
-          title={leftPinned ? "Collapse sidebar" : "Expand sidebar"}
-          onClick={() => (leftPinned ? unpin() : setLeftPinned(true))}
-        >
-          {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
-        </button>
       </div>
 
       {/* The customizable middle — buttons + dividers, in the user's order. */}

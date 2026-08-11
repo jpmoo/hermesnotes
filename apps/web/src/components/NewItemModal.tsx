@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
+import { focusFirstFieldSoon } from "../lib/focus-first.ts";
 
 /** Create a new block of `type` in the collection and edit it in a modal. */
 export function NewItemModal({
@@ -14,6 +15,12 @@ export function NewItemModal({
   onClose: () => void;
 }) {
   const [block, setBlock] = useState<Block | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  // The block arrives a moment after the modal does; put the caret in it then.
+  useEffect(() => {
+    if (block) focusFirstFieldSoon(() => cardRef.current);
+  }, [block]);
 
   useEffect(() => {
     void api
@@ -35,13 +42,15 @@ export function NewItemModal({
         <h2 className="modal-title" style={{ textTransform: "capitalize" }}>
           New {type.name}
         </h2>
-        {!block ? (
-          <div className="hint">Creating…</div>
-        ) : type.isText ? (
-          <TextBlockEditor block={block} onConflict={reload} onDeleted={onClose} />
-        ) : (
-          <TypedBlockCard block={block} type={type} onConflict={reload} onDeleted={onClose} />
-        )}
+        <div ref={cardRef}>
+          {!block ? (
+            <div className="hint">Creating…</div>
+          ) : type.isText ? (
+            <TextBlockEditor block={block} onConflict={reload} onDeleted={onClose} />
+          ) : (
+            <TypedBlockCard block={block} type={type} onConflict={reload} onDeleted={onClose} />
+          )}
+        </div>
         <div className="modal-actions" style={{ marginTop: 8 }}>
           <button className="primary" onClick={onClose}>
             Done

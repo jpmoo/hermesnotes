@@ -369,6 +369,13 @@ export function BlockInfoPane({
           </div>
         )}
       </div>
+      {/* Keyed by the block alone. Including its version remounted this editor
+          on every save — including a save from somewhere else, or the debounced
+          one from a field you'd already moved on from — which threw away
+          whatever the surviving fields were in the middle of: a half-typed
+          reference search, an open picker, the caret. The editors take incoming
+          changes through the sync bus, which holds them while you're typing;
+          that's the mechanism for this, and it doesn't need help. */}
       {editable && block ? (
         <div className="panel-editor">
           {editorType && !editorType.isText ? (
@@ -376,7 +383,7 @@ export function BlockInfoPane({
             // (invisible at 0 files) — the panel is an editing surface and
             // needs the real controls.
             <TypedBlockCard
-              key={`${block.id}:${block.version}`}
+              key={block.id}
               block={block}
               type={editorType}
               onConflict={() => void loadBlock()}
@@ -388,7 +395,7 @@ export function BlockInfoPane({
             // Not compact: text-note compact mode is a read-only preview, and
             // the whole point here is editing.
             <TextBlockEditor
-              key={`${block.id}:${block.version}`}
+              key={block.id}
               block={block}
               type={editorType}
               onConflict={() => void loadBlock()}

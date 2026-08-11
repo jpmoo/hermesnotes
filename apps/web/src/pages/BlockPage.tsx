@@ -1,10 +1,11 @@
 import { Archive } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useSetRouteBanner } from "../lib/route-banner.tsx";
+import { focusFirstFieldSoon } from "../lib/focus-first.ts";
 
 /** Full-page view of a single block. */
 export function BlockPage() {
@@ -44,6 +45,16 @@ export function BlockPage() {
 
   useSetRouteBanner(block ? (block.properties as Record<string, unknown>).banner : null);
 
+  // Arriving here straight from "New …" (the rail, a canvas, a list): the block
+  // exists but has nothing in it, so the caret belongs in its first field. Only
+  // when we were sent here to write — walking back to an existing block must not
+  // grab focus from wherever it already is.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const fresh = (useLocation().state as { fresh?: boolean } | null)?.fresh === true;
+  useEffect(() => {
+    if (fresh && block) focusFirstFieldSoon(() => cardRef.current);
+  }, [fresh, block]);
+
   if (loading) return <div className="hint">Loading…</div>;
   if (gone || !block) return <div className="hint">This block no longer exists.</div>;
 
@@ -60,7 +71,9 @@ export function BlockPage() {
           </button>
         </div>
       )}
-      <BlockCard block={block} type={type} onConflict={() => void load()} onDeleted={() => nav(-1)} />
+      <div ref={cardRef}>
+        <BlockCard block={block} type={type} onConflict={() => void load()} onDeleted={() => nav(-1)} />
+      </div>
     </>
   );
 }

@@ -1188,6 +1188,8 @@ export function CanvasView({
   // Focusing an ephemeral note edits it in the panel too — without touching
   // selectBlock, so it never lands in the recents history.
   const [ephSel, setEphSel] = useState<string | null>(null);
+  // A note just made, waiting for the textarea that will hold it to exist.
+  const [focusNote, setFocusNote] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const removeMany = async (ids: string[]) => {
@@ -1286,7 +1288,11 @@ export function CanvasView({
   const addNote = (at?: { x: number; y: number }) => {
     const c = at ?? viewCenter();
     const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, NOTE_W, NOTE_H, allRects());
-    saveNotes([...notes, { id: `n:${uid()}`, ...spot, w: NOTE_W, h: NOTE_H, text: "", color: NOTE_COLOR }]);
+    const id = `n:${uid()}`;
+    saveNotes([...notes, { id, ...spot, w: NOTE_W, h: NOTE_H, text: "", color: NOTE_COLOR }]);
+    // An empty sticky exists to be written on, so put the caret in it rather
+    // than making the next act a click on what was just asked for.
+    setFocusNote(id);
   };
 
   const convertNote = async (note: CanvasNote, type: BlockType) => {
@@ -1676,6 +1682,12 @@ export function CanvasView({
               className="cv-note-text"
               value={n.text}
               placeholder="Ephemeral note — right-click to convert"
+              ref={(el) => {
+                if (el && focusNote === n.id) {
+                  el.focus();
+                  setFocusNote(null);
+                }
+              }}
               onFocus={() => setEphSel(n.id)}
               onChange={(e) => saveNotes(notes.map((x) => (x.id === n.id ? { ...x, text: e.target.value } : x)))}
             />,

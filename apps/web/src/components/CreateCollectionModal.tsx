@@ -56,7 +56,13 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
 
         <label className="field">
           <span>Name</span>
-          <input type="text" autoComplete="off" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input
+            type="text"
+            autoComplete="off"
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
         </label>
 
         <div className="field">

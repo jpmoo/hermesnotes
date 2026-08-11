@@ -114,7 +114,7 @@ export function Sidebar() {
   const createBlock = async (t: BlockType) => {
     setPlusOpen(false);
     const b = await api.post<Block>("/blocks", { blockTypeId: t.id });
-    openBlock(b.id);
+    openBlock(b.id, { fresh: true });
   };
   const orderedTypes = [...types].sort((a, b) =>
     a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1,

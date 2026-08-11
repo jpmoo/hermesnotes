@@ -39,7 +39,9 @@ interface PanelsApi {
   selectOrOpen: (id: string, opts?: { collection?: boolean }) => void;
   selectToday: (date: string, noteId: string) => void; // log the Today page for a date
   selectPage: (page: RailPage) => void; // log a rail page as the current location
-  openBlock: (id: string, opts?: { collection?: boolean }) => void; // log + open as a full page
+  /** Log + open as a full page. `fresh` marks something just created, so the
+   *  page it lands on can put the caret in its first field. */
+  openBlock: (id: string, opts?: { collection?: boolean; fresh?: boolean }) => void;
   clearSelection: () => void;
   back: () => void;
   forward: () => void;
@@ -259,11 +261,11 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const selectToday = (date: string, noteId: string) =>
     append({ id: noteId, collection: false, today: date });
   const selectPage = (page: RailPage) => append({ id: `page:${page}`, collection: false, page });
-  const openBlock = (id: string, opts?: { collection?: boolean }) => {
+  const openBlock = (id: string, opts?: { collection?: boolean; fresh?: boolean }) => {
     const entry: NavEntry = { id, collection: opts?.collection ?? false };
     rememberOrigin();
     append(entry);
-    navigate(pageOf(entry));
+    navigate(pageOf(entry), opts?.fresh ? { state: { fresh: true } } : undefined);
   };
   const selectOrOpen = (id: string, opts?: { collection?: boolean }) => {
     // Matches useIsMobile's breakpoint; read at call time so a resize is honoured

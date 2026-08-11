@@ -504,7 +504,18 @@ export function CanvasView({
 
   const overlaps = (a1: number, a2: number, b1: number, b2: number) => a1 < b2 && b1 < a2;
 
-  /** Along one axis: the snapped position and the measures to draw, if any. */
+  /**
+   * Along one axis: where to put the moving rect so its gaps match the run, and
+   * every gap in that run to draw as proof.
+   *
+   * The run is all the cards that overlap it across the axis, in order. Two ways
+   * to fit into one: sit between two of them with equal gaps either side, or
+   * extend it at the same gap the run already uses — and "the gap the run uses"
+   * comes from every pair in it, not just the pair nearest the pointer, so a row
+   * of six keeps its rhythm rather than only agreeing with its neighbour. The
+   * measures are then drawn across EVERY gap of that size in the row: the claim
+   * is about the series, so the series is what's shown.
+   */
   const evenSpacing = (
     r: Rect,
     others: Rect[],
@@ -518,9 +529,6 @@ export function CanvasView({
       .sort((a, b) => a[pos] - b[pos]);
     if (inLine.length < 2) return null;
 
-    const before = [...inLine].reverse().find((o) => o[pos] + o[size] <= r[pos] + tol);
-    const after = inLine.find((o) => o[pos] >= r[pos] + r[size] - tol);
-    // The line the measures are drawn along: the middle of the moving card.
     const at = Math.round(r[cross] + r[crossSize] / 2);
     const marker = (from: number, to: number): Spacing => ({
       axis: axis === "x" ? "h" : "v",
@@ -529,47 +537,51 @@ export function CanvasView({
       to,
       gap: Math.round(to - from),
     });
+    /** Every gap in the row, once the moving card is placed at `place`. */
+    const measuresFor = (place: number, gap: number): Spacing[] => {
+      const row = [...inLine, { ...r, [pos]: place } as Rect].sort((a, b) => a[pos] - b[pos]);
+      const out: Spacing[] = [];
+      for (let i = 0; i < row.length - 1; i++) {
+        const a = row[i]!;
+        const b = row[i + 1]!;
+        const g = b[pos] - (a[pos] + a[size]);
+        // Only the gaps that agree with the one being matched — a wider gap
+        // elsewhere in the row isn't part of the claim.
+        if (g > 0 && Math.abs(g - gap) < 0.5) out.push(marker(a[pos] + a[size], b[pos]));
+      }
+      return out;
+    };
 
-    // Between two neighbours: centre it, and both gaps are the measure.
+    const before = [...inLine].reverse().find((o) => o[pos] + o[size] <= r[pos] + tol);
+    const after = inLine.find((o) => o[pos] >= r[pos] + r[size] - tol);
+
+    // Between two cards: split the space evenly.
     if (before && after) {
       const room = after[pos] - (before[pos] + before[size]);
       const want = before[pos] + before[size] + (room - r[size]) / 2;
       if (room > r[size] && Math.abs(want - r[pos]) < tol) {
-        return {
-          at: want,
-          spacings: [
-            marker(before[pos] + before[size], want),
-            marker(want + r[size], after[pos]),
-          ],
-        };
+        return { at: want, spacings: measuresFor(want, (room - r[size]) / 2) };
       }
     }
-    // Extending a run: take the gap the two before it already use.
-    const run = (anchor: Rect, dir: 1 | -1) => {
-      const prev =
-        dir === 1
-          ? [...inLine].reverse().find((o) => o[pos] + o[size] <= anchor[pos])
-          : inLine.find((o) => o[pos] >= anchor[pos] + anchor[size]);
-      if (!prev) return null;
-      const g = dir === 1 ? anchor[pos] - (prev[pos] + prev[size]) : prev[pos] - (anchor[pos] + anchor[size]);
-      if (g <= 0) return null;
-      const want = dir === 1 ? anchor[pos] + anchor[size] + g : anchor[pos] - g - r[size];
-      if (Math.abs(want - r[pos]) >= tol) return null;
-      return {
-        at: want,
-        spacings:
-          dir === 1
-            ? [marker(prev[pos] + prev[size], anchor[pos]), marker(anchor[pos] + anchor[size], want)]
-            : [marker(want + r[size], anchor[pos]), marker(anchor[pos] + anchor[size], prev[pos])],
-      };
-    };
-    if (before) {
-      const hit = run(before, 1);
-      if (hit) return hit;
+
+    // Otherwise: the gaps this row already uses, commonest first, so one odd
+    // spacing somewhere doesn't stop the rest of the row setting the rhythm.
+    const tally = new Map<number, number>();
+    for (let i = 0; i < inLine.length - 1; i++) {
+      const g = Math.round(inLine[i + 1]![pos] - (inLine[i]![pos] + inLine[i]![size]));
+      if (g > 0) tally.set(g, (tally.get(g) ?? 0) + 1);
     }
-    if (after) {
-      const hit = run(after, -1);
-      if (hit) return hit;
+    const candidates = [...tally.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([g]) => g);
+
+    for (const gap of candidates) {
+      if (before) {
+        const want = before[pos] + before[size] + gap;
+        if (Math.abs(want - r[pos]) < tol) return { at: want, spacings: measuresFor(want, gap) };
+      }
+      if (after) {
+        const want = after[pos] - gap - r[size];
+        if (Math.abs(want - r[pos]) < tol) return { at: want, spacings: measuresFor(want, gap) };
+      }
     }
     return null;
   };
@@ -1463,8 +1475,14 @@ export function CanvasView({
     const fr = rectOf(e.from);
     const tr = rectOf(e.to);
     if (!fr || !tr) return null;
-    const fromSide = e.fromSide ?? facingSide(fr, tr);
-    const toSide = e.toSide ?? facingSide(tr, fr);
+    // Which sides a line leaves and arrives on is a fact about where the two
+    // things are NOW, not about where they were when it was drawn. The stored
+    // sides were a snapshot of that moment: move either end and the line kept
+    // leaving from the far side and looping around, which reads as a mistake
+    // rather than a connection. Recomputing every render means the ends follow
+    // as you drag, and the stored pair stays only as a record of how it started.
+    const fromSide = facingSide(fr, tr);
+    const toSide = facingSide(tr, fr);
     const a = anchor(fr, fromSide);
     const b = anchor(tr, toSide);
     const ext = 46;

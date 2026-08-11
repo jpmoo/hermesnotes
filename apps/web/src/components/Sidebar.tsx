@@ -80,16 +80,15 @@ export function Sidebar() {
     cancelOpen,
   } = useHoverIntent();
 
-  // Hovering an icon usually means "I'm about to click it," so make expanding
-  // the rail wait longer there; over the empty gaps a hover almost always means
-  // "open the panel," so reveal quickly. Re-evaluated on move so sliding off an
-  // icon into empty space speeds the reveal back up.
-  const RAIL_OPEN_OVER_ICON = 700;
-  const RAIL_OPEN_OVER_GAP = 140;
-  const onRailOver = (e: React.MouseEvent) => {
+  // Anywhere in the rail opens it, at the same pace. Icons used to want a much
+  // longer dwell than the gaps between them — on the theory that hovering an
+  // icon means you're about to click it — but the icons are most of the rail,
+  // so the usual way of asking for the rail was also the slowest, and reading a
+  // label meant waiting on a timer that felt broken.
+  const RAIL_OPEN_DELAY = 140;
+  const onRailOver = () => {
     if (hovered) return; // already open — nothing to arm
-    const overIcon = !!(e.target as HTMLElement).closest(".nav-link, .nav-row, button");
-    arm(overIcon ? RAIL_OPEN_OVER_ICON : RAIL_OPEN_OVER_GAP);
+    arm(RAIL_OPEN_DELAY);
   };
 
   // The rail expands when pinned, when hovering an empty area, or while a

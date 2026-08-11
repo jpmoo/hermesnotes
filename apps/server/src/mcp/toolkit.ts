@@ -1155,12 +1155,119 @@ export function defineTools(api: Api): ToolDef[] {
     }),
   );
 
+  interface CanvasNote {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    text: string;
+    color?: string | null;
+  }
+  interface CanvasEdge {
+    id: string;
+    from: string;
+    to: string;
+    fromSide?: string;
+    toSide?: string;
+    arrow?: string;
+    live?: boolean;
+    dash?: string;
+    label?: string;
+  }
+  interface CanvasData {
+    id: string;
+    notes: CanvasNote[];
+    edges: CanvasEdge[];
+    members: {
+      id: string;
+      label: string;
+      rect: { x: number; y: number; w: number; h: number } | null;
+    }[];
+  }
+
+  /**
+   * Everything on a canvas, in one shape: its blocks, its ephemeral notes, and
+   * the connections between them. A canvas keeps notes and connections in the
+   * collection's own properties rather than as rows of their own, so this is
+   * also the only way to see them.
+   */
+  const canvasData = async (nameOrId: string): Promise<CanvasData> => {
+    const id = await resolveCollectionId(nameOrId);
+    const d = await api.get<{
+      collection: { collectionKind: string | null; properties: Record<string, unknown> };
+      members: {
+        id: string;
+        properties: Record<string, unknown>;
+        content?: string | null;
+        context?: Record<string, unknown>;
+      }[];
+    }>(`/collections/${id}`);
+    if (d.collection.collectionKind !== "canvas") throw new Error(`"${nameOrId}" is not a canvas.`);
+    const props = d.collection.properties;
+    const rectOf = (ctx: Record<string, unknown> | undefined) => {
+      const n = (k: string) => (typeof ctx?.[k] === "number" ? (ctx[k] as number) : null);
+      const x = n("x");
+      const y = n("y");
+      return x != null && y != null ? { x, y, w: n("w") ?? 200, h: n("h") ?? 120 } : null;
+    };
+    return {
+      id,
+      notes: Array.isArray(props.canvas_notes) ? (props.canvas_notes as CanvasNote[]) : [],
+      edges: Array.isArray(props.canvas_edges) ? (props.canvas_edges as CanvasEdge[]) : [],
+      members: d.members.map((m) => ({
+        id: m.id,
+        label: String(m.properties.title ?? "") || (m.content ?? "").split("\n")[0] || "Untitled",
+        rect: rectOf(m.context),
+      })),
+    };
+  };
+
+  /**
+   * A thing on a canvas, by id or by what it says. Notes have no titles, so a
+   * fragment of their text is the only handle anyone has on them — and a caller
+   * that just read the canvas will use the ids it was given.
+   */
+  const canvasNodeId = (c: CanvasData, ref: string): string => {
+    const r = ref.trim();
+    const lower = r.toLowerCase();
+    const note =
+      c.notes.find((n) => n.id === r) ??
+      c.notes.find((n) => n.text.trim().toLowerCase() === lower) ??
+      c.notes.find((n) => n.text.toLowerCase().includes(lower));
+    if (note) return note.id;
+    const member =
+      c.members.find((m) => m.id === r) ??
+      c.members.find((m) => m.label.toLowerCase() === lower) ??
+      c.members.find((m) => m.label.toLowerCase().includes(lower));
+    if (member) return member.id;
+    throw new Error(
+      `Nothing on this canvas matches "${ref}". Read it with collection_members first — notes are matched by their text, blocks by their title or id.`,
+    );
+  };
+
+  /** The sides two nodes should meet on, given where they sit. */
+  const facingSides = (c: CanvasData, from: string, to: string): { fromSide: string; toSide: string } => {
+    const rect = (id: string) =>
+      c.notes.find((n) => n.id === id) ?? c.members.find((m) => m.id === id)?.rect ?? null;
+    const a = rect(from);
+    const b = rect(to);
+    if (!a || !b) return { fromSide: "e", toSide: "w" };
+    const dx = b.x + b.w / 2 - (a.x + a.w / 2);
+    const dy = b.y + b.h / 2 - (a.y + a.h / 2);
+    return Math.abs(dx) >= Math.abs(dy)
+      ? { fromSide: dx > 0 ? "e" : "w", toSide: dx > 0 ? "w" : "e" }
+      : { fromSide: dy > 0 ? "s" : "n", toSide: dy > 0 ? "n" : "s" };
+  };
+
   tool(
-    "canvas_note_add",
-    "Add an ephemeral sticky note directly onto a canvas — free-floating text that lives ONLY on the canvas as decoration. This is NOT a Hermes block/note: it has no id, doesn't show up in search or collections, and can't be linked. Use this (not block_create) whenever asked to jot a note, label, caption, or comment ON a canvas. `canvas` is the canvas collection (id or title); optional x/y are canvas coordinates and `color` is a hex background.",
+    "canvas_note",
+    "Sticky notes on a canvas — the free-floating text that lives ONLY there. These are NOT Hermes blocks: they have no block id, don't appear in search or listings, and can't be linked from anywhere else. Use this (not block_create) whenever asked to jot a note, label, caption or comment ON a canvas. `action` is add (default), edit, or remove; for edit/remove, `note` identifies it by its id or by a fragment of its text (read the canvas with collection_members first). x/y are canvas coordinates, `color` a hex background.",
     {
       canvas: z.string(),
-      text: z.string().min(1).max(10_000),
+      action: z.enum(["add", "edit", "remove"]).default("add"),
+      text: z.string().min(1).max(10_000).optional(),
+      note: z.string().optional(),
       x: z.number().finite().optional(),
       y: z.number().finite().optional(),
       // Hex only: this lands in a CSS `background`, where a value like
@@ -1169,33 +1276,112 @@ export function defineTools(api: Api): ToolDef[] {
       color: HEX_COLOR.optional(),
     },
     run(async (a) => {
-      const id = await resolveCollectionId(a.canvas);
-      const d = await api.get<{
-        collection: { collectionKind: string | null; properties: Record<string, unknown> };
-      }>(`/collections/${id}`);
-      if (d.collection.collectionKind !== "canvas") throw new Error(`"${a.canvas}" is not a canvas.`);
-      const notes = Array.isArray(d.collection.properties.canvas_notes)
-        ? (d.collection.properties.canvas_notes as Record<string, unknown>[])
-        : [];
-      // Cascade unspecified notes diagonally so they don't stack exactly.
-      const step = (notes.length % 6) * 36;
-      const note = {
-        id: `n:${randomUUID()}`,
-        x: a.x ?? 40 + step,
-        y: a.y ?? 40 + step,
-        w: 200,
-        h: 120,
-        text: a.text,
-        color: a.color ?? "#fdf3d8",
+      const c = await canvasData(a.canvas);
+      if (a.action === "add") {
+        if (!a.text) throw new Error("A note needs text to add.");
+        // Cascade unspecified notes diagonally so they don't stack exactly.
+        const step = (c.notes.length % 6) * 36;
+        const note = {
+          id: `n:${randomUUID()}`,
+          x: a.x ?? 40 + step,
+          y: a.y ?? 40 + step,
+          w: 200,
+          h: 120,
+          text: a.text,
+          color: a.color ?? "#fdf3d8",
+        };
+        await api.patch(`/collections/${c.id}`, { canvas_notes: [...c.notes, note] });
+        return `Added a sticky note to canvas "${a.canvas}" [${note.id}].`;
+      }
+      if (!a.note) throw new Error(`Which note? Give its id or a fragment of its text.`);
+      const nodeId = canvasNodeId(c, a.note);
+      const target = c.notes.find((n) => n.id === nodeId);
+      if (!target) throw new Error(`"${a.note}" is a block on this canvas, not a sticky note.`);
+      if (a.action === "remove") {
+        await api.patch(`/collections/${c.id}`, {
+          canvas_notes: c.notes.filter((n) => n.id !== nodeId),
+          // A note that's gone can't stay connected to anything.
+          canvas_edges: c.edges.filter((e) => e.from !== nodeId && e.to !== nodeId),
+        });
+        return `Removed the sticky note and any connections to it.`;
+      }
+      const next = c.notes.map((n) =>
+        n.id === nodeId
+          ? {
+              ...n,
+              ...(a.text !== undefined ? { text: a.text } : {}),
+              ...(a.x !== undefined ? { x: a.x } : {}),
+              ...(a.y !== undefined ? { y: a.y } : {}),
+              ...(a.color !== undefined ? { color: a.color } : {}),
+            }
+          : n,
+      );
+      await api.patch(`/collections/${c.id}`, { canvas_notes: next });
+      return `Updated the sticky note [${nodeId}].`;
+    }),
+  );
+
+  tool(
+    "canvas_connect",
+    "Draw or erase a connection between two things on a canvas — blocks, sticky notes, or one of each. Each side is named by id, by a block's title, or by a fragment of a note's text. `action` is connect (default) or disconnect. Optional `label` writes on the line, `arrow` is forward (default), back, both or none, and `dash` is solid, dashed or dotted. Two things can only be connected once; connecting them again restyles the line that's there.",
+    {
+      canvas: z.string(),
+      from: z.string().min(1),
+      to: z.string().min(1),
+      action: z.enum(["connect", "disconnect"]).default("connect"),
+      label: z.string().max(200).optional(),
+      arrow: z.enum(["forward", "back", "both", "none"]).optional(),
+      dash: z.enum(["solid", "dashed", "dotted"]).optional(),
+    },
+    run(async (a) => {
+      const c = await canvasData(a.canvas);
+      const from = canvasNodeId(c, a.from);
+      const to = canvasNodeId(c, a.to);
+      if (from === to) throw new Error("Those are the same thing.");
+      const existing = c.edges.find(
+        (e) => (e.from === from && e.to === to) || (e.from === to && e.to === from),
+      );
+      if (a.action === "disconnect") {
+        if (!existing) return "They weren't connected.";
+        await api.patch(`/collections/${c.id}`, {
+          canvas_edges: c.edges.filter((e) => e.id !== existing.id),
+        });
+        return `Disconnected "${a.from}" from "${a.to}".`;
+      }
+      const style = {
+        ...(a.label !== undefined ? { label: a.label } : {}),
+        ...(a.arrow ? { arrow: a.arrow } : {}),
+        ...(a.dash && a.dash !== "solid" ? { dash: a.dash } : {}),
       };
-      await api.patch(`/collections/${id}`, { canvas_notes: [...notes, note] });
-      return `Added a sticky note to canvas "${a.canvas}".`;
+      if (existing) {
+        // One line per pair, as on the canvas itself — a second would sit
+        // exactly on top of the first.
+        await api.patch(`/collections/${c.id}`, {
+          canvas_edges: c.edges.map((e) => (e.id === existing.id ? { ...e, ...style } : e)),
+        });
+        return `Those were already connected — restyled that line instead.`;
+      }
+      // A line between two real blocks is "live"; anything touching a sticky
+      // note is ephemeral, and shows dotted, because a note isn't a block.
+      const eph = from.startsWith("n:") || to.startsWith("n:");
+      const edge = {
+        id: randomUUID(),
+        from,
+        to,
+        ...facingSides(c, from, to),
+        arrow: a.arrow ?? "forward",
+        live: !eph,
+        ...(eph && !a.dash ? { dash: "dotted" } : {}),
+        ...style,
+      };
+      await api.patch(`/collections/${c.id}`, { canvas_edges: [...c.edges, edge] });
+      return `Connected "${a.from}" → "${a.to}" on "${a.canvas}".`;
     }),
   );
 
   tool(
     "collection_members",
-    "List the members of a collection (id or title) — their labels and ids, plus the matrix region if placed.",
+    "What's in a collection (id or title): members with their labels and ids, plus the matrix region where placed. For a CANVAS this also lists its sticky notes and every connection drawn between things on it — that's the only way to see either, since neither is a block.",
     { collection: z.string() },
     run(async (a) => {
       const id = await resolveCollectionId(a.collection);
@@ -1213,18 +1399,46 @@ export function defineTools(api: Api): ToolDef[] {
         const liveIds = new Set(live.map((b) => b.id));
         members = members.filter((m) => liveIds.has(m.id));
       }
-      if (!members.length) return "No members.";
       const regions = Array.isArray(d.collection.properties.matrix_regions)
         ? (d.collection.properties.matrix_regions as { title?: string }[])
         : null;
-      return members
-        .map((m) => {
-          const label = String(m.properties.title ?? "") || (m.content ?? "").split("\n")[0] || "Untitled";
-          const r = m.context?.region;
-          const region = regions && r != null ? ` — region "${regions[Number(r)]?.title || r}"` : "";
-          return `- ${label}${region} [${m.id}]`;
-        })
-        .join("\n");
+      const labelOfMember = (m: (typeof members)[number]) =>
+        String(m.properties.title ?? "") || (m.content ?? "").split("\n")[0] || "Untitled";
+      const out: string[] = [];
+      if (members.length) {
+        out.push(
+          ...members.map((m) => {
+            const r = m.context?.region;
+            const region = regions && r != null ? ` — region "${regions[Number(r)]?.title || r}"` : "";
+            return `- ${labelOfMember(m)}${region} [${m.id}]`;
+          }),
+        );
+      }
+      // A canvas keeps its sticky notes and its connections in the collection's
+      // own properties rather than as rows, so nothing else surfaces them.
+      if (d.collection.collectionKind === "canvas") {
+        const c = await canvasData(id);
+        if (c.notes.length) {
+          out.push("", "Sticky notes (canvas-only, not blocks):");
+          out.push(
+            ...c.notes.map((n) => `- "${n.text.replace(/\s+/g, " ").trim().slice(0, 120)}" [${n.id}]`),
+          );
+        }
+        if (c.edges.length) {
+          const name = (nodeId: string) =>
+            c.notes.find((n) => n.id === nodeId)
+              ? `note "${c.notes.find((n) => n.id === nodeId)!.text.replace(/\s+/g, " ").trim().slice(0, 40)}"`
+              : c.members.find((m) => m.id === nodeId)?.label ?? nodeId;
+          out.push("", "Connections:");
+          out.push(
+            ...c.edges.map((e) => {
+              const arrow = e.arrow === "back" ? "←" : e.arrow === "both" ? "↔" : e.arrow === "none" ? "—" : "→";
+              return `- ${name(e.from)} ${arrow} ${name(e.to)}${e.label ? ` ("${e.label}")` : ""}`;
+            }),
+          );
+        }
+      }
+      return out.length ? out.join("\n") : "No members.";
     }),
   );
 

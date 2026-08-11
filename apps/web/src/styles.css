@@ -5650,6 +5650,12 @@ input.cv-add-input {
 .canvas-area {
   margin-top: -16px;
 }
+/* A canvas is sized to reach the bottom of the window, so the page's own bottom
+   padding would push it off the end and leave the last inch of canvas below the
+   fold. (Same reasoning as a full-page matrix's drawer.) */
+.main:has(.canvas-area) {
+  --main-pad-b: 0px;
+}
 
 /* ── Calendar collection ─────────────────────────────────────── */
 .cal-wrap {

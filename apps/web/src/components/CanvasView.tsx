@@ -247,11 +247,23 @@ export function CanvasView({
     const measure = () => {
       const el = wrapRef.current;
       if (!el) return;
-      setWrapH(Math.max(460, window.innerHeight - el.getBoundingClientRect().top - 20));
+      // Down to the bottom of the window, less a hair so the border isn't flush
+      // with the edge. Measured rather than guessed at, because what sits above
+      // a canvas varies: a banner, a title, a toolbar, none of them.
+      setWrapH(Math.max(460, window.innerHeight - el.getBoundingClientRect().top - 12));
     };
     measure();
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    // Anything above the canvas changing height moves its top edge: a banner
+    // finishing loading, a panel being pinned, a title wrapping to two lines.
+    // Measuring only on mount left the canvas short by however much arrived late.
+    const ro = new ResizeObserver(measure);
+    if (wrapRef.current?.parentElement) ro.observe(wrapRef.current.parentElement);
+    ro.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro.disconnect();
+    };
   }, []);
 
   // ── viewport (persisted locally per canvas) ──

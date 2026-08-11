@@ -1,5 +1,5 @@
 import type { FilterGroup } from "@hermes/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type BlockType, type Collection } from "../api.ts";
 import { emptyGroup } from "../lib/filter.ts";
@@ -23,7 +23,13 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
     void api.get<{ name: string }[]>("/tags").then((t) => setTags(t.map((x) => x.name)));
   }, []);
 
+  // A ref, not the busy flag: setBusy only schedules a re-render, so two clicks
+  // arriving in the same frame both find the button still enabled and both
+  // create a collection. This one is set the instant the first click runs.
+  const creating = useRef(false);
   const create = async () => {
+    if (creating.current) return;
+    creating.current = true;
     setBusy(true);
     try {
       const c = await api.post<Collection>("/collections", {
@@ -38,6 +44,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
       onClose();
       nav(`/collections/${c.id}`);
     } finally {
+      creating.current = false;
       setBusy(false);
     }
   };

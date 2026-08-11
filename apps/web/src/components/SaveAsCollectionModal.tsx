@@ -1,5 +1,5 @@
 import type { CollectionKind, FilterGroup, ListFormat } from "@hermes/shared";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
 
@@ -33,7 +33,12 @@ export function SaveAsCollectionModal({
   const [smartMode, setSmartMode] = useState<"dynamic" | "snapshot">("dynamic");
   const [busy, setBusy] = useState(false);
 
+  // See CreateCollectionModal: a disabled button isn't a lock against two
+  // clicks in one frame.
+  const creating = useRef(false);
   const save = async () => {
+    if (creating.current) return;
+    creating.current = true;
     setBusy(true);
     try {
       const c = await api.post<Collection>("/collections", {
@@ -46,6 +51,7 @@ export function SaveAsCollectionModal({
       });
       nav(`/collections/${c.id}`);
     } finally {
+      creating.current = false;
       setBusy(false);
     }
   };

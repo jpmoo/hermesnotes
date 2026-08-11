@@ -5818,6 +5818,25 @@ input.cv-add-input {
 /* The toggle and its complaint travel together: the warning sits beside the
    pill rather than inside it, so hiding the feed and asking what's wrong stay
    two separate clicks. */
+/* The word after a rescan: brief, quiet, and gone again. */
+.cal-scan-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  align-self: center;
+  white-space: nowrap;
+}
+
+/* Sits with the feed chips because that's what it acts on. Muted until
+   hovered — it's there when wanted, not competing with the calendars. */
+.cal-feed-rescan {
+  width: 24px;
+  height: 24px;
+  color: var(--text-faint);
+}
+.cal-feed-rescan:hover {
+  color: var(--accent-ink);
+}
+
 .cal-feed-toggle-wrap {
   display: inline-flex;
   align-items: center;

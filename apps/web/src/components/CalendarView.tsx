@@ -1,6 +1,6 @@
 import { optionLabel } from "@hermes/shared";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
-import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -368,6 +368,12 @@ export function CalendarView({
   const [feedTick, setFeedTick] = useState(0);
   const [feeds, setFeeds] = useState<CalendarFeed[]>([]);
   const [diagFeed, setDiagFeed] = useState<CalendarFeed | null>(null);
+  const [rescanning, setRescanning] = useState(false);
+  // What the last rescan came to, shown briefly. A spinner says something is
+  // happening; only this says it finished, and whether every calendar answered.
+  const [scanNote, setScanNote] = useState<string | null>(null);
+  const scanNoteTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(scanNoteTimer.current), []);
   // Bumped on its own (not feedTick) so refreshing the feed list can't loop
   // back into refetching events.
   const [feedStatusTick, setFeedStatusTick] = useState(0);
@@ -475,6 +481,48 @@ export function CalendarView({
       alive = false;
     };
   }, [feedTick, feedStatusTick]);
+
+  /** Ask the server to re-read every subscribed calendar now, not on its own
+   *  schedule — for when you've just changed something in Google or Outlook and
+   *  want to see it here. */
+  const rescanFeeds = async () => {
+    setRescanning(true);
+    setScanNote(null);
+    clearTimeout(scanNoteTimer.current);
+    try {
+      const r = await api.get<{ events: FeedEvent[] }>(
+        `/calendar/events?start=${rangeStart}&end=${rangeEnd}&refresh=1`,
+      );
+      setFeedEvents(r.events);
+      // Read the feeds back rather than trusting the request that just ran: a
+      // calendar that failed says so on its own row, and saying "up to date"
+      // over the top of that would be the wrong answer confidently given.
+      const list = await api.get<CalendarFeed[]>("/calendar/feeds").catch(() => [] as CalendarFeed[]);
+      if (list.length) setFeeds(list.filter((f) => f.enabled));
+      const failed = list.filter((f) => f.enabled && f.lastError).length;
+      setScanNote(
+        failed
+          ? `${failed} calendar${failed === 1 ? "" : "s"} didn't answer`
+          : "Calendars up to date",
+      );
+    } catch {
+      setScanNote("Couldn't reach the server");
+      setFeedStatusTick((t) => t + 1);
+    } finally {
+      setRescanning(false);
+      scanNoteTimer.current = setTimeout(() => setScanNote(null), 5000);
+    }
+  };
+
+  /** When the stored copies were last confirmed — the button's resting tooltip. */
+  const lastChecked = (): string => {
+    const times = feeds.map((f) => f.cachedAt).filter((v): v is string => Boolean(v));
+    if (!times.length) return "Check the calendars for changes now";
+    const newest = times.sort().slice(-1)[0]!;
+    const mins = Math.round((Date.now() - new Date(newest).getTime()) / 60000);
+    const ago = mins < 1 ? "less than a minute ago" : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`;
+    return `Check the calendars for changes now — last read ${ago}`;
+  };
 
   // A feed event synced from the info panel disappears from the feed: drop it
   // optimistically, then refetch feeds + block matches to reconcile (the new
@@ -680,6 +728,15 @@ export function CalendarView({
 
       {feeds.length > 0 && (
         <div className="cal-feed-toggles" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="icon-btn cal-feed-rescan"
+            title={rescanning ? "Checking the calendars…" : lastChecked()}
+            disabled={rescanning}
+            onClick={() => void rescanFeeds()}
+          >
+            <RefreshCw size={13} className={rescanning ? "hn-spin" : undefined} />
+          </button>
+          {scanNote && <span className="cal-scan-note">{scanNote}</span>}
           {feeds.map((f) => {
             const hidden = hiddenFeeds.has(f.id);
             return (

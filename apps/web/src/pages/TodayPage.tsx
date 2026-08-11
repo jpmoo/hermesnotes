@@ -233,8 +233,16 @@ export function TodayPage() {
     ),
   );
 
-  const relevantView = useBlockView(sheet?.relevant ?? [], types, { scope: "today-relevant" });
-  const activityView = useBlockView(sheet?.activity ?? [], types, { scope: "today-activity" });
+  // One row per thing, whatever the server sends: a list that shows the same
+  // block twice is worse than one that's a row short, and nothing downstream
+  // (sorting, collapse state, drag) expects a repeated id.
+  const uniqueById = (rows: Block[]) => {
+    const seen = new Set<string>();
+    return rows.filter((b) => !seen.has(b.id) && seen.add(b.id));
+  };
+
+  const relevantView = useBlockView(uniqueById(sheet?.relevant ?? []), types, { scope: "today-relevant" });
+  const activityView = useBlockView(uniqueById(sheet?.activity ?? []), types, { scope: "today-activity" });
   // Relevant/created cards default to collapsed and remember each block's choice
   // across days (stable scope keys, id→collapsed map in localStorage).
   const relevantCollapse = useCollapse((sheet?.relevant ?? []).map((b) => b.id), "today-relevant", {

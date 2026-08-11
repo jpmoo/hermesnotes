@@ -7,6 +7,7 @@ import {
   customTodaySectionSchema,
   normalizeDefaultLayout,
   normalizeTodayLayout,
+  PERIODIC_MARKERS,
   rangeCovers,
   removeFromDefaults,
   sectionKey,
@@ -94,6 +95,14 @@ async function findOrCreateNote(userId: string, date: string) {
   sweep(created!.id);
   return created!;
 }
+
+/** Excludes every kind of periodic note (daily scratchpads, weekly
+ * reflections): they're system blocks, they're created merely by visiting the
+ * page that owns them, and an empty one has no business in a day's listing. */
+const notPeriodic = sql.join(
+  PERIODIC_MARKERS.map((m) => sql`NOT jsonb_exists(${blocks.properties}, ${m})`),
+  sql` AND `,
+);
 
 const blockView = {
   id: blocks.id,
@@ -311,7 +320,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
           // Collections count as activity too: making a canvas or a list is one
           // of the more memorable things you do in a day, and leaving them out
           // meant a day's record could show nothing at all for it.
-          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          notPeriodic,
           sql`${blocks.archivedAt} IS NULL`,
           or(
             and(gte(blocks.createdAt, start), lt(blocks.createdAt, end)),
@@ -335,7 +344,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
-          sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+          notPeriodic,
           sql`${blocks.archivedAt} IS NULL`,
         ),
       )

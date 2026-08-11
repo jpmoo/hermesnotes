@@ -1,4 +1,4 @@
-import { userLocalNow, type Condition, type FilterGroup } from "@hermes/shared";
+import { userLocalNow, type Condition, type FilterGroup, bodyFieldKey, type PropertySchema } from "@hermes/shared";
 import type { Api } from "./api.js";
 
 /**
@@ -92,15 +92,8 @@ export async function loadContext(api: Api): Promise<Ctx> {
 
   // The body field, by the names the built-ins use first, then by type — so a
   // type with one long-text field called "Notes" or "Detail" still works.
-  const bodyKey = (fields: FieldDef[] | undefined): string | null => {
-    const long = (fields ?? []).filter((f) => f.type === "longtext");
-    return (
-      long.find((f) => f.key === "description")?.key ??
-      long.find((f) => f.key === "notes")?.key ??
-      long[0]?.key ??
-      null
-    );
-  };
+  const bodyKey = (fields: FieldDef[] | undefined): string | null =>
+    bodyFieldKey({ fields: (fields ?? []) as PropertySchema["fields"] });
 
   const projSchema = project.propertySchema;
   const projStatusKey = projSchema?.status_field ?? null;

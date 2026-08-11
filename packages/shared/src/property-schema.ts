@@ -126,6 +126,26 @@ export function deriveEmbedSource(
  * underscores opened out, so an option that was never given a label reads the way
  * it always did.
  */
+/**
+ * The field a type keeps its prose in — the one a note's body, an extracted
+ * selection, or an assistant's notes should land in.
+ *
+ * By name first, because "description" is what the built-ins call it and
+ * "notes" is what people rename it to; then by type, because a type with a
+ * single long-text field means that one whatever it's called. Null when there's
+ * nowhere to put prose at all, which is worth knowing rather than guessing at:
+ * every caller here is holding text it must not drop.
+ */
+export function bodyFieldKey(schema: PropertySchema | null | undefined): string | null {
+  const long = (schema?.fields ?? []).filter((f) => f.type === "longtext");
+  return (
+    long.find((f) => f.key === "description")?.key ??
+    long.find((f) => f.key === "notes")?.key ??
+    long[0]?.key ??
+    null
+  );
+}
+
 export function optionLabel(field: FieldDef, value: string): string {
   const custom = field.optionLabels?.[value];
   return custom && custom.trim() ? custom : value.replace(/_/g, " ");

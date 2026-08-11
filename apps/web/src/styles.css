@@ -5153,6 +5153,14 @@ input.matrix-axis-y::placeholder {
   min-height: 0;
   overflow: auto;
   padding: 0 6px 6px;
+  /* Reaching the end of a note ends the scroll — it doesn't hand the rest of
+     the gesture to whatever is behind it. */
+  overscroll-behavior: contain;
+}
+.cv-note-text,
+.cv-body .md-input,
+.cv-body .longtext {
+  overscroll-behavior: contain;
 }
 /* Canvas is placement-only: no block deletion from a node (info panel owns
    that), and the created/edited footer is noise at node scale. */

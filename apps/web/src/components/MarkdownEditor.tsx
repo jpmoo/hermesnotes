@@ -1,3 +1,4 @@
+import { bodyFieldKey } from "@hermes/shared";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import TaskItem from "@tiptap/extension-task-item";
@@ -281,7 +282,19 @@ export function MarkdownEditor({
     const { from, to, titleText, titleRaw, mdText } = extract;
     setExtract(null);
     const title = titleRaw.trim() || "Untitled";
-    const body = type.isText ? { content: mdText } : { properties: { title } };
+    // Everything below the first line is the selection's body. A typed block
+    // took the title and dropped the rest, so extracting a paragraph into a task
+    // kept its first line and threw the paragraph away.
+    const rest = mdText.slice(mdText.split("\n")[0]?.length ?? 0).replace(/^\n+/, "");
+    const key = bodyFieldKey(type.propertySchema);
+    const body = type.isText
+      ? { content: mdText }
+      : {
+          properties: { title, ...(rest && key ? { [key]: rest } : {}) },
+          // Nowhere to put prose on this type: keep it on the block rather than
+          // losing it on the way through.
+          ...(rest && !key ? { content: rest } : {}),
+        };
     try {
       const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
       const mention = editor.state.schema.nodes.mention;

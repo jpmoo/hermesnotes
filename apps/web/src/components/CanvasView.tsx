@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import type { FilterGroup } from "@hermes/shared";
+import { bodyFieldKey, type FilterGroup } from "@hermes/shared";
 import { api, type Block, type BlockSearchResult, type BlockType, type Collection, type Member } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
@@ -242,6 +242,8 @@ export function CanvasView({
 
   // Fill the viewport: measure where the canvas actually starts and take the
   // rest (the CSS calc() is only a first-paint fallback).
+  // Which element owns the swipe in progress, and when it was last fed.
+  const wheelGesture = useRef<{ el: HTMLElement | null; at: number }>({ el: null, at: 0 });
   const [wrapH, setWrapH] = useState<number | null>(null);
   useEffect(() => {
     const measure = () => {
@@ -588,22 +590,39 @@ export function CanvasView({
         zoomBy(Math.exp(-e.deltaY * 0.014), e.clientX, e.clientY);
         return;
       }
-      // Swiping over anything that can scroll in that direction lets it scroll
-      // natively; otherwise the canvas pans. Walk up from whatever the pointer is
-      // over rather than looking for one known element: an ephemeral note's body
-      // IS a textarea, and an imported block's long-text editor scrolls inside
-      // itself, so neither shows up as a scrollable .cv-body. Nothing here asks
-      // about focus — a wheel doesn't need a caret to scroll something.
-      if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
-        for (let el = e.target as HTMLElement | null; el && el !== wrapRef.current; el = el.parentElement) {
-          if (el.scrollHeight <= el.clientHeight + 1) continue;
-          const oy = getComputedStyle(el).overflowY;
-          if (oy !== "auto" && oy !== "scroll" && el.tagName !== "TEXTAREA") continue;
-          const canDown = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
-          const canUp = el.scrollTop > 0;
-          if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) return;
+      // One gesture, one target. Whatever a swipe starts on keeps it until the
+      // fingers lift: reading down a note and hitting its end used to hand the
+      // rest of the same swipe to the canvas, which then slid out from under
+      // what you were reading. A pause (no wheel events for a moment) ends the
+      // gesture and the next one is free to choose again.
+      const GESTURE_GAP_MS = 220;
+      const fresh = e.timeStamp - wheelGesture.current.at > GESTURE_GAP_MS;
+      wheelGesture.current.at = e.timeStamp;
+      if (fresh) {
+        // Whatever the pointer is over that can scroll this way owns the swipe.
+        // Walk up rather than looking for one known element: an ephemeral note's
+        // body IS a textarea, and an imported block's long-text editor scrolls
+        // inside itself, so neither shows up as a scrollable .cv-body. Nothing
+        // here asks about focus — a wheel doesn't need a caret to scroll.
+        let owner: HTMLElement | null = null;
+        if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+          for (let el = e.target as HTMLElement | null; el && el !== wrapRef.current; el = el.parentElement) {
+            if (el.scrollHeight <= el.clientHeight + 1) continue;
+            const oy = getComputedStyle(el).overflowY;
+            if (oy !== "auto" && oy !== "scroll" && el.tagName !== "TEXTAREA") continue;
+            const canDown = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+            const canUp = el.scrollTop > 0;
+            if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) {
+              owner = el;
+              break;
+            }
+          }
         }
+        wheelGesture.current.el = owner;
       }
+      // The note scrolls itself (and stops at its end — overscroll-behavior
+      // keeps the page out of it too).
+      if (wheelGesture.current.el?.isConnected) return;
       e.preventDefault();
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };
@@ -1122,9 +1141,26 @@ export function CanvasView({
   const convertNote = async (note: CanvasNote, type: BlockType) => {
     const text = note.text.trim();
     const firstLine = text.split("\n")[0] ?? "";
+    // Everything after the first line is the note's body. It used to be dropped:
+    // a typed block took the first line as its title and nothing else, so
+    // converting a sticky with anything written under its heading threw that
+    // away without saying so.
+    const rest = text.slice(firstLine.length).replace(/^\n+/, "");
+    const key = bodyFieldKey(type.propertySchema);
     const body = type.isText
       ? { blockTypeId: type.id, content: text }
-      : { blockTypeId: type.id, properties: { title: firstLine || "Untitled" } };
+      : {
+          blockTypeId: type.id,
+          properties: {
+            title: firstLine || "Untitled",
+            ...(rest && key ? { [key]: rest } : {}),
+          },
+          // A type with no long-text field has nowhere to put prose. Keeping it
+          // on the block's own content is a poor second — the card won't show
+          // it — but it stays with the block, searchable and readable, rather
+          // than being discarded on the way through.
+          ...(rest && !key ? { content: rest } : {}),
+        };
     const b = await api.post<Block>("/blocks", body);
     await api.post(`/collections/${cid}/members`, {
       blockId: b.id,

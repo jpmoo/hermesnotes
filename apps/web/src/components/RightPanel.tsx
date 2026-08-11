@@ -54,6 +54,15 @@ export function RightPanel() {
   // over it. `over` = pointer within the panel's rect (+ a small left grace),
   // with a short leave delay.
   const [over, setOver] = useState(false);
+  /**
+   * Set when the panel is collapsed deliberately, and cleared the moment the
+   * pointer leaves it. Hover is tracked by position rather than by enter/leave,
+   * so the pointer sitting on the pin button counts as "over the panel" — and
+   * unpinning collapsed it and then reopened it under the cursor, which reads as
+   * the button not working. The panel stays shut until the pointer goes away and
+   * comes back, which is the gesture that means "show me it" again.
+   */
+  const ignoreHover = useRef(false);
   useEffect(() => {
     let leave: ReturnType<typeof setTimeout> | undefined;
     const onMove = (e: PointerEvent) => {
@@ -63,9 +72,11 @@ export function RightPanel() {
       const inside =
         e.clientX >= r.left - 10 && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
       if (inside) {
+        if (ignoreHover.current) return;
         clearTimeout(leave);
         setOver(true);
       } else {
+        ignoreHover.current = false;
         clearTimeout(leave);
         leave = setTimeout(() => setOver(false), 240);
       }
@@ -175,6 +186,7 @@ export function RightPanel() {
               if (rightPinned) {
                 setRightPinned(false);
                 setOver(false); // collapse to the rail on unpin
+                ignoreHover.current = true;
                 // This panel also stays open while focus is inside it — which,
                 // after clicking this button, means this button. Without letting
                 // go of focus, unpinning left the panel open until something

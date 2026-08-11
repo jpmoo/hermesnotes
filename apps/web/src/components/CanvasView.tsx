@@ -481,6 +481,99 @@ export function CanvasView({
     return out;
   };
 
+  /**
+   * Even spacing. Lining edges up is only half of what the eye is doing in a
+   * row of cards — the other half is "is the gap the same as the others?", which
+   * is the part that's genuinely hard to judge and tedious to correct.
+   *
+   * Two cases, both along one axis at a time, and only among nodes that overlap
+   * the moving one across that axis (things in the same row, or the same
+   * column — a card two rows down isn't part of this spacing):
+   *   between — sitting between two others, the gaps either side made equal;
+   *   extending — placed after a neighbour at the same gap the run already uses.
+   */
+  interface Spacing {
+    axis: "v" | "h";
+    /** The cross-axis line the measure is drawn along. */
+    at: number;
+    from: number;
+    to: number;
+    gap: number;
+  }
+  const [spacings, setSpacings] = useState<Spacing[]>([]);
+
+  const overlaps = (a1: number, a2: number, b1: number, b2: number) => a1 < b2 && b1 < a2;
+
+  /** Along one axis: the snapped position and the measures to draw, if any. */
+  const evenSpacing = (
+    r: Rect,
+    others: Rect[],
+    axis: "x" | "y",
+  ): { at: number; spacings: Spacing[] } | null => {
+    const tol = SNAP_PX / view.z;
+    const [pos, size, cross, crossSize]: ["x" | "y", "w" | "h", "x" | "y", "w" | "h"] =
+      axis === "x" ? ["x", "w", "y", "h"] : ["y", "h", "x", "w"];
+    const inLine = others
+      .filter((o) => overlaps(o[cross], o[cross] + o[crossSize], r[cross], r[cross] + r[crossSize]))
+      .sort((a, b) => a[pos] - b[pos]);
+    if (inLine.length < 2) return null;
+
+    const before = [...inLine].reverse().find((o) => o[pos] + o[size] <= r[pos] + tol);
+    const after = inLine.find((o) => o[pos] >= r[pos] + r[size] - tol);
+    // The line the measures are drawn along: the middle of the moving card.
+    const at = Math.round(r[cross] + r[crossSize] / 2);
+    const marker = (from: number, to: number): Spacing => ({
+      axis: axis === "x" ? "h" : "v",
+      at,
+      from,
+      to,
+      gap: Math.round(to - from),
+    });
+
+    // Between two neighbours: centre it, and both gaps are the measure.
+    if (before && after) {
+      const room = after[pos] - (before[pos] + before[size]);
+      const want = before[pos] + before[size] + (room - r[size]) / 2;
+      if (room > r[size] && Math.abs(want - r[pos]) < tol) {
+        return {
+          at: want,
+          spacings: [
+            marker(before[pos] + before[size], want),
+            marker(want + r[size], after[pos]),
+          ],
+        };
+      }
+    }
+    // Extending a run: take the gap the two before it already use.
+    const run = (anchor: Rect, dir: 1 | -1) => {
+      const prev =
+        dir === 1
+          ? [...inLine].reverse().find((o) => o[pos] + o[size] <= anchor[pos])
+          : inLine.find((o) => o[pos] >= anchor[pos] + anchor[size]);
+      if (!prev) return null;
+      const g = dir === 1 ? anchor[pos] - (prev[pos] + prev[size]) : prev[pos] - (anchor[pos] + anchor[size]);
+      if (g <= 0) return null;
+      const want = dir === 1 ? anchor[pos] + anchor[size] + g : anchor[pos] - g - r[size];
+      if (Math.abs(want - r[pos]) >= tol) return null;
+      return {
+        at: want,
+        spacings:
+          dir === 1
+            ? [marker(prev[pos] + prev[size], anchor[pos]), marker(anchor[pos] + anchor[size], want)]
+            : [marker(want + r[size], anchor[pos]), marker(anchor[pos] + anchor[size], prev[pos])],
+      };
+    };
+    if (before) {
+      const hit = run(before, 1);
+      if (hit) return hit;
+    }
+    if (after) {
+      const hit = run(after, -1);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
   /** Nudge a moving rect onto the nearest neighbouring line, per axis. */
   const snapMove = (r: Rect, others: Rect[]): Rect => {
     const tol = SNAP_PX / view.z;
@@ -983,6 +1076,26 @@ export function CanvasView({
       const free = { ...cur, x: p.x - d.dx, y: p.y - d.dy };
       const others = e.altKey ? [] : rectsExcept([d.id]);
       const snapped = others.length ? snapMove(free, others) : free;
+      // Alignment first; even spacing only where the axis is still free, so the
+      // two can't fight over the same pixel.
+      const marks: Spacing[] = [];
+      if (others.length) {
+        if (snapped.x === free.x) {
+          const even = evenSpacing(snapped, others, "x");
+          if (even) {
+            snapped.x = even.at;
+            marks.push(...even.spacings);
+          }
+        }
+        if (snapped.y === free.y) {
+          const even = evenSpacing(snapped, others, "y");
+          if (even) {
+            snapped.y = even.at;
+            marks.push(...even.spacings);
+          }
+        }
+      }
+      setSpacings(marks);
       setGuides(others.length ? guidesFor(snapped, others) : []);
       const ctx = { ...cur, x: snapped.x, y: snapped.y } as NodeCtx;
       if (d.id.startsWith("n:")) setNotes((ns) => ns.map((n) => (n.id === d.id ? { ...n, x: ctx.x, y: ctx.y } : n)));
@@ -1033,6 +1146,7 @@ export function CanvasView({
     const d = drag.current;
     drag.current = null;
     setGuides([]);
+    setSpacings([]);
     if (!d) return;
     if (d.kind === "marquee") {
       if (marquee) {
@@ -1444,6 +1558,7 @@ export function CanvasView({
         setLinking(null);
         drag.current = null;
         setGuides([]);
+        setSpacings([]);
       }}
       onPointerDown={onBgPointerDown}
       onDoubleClick={(e) => {
@@ -1602,6 +1717,19 @@ export function CanvasView({
           );
         })}
 
+        {spacings.map((sp, i) => (
+          <div
+            key={`s${i}`}
+            className={`cv-space cv-space-${sp.axis}`}
+            style={
+              sp.axis === "h"
+                ? { left: sp.from, top: sp.at, width: sp.to - sp.from }
+                : { top: sp.from, left: sp.at, height: sp.to - sp.from }
+            }
+          >
+            <span className="cv-space-label">{sp.gap}</span>
+          </div>
+        ))}
         {guides.map((g, i) => (
           <div
             key={i}

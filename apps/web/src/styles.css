@@ -5125,6 +5125,67 @@ input.matrix-axis-y::placeholder {
   text-anchor: middle;
   pointer-events: none;
 }
+/* The measure between two cards, while one of them is being moved: a bar
+   across the gap with its width on it. Shown only when the gap has been made
+   equal to another, which is the moment the number is worth reading. */
+.cv-space {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger);
+}
+.cv-space-h {
+  height: 0;
+  border-top: 1px dashed currentColor;
+}
+.cv-space-v {
+  width: 0;
+  border-left: 1px dashed currentColor;
+}
+/* End caps, so a gap reads as a measured span rather than a stray line. */
+.cv-space::before,
+.cv-space::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+.cv-space-h::before,
+.cv-space-h::after {
+  width: 1px;
+  height: 7px;
+  top: -3px;
+}
+.cv-space-h::before {
+  left: 0;
+}
+.cv-space-h::after {
+  right: 0;
+}
+.cv-space-v::before,
+.cv-space-v::after {
+  height: 1px;
+  width: 7px;
+  left: -3px;
+}
+.cv-space-v::before {
+  top: 0;
+}
+.cv-space-v::after {
+  bottom: 0;
+}
+.cv-space-label {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Alignment guides, shown only while something is being moved or resized. In
    the canvas layer, so they sit in canvas coordinates like everything else; a
    hairline that stays hairline-thin whatever the zoom would need to be drawn

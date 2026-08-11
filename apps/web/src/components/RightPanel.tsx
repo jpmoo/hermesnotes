@@ -171,10 +171,16 @@ export function RightPanel() {
           <button
             className="icon-btn panel-pin"
             title={rightPinned ? "Unpin panel" : "Pin panel open"}
-            onClick={() => {
+            onClick={(e) => {
               if (rightPinned) {
                 setRightPinned(false);
                 setOver(false); // collapse to the rail on unpin
+                // This panel also stays open while focus is inside it — which,
+                // after clicking this button, means this button. Without letting
+                // go of focus, unpinning left the panel open until something
+                // else was clicked, doing exactly nothing visible.
+                e.currentTarget.blur();
+                setHoldOpen(false);
               } else {
                 setRightPinned(true);
               }

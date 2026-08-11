@@ -1273,6 +1273,7 @@ export function MatrixView({
         <span className="matrix-span-ctl">
           <DateTimePicker
             value={spanStart}
+            withTime={false}
             placeholder="Start"
             onChange={(v) =>
               void api
@@ -1283,6 +1284,7 @@ export function MatrixView({
           <span className="hint">to</span>
           <DateTimePicker
             value={spanEnd}
+            withTime={false}
             placeholder="End"
             onChange={(v) =>
               void api

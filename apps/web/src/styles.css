@@ -4475,9 +4475,10 @@ input.matrix-axis-y::placeholder {
   width: 72px;
   flex: none;
 }
-.recur-end-row input[type="date"] {
-  width: auto;
-  flex: none;
+/* The until-date is the app's picker now, not a native input. */
+.recur-end-row .dtp {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── Inline mentions (@ people, # tags, | types) ──────────────── */

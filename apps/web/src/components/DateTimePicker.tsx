@@ -66,11 +66,20 @@ function label(value: string): string {
 export function DateTimePicker({
   value,
   onChange,
-  placeholder = "Set date & time",
+  placeholder,
+  withTime = true,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  /**
+   * Whether this value can carry a time at all. A field declared as a date has
+   * no business offering hours and minutes — picking one would quietly turn it
+   * into a datetime — and with no time to set, choosing the day is the whole
+   * job, so the popup closes on it. That's also why closing on a day pick felt
+   * wrong before: it isn't wrong here, it was wrong where a time still followed.
+   */
+  withTime?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [dowOpen, setDowOpen] = useState(false);
@@ -78,6 +87,7 @@ export function DateTimePicker({
   const wrapRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const parts = parse(value);
+  const hint = placeholder ?? (withTime ? "Set date & time" : "Set date");
 
   // The popup is position:fixed so scroll containers (table view, right
   // panel) can't clip it — measured from the trigger, flipped when the
@@ -171,7 +181,7 @@ export function DateTimePicker({
     <div className="dtp" ref={wrapRef}>
       <button type="button" className="dtp-trigger" onClick={() => setOpen((o) => !o)}>
         <CalendarDays size={15} />
-        <span className={value ? "" : "dtp-placeholder"}>{value ? label(value) : placeholder}</span>
+        <span className={value ? "" : "dtp-placeholder"}>{value ? label(value) : hint}</span>
         {value && (
           <span
             className="dtp-clear"
@@ -236,6 +246,7 @@ export function DateTimePicker({
                     setView({ y: d.getFullYear(), m: d.getMonth() });
                   }
                   emit({ date: c.key });
+                  if (!withTime) setOpen(false);
                 }}
               >
                 {c.day}
@@ -243,7 +254,7 @@ export function DateTimePicker({
             ))}
           </div>
 
-          <div className="dtp-time">
+          {withTime && <div className="dtp-time">
             <div className="dtp-spin">
               <button type="button" className="icon-btn" onClick={() => setHour(parts.h + 1)}>
                 <ChevronUp size={14} />
@@ -289,7 +300,7 @@ export function DateTimePicker({
               <option value="AM">AM</option>
               <option value="PM">PM</option>
             </select>
-          </div>
+          </div>}
 
           <div className="dtp-quick">
             <button type="button" className="ghost" onClick={() => addDays(1)}>
@@ -323,20 +334,22 @@ export function DateTimePicker({
                 setView({ y: now.getFullYear(), m: now.getMonth() });
                 const h24 = now.getHours();
                 onChange(
-                  combine({
-                    date: ymd(now),
-                    hasTime: true,
-                    h: h24 % 12 === 0 ? 12 : h24 % 12,
-                    m: now.getMinutes(),
-                    pm: h24 >= 12,
-                  }),
+                  withTime
+                    ? combine({
+                        date: ymd(now),
+                        hasTime: true,
+                        h: h24 % 12 === 0 ? 12 : h24 % 12,
+                        m: now.getMinutes(),
+                        pm: h24 >= 12,
+                      })
+                    : ymd(now),
                 );
-                setOpen(false); // a date and a time in one press — nothing left to say
+                setOpen(false); // nothing left to choose either way
               }}
             >
-              Now
+              {withTime ? "Now" : "Today"}
             </button>
-            {parts.hasTime && parts.date && (
+            {withTime && parts.hasTime && parts.date && (
               <button type="button" className="ghost" onClick={() => emit({ hasTime: false })}>
                 Clear time
               </button>

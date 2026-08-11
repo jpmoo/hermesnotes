@@ -101,7 +101,13 @@ export function FieldInput({
       );
     case "date":
     case "datetime":
-      return <DateTimePicker value={str} onChange={(v) => onChange(v)} />;
+      return (
+        <DateTimePicker
+          value={str}
+          onChange={(v) => onChange(v)}
+          withTime={field.type === "datetime"}
+        />
+      );
     case "datespan": {
       const span = (value ?? {}) as Span;
       const setSpan = (patch: Span) => onChange({ ...span, ...patch });

@@ -1,4 +1,5 @@
 import type { Recurrence } from "@hermes/shared";
+import { DateTimePicker } from "./DateTimePicker.tsx";
 import { Repeat } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
@@ -158,11 +159,14 @@ export function RecurrenceField({
                       style={{ width: "auto" }}
                     />
                     <span>On</span>
-                    <input
-                      type="date"
-                      disabled={draft.end.type !== "on"}
+                    {/* The app's own picker rather than the browser's: this was
+                        the last native date input, and it looked and behaved
+                        like nothing else here. */}
+                    <DateTimePicker
                       value={draft.end.type === "on" ? draft.end.date : ""}
-                      onChange={(e) => set({ end: { type: "on", date: e.target.value } })}
+                      withTime={false}
+                      placeholder="Pick a date"
+                      onChange={(v) => set({ end: { type: "on", date: v } })}
                     />
                   </label>
                 </div>

@@ -5052,6 +5052,16 @@ input.matrix-axis-y::placeholder {
 }
 
 /* ── Infinite canvas collection ────────────────────────────────── */
+/* Nothing on a canvas is draggable in the browser's own sense — every drag
+   here is ours. Saying so matters in a webview (an Electron/Nativefier wrapper,
+   say), which starts a native drag more readily than a browser does and takes
+   the pointer stream with it when it does: the line being drawn then goes dead
+   mid-gesture with nothing to show for it. */
+.cv-wrap,
+.cv-wrap * {
+  -webkit-user-drag: none;
+}
+
 .cv-wrap {
   position: relative;
   height: calc(100vh - 230px);

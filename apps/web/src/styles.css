@@ -5237,15 +5237,19 @@ input.matrix-axis-y::placeholder {
   right: 0;
   width: var(--fold);
   height: var(--fold);
-  /* The back of the paper, turned down: the wedge toward the corner is the
-     shaded underside, and the diagonal is the crease. */
+  /* The turned-down corner: a real triangle, cut by the clip rather than
+     approximated by where a gradient happens to fade. A gradient's stops run
+     along its own axis, not along the diagonal of the box, so shading alone came
+     out as a lopsided wedge instead of a fold.
+     Right angle at the corner, hypotenuse along the crease; the shading runs
+     from the crease (lit) to the corner (in shadow), which is the direction a
+     lifted flap actually catches light. */
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
   background: linear-gradient(
     225deg,
-    color-mix(in srgb, var(--postit-edge) 90%, transparent) 0 calc(var(--fold) - 1px),
-    color-mix(in srgb, #000 22%, transparent) calc(var(--fold) - 1px) var(--fold),
-    transparent var(--fold)
+    color-mix(in srgb, #000 26%, var(--postit-edge)),
+    var(--postit-edge)
   );
-  border-top-right-radius: 2px;
   pointer-events: none;
 }
 /* The grab strip's rounded top would show through the square corners. */

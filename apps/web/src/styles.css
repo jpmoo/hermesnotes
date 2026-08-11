@@ -4,6 +4,9 @@
    per-type icon accents and small semantic pills. */
 
 :root {
+  /* Post-it paper and the shade of its folded corner. */
+  --postit: #fdf3b6;
+  --postit-edge: #d9c56a;
   --panel-alpha: 1;
   --font-body: Verdana, Geneva, sans-serif;
   --font-chrome: Tahoma, Geneva, Verdana, sans-serif;
@@ -38,6 +41,9 @@
    synced through prefs). Overrides the core tokens; a few hardcoded light
    spots get dark equivalents below. */
 :root[data-theme="dark"] {
+  /* Dimmer paper in the dark, so a wall of notes isn't a wall of light. */
+  --postit: #d9c983;
+  --postit-edge: #a8955a;
   --bg: #16181b;
   --surface: #1e2125;
   --surface-2: #262a2f;
@@ -5181,6 +5187,41 @@ input.matrix-axis-y::placeholder {
    the canvas never shows through). Overrides `.cv-node.cv-shaded textarea`. */
 .cv-node.cv-shaded .cv-note-text {
   background: transparent;
+}
+
+/* Ephemeral notes look like what they are: a post-it with its corner turned
+   down. Square-ish corners and a flatter shadow — a post-it lies flat.
+   The fold is drawn INSIDE the corner rather than cut out of it with a
+   clip-path: the connect handles and resize corners sit a few pixels outside
+   the node's box, and a clip would take them with it — no more drawing a line
+   from a note. */
+.cv-note {
+  --fold: 16px;
+  border-radius: 2px;
+  border-color: color-mix(in srgb, var(--postit-edge) 70%, transparent);
+  box-shadow: 1px 2px 5px var(--shadow-color);
+}
+.cv-note::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--fold);
+  height: var(--fold);
+  /* The back of the paper, turned down: the wedge toward the corner is the
+     shaded underside, and the diagonal is the crease. */
+  background: linear-gradient(
+    225deg,
+    color-mix(in srgb, var(--postit-edge) 90%, transparent) 0 calc(var(--fold) - 1px),
+    color-mix(in srgb, #000 22%, transparent) calc(var(--fold) - 1px) var(--fold),
+    transparent var(--fold)
+  );
+  border-top-right-radius: 2px;
+  pointer-events: none;
+}
+/* The grab strip's rounded top would show through the square corners. */
+.cv-note .cv-grab {
+  border-radius: 2px 2px 0 0;
 }
 
 /* The embedded card sheds its chrome — the node box is the chrome. */

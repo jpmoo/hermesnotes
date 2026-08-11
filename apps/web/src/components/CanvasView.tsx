@@ -571,13 +571,21 @@ export function CanvasView({
         zoomBy(Math.exp(-e.deltaY * 0.014), e.clientX, e.clientY);
         return;
       }
-      // Swiping over a node whose content can scroll in that direction lets
-      // the node scroll natively; otherwise the canvas pans.
-      const body = (e.target as HTMLElement).closest?.(".cv-body, .cv-add-list");
-      if (body && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
-        const canDown = body.scrollTop + body.clientHeight < body.scrollHeight - 1;
-        const canUp = body.scrollTop > 0;
-        if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) return;
+      // Swiping over anything that can scroll in that direction lets it scroll
+      // natively; otherwise the canvas pans. Walk up from whatever the pointer is
+      // over rather than looking for one known element: an ephemeral note's body
+      // IS a textarea, and an imported block's long-text editor scrolls inside
+      // itself, so neither shows up as a scrollable .cv-body. Nothing here asks
+      // about focus — a wheel doesn't need a caret to scroll something.
+      if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+        for (let el = e.target as HTMLElement | null; el && el !== wrapRef.current; el = el.parentElement) {
+          if (el.scrollHeight <= el.clientHeight + 1) continue;
+          const oy = getComputedStyle(el).overflowY;
+          if (oy !== "auto" && oy !== "scroll" && el.tagName !== "TEXTAREA") continue;
+          const canDown = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+          const canUp = el.scrollTop > 0;
+          if ((e.deltaY > 0 && canDown) || (e.deltaY < 0 && canUp)) return;
+        }
       }
       e.preventDefault();
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
@@ -734,11 +742,17 @@ export function CanvasView({
       else setLocal((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] ?? (r as NodeCtx)), ...r } }));
     }
   };
-  const onPointerUp = () => {
+  const onPointerUp = (ev?: ReactPointerEvent) => {
     const d = drag.current;
     drag.current = null;
     if (linking) {
-      const target = hoverNode.current;
+      // Ask the document what's under the pointer, and only fall back to the
+      // hover tracking. Enter/leave stop firing for the rest of a drag once a
+      // pointer is captured — which touch does implicitly, on the first move —
+      // so hoverNode can be null exactly when the line is being drawn. Every
+      // node carries its id, ephemeral notes included.
+      const under = ev ? (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null) : null;
+      const target = under?.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? hoverNode.current;
       if (target && target !== linking.from) {
         // Pick the target side facing the source anchor.
         const tr = rectOf(target);
@@ -1106,7 +1120,10 @@ export function CanvasView({
         top: r.y,
         width: r.w,
         height: r.h,
-        background: r.color || "var(--surface)",
+        // Notes are post-its: yellow unless they've been given a colour of
+        // their own. Set here rather than in CSS because this style is inline
+        // and would win anyway.
+        background: r.color || (isNote ? "var(--postit)" : "var(--surface)"),
       }}
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}

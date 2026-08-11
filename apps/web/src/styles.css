@@ -5091,12 +5091,25 @@ input.matrix-axis-y::placeholder {
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
+  /* The grid moves and scales with the view (--cv-x/y/z, set by the canvas), so
+     the dots read as the surface the cards sit on rather than as a screen the
+     cards slide over. The dot itself stays a pixel at any zoom — spacing is what
+     carries the scale; a dot that grew with it would turn to blobs. */
   background:
-    radial-gradient(circle, var(--border) 1px, transparent 1px) 0 0 / 26px 26px,
+    radial-gradient(circle, var(--border) 1px, transparent 1px) var(--cv-x, 0px) var(--cv-y, 0px) /
+      calc(26px * var(--cv-z, 1)) calc(26px * var(--cv-z, 1)),
     var(--surface-2);
   touch-action: none;
   cursor: grab;
 }
+/* Grid off: the same surface, without the paper. */
+.cv-wrap.no-grid {
+  background: var(--surface-2);
+}
+.cv-grid-toggle.on {
+  color: var(--accent);
+}
+
 .cv-wrap:active {
   cursor: grabbing;
 }

@@ -1,4 +1,4 @@
-import { GripHorizontal, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
+import { Grid2x2, GripHorizontal, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useIsMobile } from "../lib/useIsMobile.ts";
@@ -185,6 +185,24 @@ export function CanvasView({
       return false;
     }
   });
+  const [grid, setGrid] = useState(() => {
+    try {
+      return localStorage.getItem("hn.canvas.grid") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleGrid = () =>
+    setGrid((g) => {
+      const next = !g;
+      try {
+        localStorage.setItem("hn.canvas.grid", next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+
   const locked = isMobile || lockPref;
   const toggleLock = () => {
     setLockPref((v) => {
@@ -1591,8 +1609,17 @@ export function CanvasView({
   return (
     <div
       ref={wrapRef}
-      className={`cv-wrap${locked ? " locked" : ""}`}
-      style={wrapH != null ? { height: wrapH } : undefined}
+      className={`cv-wrap${locked ? " locked" : ""}${grid ? "" : " no-grid"}`}
+      // The dot grid is paper, not a backdrop: it takes the view's offset and
+      // zoom so it travels with what's drawn on it. Left fixed, panning felt
+      // like sliding the cards over a stationary screen rather than moving
+      // across a surface — and there was nothing to judge the movement against.
+      style={{
+        ...(wrapH != null ? { height: wrapH } : {}),
+        ["--cv-x" as string]: `${view.x}px`,
+        ["--cv-y" as string]: `${view.y}px`,
+        ["--cv-z" as string]: view.z,
+      }}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={() => {
@@ -1922,6 +1949,14 @@ export function CanvasView({
             <span className="cv-tb-sep" />
           </>
         )}
+        <button
+          className={`icon-btn cv-grid-toggle${grid ? " on" : ""}`}
+          title={grid ? "Hide the dot grid" : "Show the dot grid"}
+          onClick={toggleGrid}
+        >
+          <Grid2x2 size={14} />
+        </button>
+        <span className="cv-tb-sep" />
         <button className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.2, innerWidth / 2, innerHeight / 2)}>
           <Minus size={14} />
         </button>

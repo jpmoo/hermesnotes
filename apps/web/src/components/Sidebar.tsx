@@ -296,7 +296,14 @@ export function Sidebar() {
   });
 
   return (
-    <aside className={`sidebar${expanded ? " expanded" : ""}`} onMouseLeave={collapse}>
+    // Anywhere on the rail asks for the rail. The handler used to sit on the
+    // icon strip alone, which left the logo — decoration, and the whole top of
+    // the collapsed rail — as a dead spot that swallowed the hover.
+    <aside
+      className={`sidebar${expanded ? " expanded" : ""}`}
+      onMouseOver={onRailOver}
+      onMouseLeave={collapse}
+    >
       <div className="sidebar-head">
         {/* The pin sits in the rail column, over the icons it belongs to. On the
             right-hand panel the same button lands over its own rail because the
@@ -320,7 +327,7 @@ export function Sidebar() {
       </div>
 
       {/* The customizable middle — buttons + dividers, in the user's order. */}
-      <div className="rail-scroll" onMouseOver={onRailOver} onMouseLeave={cancelOpen}>
+      <div className="rail-scroll">
         {body}
       </div>
 

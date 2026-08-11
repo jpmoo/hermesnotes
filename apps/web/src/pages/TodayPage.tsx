@@ -11,6 +11,7 @@ import { SectionLayout, type SectionEntry } from "../components/SectionLayout.ts
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
 import { TodayCalendar } from "../components/TodayCalendar.tsx";
 import { oneLineText } from "../lib/display.ts";
+import { CollectionIcon } from "../lib/icons.tsx";
 import { resolveRef, type RefStatus } from "../lib/resolve-ref.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -34,6 +35,32 @@ interface TodaySheet {
 }
 
 const idOf = (s: TodaySection) => (s.t === "collection" || s.t === "block" ? `${s.t}:${s.id}` : s.t);
+
+/** A collection that turned up in a day's activity: a row that opens it. */
+function CollectionRow({ block }: { block: Block }) {
+  const { selectOrOpen } = usePanels();
+  const props = (block.properties ?? {}) as Record<string, unknown>;
+  const kind = block.collectionKind ?? "";
+  return (
+    <button
+      className="card today-collection-row"
+      onClick={() => selectOrOpen(block.id, { collection: true })}
+    >
+      <CollectionIcon
+        document={kind === "document"}
+        matrix={kind === "matrix"}
+        table={kind === "table"}
+        canvas={kind === "canvas"}
+        calendar={kind === "calendar"}
+        smart={props.membership_mode === "smart"}
+        color={typeof props.icon_color === "string" ? props.icon_color : undefined}
+        size={16}
+      />
+      <span className="today-collection-name">{oneLineText(props) || "Untitled"}</span>
+      <span className="hint">{kind || "collection"}</span>
+    </button>
+  );
+}
 
 /** An added note section: a single block rendered as a card. */
 function NoteSection({
@@ -217,17 +244,22 @@ export function TodayPage() {
     defaultCollapsed: true,
   });
   const cardWith =
-    (col: ReturnType<typeof useCollapse>) => (b: Block, compact: boolean) => (
-      <CollapsibleCard
-        block={b}
-        type={typeById.get(b.blockTypeId)}
-        compact={compact}
-        collapsed={col.collapsed.has(b.id)}
-        onToggle={() => col.toggle(b.id)}
-        onConflict={load}
-        onDeleted={() => void load()}
-      />
-    );
+    (col: ReturnType<typeof useCollapse>) => (b: Block, compact: boolean) =>
+      // A collection isn't editable as a card — it's a place. Show it as a row
+      // that opens it, rather than as a text editor over its properties.
+      b.collectionKind ? (
+        <CollectionRow block={b} />
+      ) : (
+        <CollapsibleCard
+          block={b}
+          type={typeById.get(b.blockTypeId)}
+          compact={compact}
+          collapsed={col.collapsed.has(b.id)}
+          onToggle={() => col.toggle(b.id)}
+          onConflict={load}
+          onDeleted={() => void load()}
+        />
+      );
 
   const STANDARD_LABELS: Record<string, string> = {
     scratchpad: "Scratchpad",

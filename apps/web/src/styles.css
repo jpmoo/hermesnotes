@@ -3532,6 +3532,25 @@ input.matrix-axis-y::placeholder {
 }
 
 /* ── Today page ───────────────────────────────────────────────── */
+/* A collection in a day's activity: a place to go, not a card to edit. */
+.today-collection-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.today-collection-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 .today-section {
   margin-bottom: 26px;
 }

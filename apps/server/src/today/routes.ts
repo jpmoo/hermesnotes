@@ -308,7 +308,9 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       .where(
         and(
           eq(blocks.ownerId, userId),
-          sql`${blocks.collectionKind} IS NULL`,
+          // Collections count as activity too: making a canvas or a list is one
+          // of the more memorable things you do in a day, and leaving them out
+          // meant a day's record could show nothing at all for it.
           sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
           sql`${blocks.archivedAt} IS NULL`,
           or(

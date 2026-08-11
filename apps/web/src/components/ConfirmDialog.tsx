@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -13,6 +13,7 @@ export function ConfirmDialog({
   confirmLabel = "Delete",
   cancelLabel = "Cancel",
   danger = true,
+  requireText,
   onConfirm,
   onCancel,
 }: {
@@ -22,10 +23,21 @@ export function ConfirmDialog({
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  /**
+   * Make the confirm button wait for this word to be typed. For the handful of
+   * actions where a second dialog would only be a second reflex — the point is
+   * to make the hand stop, not to ask twice.
+   */
+  requireText?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const [typed, setTyped] = useState("");
+  const armed = !requireText || typed.trim().toLowerCase() === requireText.toLowerCase();
+  useEffect(() => {
+    if (!open) setTyped("");
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,11 +64,25 @@ export function ConfirmDialog({
       >
         <h2 className="modal-title">{title}</h2>
         {message && <p className="modal-message">{message}</p>}
+        {requireText && (
+          <label className="field">
+            <span>
+              Type <b>{requireText}</b> to confirm
+            </span>
+            <input
+              type="text"
+              autoComplete="off"
+              autoFocus
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+            />
+          </label>
+        )}
         <div className="modal-actions">
           <button ref={cancelRef} className="ghost" onClick={onCancel}>
             {cancelLabel}
           </button>
-          <button className={danger ? "danger" : "primary"} onClick={onConfirm}>
+          <button className={danger ? "danger" : "primary"} disabled={!armed} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

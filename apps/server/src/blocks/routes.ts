@@ -1417,6 +1417,30 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   /** Permanent delete. Only an already-archived block may be hard-deleted, so
    * the sole path to real deletion is via the Archive screen — enforced here at
    * the route, not just in the UI/MCP, so it holds for direct API callers too. */
+  /**
+   * Empty the Archive: every archived block AND collection, permanently.
+   *
+   * One request rather than one per row — a client loop over hundreds of
+   * deletes is slow, and a failure halfway through leaves the user staring at a
+   * half-emptied Archive with no way to tell what went. Same browser-session
+   * rule as a single delete: an agent can archive, never destroy.
+   */
+  app.post("/archive/empty", async (req) => {
+    const userId = requireUser(req);
+    if (req.authKind !== "cookie") throw forbidden("hard delete requires a browser session");
+    const doomed = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NOT NULL`));
+    if (!doomed.length) return { deleted: 0 };
+    await db
+      .delete(blocks)
+      .where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NOT NULL`));
+    // FK-backed relations cascade; references stored in JSON don't.
+    for (const b of doomed) await scrubDanglingRefs(userId, b.id);
+    return { deleted: doomed.length };
+  });
+
   app.delete("/blocks/:id", async (req) => {
     const userId = requireUser(req);
     // Irreversible deletion is a browser-session-only action: an API/bearer key

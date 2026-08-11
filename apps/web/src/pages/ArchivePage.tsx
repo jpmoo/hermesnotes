@@ -1,5 +1,5 @@
 import type { FilterGroup } from "@hermes/shared";
-import { Archive, ChevronDown, ChevronUp, Search, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronUp, Search, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType, type Collection, type Settings } from "../api.ts";
@@ -97,6 +97,24 @@ export function ArchivePage() {
   }, [setHasContent]);
 
   const onDeleted = (id: string) => setBlocks((prev) => prev.filter((b) => b.id !== id));
+
+  // Emptying the Archive is the one action here with nothing behind it, so it
+  // asks twice: once for the intent, and once with the word typed out. The
+  // second isn't a repeat of the first — it's the step that makes the hand stop.
+  const [emptyStage, setEmptyStage] = useState<0 | 1 | 2>(0);
+  const [emptying, setEmptying] = useState(false);
+  const archivedCount = blocks.length + archivedCollections.length;
+  const emptyArchive = async () => {
+    setEmptying(true);
+    try {
+      await api.post<{ deleted: number }>("/archive/empty", {});
+      setBlocks([]);
+      setArchivedCollections([]);
+      setEmptyStage(0);
+    } finally {
+      setEmptying(false);
+    }
+  };
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter, archived: true }).then(setBlocks);
 
@@ -130,6 +148,16 @@ export function ArchivePage() {
         {viewMode !== "chips" && blocks.length > 0 && (
           <button className="ghost" onClick={toggleAll}>
             {allCollapsed ? "Expand all" : "Collapse all"}
+          </button>
+        )}
+        {archivedCount > 0 && (
+          <button
+            className="ghost archive-empty"
+            style={{ marginLeft: "auto" }}
+            disabled={emptying}
+            onClick={() => setEmptyStage(1)}
+          >
+            <Trash2 size={14} /> {emptying ? "Deleting…" : "Delete all"}
           </button>
         )}
         <span className="hint">
@@ -258,6 +286,25 @@ export function ArchivePage() {
           </>,
           bottomSlotEl,
         )}
+      <ConfirmDialog
+        open={emptyStage === 1}
+        title="Delete everything in the Archive?"
+        message={`${blocks.length} block(s)${
+          archivedCollections.length ? ` and ${archivedCollections.length} collection(s)` : ""
+        } will be permanently deleted. Unarchiving is no longer an option afterwards, and there's no undo.`}
+        confirmLabel="Continue"
+        onCancel={() => setEmptyStage(0)}
+        onConfirm={() => setEmptyStage(2)}
+      />
+      <ConfirmDialog
+        open={emptyStage === 2}
+        title={`Permanently delete ${archivedCount} item(s)`}
+        message="This cannot be undone. Blocks that other blocks refer to will leave those references pointing at nothing."
+        requireText="delete"
+        confirmLabel="Delete permanently"
+        onCancel={() => setEmptyStage(0)}
+        onConfirm={() => void emptyArchive()}
+      />
     </>
   );
 }

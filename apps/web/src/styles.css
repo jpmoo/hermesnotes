@@ -5125,6 +5125,24 @@ input.matrix-axis-y::placeholder {
   text-anchor: middle;
   pointer-events: none;
 }
+/* Alignment guides, shown only while something is being moved or resized. In
+   the canvas layer, so they sit in canvas coordinates like everything else; a
+   hairline that stays hairline-thin whatever the zoom would need to be drawn
+   outside it, and at this size the difference isn't worth the complication. */
+.cv-guide {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0.75;
+}
+.cv-guide-v {
+  width: 1px;
+}
+.cv-guide-h {
+  height: 1px;
+}
+
 .cv-node {
   position: absolute;
   border: 1px solid var(--border-strong);

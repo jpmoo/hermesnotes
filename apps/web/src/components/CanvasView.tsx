@@ -417,6 +417,146 @@ export function CanvasView({
     const m = members.find((x) => x.id === id);
     return m ? ctxOf(m) : null;
   };
+  /**
+   * Alignment while dragging or resizing: a node's edges and centres look for
+   * the same lines on its neighbours, and snap to them when they're within a
+   * few pixels ON SCREEN — the tolerance is divided by the zoom, so it feels the
+   * same close up as far out. Every line that actually matched is drawn, so what
+   * you see is what the node lined up with, not a guess at it.
+   *
+   * Hold Alt to place something freely.
+   */
+  const SNAP_PX = 6;
+  interface Guide {
+    axis: "v" | "h";
+    at: number;
+    from: number;
+    to: number;
+  }
+  const [guides, setGuides] = useState<Guide[]>([]);
+
+  const rectsExcept = (ids: string[]): Rect[] => {
+    const skip = new Set(ids);
+    return [
+      ...members
+        .filter((m) => !skip.has(m.id))
+        .map((m) => local[m.id] ?? ctxOf(m))
+        .filter((r): r is NodeCtx => r !== null),
+      ...notes.filter((n) => !skip.has(n.id)).map((n) => ({ x: n.x, y: n.y, w: n.w, h: n.h })),
+    ];
+  };
+  const xLines = (r: Rect) => [r.x, r.x + r.w / 2, r.x + r.w];
+  const yLines = (r: Rect) => [r.y, r.y + r.h / 2, r.y + r.h];
+
+  /** The lines `r` now shares with its neighbours, for drawing. */
+  const guidesFor = (r: Rect, others: Rect[]): Guide[] => {
+    const out: Guide[] = [];
+    const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
+    for (const o of others) {
+      for (const a of xLines(r)) {
+        for (const b of xLines(o)) {
+          if (near(a, b)) {
+            out.push({
+              axis: "v",
+              at: b,
+              from: Math.min(r.y, o.y) - 12,
+              to: Math.max(r.y + r.h, o.y + o.h) + 12,
+            });
+          }
+        }
+      }
+      for (const a of yLines(r)) {
+        for (const b of yLines(o)) {
+          if (near(a, b)) {
+            out.push({
+              axis: "h",
+              at: b,
+              from: Math.min(r.x, o.x) - 12,
+              to: Math.max(r.x + r.w, o.x + o.w) + 12,
+            });
+          }
+        }
+      }
+    }
+    return out;
+  };
+
+  /** Nudge a moving rect onto the nearest neighbouring line, per axis. */
+  const snapMove = (r: Rect, others: Rect[]): Rect => {
+    const tol = SNAP_PX / view.z;
+    let dx = 0;
+    let dy = 0;
+    let bx = tol;
+    let by = tol;
+    for (const o of others) {
+      for (const a of xLines(r)) {
+        for (const b of xLines(o)) {
+          const d = b - a;
+          if (Math.abs(d) < bx) {
+            bx = Math.abs(d);
+            dx = d;
+          }
+        }
+      }
+      for (const a of yLines(r)) {
+        for (const b of yLines(o)) {
+          const d = b - a;
+          if (Math.abs(d) < by) {
+            by = Math.abs(d);
+            dy = d;
+          }
+        }
+      }
+    }
+    return { ...r, x: r.x + dx, y: r.y + dy };
+  };
+
+  /**
+   * The same for a resize, plus matching a neighbour's size outright: a note
+   * pulled to nearly the width of the one beside it takes that width exactly,
+   * which is the thing you were doing by eye.
+   */
+  const snapResize = (r: Rect, others: Rect[], corner: string): Rect => {
+    const tol = SNAP_PX / view.z;
+    const out = { ...r };
+    const movingE = corner.includes("e");
+    const movingS = corner.includes("s");
+    const movingW = corner.includes("w");
+    const movingN = corner.includes("n");
+    let bw = tol;
+    let bh = tol;
+    for (const o of others) {
+      // Same width / height as a neighbour.
+      if (Math.abs(o.w - out.w) < bw) {
+        bw = Math.abs(o.w - out.w);
+        if (movingW) out.x = out.x + out.w - o.w;
+        out.w = o.w;
+      }
+      if (Math.abs(o.h - out.h) < bh) {
+        bh = Math.abs(o.h - out.h);
+        if (movingN) out.y = out.y + out.h - o.h;
+        out.h = o.h;
+      }
+      // The edge being dragged, onto a neighbour's line.
+      for (const b of xLines(o)) {
+        if (movingE && Math.abs(b - (out.x + out.w)) < tol) out.w = Math.max(MIN_W, b - out.x);
+        if (movingW && Math.abs(b - out.x) < tol) {
+          const right = out.x + out.w;
+          out.x = Math.min(b, right - MIN_W);
+          out.w = right - out.x;
+        }
+      }
+      for (const b of yLines(o)) {
+        if (movingS && Math.abs(b - (out.y + out.h)) < tol) out.h = Math.max(MIN_H, b - out.y);
+        if (movingN && Math.abs(b - out.y) < tol) {
+          out.h = Math.max(MIN_H, out.y + out.h - b);
+          out.y = b;
+        }
+      }
+    }
+    return out;
+  };
+
   const allRects = (): Rect[] => [
     ...members.map((m) => local[m.id] ?? ctxOf(m)).filter((r): r is NodeCtx => r !== null),
     ...notes,
@@ -840,7 +980,11 @@ export function CanvasView({
       d.moved = true;
       const cur = rectOf(d.id);
       if (!cur) return;
-      const ctx = { ...cur, x: p.x - d.dx, y: p.y - d.dy } as NodeCtx;
+      const free = { ...cur, x: p.x - d.dx, y: p.y - d.dy };
+      const others = e.altKey ? [] : rectsExcept([d.id]);
+      const snapped = others.length ? snapMove(free, others) : free;
+      setGuides(others.length ? guidesFor(snapped, others) : []);
+      const ctx = { ...cur, x: snapped.x, y: snapped.y } as NodeCtx;
       if (d.id.startsWith("n:")) setNotes((ns) => ns.map((n) => (n.id === d.id ? { ...n, x: ctx.x, y: ctx.y } : n)));
       else setLocal((prev) => ({ ...prev, [d.id]: ctx }));
     } else if (d.kind === "marquee") {
@@ -874,6 +1018,12 @@ export function CanvasView({
         r.h = Math.max(MIN_H, d.start.h - dy);
         r.y = d.start.y + (d.start.h - r.h);
       }
+      const others = e.altKey ? [] : rectsExcept([d.id]);
+      if (others.length) {
+        const snapped = snapResize(r, others, d.corner);
+        Object.assign(r, snapped);
+        setGuides(guidesFor(r, others));
+      }
       if (d.id.startsWith("n:"))
         setNotes((ns) => ns.map((n) => (n.id === d.id ? { ...n, ...r } : n)));
       else setLocal((prev) => ({ ...prev, [d.id]: { ...(prev[d.id] ?? (r as NodeCtx)), ...r } }));
@@ -882,6 +1032,7 @@ export function CanvasView({
   const onPointerUp = () => {
     const d = drag.current;
     drag.current = null;
+    setGuides([]);
     if (!d) return;
     if (d.kind === "marquee") {
       if (marquee) {
@@ -1286,6 +1437,7 @@ export function CanvasView({
       onPointerCancel={() => {
         setLinking(null);
         drag.current = null;
+        setGuides([]);
       }}
       onPointerDown={onBgPointerDown}
       onDoubleClick={(e) => {
@@ -1443,6 +1595,18 @@ export function CanvasView({
             false,
           );
         })}
+
+        {guides.map((g, i) => (
+          <div
+            key={i}
+            className={`cv-guide cv-guide-${g.axis}`}
+            style={
+              g.axis === "v"
+                ? { left: g.at, top: g.from, height: g.to - g.from }
+                : { top: g.at, left: g.from, width: g.to - g.from }
+            }
+          />
+        ))}
 
         {(() => {
           // While dragging a region member, show where membership ends: the

@@ -5440,6 +5440,12 @@ input.matrix-axis-y::placeholder {
   font-family: var(--font-body);
   outline: none;
 }
+/* You don't focus the textarea, you write on the note — so no focus ring and no
+   field surface sliding over the paper. `textarea.` to outrank `textarea:focus`. */
+textarea.cv-note-text:focus {
+  box-shadow: none;
+  background: transparent;
+}
 .cv-toolbar {
   position: absolute;
   right: 10px;

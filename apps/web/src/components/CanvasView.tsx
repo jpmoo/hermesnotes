@@ -17,6 +17,7 @@ import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { emitBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
+import { PointerMenu } from "./PointerMenu.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -2142,7 +2143,7 @@ export function CanvasView({
       {/* node menu */}
       {nodeMenu &&
         createPortal(
-          <div className="menu cv-menu" style={{ position: "fixed", left: nodeMenu.x, top: nodeMenu.y, right: "auto" }}>
+          <PointerMenu x={nodeMenu.x} y={nodeMenu.y}>
             {nodeMenu.field && (nodeMenu.field.text || nodeMenu.field.writable) && (
               <>
                 {(
@@ -2236,7 +2237,7 @@ export function CanvasView({
             >
               {nodeMenu.id.startsWith("n:") ? "Delete note" : "Remove from canvas"}
             </button>
-          </div>,
+          </PointerMenu>,
           document.body,
         )}
 
@@ -2407,10 +2408,7 @@ export function CanvasView({
           const rg = regions.find((r) => r.id === regionMenu.id);
           if (!rg) return null;
           return createPortal(
-            <div
-              className="menu cv-menu"
-              style={{ position: "fixed", left: regionMenu.x, top: regionMenu.y, right: "auto" }}
-            >
+            <PointerMenu x={regionMenu.x} y={regionMenu.y}>
               <input
                 className="cv-edge-label-input"
                 placeholder="Region title…"
@@ -2485,7 +2483,7 @@ export function CanvasView({
               >
                 Delete region (keeps the blocks)
               </button>
-            </div>,
+            </PointerMenu>,
             document.body,
           );
         })()}
@@ -2494,7 +2492,7 @@ export function CanvasView({
       {edgeMenu &&
         menuEdge &&
         createPortal(
-          <div className="menu cv-menu" style={{ position: "fixed", left: edgeMenu.x, top: edgeMenu.y, right: "auto" }}>
+          <PointerMenu x={edgeMenu.x} y={edgeMenu.y}>
             <input
               className="cv-edge-label-input"
               placeholder="Label…"
@@ -2570,7 +2568,7 @@ export function CanvasView({
             >
               Delete connection
             </button>
-          </div>,
+          </PointerMenu>,
           document.body,
         )}
     </div>

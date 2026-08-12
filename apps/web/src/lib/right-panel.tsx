@@ -287,7 +287,12 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     }
     return phone ? openBlock(id, opts) : selectBlock(id, opts);
   };
-  const selectFeedEvent = (ev: FeedEvent | null) => setSelectedFeedEvent(ev);
+  const selectFeedEvent = (ev: FeedEvent | null) => {
+    // A feed event isn't a block — it has no id and lives only in the feed — but
+    // clicking one means the same thing, so it asks for the panel the same way.
+    if (ev) setRevealTick((t) => t + 1);
+    setSelectedFeedEvent(ev);
+  };
   const clearSelection = () => {
     setSelectedFeedEvent(null);
     setNav({ stack: [], pos: -1 });

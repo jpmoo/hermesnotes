@@ -92,7 +92,10 @@ export function RightPanel() {
   const revealedRef = useRef(false);
   revealedRef.current = revealed;
   const shownId = useRef<string | null>(null);
-  shownId.current = selectedBlockId;
+  // Whatever the panel is showing, block or feed event, under one key.
+  shownId.current = selectedFeedEvent
+    ? `${selectedFeedEvent.feedId}|${selectedFeedEvent.uid}`
+    : selectedBlockId;
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       pressedOn.current = e.target as HTMLElement;
@@ -183,7 +186,8 @@ export function RightPanel() {
     // The same thing again, while it's already up: that's a toggle. Clicking a
     // card twice to make the panel go away is the obvious thing to try, and
     // re-showing what's already shown does nothing anyone can see.
-    const pressedId = pressedOn.current?.closest?.<HTMLElement>("[data-block-id]")?.dataset.blockId;
+    const pressed = pressedOn.current?.closest?.<HTMLElement>("[data-block-id], [data-feed-key]");
+    const pressedId = pressed?.dataset.blockId ?? pressed?.dataset.feedKey;
     if (openAtPress.current && pressedId && pressedId === shownId.current) {
       setRevealed(false);
       return;

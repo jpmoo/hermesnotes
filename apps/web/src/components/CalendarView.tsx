@@ -207,6 +207,7 @@ function FeedChip({ event, hit }: { event: FeedEvent; hit?: boolean }) {
   return (
     <div
       className={`cal-chip cal-feed-chip${hit ? " cal-hit" : ""}`}
+      data-feed-key={`${event.feedId}|${event.uid}`}
       style={{ ["--feed-color" as string]: event.color }}
       title={`${event.summary} — ${event.feedName}`}
       onClick={(e) => {

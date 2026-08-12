@@ -222,6 +222,15 @@ function FeedChip({ event, hit }: { event: FeedEvent; hit?: boolean }) {
 }
 
 // ── Week / 3-day time-band layout ───────────────────────────────
+/**
+ * Find-on-calendar: built and working, but not switched on. Feed events can
+ * only be found where they've been loaded — the range on screen — so the
+ * results are complete for cards and partial for subscriptions, which is a
+ * confusing thing to hand someone without saying so in the interface. Flip this
+ * to true to bring the box back; everything behind it is live.
+ */
+const FIND_ENABLED = false;
+
 const HOUR_H = 46; // px per hour in the time grid
 const minutesOf = (v: string) => {
   const d = new Date(v.includes("T") ? v : `${v}T00:00`);
@@ -785,7 +794,8 @@ export function CalendarView({
           </button>
         </span>
         <span className="cal-range">{rangeLabel}</span>
-        <span className="cal-find">
+        {FIND_ENABLED && (
+          <span className="cal-find">
           <Search size={13} />
           <input
             className="cal-find-input"
@@ -839,9 +849,10 @@ export function CalendarView({
               >
                 <X size={13} />
               </button>
-            </>
-          )}
-        </span>
+              </>
+            )}
+          </span>
+        )}
         {!isSmart && <span className="hint">Calendars are query-fed — give this collection a query.</span>}
       </div>
 

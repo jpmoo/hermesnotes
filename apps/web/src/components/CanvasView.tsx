@@ -976,10 +976,22 @@ export function CanvasView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Leave whatever field was being typed in. These gestures preventDefault(),
+   * which suppresses the blur a press normally causes — so a caret would stay
+   * in a note you've stopped writing in, and the next Delete would edit that
+   * note instead of removing what you just grabbed.
+   */
+  const dropCaret = () => {
+    const a = document.activeElement as HTMLElement | null;
+    if (a?.closest?.(".cv-node")) a.blur();
+  };
+
   const onBgPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
     if (e.target !== e.currentTarget) return;
     e.preventDefault(); // stop text-selection sweeps while panning/selecting
+    dropCaret();
     if (e.shiftKey && !locked) {
       const p = toCanvas(e.clientX, e.clientY);
       setMarquee({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
@@ -1288,6 +1300,7 @@ export function CanvasView({
       const r = rectOf(gid);
       if (r) starts[gid] = { ...r };
     }
+    dropCaret();
     drag.current = { kind: "group", ids, hit, sx: p.x, sy: p.y, starts, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -1297,6 +1310,10 @@ export function CanvasView({
     if (e.button !== 0) return;
     const group = groupWith(id);
     if (group) return startGroupDrag(group, id, e);
+    // Taking hold of a node selects it (the grip stops propagation, so the
+    // node's own press handler never sees this one).
+    setSelected([id]);
+    dropCaret();
     e.preventDefault();
     e.stopPropagation();
     const p = toCanvas(e.clientX, e.clientY);
@@ -1415,6 +1432,50 @@ export function CanvasView({
   const [focusNote, setFocusNote] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  /**
+   * Removing from a canvas costs different things for different kinds: a block
+   * is only taken off the canvas and stays in your notes, a region dissolves
+   * and leaves its blocks behind — but an ephemeral note lives nowhere else, so
+   * removing it destroys it. The dialog has to say which of those is happening.
+   */
+  const countRemoval = (ids: string[]) => {
+    const regionIds = new Set(regions.map((r) => r.id));
+    const nodeIds = ids.filter((id) => !regionIds.has(id));
+    return {
+      notes: nodeIds.filter((id) => id.startsWith("n:")).length,
+      blocks: nodeIds.filter((id) => !id.startsWith("n:")).length,
+      regions: ids.length - nodeIds.length,
+    };
+  };
+  const onlyNotes = (ids: string[]) => {
+    const c = countRemoval(ids);
+    return c.notes > 0 && c.blocks === 0 && c.regions === 0;
+  };
+  const removalTitle = (ids: string[]) => {
+    const c = countRemoval(ids);
+    if (onlyNotes(ids)) return c.notes === 1 ? "Delete this note?" : `Delete ${c.notes} notes?`;
+    return `Remove ${ids.length} item${ids.length === 1 ? "" : "s"} from the canvas?`;
+  };
+  const removalMessage = (ids: string[]) => {
+    const c = countRemoval(ids);
+    const parts: string[] = [];
+    if (c.notes)
+      parts.push(
+        c.notes === 1
+          ? "An ephemeral note lives only on this canvas — deleting it is permanent, and it can't be recovered."
+          : `${c.notes} ephemeral notes live only on this canvas — deleting them is permanent, and they can't be recovered.`,
+      );
+    if (c.blocks)
+      parts.push(
+        `${c.blocks === 1 ? "The block is" : `${c.blocks} blocks are`} only taken off the canvas, not deleted — ${
+          c.blocks === 1 ? "it stays" : "they stay"
+        } in your notes.`,
+      );
+    if (c.regions) parts.push("Regions are dissolved; the blocks inside them stay.");
+    parts.push("Connections to anything removed go too.");
+    return parts.join(" ");
+  };
+
   const removeMany = async (ids: string[]) => {
     const regionIds = new Set(regions.map((r) => r.id));
     const pickedRegions = ids.filter((id) => regionIds.has(id));
@@ -1623,7 +1684,15 @@ export function CanvasView({
       // handles stop propagation, so they keep their own jobs.
       onPointerDown={(e) => {
         const group = groupWith(id);
-        if (group) startGroupDrag(group, id, e);
+        if (group) return startGroupDrag(group, id, e);
+        // A press on the node itself rather than into its text selects it —
+        // that's what makes Delete mean this node. A press into a field is
+        // writing, and must leave the selection (and Delete) alone.
+        const t = e.target as HTMLElement;
+        if (!t.closest?.("input, textarea, select, [contenteditable=true]")) {
+          setSelected([id]);
+          dropCaret();
+        }
       }}
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}
@@ -2137,8 +2206,9 @@ export function CanvasView({
             <button
               className="menu-item"
               onClick={() => {
-                void removeNode(nodeMenu.id);
+                const id = nodeMenu.id;
                 setNodeMenu(null);
+                setConfirmRemove([id]);
               }}
             >
               {nodeMenu.id.startsWith("n:") ? "Delete note" : "Remove from canvas"}
@@ -2285,9 +2355,10 @@ export function CanvasView({
 
       <ConfirmDialog
         open={confirmRemove !== null}
-        title={`Remove ${confirmRemove?.length ?? 0} item${(confirmRemove?.length ?? 0) === 1 ? "" : "s"} from the canvas?`}
-        message="Blocks are only removed from the canvas — they are not deleted. Ephemeral notes and regions are discarded."
-        confirmLabel="Remove"
+        title={removalTitle(confirmRemove ?? [])}
+        message={removalMessage(confirmRemove ?? [])}
+        confirmLabel={onlyNotes(confirmRemove ?? []) ? "Delete" : "Remove"}
+        danger={countRemoval(confirmRemove ?? []).notes > 0}
         onCancel={() => setConfirmRemove(null)}
         onConfirm={() => {
           const ids = confirmRemove ?? [];

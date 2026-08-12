@@ -16,6 +16,7 @@ import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { emitBlockChange, useBlockDeleted } from "../lib/block-events.ts";
+import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -1324,7 +1325,13 @@ export function CanvasView({
   };
 
   // ── menus ──
-  const [nodeMenu, setNodeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [nodeMenu, setNodeMenu] = useState<{
+    id: string;
+    x: number;
+    y: number;
+    /** The text field the right-click landed in, if any — see field-clipboard. */
+    field: FieldSelection | null;
+  } | null>(null);
   const [edgeMenu, setEdgeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [regionMenu, setRegionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [syncNewCollection, setSyncNewCollection] = useState(true);
@@ -1624,7 +1631,9 @@ export function CanvasView({
         if (locked) return;
         e.preventDefault();
         e.stopPropagation();
-        setNodeMenu({ id, x: e.clientX, y: e.clientY });
+        // Taking over the right-click takes away the browser's own menu, so
+        // note what was selected: the menu offers copy/cut/paste itself.
+        setNodeMenu({ id, x: e.clientX, y: e.clientY, field: captureField(e.target) });
       }}
     >
       {/* The paper. Separate from the node because a note's corner is cut away,
@@ -2042,6 +2051,32 @@ export function CanvasView({
       {nodeMenu &&
         createPortal(
           <div className="menu cv-menu" style={{ position: "fixed", left: nodeMenu.x, top: nodeMenu.y, right: "auto" }}>
+            {nodeMenu.field && (nodeMenu.field.text || nodeMenu.field.writable) && (
+              <>
+                {(
+                  [
+                    ["Cut", "cut", Boolean(nodeMenu.field.text) && nodeMenu.field.writable],
+                    ["Copy", "copy", Boolean(nodeMenu.field.text)],
+                    ["Paste", "paste", nodeMenu.field.writable],
+                  ] as const
+                )
+                  .filter(([, , on]) => on)
+                  .map(([label, action]) => (
+                    <button
+                      key={action}
+                      className="menu-item"
+                      onClick={() => {
+                        const f = nodeMenu.field;
+                        setNodeMenu(null);
+                        if (f) void runFieldClipboard(f, action);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                <div className="menu-sep" />
+              </>
+            )}
             <div className="cv-menu-row">
               {NODE_COLORS.map((c) => (
                 <button

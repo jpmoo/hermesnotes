@@ -69,11 +69,18 @@ export function RightPanel() {
   /**
    * Shown because something was selected rather than because the pointer is
    * here. Clicking a card is a request to look at it, and a shut panel makes
-   * that click look like it did nothing. It gives way as soon as the pointer
-   * has been away from the panel for a moment — the same grace the hover uses —
-   * so it reveals without becoming a second kind of pinned.
+   * that click look like it did nothing.
+   *
+   * It can't be tied to the pointer being over the panel: the pointer is on the
+   * card that was just clicked, which is somewhere else entirely, so the reveal
+   * would open and shut again within the grace period — a stutter, and worse on
+   * an embedded card where the click lands further away. It stays until it has
+   * been used and left: once the pointer has been inside the panel, leaving
+   * closes it. Selecting something else keeps it open and swaps the contents,
+   * which is what walking down a list of cards is.
    */
   const [revealed, setRevealed] = useState(false);
+  const visited = useRef(false);
   useEffect(() => {
     let leave: ReturnType<typeof setTimeout> | undefined;
     const onMove = (e: PointerEvent) => {
@@ -83,6 +90,7 @@ export function RightPanel() {
       const inside =
         e.clientX >= r.left - 10 && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
       if (inside) {
+        visited.current = true;
         if (ignoreHover.current) return;
         clearTimeout(leave);
         setOver(true);
@@ -91,7 +99,12 @@ export function RightPanel() {
         clearTimeout(leave);
         leave = setTimeout(() => {
           setOver(false);
-          setRevealed(false);
+          // Only once it's been visited: otherwise the pointer sitting where it
+          // clicked would dismiss the thing that click asked for.
+          if (visited.current) {
+            visited.current = false;
+            setRevealed(false);
+          }
         }, 240);
       }
     };
@@ -135,9 +148,23 @@ export function RightPanel() {
   // Selecting something opens the panel — but not on a phone, where the panel
   // is a drawer over the page and a tap already opens the block as a page.
   useEffect(() => {
-    if (revealTick > 0 && !isMobile) setRevealed(true);
+    if (revealTick > 0 && !isMobile) {
+      // A fresh ask: it hasn't been visited yet, whatever happened before.
+      visited.current = false;
+      setRevealed(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealTick]);
+
+  // Escape puts it away without having to go and touch it.
+  useEffect(() => {
+    if (!revealed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRevealed(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [revealed]);
 
   const expanded = rightPinned || over || holdOpen || revealed;
   const showFeedEvent = selectedFeedEvent !== null;

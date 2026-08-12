@@ -2,6 +2,7 @@ import { Info, PanelRight, Pin, PinOff, Share2, Sparkles, Trash2 } from "lucide-
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useIsMobile } from "../lib/useIsMobile.ts";
 import { useAiConfig } from "../lib/ai-config.tsx";
 import { useAssistant } from "../lib/assistant.tsx";
 import { AIPanel } from "./AIPanel.tsx";
@@ -44,7 +45,9 @@ export function RightPanel() {
     selectFeedEvent,
     openBlock,
     clearSelection,
+    revealTick,
   } = usePanels();
+  const isMobile = useIsMobile();
   const asideRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
 
@@ -63,6 +66,14 @@ export function RightPanel() {
    * comes back, which is the gesture that means "show me it" again.
    */
   const ignoreHover = useRef(false);
+  /**
+   * Shown because something was selected rather than because the pointer is
+   * here. Clicking a card is a request to look at it, and a shut panel makes
+   * that click look like it did nothing. It gives way as soon as the pointer
+   * has been away from the panel for a moment — the same grace the hover uses —
+   * so it reveals without becoming a second kind of pinned.
+   */
+  const [revealed, setRevealed] = useState(false);
   useEffect(() => {
     let leave: ReturnType<typeof setTimeout> | undefined;
     const onMove = (e: PointerEvent) => {
@@ -78,7 +89,10 @@ export function RightPanel() {
       } else {
         ignoreHover.current = false;
         clearTimeout(leave);
-        leave = setTimeout(() => setOver(false), 240);
+        leave = setTimeout(() => {
+          setOver(false);
+          setRevealed(false);
+        }, 240);
       }
     };
     document.addEventListener("pointermove", onMove);
@@ -118,7 +132,14 @@ export function RightPanel() {
     };
   }, []);
 
-  const expanded = rightPinned || over || holdOpen;
+  // Selecting something opens the panel — but not on a phone, where the panel
+  // is a drawer over the page and a tap already opens the block as a page.
+  useEffect(() => {
+    if (revealTick > 0 && !isMobile) setRevealed(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTick]);
+
+  const expanded = rightPinned || over || holdOpen || revealed;
   const showFeedEvent = selectedFeedEvent !== null;
   const showInfo = selectedBlockId !== null && !showFeedEvent;
 

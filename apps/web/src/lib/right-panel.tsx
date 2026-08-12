@@ -56,6 +56,12 @@ interface PanelsApi {
   scrollTarget: { id: string; nonce: number } | null;
   /** Record where we're leaving from — for navigations made outside here. */
   rememberOrigin: () => void;
+  /**
+   * Bumped whenever something is selected, so a collapsed info panel can show
+   * itself. Selecting is a request to look at something; if the panel is shut,
+   * the click otherwise appears to do nothing at all.
+   */
+  revealTick: number;
 
   // Bumped when the selected block changes out-of-band (e.g. matrix region
   // actions edited its tags/status); the info pane refetches on change.
@@ -126,6 +132,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [selectedFeedEvent, setSelectedFeedEvent] = useState<FeedEvent | null>(null);
   const [recents, setRecents] = useState<RecentEntry[]>(() => readRecents("hn.recents"));
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
+  const [revealTick, setRevealTick] = useState(0);
   const scrollNonce = useRef(0);
   const [infoTick, setInfoTick] = useState(0);
   const refreshInfo = () => setInfoTick((t) => t + 1);
@@ -239,6 +246,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       const base = n.stack.slice(0, n.pos + 1);
       return { stack: [...base, entry], pos: base.length };
     });
+    // A page is a place, not a thing to inspect — only entities ask for the panel.
+    if (!entry.page) setRevealTick((t) => t + 1);
     if (entry.page) addRecent({ kind: "page", page: entry.page });
     else if (entry.today) addRecent({ kind: "today", date: entry.today });
     else {
@@ -329,13 +338,14 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       canBack: nav.pos > 0,
       canForward: nav.pos < nav.stack.length - 1,
       recents,
+      revealTick,
       scrollTarget,
       rememberOrigin,
       infoTick,
       refreshInfo,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, selectedFeedEvent, recents, scrollTarget, infoTick],
+    [slotEl, bottomSlotEl, hasContent, leftPinned, rightPinned, nav, selectedFeedEvent, recents, scrollTarget, revealTick, infoTick],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

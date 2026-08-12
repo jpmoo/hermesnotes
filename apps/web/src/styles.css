@@ -5333,6 +5333,16 @@ input.matrix-axis-y::placeholder {
   background: var(--surface);
   border-color: var(--border);
 }
+/* Part of a multi-selection: the node is a thing you're arranging, not a note
+   you're writing in. Its contents stop taking the pointer, so a press anywhere
+   on it grabs the whole group (the grips and handles sit outside .cv-body). */
+.cv-node.cv-group .cv-body {
+  pointer-events: none;
+}
+.cv-node.cv-group .cv-paper {
+  cursor: move;
+}
+
 /* An ephemeral note is a solid sticky, not a typed-block field — its textarea
    shows the note's opaque color, never the translucent-white field surface (so
    the canvas never shows through). Overrides `.cv-node.cv-shaded textarea`. */

@@ -826,6 +826,15 @@ export function CanvasView({
     | { kind: "resize"; id: string; corner: string; start: Rect; sx: number; sy: number }
     | { kind: "marquee" }
     | { kind: "region"; id: string; sx: number; sy: number; starts: Record<string, Rect>; moved: boolean }
+    | {
+        kind: "group";
+        ids: string[];
+        hit: string; // the node the gesture started on
+        sx: number;
+        sy: number;
+        starts: Record<string, Rect>;
+        moved: boolean;
+      }
     | null
   >(null);
   const [linking, setLinking] = useState<{ from: string; side: Side; x: number; y: number } | null>(null);
@@ -1147,7 +1156,7 @@ export function CanvasView({
     } else if (d.kind === "marquee") {
       const p = toCanvas(e.clientX, e.clientY);
       setMarquee((m) => (m ? { ...m, x2: p.x, y2: p.y } : m));
-    } else if (d.kind === "region") {
+    } else if (d.kind === "region" || d.kind === "group") {
       const p = toCanvas(e.clientX, e.clientY);
       d.moved = true;
       const dx = p.x - d.sx;
@@ -1214,6 +1223,21 @@ export function CanvasView({
       }
       return;
     }
+    if (d.kind === "group") {
+      // A press that didn't move is a choice, not a drag: it picks that one node
+      // out of the group, which is also how you get back to editing it.
+      if (!d.moved) {
+        setSelected([d.hit]);
+        return;
+      }
+      persistProps({ canvas_notes: notes });
+      for (const gid of d.ids) {
+        if (gid.startsWith("n:")) continue;
+        const r = rectOf(gid);
+        if (r) persistMemberCtx(gid, r as NodeCtx);
+      }
+      return;
+    }
     if (d.kind === "region" && !d.moved) {
       setSelected([d.id]);
       return;
@@ -1244,9 +1268,34 @@ export function CanvasView({
     }
   };
 
+  /**
+   * Several nodes selected together stop being documents and become objects:
+   * the whole selection moves as one, and a press anywhere on a member starts
+   * that move rather than putting a caret in it. Returns the group a node
+   * belongs to, or null when it's on its own and behaves normally.
+   */
+  const groupWith = (id: string) => (selected.length > 1 && selected.includes(id) ? selected : null);
+
+  const startGroupDrag = (ids: string[], hit: string, e: ReactPointerEvent) => {
+    if (locked) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const p = toCanvas(e.clientX, e.clientY);
+    const starts: Record<string, Rect> = {};
+    for (const gid of ids) {
+      const r = rectOf(gid);
+      if (r) starts[gid] = { ...r };
+    }
+    drag.current = { kind: "group", ids, hit, sx: p.x, sy: p.y, starts, moved: false };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
   const startNodeDrag = (id: string, e: ReactPointerEvent) => {
     if (locked) return;
     if (e.button !== 0) return;
+    const group = groupWith(id);
+    if (group) return startGroupDrag(group, id, e);
     e.preventDefault();
     e.stopPropagation();
     const p = toCanvas(e.clientX, e.clientY);
@@ -1551,7 +1600,9 @@ export function CanvasView({
     <div
       key={id}
       data-block-id={id}
-      className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}${r.color ? " cv-shaded" : ""}`}
+      className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}${
+        groupWith(id) ? " cv-group" : ""
+      }${r.color ? " cv-shaded" : ""}`}
       style={{
         left: r.x,
         top: r.y,
@@ -1560,6 +1611,12 @@ export function CanvasView({
         // A note's colour is on its paper (above), so the cut corner shows what's
         // behind the note rather than more note.
         background: isNote ? "transparent" : r.color || "var(--surface)",
+      }}
+      // Anywhere on a grouped node is a grip. The resize corners and connect
+      // handles stop propagation, so they keep their own jobs.
+      onPointerDown={(e) => {
+        const group = groupWith(id);
+        if (group) startGroupDrag(group, id, e);
       }}
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}

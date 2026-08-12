@@ -83,9 +83,20 @@ export function RightPanel() {
   const visited = useRef(false);
   /** Where the last press landed, for deciding what that press meant. */
   const pressedOn = useRef<HTMLElement | null>(null);
+  /**
+   * Whether the reveal was up when that press began — read before the press
+   * itself closes it, so a press on the thing already being shown can be told
+   * apart from a press on something new.
+   */
+  const openAtPress = useRef(false);
+  const revealedRef = useRef(false);
+  revealedRef.current = revealed;
+  const shownId = useRef<string | null>(null);
+  shownId.current = selectedBlockId;
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       pressedOn.current = e.target as HTMLElement;
+      openAtPress.current = revealedRef.current;
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -169,6 +180,14 @@ export function RightPanel() {
     // A selection made from inside the panel doesn't need the panel revealed.
     const fromPanel = !!from && !!asideRef.current?.contains(from);
     if (editing || fromPanel) return;
+    // The same thing again, while it's already up: that's a toggle. Clicking a
+    // card twice to make the panel go away is the obvious thing to try, and
+    // re-showing what's already shown does nothing anyone can see.
+    const pressedId = pressedOn.current?.closest?.<HTMLElement>("[data-block-id]")?.dataset.blockId;
+    if (openAtPress.current && pressedId && pressedId === shownId.current) {
+      setRevealed(false);
+      return;
+    }
     visited.current = false;
     setRevealed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps

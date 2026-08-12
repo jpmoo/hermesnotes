@@ -81,6 +81,15 @@ export function RightPanel() {
    */
   const [revealed, setRevealed] = useState(false);
   const visited = useRef(false);
+  /** Where the last press landed, for deciding what that press meant. */
+  const pressedOn = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      pressedOn.current = e.target as HTMLElement;
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, []);
   useEffect(() => {
     let leave: ReturnType<typeof setTimeout> | undefined;
     const onMove = (e: PointerEvent) => {
@@ -148,13 +157,34 @@ export function RightPanel() {
   // Selecting something opens the panel — but not on a phone, where the panel
   // is a drawer over the page and a tap already opens the block as a page.
   useEffect(() => {
-    if (revealTick > 0 && !isMobile) {
-      // A fresh ask: it hasn't been visited yet, whatever happened before.
-      visited.current = false;
-      setRevealed(true);
-    }
+    if (revealTick === 0 || isMobile) return;
+    const from = pressedOn.current;
+    // Typing is not asking. Clicking into the scratchpad, a title, or any other
+    // field selects that block — the panel should follow along quietly, not open
+    // over the top of what's being written. Only a press on something that isn't
+    // a writing surface counts as "show me this".
+    const editing = !!from?.closest?.(
+      'input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"], .md-editor, .mention-input',
+    );
+    // A selection made from inside the panel doesn't need the panel revealed.
+    const fromPanel = !!from && !!asideRef.current?.contains(from);
+    if (editing || fromPanel) return;
+    visited.current = false;
+    setRevealed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealTick]);
+
+  // Any press outside puts it away. Pressing something that selects reopens it
+  // on the way through, so walking from card to card still swaps the contents.
+  useEffect(() => {
+    if (!revealed) return;
+    const onDown = (e: PointerEvent) => {
+      if (asideRef.current?.contains(e.target as Node)) return;
+      setRevealed(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [revealed]);
 
   // Escape puts it away without having to go and touch it.
   useEffect(() => {

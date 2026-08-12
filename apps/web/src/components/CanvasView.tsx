@@ -17,6 +17,7 @@ import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { emitBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
+import { EphemeralNote } from "./EphemeralNote.tsx";
 import { PointerMenu } from "./PointerMenu.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { BlockCard } from "./BlockCard.tsx";
@@ -1452,8 +1453,12 @@ export function CanvasView({
   // Focusing an ephemeral note edits it in the panel too — without touching
   // selectBlock, so it never lands in the recents history.
   const [ephSel, setEphSel] = useState<string | null>(null);
-  // A note just made, waiting for the textarea that will hold it to exist.
+  // A note just made, waiting for the editor that will hold it to exist. The
+  // editor takes the caret when it mounts, so the request is spent by then.
   const [focusNote, setFocusNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusNote) setFocusNote(null);
+  }, [focusNote]);
   const [confirmRemove, setConfirmRemove] = useState<string[] | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   /**
@@ -1605,12 +1610,18 @@ export function CanvasView({
 
   const convertNote = async (note: CanvasNote, type: BlockType) => {
     const text = note.text.trim();
-    const firstLine = text.split("\n")[0] ?? "";
+    const rawFirst = text.split("\n")[0] ?? "";
+    // A note is markdown, so its first line may be a heading or a list item.
+    // A title field holds plain text, so the marks come off — the body keeps
+    // the line as it was written.
+    const firstLine = rawFirst
+      .replace(/^\s{0,3}(#{1,6}\s+|>\s*|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)/, "")
+      .trim();
     // Everything after the first line is the note's body. It used to be dropped:
     // a typed block took the first line as its title and nothing else, so
     // converting a sticky with anything written under its heading threw that
     // away without saying so.
-    const rest = text.slice(firstLine.length).replace(/^\n+/, "");
+    const rest = text.slice(rawFirst.length).replace(/^\n+/, "");
     const key = bodyFieldKey(type.propertySchema);
     const body = type.isText
       ? { blockTypeId: type.id, content: text }
@@ -2033,18 +2044,12 @@ export function CanvasView({
           nodeBox(
             n.id,
             n,
-            <textarea
-              className="cv-note-text"
-              value={n.text}
+            <EphemeralNote
+              text={n.text}
               placeholder="Ephemeral note — right-click to convert"
-              ref={(el) => {
-                if (el && focusNote === n.id) {
-                  el.focus();
-                  setFocusNote(null);
-                }
-              }}
-              onFocus={() => setEphSel(n.id)}
-              onChange={(e) => saveNotes(notes.map((x) => (x.id === n.id ? { ...x, text: e.target.value } : x)))}
+              autofocus={focusNote === n.id}
+              onFocusChange={(f) => f && setEphSel(n.id)}
+              onChange={(v) => saveNotes(notes.map((x) => (x.id === n.id ? { ...x, text: v } : x)))}
             />,
             true,
           ),
@@ -2251,13 +2256,10 @@ export function CanvasView({
             <>
               <div className="panel-divider" />
               <div className="panel-h">Ephemeral note</div>
-              <textarea
-                className="cv-eph-panel"
-                value={note.text}
-                placeholder="Write…"
-                onChange={(e) =>
-                  saveNotes(notes.map((x) => (x.id === note.id ? { ...x, text: e.target.value } : x)))
-                }
+              <EphemeralNote
+                key={note.id}
+                text={note.text}
+                onChange={(v) => saveNotes(notes.map((x) => (x.id === note.id ? { ...x, text: v } : x)))}
               />
               <div className="hint" style={{ margin: "6px 0" }}>Convert to…</div>
               <div className="cv-menu-row" style={{ padding: 0 }}>

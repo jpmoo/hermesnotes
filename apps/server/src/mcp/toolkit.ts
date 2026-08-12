@@ -1262,7 +1262,7 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "canvas_note",
-    "Sticky notes on a canvas — the free-floating text that lives ONLY there. These are NOT Hermes blocks: they have no block id, don't appear in search or listings, and can't be linked from anywhere else. Use this (not block_create) whenever asked to jot a note, label, caption or comment ON a canvas. `action` is add (default), edit, or remove; for edit/remove, `note` identifies it by its id or by a fragment of its text (read the canvas with collection_members first). x/y are canvas coordinates, `color` a hex background.",
+    "Sticky notes on a canvas — the free-floating text that lives ONLY there. These are NOT Hermes blocks: they have no block id, don't appear in search or listings, and can't be linked from anywhere else. Use this (not block_create) whenever asked to jot a note, label, caption or comment ON a canvas. `action` is add (default), edit, or remove; for edit/remove, `note` identifies it by its id or by a fragment of its text (read the canvas with collection_members first). x/y are canvas coordinates, `color` a hex background. `text` is markdown — headings, lists, checkboxes, links — rendered the same way as any long-text field.",
     {
       canvas: z.string(),
       action: z.enum(["add", "edit", "remove"]).default("add"),

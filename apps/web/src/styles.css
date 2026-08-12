@@ -5271,7 +5271,6 @@ input.matrix-axis-y::placeholder {
      the gesture to whatever is behind it. */
   overscroll-behavior: contain;
 }
-.cv-note-text,
 .cv-body .md-input,
 .cv-body .longtext {
   overscroll-behavior: contain;
@@ -5343,11 +5342,23 @@ input.matrix-axis-y::placeholder {
   cursor: move;
 }
 
-/* An ephemeral note is a solid sticky, not a typed-block field — its textarea
-   shows the note's opaque color, never the translucent-white field surface (so
-   the canvas never shows through). Overrides `.cv-node.cv-shaded textarea`. */
-.cv-node.cv-shaded .cv-note-text {
+/* An ephemeral note writes on the same markdown surface as a longtext field,
+   but the paper IS the note — so the field's box, its focus ring and its own
+   background all come off, leaving the sticky's colour and nothing else.
+   Blocks on the canvas keep their fields looking like fields. */
+.cv-note .longtext,
+.cv-note .longtext:focus-within {
+  border: none;
   background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.cv-note .longtext .note-editor,
+.cv-note .longtext .md-input {
+  min-height: 0;
+}
+.cv-note .md-editor {
+  font-size: 13px;
 }
 
 /* Ephemeral notes look like what they are: a post-it with a turned corner.
@@ -5440,22 +5451,6 @@ input.matrix-axis-y::placeholder {
 .cv-h-s { bottom: -6px; left: calc(50% - 6px); }
 .cv-h-w { left: -6px; top: calc(50% - 6px); }
 .cv-h-e { right: -6px; top: calc(50% - 6px); }
-.cv-note-text {
-  width: 100%;
-  height: 100%;
-  border: none;
-  background: transparent;
-  resize: none;
-  font-size: 13px;
-  font-family: var(--font-body);
-  outline: none;
-}
-/* You don't focus the textarea, you write on the note — so no focus ring and no
-   field surface sliding over the paper. `textarea.` to outrank `textarea:focus`. */
-textarea.cv-note-text:focus {
-  box-shadow: none;
-  background: transparent;
-}
 .cv-toolbar {
   position: absolute;
   right: 10px;
@@ -5600,12 +5595,6 @@ input.cv-zoom {
   background: var(--accent);
   color: #fff;
   filter: brightness(0.92);
-}
-
-textarea.cv-eph-panel {
-  width: 100%;
-  min-height: 110px;
-  resize: vertical;
 }
 
 /* Inline markdown images: resizable, attachment-backed. */

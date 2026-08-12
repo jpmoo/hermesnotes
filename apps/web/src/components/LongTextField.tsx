@@ -9,12 +9,15 @@ export function LongTextField({
   onChange,
   placeholder = "Write…",
   blockId,
+  autofocus = false,
   onFocusChange,
 }: {
   value: unknown;
   onChange: (value: string) => void;
   placeholder?: string;
   blockId?: string;
+  /** Put the caret in it on mount (something just created it). */
+  autofocus?: boolean;
   onFocusChange?: (focused: boolean) => void;
 }) {
   const initial = typeof value === "string" ? value : "";
@@ -25,6 +28,7 @@ export function LongTextField({
         onChange={onChange}
         placeholder={placeholder}
         blockId={blockId}
+        autofocus={autofocus}
         onFocusChange={onFocusChange}
       />
     </div>

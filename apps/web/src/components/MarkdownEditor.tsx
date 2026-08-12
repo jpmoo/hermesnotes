@@ -18,6 +18,7 @@ import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
+import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 
 type Mode = "live" | "raw";
@@ -63,6 +64,7 @@ export function MarkdownEditor({
       to: number;
       titleText: string;
       titleRaw: string;
+      field: FieldSelection | null;
       mdText: string;
       types: BlockType[];
     } | null
@@ -268,9 +270,13 @@ export function MarkdownEditor({
     const mdText = doc.textBetween(from, to, "\n", asMarkdown).trim();
     if (!titleText && !mdText) return;
     e.preventDefault();
+    // One menu, not two: inside a canvas node this event would otherwise also
+    // reach the node, which answers right-clicks with a menu of its own.
+    e.stopPropagation();
+    const field = captureField(e.target);
     void api
       .get<BlockType[]>("/block-types")
-      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, titleText, titleRaw, mdText, types }))
+      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, titleText, titleRaw, mdText, field, types }))
       .catch(() => {});
   };
 
@@ -362,6 +368,24 @@ export function MarkdownEditor({
           }}
           onMouseDown={(e) => e.stopPropagation()}
         >
+          {extract.field && (
+            <>
+              {(["Cut", "Copy", "Paste"] as const).map((label) => (
+                <button
+                  key={label}
+                  className="menu-item"
+                  onClick={() => {
+                    const f = extract.field;
+                    setExtract(null);
+                    if (f) void runFieldClipboard(f, label.toLowerCase() as "cut" | "copy" | "paste");
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              <div className="menu-sep" />
+            </>
+          )}
           <div className="hint" style={{ padding: "6px 10px" }}>
             Extract selection to a new…
           </div>

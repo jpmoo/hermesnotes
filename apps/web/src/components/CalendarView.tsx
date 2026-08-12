@@ -1,6 +1,6 @@
 import { optionLabel } from "@hermes/shared";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
-import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -121,10 +121,14 @@ function Chip({
   item,
   types,
   onStatus,
+  hit,
 }: {
   item: Item;
   types: BlockType[];
   onStatus: (item: Item, field: FieldDef, next: string) => void;
+  /** The current search match — a day can hold many cards, and landing on the
+   *  right day is only half of finding one. */
+  hit?: boolean;
 }) {
   const { selectBlock, selectOrOpen } = usePanels();
   const t = item.blockTypeId ? types.find((x) => x.id === item.blockTypeId) : undefined;
@@ -141,7 +145,7 @@ function Chip({
   };
   return (
     <div
-      className="cal-chip"
+      className={`cal-chip${hit ? " cal-hit" : ""}`}
       data-block-id={item.id}
       onClick={(e) => {
         e.stopPropagation();
@@ -197,12 +201,12 @@ const fmtTime = (v: string) => {
 };
 
 /** A read-only calendar-feed event chip, colored by its feed. */
-function FeedChip({ event }: { event: FeedEvent }) {
+function FeedChip({ event, hit }: { event: FeedEvent; hit?: boolean }) {
   const { selectFeedEvent } = usePanels();
   const time = event.allDay ? "" : fmtTime(event.start);
   return (
     <div
-      className="cal-chip cal-feed-chip"
+      className={`cal-chip cal-feed-chip${hit ? " cal-hit" : ""}`}
       style={{ ["--feed-color" as string]: event.color }}
       title={`${event.summary} — ${event.feedName}`}
       onClick={(e) => {
@@ -588,6 +592,60 @@ export function CalendarView({
     return map;
   }, [source, days, typeById]);
 
+  /**
+   * Find something on the calendar and step to it. A calendar is a poor place
+   * to look for a known thing: you know its name and not its date, which is
+   * exactly backwards from what the view is arranged by. Matches are listed in
+   * date order and each step moves the view to that day and flashes the card, so
+   * "next" answers "when else does this happen?" as well as "where is it?".
+   *
+   * Cards are searched wherever they fall — the query fetches them all, not just
+   * the visible weeks. Feed events can only be searched where they've been
+   * loaded, which is the range on screen; stepping past the end of that says so
+   * rather than pretending the run is over.
+   */
+  const [find, setFind] = useState("");
+  const [findAt, setFindAt] = useState(0);
+  const [flash, setFlash] = useState<string | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(flashTimer.current), []);
+
+  const hits = useMemo(() => {
+    const q = find.trim().toLowerCase();
+    if (!q) return [] as { key: string; day: string; label: string }[];
+    const out: { key: string; day: string; label: string }[] = [];
+    for (const it of source) {
+      if (!it.label.toLowerCase().includes(q)) continue;
+      const schema = it.blockTypeId ? typeById.get(it.blockTypeId)?.propertySchema ?? null : null;
+      // The first day it occupies: a span that matches once shouldn't turn into
+      // a dozen stops on the way through.
+      const day = [...occupiedDays(schema, it.props)].sort()[0];
+      if (day) out.push({ key: it.id, day, label: it.label });
+    }
+    for (const ev of feedEvents) {
+      const text = `${ev.summary} ${ev.location ?? ""}`.toLowerCase();
+      if (!text.includes(q)) continue;
+      if (convertedKeys.has(`${ev.feedId}|${ev.uid}`) || hiddenFeeds.has(ev.feedId)) continue;
+      out.push({ key: `${ev.feedId}|${ev.uid}`, day: ev.start.slice(0, 10), label: ev.summary || "Untitled" });
+    }
+    return out.sort((a, b) => a.day.localeCompare(b.day) || a.label.localeCompare(b.label));
+  }, [find, source, typeById, feedEvents, convertedKeys, hiddenFeeds]);
+
+  // A new search starts from the first match rather than wherever the last one
+  // left off.
+  useEffect(() => setFindAt(0), [find]);
+
+  const goToHit = (i: number) => {
+    if (!hits.length) return;
+    const next = (i + hits.length) % hits.length;
+    const hit = hits[next]!;
+    setFindAt(next);
+    setAnchor(hit.day);
+    setFlash(hit.key);
+    clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(null), 1800);
+  };
+
   const patchStatus = (item: Item, field: FieldDef, next: string) => {
     const nextProps = { ...item.props, [field.key]: next };
     void api
@@ -684,10 +742,14 @@ export function CalendarView({
         </div>
         <div className="cal-cell-body">
           {items.map((it) => (
-            <Chip key={it.id} item={it} types={types} onStatus={onStatus} />
+            <Chip key={it.id} item={it} types={types} onStatus={onStatus} hit={flash === it.id} />
           ))}
           {feedItems.map((ev) => (
-            <FeedChip key={`${ev.feedId}:${ev.uid}:${ev.start}`} event={ev} />
+            <FeedChip
+              key={`${ev.feedId}:${ev.uid}:${ev.start}`}
+              event={ev}
+              hit={flash === `${ev.feedId}|${ev.uid}`}
+            />
           ))}
         </div>
       </div>
@@ -723,6 +785,63 @@ export function CalendarView({
           </button>
         </span>
         <span className="cal-range">{rangeLabel}</span>
+        <span className="cal-find">
+          <Search size={13} />
+          <input
+            className="cal-find-input"
+            placeholder="Find on this calendar…"
+            value={find}
+            onChange={(e) => setFind(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              // Enter walks the matches; shift-Enter walks back. The first press
+              // goes to the first match rather than the second.
+              goToHit(flash === null && findAt === 0 ? 0 : findAt + (e.shiftKey ? -1 : 1));
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+          {find.trim() !== "" && (
+            <>
+              <span className="cal-find-count">
+                {hits.length ? `${findAt + 1}/${hits.length}` : "none"}
+              </span>
+              <button
+                className="icon-btn"
+                title="Previous match"
+                disabled={hits.length < 2}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goToHit(findAt - 1);
+                }}
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                className="icon-btn"
+                title="Next match"
+                disabled={hits.length < 2}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  goToHit(findAt + 1);
+                }}
+              >
+                <ChevronRight size={14} />
+              </button>
+              <button
+                className="icon-btn"
+                title="Clear"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFind("");
+                  setFlash(null);
+                }}
+              >
+                <X size={13} />
+              </button>
+            </>
+          )}
+        </span>
         {!isSmart && <span className="hint">Calendars are query-fed — give this collection a query.</span>}
       </div>
 

@@ -5995,6 +5995,50 @@ input.cv-add-input {
   color: var(--accent-ink);
 }
 
+/* Find on this calendar: the box, its count, and its stepping controls. */
+.cal-find {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-faint);
+  max-width: 340px;
+}
+/* Two classes deep on purpose: the global input rule is a type selector, which
+   outranks a lone class — a box inside the pill is what that looks like. */
+.cal-find input.cal-find-input,
+.cal-find input.cal-find-input:focus {
+  width: 150px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 2px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  outline: none;
+  font-size: 12px;
+  color: var(--text);
+}
+.cal-find-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cal-find .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+/* The match you stepped to, held long enough to find with the eye. */
+.cal-chip.cal-hit {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .cal-feed-toggle-wrap {
   display: inline-flex;
   align-items: center;

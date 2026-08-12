@@ -987,6 +987,29 @@ export function CanvasView({
     if (a?.closest?.(".cv-node")) a.blur();
   };
 
+  /**
+   * A field in a node is active only while you're in it, and a canvas selection
+   * only while you're on the canvas. Pressing anywhere else — another node, the
+   * toolbar, the info panel, the rest of the app — puts both down. Without this
+   * a caret left behind in a note went on swallowing keystrokes meant for
+   * somewhere else, and a stale selection was still what Delete would remove.
+   */
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      const active = document.activeElement as HTMLElement | null;
+      const host = active?.closest?.(".cv-node");
+      if (host && (!t || !host.contains(t))) active?.blur();
+      if (!t || wrapRef.current?.contains(t)) return;
+      // The canvas's own menus and dialogs are portalled out of the wrap, but
+      // they're still the canvas — and they act on what's selected.
+      if (t.closest(".cv-menu, .modal-backdrop")) return;
+      setSelected([]);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, []);
+
   const onBgPointerDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
     if (e.target !== e.currentTarget) return;

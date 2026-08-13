@@ -7490,6 +7490,10 @@ input.cv-add-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.bv-group-ctl select {
-  max-width: 160px;
+/* Grouping gets its own line above the sort row: one question each. */
+.bv-group-row {
+  margin-bottom: 6px;
+}
+.bv-group-row select {
+  max-width: 220px;
 }

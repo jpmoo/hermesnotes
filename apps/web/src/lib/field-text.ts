@@ -45,6 +45,21 @@ export function fieldText(field: FieldDef, value: unknown, part?: "start" | "end
   }
 }
 
+/** Split "<key>" or "<key>.start" into the field and which end of it. */
+export function parsePropKey(raw: string): { key: string; part?: "start" | "end" } {
+  if (raw.endsWith(".start")) return { key: raw.slice(0, -6), part: "start" };
+  if (raw.endsWith(".end")) return { key: raw.slice(0, -4), part: "end" };
+  return { key: raw };
+}
+
+/** How a field (or one end of it) is named in a control. */
+export function fieldLabel(field: FieldDef, part?: "start" | "end"): string {
+  const base = field.label?.trim() || field.key.replace(/_/g, " ");
+  if (!part) return base;
+  const leg = (part === "start" ? field.startLabel : field.endLabel)?.trim();
+  return `${base} · ${leg || (part === "start" ? "Start" : "End")}`;
+}
+
 /** The sort levels that name a property, resolved against the fields on offer. */
 export function shownFields(
   levels: { key: string }[],
@@ -53,19 +68,10 @@ export function shownFields(
   const out: ShownField[] = [];
   for (const lv of levels) {
     if (!lv.key.startsWith("prop:")) continue;
-    const raw = lv.key.slice(5);
-    const part = raw.endsWith(".start") ? "start" : raw.endsWith(".end") ? "end" : undefined;
-    const key = part ? raw.slice(0, part === "start" ? -6 : -4) : raw;
+    const { key, part } = parsePropKey(lv.key.slice(5));
     const field = fields.find((f) => f.key === key);
     if (!field) continue;
-    const base = field.label?.trim() || key.replace(/_/g, " ");
-    out.push({
-      field,
-      part,
-      label: part
-        ? `${base} · ${(part === "start" ? field.startLabel : field.endLabel)?.trim() || (part === "start" ? "Start" : "End")}`
-        : base,
-    });
+    out.push({ field, part, label: fieldLabel(field, part) });
   }
   return out;
 }

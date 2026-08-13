@@ -22,7 +22,7 @@ import type { BlockType } from "../api.ts";
 import { oneLineText, rawOneLine } from "./display.ts";
 import { MentionText } from "../components/MentionText.tsx";
 import { isEditingTarget } from "./editing-target.ts";
-import { fieldText, shownFields, type ShownField } from "./field-text.ts";
+import { fieldLabel, fieldText, parsePropKey, shownFields, type ShownField } from "./field-text.ts";
 import { FieldChips } from "../components/FieldChips.tsx";
 import { StatusIcon } from "../components/StatusIcon.tsx";
 import { usePanels } from "./right-panel.tsx";
@@ -435,19 +435,26 @@ export function useBlockView<T extends Viewable>(
     [fields, mixedTypes],
   );
 
-  // Grouping is offered on the fields whose values name a category. A date or
-  // a paragraph gives one group per block, which is a list with headings.
-  const groupable = useMemo(
-    () =>
-      fields.filter((f) =>
-        ["status", "select", "boolean", "text", "number", "reference"].includes(f.type),
-      ),
-    [fields],
-  );
+  // Any property can head a group, a span by either of its ends — the same
+  // list the sort offers.
+  const groupOptions = useMemo(() => {
+    const out: { key: string; label: string }[] = [];
+    if (mixedTypes) out.push({ key: "type", label: "Type" });
+    for (const f of fields) {
+      // An attachment list is a file store: no value to head a group with.
+      if (f.type === "attachments") continue;
+      if (f.type === "datespan") {
+        out.push({ key: `prop:${f.key}.start`, label: fieldLabel(f, "start") });
+        out.push({ key: `prop:${f.key}.end`, label: fieldLabel(f, "end") });
+      } else {
+        out.push({ key: `prop:${f.key}`, label: fieldLabel(f) });
+      }
+    }
+    return out;
+  }, [fields, mixedTypes]);
   const groupsOffered = opts.enableGroup ?? true;
-  const groupField = groupBy.startsWith("prop:")
-    ? groupable.find((f) => f.key === groupBy.slice(5))
-    : undefined;
+  const groupProp = groupBy.startsWith("prop:") ? parsePropKey(groupBy.slice(5)) : null;
+  const groupField = groupProp ? fields.find((f) => f.key === groupProp.key) : undefined;
   // Dropping the field a list was grouped by (a type edited elsewhere) leaves
   // the selection naming nothing: fall back to one flat list rather than to a
   // single group called "None".
@@ -520,9 +527,14 @@ export function useBlockView<T extends Viewable>(
         return { key: name, label: name || "No type" };
       }
       const f = groupField!;
-      const raw = it.properties[f.key];
+      const stored = it.properties[f.key];
+      const part = groupProp?.part;
+      const raw = part ? (stored as { start?: unknown; end?: unknown } | null)?.[part] : stored;
       const key = raw == null || raw === "" ? "" : String(raw);
-      return { key, label: key === "" ? `No ${f.label?.trim() || pretty(f.key)}` : fieldText(f, raw) || key };
+      return {
+        key,
+        label: key === "" ? `No ${fieldLabel(f, part)}` : fieldText(f, stored, part) || key,
+      };
     };
     const byKey = new Map<string, { key: string; label: string; items: T[] }>();
     for (const it of sorted) {
@@ -541,7 +553,7 @@ export function useBlockView<T extends Viewable>(
       const r = rank(a.key) - rank(b.key);
       return r !== 0 ? r : a.label.localeCompare(b.label);
     });
-  }, [grouping, groupField, manualMode, sorted, typeById]);
+  }, [grouping, groupField, groupProp?.part, manualMode, sorted, typeById]);
 
   const applyLevels = (next: SortLevel[]) => {
     setLevels(next);
@@ -602,6 +614,23 @@ export function useBlockView<T extends Viewable>(
     { key: "chips", label: "Chips" },
   ];
 
+  // Grouping asks "under what headings" and sorting "in what order": one
+  // question each, so one line each, grouping first because it decides what the
+  // sort is then ordering within.
+  const groupRow = !manualMode && groupsOffered && groupOptions.length > 0 && (
+    <div className="sort-bar bv-group-row">
+      <span className="sort-label">group</span>
+      <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+        <option value="">None</option>
+        {groupOptions.map((o) => (
+          <option key={o.key} value={o.key}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
   const sortBar = (
     <div className="sort-bar">
       {manualAvailable ? (
@@ -627,20 +656,6 @@ export function useBlockView<T extends Viewable>(
         <span className="hint">Drag blocks into place</span>
       ) : (
         <>
-          {groupsOffered && (groupable.length > 0 || mixedTypes) && (
-            <span className="sort-level bv-group-ctl">
-              <span className="sort-label">group</span>
-              <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-                <option value="">None</option>
-                {mixedTypes && <option value="type">Type</option>}
-                {groupable.map((f) => (
-                  <option key={f.key} value={`prop:${f.key}`}>
-                    {f.label?.trim() || pretty(f.key)}
-                  </option>
-                ))}
-              </select>
-            </span>
-          )}
           {levels.map((lv, i) => (
             <span className="sort-level" key={i}>
               {i > 0 && <span className="sort-then">then</span>}
@@ -728,6 +743,7 @@ export function useBlockView<T extends Viewable>(
           {toolsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </button>
       )}
+      {(!isMobile || toolsOpen) && groupRow}
       {(!isMobile || toolsOpen) && sortBar}
     </div>
   );

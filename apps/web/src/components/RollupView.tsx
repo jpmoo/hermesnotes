@@ -112,11 +112,10 @@ function Branch({
   // roots is the same project, and should look the same in both. Where the
   // children are headings rather than cards there's no view to choose and
   // nothing to drag — but there is still an order, so the sort stays.
-  const { sorted, toolbar, renderList, viewMode, sortFields } = useBlockView(kids.map((k) => k.block), types, {
+  const { toolbar, renderList, viewMode, sortFields } = useBlockView(kids.map((k) => k.block), types, {
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
     enableManual: lastLevel,
-    enableGroup: lastLevel,
     viewState: viewFor(node.block.id),
   });
   const byId = new Map(kids.map((k) => [k.block.id, k]));
@@ -192,11 +191,10 @@ function Branch({
           ) : (
             <>
               {toolbar}
-              {sorted.map((b) => {
+              {renderList((b) => {
                 const k = byId.get(b.id);
                 return k ? (
                   <Branch
-                    key={k.path}
                     node={k}
                     types={types}
                     collectionId={collectionId}
@@ -249,14 +247,13 @@ export function RollupView({
   // The top row is a list like any other, so it sorts like one — by title, by
   // when it was made, by a property the headings share, by type.
   const tops = tree ?? [];
-  const { sorted: sortedTops, toolbar: topBar, sortFields: topFields } = useBlockView(
+  const { renderList: renderTops, toolbar: topBar, sortFields: topFields } = useBlockView(
     tops.map((n) => n.block),
     types,
     {
       scope: `rollup.${collection.id}.top`,
       enableView: false,
       enableManual: false,
-      enableGroup: false,
       viewState: viewFor("top"),
     },
   );
@@ -313,11 +310,10 @@ export function RollupView({
         </span>
       </div>
       {topBar}
-      {sortedTops.map((b) => {
+      {renderTops((b) => {
         const n = topById.get(b.id);
         return n ? (
           <Branch
-            key={n.path}
             node={n}
             types={types}
             collectionId={collection.id}

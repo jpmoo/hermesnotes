@@ -20,7 +20,7 @@ import { ChevronDown, ChevronRight, GripVertical, SlidersHorizontal } from "luci
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
-import { shownFields, type ShownField } from "./field-text.ts";
+import { fieldText, shownFields, type ShownField } from "./field-text.ts";
 import { FieldChips } from "../components/FieldChips.tsx";
 import { StatusIcon } from "../components/StatusIcon.tsx";
 import { usePanels } from "./right-panel.tsx";
@@ -49,13 +49,25 @@ export interface BlockViewState {
   manual?: boolean;
   sort?: { key: string; dir: "asc" | "desc" }[];
   viewMode?: ViewMode;
+  /** "" for one flat list, otherwise "type" or "prop:<key>". */
+  groupBy?: string;
 }
 
 const VIEW_KEY = "hn.blockview.mode";
 const COLS_KEY = "hn.blockview.cols";
 const CHIP_COLS_KEY = "hn.blockview.chipcols";
+const GROUP_KEY = "hn.blockview.group";
 const pretty = (k: string) => k.replace(/_/g, " ");
 
+const readShut = (k: string): Record<string, boolean> => {
+  try {
+    const raw = localStorage.getItem(k);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && typeof v === "object" ? (v as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+};
 const readLS = (k: string) => {
   try {
     return localStorage.getItem(k);
@@ -240,6 +252,9 @@ export function useBlockView<T extends Viewable>(
     /** Offer dragging into place. Off where the caller doesn't render the list
      *  itself (a rollup's headings), since there'd be nothing to drag. */
     enableManual?: boolean;
+    /** Offer grouping. Off for the same reason: a caller that arranges the
+     *  items itself never calls renderList, so the headings would never appear. */
+    enableGroup?: boolean;
     scope?: string;
     manual?: { onMove: (activeId: string, overId: string) => void } | null;
     /** Inherit/persist sort + view selections (collection pages and embeds). */
@@ -266,6 +281,7 @@ export function useBlockView<T extends Viewable>(
   // page keeps its own), falling back to the shared key when no scope is given.
   const scopeSfx = opts.scope ? `.${opts.scope}` : "";
   const viewKey = VIEW_KEY + scopeSfx;
+  const groupKey = GROUP_KEY + scopeSfx;
   const vs = opts.viewState;
 
   const [levels, setLevels] = useState<SortLevel[]>(() => (vs?.initial?.sort as SortLevel[]) ?? []);
@@ -287,6 +303,9 @@ export function useBlockView<T extends Viewable>(
       return [];
     }
   });
+  const [groupBy, setGroupByState] = useState<string>(
+    () => vs?.initial?.groupBy ?? readLS(groupKey) ?? "",
+  );
   const [viewMode, setViewModeState] = useState<ViewMode>(() => {
     const iv = vs?.initial?.viewMode;
     if (iv === "block" || iv === "masonry" || iv === "chips") return iv;
@@ -306,12 +325,13 @@ export function useBlockView<T extends Viewable>(
     if (i.sort) setLevels(i.sort as SortLevel[]);
     if (i.manual !== undefined && manualAvailable) setManualModeState(i.manual);
     if (i.viewMode) setViewModeState(i.viewMode);
+    if (i.groupBy !== undefined) setGroupByState(i.groupBy);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initKey]);
 
   /** Report a selection change to the persistence hook (fork or canonical). */
   const reportVS = (patch: BlockViewState) =>
-    vs?.onChange?.({ manual: manualMode0(), sort: levels, viewMode, ...patch });
+    vs?.onChange?.({ manual: manualMode0(), sort: levels, viewMode, groupBy, ...patch });
   // manualMode isn't computed yet at definition time — thunk it.
   function manualMode0(): boolean {
     return manualModeState && manualAvailable;
@@ -341,6 +361,11 @@ export function useBlockView<T extends Viewable>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 
+  const setGroupBy = (g: string) => {
+    setGroupByState(g);
+    writeLS(groupKey, g);
+    reportVS({ groupBy: g });
+  };
   const setViewMode = (v: ViewMode) => {
     setViewModeState(v);
     writeLS(viewKey, v);
@@ -390,6 +415,39 @@ export function useBlockView<T extends Viewable>(
     [fields, mixedTypes],
   );
 
+  // Grouping is offered on the fields whose values name a category. A date or
+  // a paragraph gives one group per block, which is a list with headings.
+  const groupable = useMemo(
+    () =>
+      fields.filter((f) =>
+        ["status", "select", "boolean", "text", "number", "reference"].includes(f.type),
+      ),
+    [fields],
+  );
+  const groupsOffered = opts.enableGroup ?? true;
+  const groupField = groupBy.startsWith("prop:")
+    ? groupable.find((f) => f.key === groupBy.slice(5))
+    : undefined;
+  // Dropping the field a list was grouped by (a type edited elsewhere) leaves
+  // the selection naming nothing: fall back to one flat list rather than to a
+  // single group called "None".
+  const grouping = !groupsOffered ? "" : groupBy === "type" ? "type" : groupField ? "prop" : "";
+
+  // Which groups are shut, per scope and per grouping — a list grouped by
+  // status and later by project shouldn't inherit the other's closed headings.
+  // Shut rather than open, so a group nobody has touched starts open.
+  const openKey = `hn.bv.groups.${opts.scope ?? "x"}.${groupBy}`;
+  const [shutState, setShutState] = useState(() => ({ key: openKey, value: readShut(openKey) }));
+  const shut = shutState.key === openKey ? shutState.value : readShut(openKey);
+  const openGroups = {
+    isOpen: (k: string) => !shut[k],
+    toggle: (k: string) => {
+      const next = { ...shut, [k]: !shut[k] };
+      writeLS(openKey, JSON.stringify(next));
+      setShutState({ key: openKey, value: next });
+    },
+  };
+
   const sortActive = !manualMode && levels.length > 0;
   // What the list is ordered by, so it can be shown on whatever the list draws.
   // Sorting by something invisible is a list in an order you can't account for.
@@ -427,6 +485,43 @@ export function useBlockView<T extends Viewable>(
     });
     return copy;
   }, [items, levels, manualMode, externalManual, localOrder, typeById]);
+
+  /**
+   * The sorted list cut into groups. Order follows the field where it declares
+   * one — a status's own options, so a board reads Backlog → Doing → Done
+   * rather than alphabetically — and blanks always come last, since "not set"
+   * isn't a value you're looking for.
+   */
+  const groups = useMemo(() => {
+    if (!grouping || manualMode) return null;
+    const of = (it: T): { key: string; label: string } => {
+      if (grouping === "type") {
+        const name = typeName(it);
+        return { key: name, label: name || "No type" };
+      }
+      const f = groupField!;
+      const raw = it.properties[f.key];
+      const key = raw == null || raw === "" ? "" : String(raw);
+      return { key, label: key === "" ? `No ${f.label?.trim() || pretty(f.key)}` : fieldText(f, raw) || key };
+    };
+    const byKey = new Map<string, { key: string; label: string; items: T[] }>();
+    for (const it of sorted) {
+      const g = of(it);
+      const bucket = byKey.get(g.key) ?? { ...g, items: [] };
+      bucket.items.push(it);
+      byKey.set(g.key, bucket);
+    }
+    const declared = groupField?.options ?? null;
+    const rank = (k: string) => {
+      if (k === "") return Number.MAX_SAFE_INTEGER; // blanks last
+      const i = declared?.indexOf(k) ?? -1;
+      return i >= 0 ? i : Number.MAX_SAFE_INTEGER - 1;
+    };
+    return [...byKey.values()].sort((a, b) => {
+      const r = rank(a.key) - rank(b.key);
+      return r !== 0 ? r : a.label.localeCompare(b.label);
+    });
+  }, [grouping, groupField, manualMode, sorted, typeById]);
 
   const applyLevels = (next: SortLevel[]) => {
     setLevels(next);
@@ -512,6 +607,20 @@ export function useBlockView<T extends Viewable>(
         <span className="hint">Drag blocks into place</span>
       ) : (
         <>
+          {groupsOffered && (groupable.length > 0 || mixedTypes) && (
+            <span className="sort-level bv-group-ctl">
+              <span className="sort-label">group</span>
+              <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+                <option value="">None</option>
+                {mixedTypes && <option value="type">Type</option>}
+                {groupable.map((f) => (
+                  <option key={f.key} value={`prop:${f.key}`}>
+                    {f.label?.trim() || pretty(f.key)}
+                  </option>
+                ))}
+              </select>
+            </span>
+          )}
           {levels.map((lv, i) => (
             <span className="sort-level" key={i}>
               {i > 0 && <span className="sort-then">then</span>}
@@ -604,6 +713,36 @@ export function useBlockView<T extends Viewable>(
   );
 
   const renderList = (renderCard: (item: T, compact: boolean) => ReactNode): ReactNode => {
+    if (groups) {
+      return (
+        <div className="bv-groups">
+          {groups.map((g) => (
+            <section className="bv-group" key={`g:${g.key}`}>
+              <header className="bv-group-head">
+                <button
+                  className="icon-btn ru-twist"
+                  title={openGroups.isOpen(g.key) ? "Collapse" : "Expand"}
+                  onClick={() => openGroups.toggle(g.key)}
+                >
+                  {openGroups.isOpen(g.key) ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                </button>
+                <span className="bv-group-label">{g.label}</span>
+                <span className="ru-count">{g.items.length}</span>
+              </header>
+              {openGroups.isOpen(g.key) && <div className="bv-group-body">{renderItems(g.items, renderCard)}</div>}
+            </section>
+          ))}
+        </div>
+      );
+    }
+    return renderItems(sorted, renderCard);
+  };
+
+  const renderItems = (
+    list: T[],
+    renderCard: (item: T, compact: boolean) => ReactNode,
+  ): ReactNode => {
+    const sorted = list; // the group's slice, or the whole list
     const masonry = enableView && viewMode === "masonry";
     const chips = enableView && viewMode === "chips";
     if (manualMode) {

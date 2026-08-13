@@ -115,6 +115,7 @@ function Branch({
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
     enableManual: lastLevel,
+    enableGroup: lastLevel,
     viewState: viewFor(node.block.id),
   });
   const byId = new Map(kids.map((k) => [k.block.id, k]));
@@ -250,7 +251,13 @@ export function RollupView({
   const { sorted: sortedTops, toolbar: topBar, sortFields: topFields } = useBlockView(
     tops.map((n) => n.block),
     types,
-    { scope: `rollup.${collection.id}.top`, enableView: false, enableManual: false, viewState: viewFor("top") },
+    {
+      scope: `rollup.${collection.id}.top`,
+      enableView: false,
+      enableManual: false,
+      enableGroup: false,
+      viewState: viewFor("top"),
+    },
   );
   // Deep levels can go quiet for a moment while each level is fetched; say so
   // rather than showing an empty rollup that looks configured wrong.

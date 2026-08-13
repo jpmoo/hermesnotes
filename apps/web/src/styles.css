@@ -7407,3 +7407,7 @@ input.cv-add-input {
 .ru-body > .sort-bar-shell {
   margin-bottom: 8px;
 }
+.ru-cardtools {
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}

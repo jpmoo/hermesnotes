@@ -91,8 +91,19 @@ function valueFor(b: Viewable, key: SortKey, typeName?: (b: Viewable) => string)
   if (key === "created") return b.createdAt;
   if (key === "edited") return b.updatedAt;
   if (key === "type") return typeName?.(b) ?? "";
-  const v = b.properties[key.slice(5)];
-  return v == null ? "" : String(v);
+  // A span is two dates, and which one you mean depends on what you're doing —
+  // when work can start, or when it's due. Same "prop:<key>.start/.end" spelling
+  // the table's columns use.
+  const raw = key.slice(5);
+  const leg = raw.endsWith(".start") ? "start" : raw.endsWith(".end") ? "end" : null;
+  const v = leg
+    ? (b.properties[raw.slice(0, leg === "start" ? -6 : -4)] as { start?: unknown; end?: unknown } | null)?.[leg]
+    : b.properties[raw];
+  if (v == null) return "";
+  // A sort saved before the two ends existed names the span itself; read it as
+  // its start rather than as "[object Object]", which ordered nothing.
+  if (typeof v === "object") return String((v as { start?: unknown }).start ?? "");
+  return String(v);
 }
 
 /** A masonry card: compact preview. Clicking selects the block, whose full
@@ -334,10 +345,23 @@ export function useBlockView<T extends Viewable>(
       // Offered only where it would actually group anything — a list that's all
       // tasks has nothing to sort by type.
       ...(mixedTypes ? [{ key: "type" as SortKey, label: "Type" }] : []),
-      ...fields.map((f) => ({
-        key: `prop:${f.key}` as SortKey,
-        label: f.label?.trim() || pretty(f.key),
-      })),
+      ...fields.flatMap((f) => {
+        const base = f.label?.trim() || pretty(f.key);
+        // A whole span has no order of its own, so it offers its two ends
+        // rather than itself.
+        return f.type === "datespan"
+          ? [
+              {
+                key: `prop:${f.key}.start` as SortKey,
+                label: `${base} · ${f.startLabel?.trim() || "Start"}`,
+              },
+              {
+                key: `prop:${f.key}.end` as SortKey,
+                label: `${base} · ${f.endLabel?.trim() || "End"}`,
+              },
+            ]
+          : [{ key: `prop:${f.key}` as SortKey, label: base }];
+      }),
     ],
     [fields, mixedTypes],
   );

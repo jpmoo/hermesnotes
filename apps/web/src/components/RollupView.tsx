@@ -6,7 +6,7 @@ import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useRollup, walk, type RollupNode } from "../lib/rollup.ts";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
-import { BlockCard } from "./BlockCard.tsx";
+import { CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
 
 type Views = Record<string, BlockViewState>;
 
@@ -105,13 +105,20 @@ function Branch({
   // roots is the same project, and should look the same in both. Where the
   // children are headings rather than cards there's no view to choose and
   // nothing to drag — but there is still an order, so the sort stays.
-  const { sorted, toolbar, renderList } = useBlockView(kids.map((k) => k.block), types, {
+  const { sorted, toolbar, renderList, viewMode } = useBlockView(kids.map((k) => k.block), types, {
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
     enableManual: lastLevel,
     viewState: viewFor(node.block.id),
   });
   const byId = new Map(kids.map((k) => [k.block.id, k]));
+  // Cards collapse to a line, one at a time or all at once, as they do on All
+  // blocks and the Today page — a project with thirty tasks is unreadable as
+  // thirty full cards, and the whole point here is to see across the branches.
+  const cards = useCollapse(
+    kids.map((k) => k.block.id),
+    `rollup.${collectionId}.${node.block.id}`,
+  );
 
   return (
     <section className={`ru-branch ru-d${Math.min(depth, 3)}`}>
@@ -152,14 +159,23 @@ function Branch({
             <div className="hint ru-empty">Nothing at this level.</div>
           ) : lastLevel ? (
             <>
+              {viewMode !== "chips" && (
+                <div className="row ru-cardtools">
+                  <button className="ghost" onClick={cards.toggleAll}>
+                    {cards.allCollapsed ? "Expand cards" : "Collapse cards"}
+                  </button>
+                </div>
+              )}
               {toolbar}
               {renderList((b, compact) => (
-                <BlockCard
+                <CollapsibleCard
                   block={b}
                   type={b.blockTypeId ? typeById.get(b.blockTypeId) : undefined}
+                  compact={compact}
+                  collapsed={cards.isCollapsed(b.id)}
+                  onToggle={() => cards.toggle(b.id)}
                   onConflict={onChanged}
                   onDeleted={onChanged}
-                  compact={compact}
                 />
               ))}
             </>

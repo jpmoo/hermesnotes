@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, CopyPlus } from "lucide-react";
 import { useReducer, useRef, useState } from "react";
 import { api, type Collection, type BlockType } from "../api.ts";
 import { oneLineText, rawOneLine } from "../lib/display.ts";
@@ -8,6 +8,7 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { useRollup, walk, type RollupNode } from "../lib/rollup.ts";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldChips } from "./FieldChips.tsx";
 import type { ShownField } from "../lib/field-text.ts";
 
@@ -55,16 +56,29 @@ function useViews(collectionId: string, initial: unknown) {
       save();
     },
   });
+  /** Shut (or open) every group heading in the named lists at once. */
+  viewFor.allGroups = (keys: string[], open: boolean) => {
+    const next = { ...map.current };
+    for (const k of keys) next[k] = { ...next[k], groupsShut: open ? {} : { "*": true } };
+    map.current = next;
+    save();
+    bump();
+  };
   /** Change part of one list's arrangement, leaving the rest of it alone. */
   viewFor.patch = (key: string, part: BlockViewState) => {
     map.current = { ...map.current, [key]: { ...map.current[key], ...part } };
     save();
     bump();
   };
-  /** Give every list in `keys` the arrangement `from` is using. */
-  viewFor.copyTo = (from: string, keys: string[]) => {
-    const vs = map.current[from];
-    const next = { ...map.current };
+  /**
+   * Give every list in `keys` the arrangement `from` is using. The caller
+   * passes what that list is actually showing: a setting nobody has touched
+   * since the page loaded was never written down here, and copying the record
+   * would have handed over a blank where a column count should be.
+   */
+  viewFor.copyTo = (from: string, keys: string[], live?: BlockViewState) => {
+    const vs = live ?? map.current[from];
+    const next = { ...map.current, [from]: { ...map.current[from], ...vs } };
     for (const k of keys) {
       next[k] = vs ? { ...vs } : {};
       // Anything that list had decided for itself in this browser — which
@@ -160,11 +174,27 @@ function Branch({
   // roots is the same project, and should look the same in both. Where the
   // children are headings rather than cards there's no view to choose and
   // nothing to drag — but there is still an order, so the sort stays.
-  const { toolbar, renderList, viewMode, sortFields } = useBlockView(kids.map((k) => k.block), types, {
+  // Arranging one project's tasks and then doing it again for every other
+  // project is the same work over and over; hand it across instead. It asks
+  // first — the lists it overwrites are ones the reader can't see from here.
+  const others = (keysAtDepth[depth] ?? []).filter((k) => k !== node.block.id);
+  const [confirmCopy, setConfirmCopy] = useState(false);
+  const spread = others.length > 0 && (
+    <button
+      className="icon-btn bv-copy-btn"
+      title={`Copy these settings to the other ${others.length} at this level`}
+      onClick={() => setConfirmCopy(true)}
+    >
+      <CopyPlus size={15} />
+    </button>
+  );
+
+  const { toolbar, renderList, viewMode, sortFields, state } = useBlockView(kids.map((k) => k.block), types, {
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
     enableManual: false,
     viewState: viewFor(node.block.id),
+    toolbarExtra: spread,
   });
   const byId = new Map(kids.map((k) => [k.block.id, k]));
   // Cards collapse to a line, one at a time or all at once, as they do on All
@@ -173,19 +203,6 @@ function Branch({
   const cards = useCollapse(kids.map((k) => k.block.id), `rollup.${collectionId}.${node.block.id}`, {
     defaultCollapsed: viewFor(node.block.id).initial?.cardsCollapsed ?? false,
   });
-
-  // Arranging one project's tasks and then doing it again for every other
-  // project is the same work over and over; hand it across instead.
-  const others = (keysAtDepth[depth] ?? []).filter((k) => k !== node.block.id);
-  const spread = others.length > 0 && (
-    <button
-      className="ghost"
-      title="Give every list at this level this one's grouping, sort, view, columns and collapsed state"
-      onClick={() => viewFor.copyTo(node.block.id, others)}
-    >
-      Copy grouping/sorting/display settings to all {others.length} others at this level
-    </button>
-  );
 
   return (
     <section className={`ru-branch ru-d${Math.min(depth, 3)}`}>
@@ -227,8 +244,8 @@ function Branch({
             <div className="hint ru-empty">Nothing at this level.</div>
           ) : lastLevel ? (
             <>
-              <div className="row ru-cardtools">
-                {viewMode !== "chips" && (
+              {viewMode !== "chips" && (
+                <div className="row ru-cardtools">
                   <button
                     className="ghost"
                     onClick={() => {
@@ -238,9 +255,8 @@ function Branch({
                   >
                     {cards.allCollapsed ? "Expand blocks" : "Collapse blocks"}
                   </button>
-                )}
-                {spread}
-              </div>
+                </div>
+              )}
               {toolbar}
               {renderList((b, compact) => (
                 <CollapsibleCard
@@ -257,7 +273,6 @@ function Branch({
             </>
           ) : (
             <>
-              {spread && <div className="row ru-cardtools">{spread}</div>}
               {toolbar}
               {renderList((b) => {
                 const k = byId.get(b.id);
@@ -280,6 +295,20 @@ function Branch({
           )}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmCopy}
+        title={`Copy these settings to ${others.length} other list${others.length === 1 ? "" : "s"}?`}
+        message={
+          "Every list at this level takes this one's grouping, sort, view, column count and " +
+          "collapsed state, replacing whatever it was arranged with. There's no undo."
+        }
+        confirmLabel="Copy"
+        onCancel={() => setConfirmCopy(false)}
+        onConfirm={() => {
+          setConfirmCopy(false);
+          viewFor.copyTo(node.block.id, others, { ...state, cardsCollapsed: cards.allCollapsed });
+        }}
+      />
     </section>
   );
 }
@@ -375,6 +404,9 @@ export function RollupView({
             const open = !allOpen;
             setAllOpen(open);
             branches.setAll(paths, open);
+            // Collapsing a rollup means collapsing what's in it: the group
+            // headings inside each list go the same way as the branches.
+            viewFor.allGroups(["top", ...keysAtDepth.flat()], open);
           }}
         >
           {allOpen ? "Collapse all" : "Expand all"}

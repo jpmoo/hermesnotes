@@ -288,11 +288,17 @@ export function useBlockView<T extends Viewable>(
     manual?: { onMove: (activeId: string, overId: string) => void } | null;
     /** Inherit/persist sort + view selections (collection pages and embeds). */
     viewState?: { initial?: BlockViewState; onChange?: (vs: BlockViewState) => void };
+    /** Rendered at the end of the controls line (a rollup's copy button). */
+    toolbarExtra?: ReactNode;
   } = {},
 ): {
   sorted: T[];
   active: boolean;
   viewMode: ViewMode;
+  /** Everything this list has been arranged with, as it stands — for copying it
+   *  somewhere else. What's been recorded isn't the same thing: a setting the
+   *  reader never touched was never written down. */
+  state: BlockViewState;
   /** The properties the list is sorted by — show them on the cards. */
   sortFields: ShownField[];
   toolbar: ReactNode;
@@ -495,7 +501,9 @@ export function useBlockView<T extends Viewable>(
     () => vs?.initial?.groupsShut ?? readShut(openKey),
   );
   const openGroups = {
-    isOpen: (k: string) => !shut[k],
+    // "*" is what a collapse-everything command leaves behind; a heading the
+    // reader has touched since keeps its own answer.
+    isOpen: (k: string) => !(shut[k] ?? shut["*"]),
     toggle: (k: string) => {
       const next = { ...shut, [k]: !shut[k] };
       setShut(next);
@@ -761,6 +769,7 @@ export function useBlockView<T extends Viewable>(
           )}
         </span>
       )}
+      {opts.toolbarExtra}
     </div>
   );
 
@@ -898,6 +907,7 @@ export function useBlockView<T extends Viewable>(
     sorted,
     active: sortActive,
     viewMode: enableView ? viewMode : "block",
+    state: { manual: manualMode, sort: levels, viewMode, groupBy, columns, chipCols, groupsShut: shut },
     sortFields,
     toolbar,
     renderList,

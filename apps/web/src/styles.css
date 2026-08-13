@@ -7511,3 +7511,14 @@ input.cv-add-input {
 .ru-cardtools > :last-child:not(:first-child) {
   margin-left: auto;
 }
+/* The copy-to-siblings button ends the controls line, away from the controls
+   it copies — it acts on other lists, not on this one. */
+.bv-copy-btn {
+  margin-left: 8px;
+}
+.sort-bar .view-controls + .bv-copy-btn {
+  margin-left: 8px;
+}
+.sort-bar > .bv-copy-btn:not(.view-controls + *) {
+  margin-left: auto;
+}

@@ -7340,7 +7340,7 @@ input.cv-add-input {
   padding: 1px 8px;
 }
 .ru-body {
-  padding: 10px 0 0 22px;
+  padding: 10px 0 0 var(--nest-indent, 18px);
 }
 .ru-empty {
   padding: 2px 0 6px;
@@ -7358,10 +7358,7 @@ input.cv-add-input {
 .ru-d3 > .ru-head {
   border-bottom-style: dashed;
 }
-.ru-d2 > .ru-body,
-.ru-d3 > .ru-body {
-  padding-left: 16px;
-}
+
 
 /* The configuration panel: levels read as a stack of rules. */
 .ru-level {
@@ -7383,13 +7380,9 @@ input.cv-add-input {
   color: var(--text-muted);
 }
 
-/* Phones: the indent costs width that the cards need more. */
-.app-shell.mobile .ru-body {
-  padding-left: 10px;
-}
-.app-shell.mobile .ru-d2 > .ru-body,
-.app-shell.mobile .ru-d3 > .ru-body {
-  padding-left: 8px;
+/* Phones: the indent costs width the cards need more, but the step stays. */
+.app-shell.mobile {
+  --nest-indent: 10px;
 }
 
 /* The rollup's own toolbars sit tighter than a page's: there are several of
@@ -7471,6 +7464,9 @@ input.cv-add-input {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+.bv-group-body {
+  padding-left: var(--nest-indent, 18px);
 }
 .bv-group-head {
   display: flex;

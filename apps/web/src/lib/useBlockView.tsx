@@ -516,8 +516,9 @@ export function useBlockView<T extends Viewable>(
   /**
    * The sorted list cut into groups. Order follows the field where it declares
    * one — a status's own options, so a board reads Backlog → Doing → Done
-   * rather than alphabetically — and blanks always come last, since "not set"
-   * isn't a value you're looking for.
+   * rather than alphabetically — and the blanks come first: what nobody has
+   * filled in yet is usually the pile you're looking for, not the one to scroll
+   * past everything else to reach.
    */
   const groups = useMemo(() => {
     if (!grouping || manualMode) return null;
@@ -545,9 +546,9 @@ export function useBlockView<T extends Viewable>(
     }
     const declared = groupField?.options ?? null;
     const rank = (k: string) => {
-      if (k === "") return Number.MAX_SAFE_INTEGER; // blanks last
+      if (k === "") return -1; // blanks first
       const i = declared?.indexOf(k) ?? -1;
-      return i >= 0 ? i : Number.MAX_SAFE_INTEGER - 1;
+      return i >= 0 ? i : Number.MAX_SAFE_INTEGER;
     };
     return [...byKey.values()].sort((a, b) => {
       const r = rank(a.key) - rank(b.key);

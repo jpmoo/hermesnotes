@@ -800,6 +800,9 @@ export function defineTools(api: Api): ToolDef[] {
     document: boolean;
     matrix: boolean;
     table: boolean;
+    canvas: boolean;
+    calendar: boolean;
+    rollup: boolean;
     smart: boolean;
     semantic: boolean;
   }
@@ -819,7 +822,21 @@ export function defineTools(api: Api): ToolDef[] {
         h.kind === "today"
           ? `daily note ${h.date ?? ""}`.trim()
           : h.kind === "collection"
-            ? `${h.smart ? "smart " : ""}${h.document ? "spread" : h.matrix ? "matrix" : h.table ? "table" : "list"}`
+            ? `${h.smart ? "smart " : ""}${
+                h.document
+                  ? "spread"
+                  : h.matrix
+                    ? "matrix"
+                    : h.table
+                      ? "table"
+                      : h.canvas
+                        ? "canvas"
+                        : h.calendar
+                          ? "calendar"
+                          : h.rollup
+                            ? "rollup"
+                            : "list"
+              }`
             : (h.blockTypeId && typeName.get(h.blockTypeId)) || "block";
       return hits
         .map((h) => `- ${h.label} — ${kindOf(h)}${h.semantic ? " (semantic match)" : ""} [${h.id}]`)

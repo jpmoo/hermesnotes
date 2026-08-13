@@ -3932,11 +3932,14 @@ input.matrix-axis-y::placeholder {
   align-items: center;
   gap: 8px;
 }
+/* The toggle sizes to its two buttons. Stretching it to fill the row drew a
+   long empty box to the right of "Note" — the border spans, the buttons don't. */
 .sec-add-head .segmented {
-  flex: 1;
+  flex: none;
 }
 .sec-add-close {
   flex-shrink: 0;
+  margin-left: auto;
 }
 .sec-add-list {
   max-height: 220px;

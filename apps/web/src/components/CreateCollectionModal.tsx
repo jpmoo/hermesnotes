@@ -71,7 +71,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
 
         <div className="field">
           <span className="field-label">Kind</span>
-          <div className="segmented">
+          <div className="segmented wrap">
             <button className={`seg${kind === "list" ? " active" : ""}`} onClick={() => setKind("list")}>
               List
             </button>
@@ -128,7 +128,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
                       ? "An infinite field: drop blocks anywhere, connect them with lines, zoom and pan. Add manually and by query at once."
                       : kind === "calendar"
                         ? "A month / week / 3-day calendar. A saved query feeds it; cards land on the days their date or datespan fields point to."
-                        : "What's nested under what: a heading per project, say, with its tasks beneath it. Set the top level and what hangs off it in the right panel — it holds nothing itself."}
+                        : "What's nested under what: a heading per project, say, with its tasks beneath it. You set the top level, and what hangs off it, in the right panel."}
           </div>
         </div>
 
@@ -167,12 +167,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             Add blocks on the canvas itself: drop them manually, or build a query in the right
             panel and Apply to place the matches.
           </div>
-        ) : kind === "rollup" ? (
-          <div className="hint" style={{ marginBottom: 14 }}>
-            A rollup holds nothing of its own — it shows blocks where they already are. Choose the
-            top level and what hangs off it in the right panel once it opens.
-          </div>
-        ) : (
+        ) : kind === "rollup" ? null : (
         <div className="field">
           <span className="field-label">Membership</span>
           <div className="segmented">

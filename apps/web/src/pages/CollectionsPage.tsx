@@ -20,6 +20,7 @@ const KINDS = [
   { key: "table", label: "Tables" },
   { key: "canvas", label: "Canvases" },
   { key: "calendar", label: "Calendars" },
+  { key: "rollup", label: "Rollups" },
 ] as const;
 
 export function CollectionsPage() {

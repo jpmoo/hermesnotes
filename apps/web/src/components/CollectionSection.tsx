@@ -20,6 +20,7 @@ import { CalendarView } from "./CalendarView.tsx";
 import { CanvasView } from "./CanvasView.tsx";
 import { ListItem, type ListFormat } from "./ListItem.tsx";
 import { MatrixView } from "./MatrixView.tsx";
+import { RollupView } from "./RollupView.tsx";
 import { TableView } from "./TableView.tsx";
 
 type SetMembers = (fn: (members: Member[]) => Member[]) => void;
@@ -178,6 +179,9 @@ export function CollectionSection({
   host?: string;
 }) {
   const [state, setState] = useState<{ collection: Collection; members: Member[] } | null>(null);
+  // A rollup is built from the blocks' own references rather than from
+  // membership, so it rebuilds on a tick rather than on a reload.
+  const [rollupTick, setRollupTick] = useState(0);
   const { openBlock } = usePanels();
   // On a Today page, a smart collection's query counts its relative dates from
   // that page's day rather than the real one.
@@ -236,6 +240,13 @@ export function CollectionSection({
         </div>
       ) : kind === "calendar" ? (
         <CalendarView collection={state.collection} members={state.members} types={types} onChanged={load} />
+      ) : kind === "rollup" ? (
+        <RollupView
+          collection={state.collection}
+          types={types}
+          refreshTick={rollupTick}
+          onChanged={() => setRollupTick((t) => t + 1)}
+        />
       ) : kind === "canvas" ? (
         <div className="canvas-area">
           <CanvasView collection={state.collection} members={state.members} types={types} onChanged={load} />

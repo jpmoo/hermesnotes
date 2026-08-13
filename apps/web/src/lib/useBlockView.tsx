@@ -53,6 +53,15 @@ export interface BlockViewState {
   viewMode?: ViewMode;
   /** "" for one flat list, otherwise "type" or "prop:<key>". */
   groupBy?: string;
+  /** Masonry and chip column counts — part of how the list looks, so they
+   *  travel with the rest of it rather than staying on one browser. */
+  columns?: number;
+  chipCols?: number;
+  /** Which group headings are shut, by group value. */
+  groupsShut?: Record<string, boolean>;
+  /** Whether this list's cards are collapsed — the caller owns the per-card
+   *  state, but the intent belongs with the arrangement. */
+  cardsCollapsed?: boolean;
 }
 
 const VIEW_KEY = "hn.blockview.mode";
@@ -346,12 +355,25 @@ export function useBlockView<T extends Viewable>(
     if (i.manual !== undefined && manualAvailable) setManualModeState(i.manual);
     if (i.viewMode) setViewModeState(i.viewMode);
     if (i.groupBy !== undefined) setGroupByState(i.groupBy);
+    if (i.columns !== undefined) setColumnsState(clampCols(i.columns));
+    if (i.chipCols !== undefined) setChipColsState(clampChipCols(i.chipCols));
+    if (i.groupsShut !== undefined) setShut(i.groupsShut);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initKey]);
 
   /** Report a selection change to the persistence hook (fork or canonical). */
   const reportVS = (patch: BlockViewState) =>
-    vs?.onChange?.({ manual: manualMode0(), sort: levels, viewMode, groupBy, ...patch });
+    vs?.onChange?.({
+      manual: manualMode0(),
+      sort: levels,
+      viewMode,
+      groupBy,
+      columns,
+      chipCols,
+      groupsShut: shut,
+      cardsCollapsed: vs?.initial?.cardsCollapsed,
+      ...patch,
+    });
   // manualMode isn't computed yet at definition time — thunk it.
   function manualMode0(): boolean {
     return manualModeState && manualAvailable;
@@ -362,17 +384,20 @@ export function useBlockView<T extends Viewable>(
   const chipColsKey = (isMobile ? `${CHIP_COLS_KEY}.m` : CHIP_COLS_KEY) + scopeSfx;
   const clampCols = (n: number) =>
     isMobile ? Math.min(3, Math.max(1, n || 1)) : Math.min(4, Math.max(2, n || 3));
-  const [columns, setColumnsState] = useState<number>(() => clampCols(Number(readLS(colsKey))));
+  const [columns, setColumnsState] = useState<number>(() =>
+    clampCols(vs?.initial?.columns ?? Number(readLS(colsKey))),
+  );
   // Chips are compact, so they take a wider range; the grid stretches them to
   // fill the content width whatever the panels leave available.
   const clampChipCols = (n: number) => Math.min(10, Math.max(1, n || 4));
   const [chipCols, setChipColsState] = useState<number>(() =>
-    clampChipCols(Number(readLS(chipColsKey))),
+    clampChipCols(vs?.initial?.chipCols ?? Number(readLS(chipColsKey))),
   );
   const setChipCols = (n: number) => {
     const c = clampChipCols(n);
     setChipColsState(c);
     writeLS(chipColsKey, String(c));
+    reportVS({ chipCols: c });
   };
   // Re-read the device-appropriate column counts when crossing the breakpoint.
   useEffect(() => {
@@ -395,6 +420,7 @@ export function useBlockView<T extends Viewable>(
     const c = clampCols(n);
     setColumnsState(c);
     writeLS(colsKey, String(c));
+    reportVS({ columns: c });
   };
   const setManualMode = (on: boolean) => {
     setManualModeState(on);
@@ -460,18 +486,21 @@ export function useBlockView<T extends Viewable>(
   // single group called "None".
   const grouping = !groupsOffered ? "" : groupBy === "type" ? "type" : groupField ? "prop" : "";
 
-  // Which groups are shut, per scope and per grouping — a list grouped by
-  // status and later by project shouldn't inherit the other's closed headings.
-  // Shut rather than open, so a group nobody has touched starts open.
-  const openKey = `hn.bv.groups.${opts.scope ?? "x"}.${groupBy}`;
-  const [shutState, setShutState] = useState(() => ({ key: openKey, value: readShut(openKey) }));
-  const shut = shutState.key === openKey ? shutState.value : readShut(openKey);
+  // Which group headings are shut, by group value. Shut rather than open, so a
+  // heading nobody has touched starts open. Part of the arrangement, so it
+  // travels with it — and falls back to this browser for lists that keep no
+  // arrangement of their own.
+  const openKey = `hn.bv.groups.${opts.scope ?? "x"}`;
+  const [shut, setShut] = useState<Record<string, boolean>>(
+    () => vs?.initial?.groupsShut ?? readShut(openKey),
+  );
   const openGroups = {
     isOpen: (k: string) => !shut[k],
     toggle: (k: string) => {
       const next = { ...shut, [k]: !shut[k] };
+      setShut(next);
       writeLS(openKey, JSON.stringify(next));
-      setShutState({ key: openKey, value: next });
+      reportVS({ groupsShut: next });
     },
   };
 

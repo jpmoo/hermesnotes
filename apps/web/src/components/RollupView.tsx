@@ -13,6 +13,20 @@ import type { ShownField } from "../lib/field-text.ts";
 
 type Views = Record<string, BlockViewState>;
 
+/** Drop everything this browser remembers about one list. */
+function forgetLocal(scope: string) {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.endsWith(`.${scope}`)) doomed.push(k);
+    }
+    for (const k of doomed) localStorage.removeItem(k);
+  } catch {
+    /* no storage: nothing remembered, nothing to forget */
+  }
+}
+
 /**
  * Sort and view selections per list — one entry per heading, plus "top" for the
  * row of headings itself. Kept on the collection rather than in this browser,
@@ -41,11 +55,23 @@ function useViews(collectionId: string, initial: unknown) {
       save();
     },
   });
+  /** Change part of one list's arrangement, leaving the rest of it alone. */
+  viewFor.patch = (key: string, part: BlockViewState) => {
+    map.current = { ...map.current, [key]: { ...map.current[key], ...part } };
+    save();
+    bump();
+  };
   /** Give every list in `keys` the arrangement `from` is using. */
   viewFor.copyTo = (from: string, keys: string[]) => {
     const vs = map.current[from];
     const next = { ...map.current };
-    for (const k of keys) next[k] = vs ? { ...vs } : {};
+    for (const k of keys) {
+      next[k] = vs ? { ...vs } : {};
+      // Anything that list had decided for itself in this browser — which
+      // cards it had collapsed one at a time, its column count — would sit on
+      // top of what it's just been given. Clear it and let the copy govern.
+      forgetLocal(`rollup.${collectionId}.${k}`);
+    }
     map.current = next;
     save();
     bump();
@@ -144,10 +170,9 @@ function Branch({
   // Cards collapse to a line, one at a time or all at once, as they do on All
   // blocks and the Today page — a project with thirty tasks is unreadable as
   // thirty full cards, and the whole point here is to see across the branches.
-  const cards = useCollapse(
-    kids.map((k) => k.block.id),
-    `rollup.${collectionId}.${node.block.id}`,
-  );
+  const cards = useCollapse(kids.map((k) => k.block.id), `rollup.${collectionId}.${node.block.id}`, {
+    defaultCollapsed: viewFor(node.block.id).initial?.cardsCollapsed ?? false,
+  });
 
   // Arranging one project's tasks and then doing it again for every other
   // project is the same work over and over; hand it across instead.
@@ -155,10 +180,10 @@ function Branch({
   const spread = others.length > 0 && (
     <button
       className="ghost"
-      title="Give every list at this level the same grouping, sort and view"
+      title="Give every list at this level this one's grouping, sort, view, columns and collapsed state"
       onClick={() => viewFor.copyTo(node.block.id, others)}
     >
-      Use for all {others.length + 1} at this level
+      Copy grouping/sorting/display settings to all {others.length} others at this level
     </button>
   );
 
@@ -204,7 +229,13 @@ function Branch({
             <>
               <div className="row ru-cardtools">
                 {viewMode !== "chips" && (
-                  <button className="ghost" onClick={cards.toggleAll}>
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      cards.toggleAll();
+                      viewFor.patch(node.block.id, { cardsCollapsed: !cards.allCollapsed });
+                    }}
+                  >
                     {cards.allCollapsed ? "Expand blocks" : "Collapse blocks"}
                   </button>
                 )}

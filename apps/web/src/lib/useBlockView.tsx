@@ -405,10 +405,19 @@ export function useBlockView<T extends Viewable>(
     writeLS(chipColsKey, String(c));
     reportVS({ chipCols: c });
   };
-  // Re-read the device-appropriate column counts when crossing the breakpoint.
+  // Re-read the device-appropriate column counts when crossing the breakpoint —
+  // but only when actually crossing it. Every effect also runs on mount, so this
+  // one used to overwrite the count that had just been seeded from the saved
+  // arrangement with whatever this browser happened to remember, which is why a
+  // copied column count survived until the page was reloaded and no further.
+  const crossed = useRef(false);
   useEffect(() => {
-    setColumnsState(clampCols(Number(readLS(colsKey))));
-    setChipColsState(clampChipCols(Number(readLS(chipColsKey))));
+    if (!crossed.current) {
+      crossed.current = true;
+      return;
+    }
+    setColumnsState(clampCols(vs?.initial?.columns ?? Number(readLS(colsKey))));
+    setChipColsState(clampChipCols(vs?.initial?.chipCols ?? Number(readLS(chipColsKey))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 

@@ -7305,15 +7305,19 @@ input.cv-add-input {
 }
 .ru-branch {
   margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  /* The heading's corners are the region's corners. */
+  overflow: hidden;
 }
 .ru-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 10px 6px;
+  padding: 7px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 9px 9px 0 0;
+  background: var(--surface-2);
 }
 .ru-twist {
   flex: none;
@@ -7347,7 +7351,7 @@ button.ru-title:hover {
   padding: 1px 8px;
 }
 .ru-body {
-  padding: 10px 0 0 var(--nest-indent, 18px);
+  padding: 12px 12px 12px calc(12px + var(--nest-indent, 18px));
 }
 .ru-empty {
   padding: 2px 0 6px;
@@ -7360,11 +7364,7 @@ button.ru-title:hover {
   font-weight: 500;
   font-size: 13px;
 }
-.ru-d1 > .ru-head,
-.ru-d2 > .ru-head,
-.ru-d3 > .ru-head {
-  background: var(--surface-2);
-}
+
 
 
 /* The configuration panel: levels read as a stack of rules. */
@@ -7469,20 +7469,24 @@ button.ru-title:hover {
 .bv-groups {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+}
+.bv-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
 }
 .bv-group-body {
-  padding-left: var(--nest-indent, 18px);
+  padding: 10px 12px 12px calc(12px + var(--nest-indent, 18px));
 }
 .bv-group-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 3px 10px 5px;
+  padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  border-radius: 9px 9px 0 0;
-  background: var(--surface);
-  margin-bottom: 10px;
+  background: var(--surface-2);
 }
 .bv-group-label {
   flex: 1;

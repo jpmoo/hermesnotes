@@ -162,7 +162,8 @@ export function RollupPanel({
       <div className="panel-divider" />
       <div className="panel-h">Levels</div>
       <div className="hint" style={{ marginBottom: 6 }}>
-        Each level says what belongs under the one above it.
+        The top level is already showing — these say what goes beneath it. For projects and their
+        tasks that's one level: Task. The projects themselves need no level of their own.
       </div>
 
       {config.levels.map((lv, i) => {
@@ -171,7 +172,9 @@ export function RollupPanel({
         return (
           <div className="ru-level" key={i}>
             <div className="ru-level-head">
-              <span className="ru-level-n">Level {i + 1}</span>
+              <span className="ru-level-n">
+                {i === 0 ? "Under each heading" : "Then under each of those"}
+              </span>
               <span style={{ flex: 1 }} />
               <button className="icon-btn" title="Move up" onClick={() => moveLevel(i, -1)}>
                 <ChevronUp size={14} />

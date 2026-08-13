@@ -174,7 +174,11 @@ export function RollupView({
   refreshTick: number;
   onChanged: () => void;
 }) {
-  const { config, tree, error } = useRollup(collection.properties.rollup, refreshTick);
+  const { config, tree, problems, error } = useRollup(
+    collection.properties.rollup,
+    collection.id,
+    refreshTick,
+  );
   const branches = useBranches(collection.id);
   const [allOpen, setAllOpen] = useState(true);
   // Deep levels can go quiet for a moment while each level is fetched; say so
@@ -192,11 +196,25 @@ export function RollupView({
   }
   if (error) return <div className="hint">{error}</div>;
   if (loading) return <div className="hint">Building…</div>;
-  if (tree.length === 0) return <div className="hint">Nothing at the top level yet.</div>;
+  // Whatever the top level couldn't give us, said plainly — an empty list, a
+  // deleted item, a request that failed — rather than one flat "nothing".
+  const notes = problems.length > 0 && (
+    <div className="ru-problems">
+      {problems.map((p, i) => (
+        <div className="hint" key={i}>
+          {p}
+        </div>
+      ))}
+    </div>
+  );
+  if (tree.length === 0) {
+    return <div>{notes || <div className="hint">Nothing at the top level yet.</div>}</div>;
+  }
 
   const paths = walk(tree).map((n) => n.path);
   return (
     <div className="ru-view">
+      {notes}
       <div className="row ru-tools">
         <button
           className="ghost"

@@ -1,6 +1,6 @@
 import { normalizeRollup, type RollupConfig, type RollupLevel } from "@hermes/shared";
 import { useEffect, useRef, useState } from "react";
-import { api, type Block, type Collection, type Member } from "../api.ts";
+import { ApiError, api, describeRequestFailure, type Block, type Collection, type Member } from "../api.ts";
 
 /**
  * Resolving a rollup: the tree of blocks under a set of roots, one level at a
@@ -78,32 +78,53 @@ async function childrenOf(parents: string[], level: RollupLevel): Promise<Map<st
 
 /**
  * The top row: a collection root contributes each of its members as a bucket,
- * a plain block is a bucket on its own. A root that has since been deleted is
- * simply absent — a rollup naming something that's gone shows the rest rather
- * than failing.
+ * a plain block is a bucket on its own.
+ *
+ * A root that yields nothing says why. Silently dropping it left the page
+ * reading "nothing at the top level" over a collection that plainly has
+ * members, with no way to tell an empty list from a deleted one.
  */
-async function loadRoots(roots: string[]): Promise<Block[]> {
+async function loadRoots(
+  roots: string[],
+  selfId: string,
+): Promise<{ tops: Block[]; problems: string[] }> {
   const out: Block[] = [];
+  const problems: string[] = [];
   for (const id of roots) {
+    if (id === selfId) {
+      problems.push("A rollup can't be its own top level.");
+      continue;
+    }
     try {
       const data = await api.get<{ collection: Collection; members: Member[] }>(`/collections/${id}`);
+      const title = String(data.collection.properties.title ?? "That collection");
+      if (data.members.length === 0) problems.push(`"${title}" has no members yet.`);
       out.push(...data.members.map(memberAsBlock));
-    } catch {
-      try {
-        out.push(await api.get<Block>(`/blocks/${id}`));
-      } catch {
-        /* gone — leave it out */
+      continue;
+    } catch (err) {
+      // Not a collection is expected — anything else is worth repeating.
+      if (!(err instanceof ApiError) || err.status !== 404) {
+        problems.push(`Couldn't read a top-level item — ${describeRequestFailure(err).message}`);
+        continue;
       }
+    }
+    try {
+      out.push(await api.get<Block>(`/blocks/${id}`));
+    } catch {
+      problems.push("A top-level item is no longer there — remove it below.");
     }
   }
   // The same block reached through two roots is still one bucket.
   const seen = new Set<string>();
-  return out.filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true)));
+  return { tops: out.filter((b) => (seen.has(b.id) ? false : (seen.add(b.id), true))), problems };
 }
 
 /** Build the whole tree, breadth-first, one request per level. */
-export async function resolveRollup(config: RollupConfig): Promise<RollupNode[]> {
-  const tops = await loadRoots(config.roots);
+export async function resolveRollup(
+  config: RollupConfig,
+  selfId: string,
+): Promise<{ nodes: RollupNode[]; problems: string[] }> {
+  const { tops, problems } = await loadRoots(config.roots, selfId);
   const nodes: RollupNode[] = tops.map((b) => ({ block: b, path: b.id, depth: 0, children: [] }));
   let frontier = nodes;
   for (let depth = 0; depth < config.levels.length && frontier.length > 0; depth++) {
@@ -127,14 +148,15 @@ export async function resolveRollup(config: RollupConfig): Promise<RollupNode[]>
     }
     frontier = next;
   }
-  return nodes;
+  return { nodes, problems };
 }
 
 /** Load and keep a rollup's tree, re-resolving when its configuration changes. */
-export function useRollup(configValue: unknown, nonce: number) {
+export function useRollup(configValue: unknown, selfId: string, nonce: number) {
   const config = normalizeRollup(configValue);
   const key = JSON.stringify(config);
   const [tree, setTree] = useState<RollupNode[] | null>(null);
+  const [problems, setProblems] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Only the newest resolve may write: configuration changes fast while it's
   // being edited, and a slow earlier answer must not land on top of a later one.
@@ -147,17 +169,21 @@ export function useRollup(configValue: unknown, nonce: number) {
       setTree([]);
       return;
     }
-    void resolveRollup(config)
-      .then((t) => {
-        if (run.current === mine) setTree(t);
+    void resolveRollup(config, selfId)
+      .then((r) => {
+        if (run.current !== mine) return;
+        setTree(r.nodes);
+        setProblems(r.problems);
       })
-      .catch(() => {
-        if (run.current === mine) setError("Couldn't build this rollup.");
+      .catch((err: unknown) => {
+        if (run.current === mine) {
+          setError(`Couldn't build this rollup — ${describeRequestFailure(err).message}`);
+        }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, nonce]);
 
-  return { config, tree, error };
+  return { config, tree, problems, error };
 }
 
 /** Every node in a tree, flattened — for counting and expand-all. */

@@ -71,7 +71,7 @@ export function MentionMenu({
             masonry: "layout-grid",
             canvas: "workflow",
             calendar: "calendar-days",
-            rollup: "list-tree",
+            rollup: "scroll",
           };
           opts = rows
             .filter((r) => r.blockTypeId !== personType?.id)

@@ -27,7 +27,7 @@ const ICON_BY_KIND: Record<string, string> = {
   masonry: "layout-grid",
   canvas: "workflow",
   calendar: "calendar-days",
-  rollup: "list-tree",
+  rollup: "scroll",
 };
 
 /** Embed a collection by its own title + description (design doc §4). */

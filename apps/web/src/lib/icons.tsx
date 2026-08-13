@@ -9,7 +9,7 @@ import {
   FileText,
   Flag,
   ListFilter,
-  ListTree,
+  Scroll,
   Folder,
   Grid3x3,
   Heart,
@@ -48,7 +48,7 @@ const CURATED: Record<string, LucideIcon> = {
   "layout-grid": LayoutGrid,
   "grid-3x3": Grid3x3,
   list: List,
-  "list-tree": ListTree,
+  scroll: Scroll,
   "file-text": FileText,
   type: Type,
   tag: Tag,
@@ -158,7 +158,7 @@ export function CollectionIcon({
   color?: string | null;
 }) {
   const Icon = rollup
-    ? ListTree
+    ? Scroll
     : calendar
     ? CalendarDays
     : canvas

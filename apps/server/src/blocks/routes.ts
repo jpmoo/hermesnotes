@@ -737,6 +737,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     // without a named field every property counts, which is what "connected to
     // it, however you connected it" means.
     const keyFilter = refKey ? sql`e.key = ${refKey}` : sql`TRUE`;
+    // The parents travel as one json parameter rather than an array one: it
+    // binds as plain text, so there's no array type for the driver and the
+    // planner to agree about on the way in.
+    const parentSet = sql`(SELECT jsonb_array_elements_text(${JSON.stringify(parents)}::jsonb))`;
     const pointing = await db
       .select(cols)
       .from(blocks)
@@ -749,9 +753,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
             SELECT 1 FROM jsonb_each(${blocks.properties}) e
             WHERE ${keyFilter}
               AND (
-                (jsonb_typeof(e.value) = 'string' AND (e.value #>> '{}') = ANY(${parents}))
+                (jsonb_typeof(e.value) = 'string' AND (e.value #>> '{}') = ANY${parentSet})
                 OR (jsonb_typeof(e.value) = 'array' AND EXISTS (
-                  SELECT 1 FROM jsonb_array_elements_text(e.value) x WHERE x = ANY(${parents})
+                  SELECT 1 FROM jsonb_array_elements_text(e.value) AS x(v)
+                  WHERE x.v = ANY${parentSet}
                 ))
               )
           )`,

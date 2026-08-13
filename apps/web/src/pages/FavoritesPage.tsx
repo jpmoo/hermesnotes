@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, SlidersHorizontal, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, SlidersHorizontal, Star } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
@@ -175,7 +175,9 @@ export function FavoritesPage() {
     );
   };
 
-  const { toolbar, renderList, viewMode } = useBlockView(plain, types, { scope: "favorites" });
+  const { toolbar, renderList, viewMode, sortFields } = useBlockView(plain, types, {
+    scope: "favorites",
+  });
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const allCollapsed = plain.length > 0 && plain.every((b) => collapsed.has(b.id));
@@ -220,7 +222,7 @@ export function FavoritesPage() {
                 >
                   <SlidersHorizontal size={14} />
                   <span>Sort &amp; view</span>
-                  {stripToolsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                  {stripToolsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                 </button>
               )}
               {(!isMobile || stripToolsOpen) && (
@@ -388,11 +390,11 @@ export function FavoritesPage() {
                   toggleCard(b.id);
                 }}
               >
-                {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                {col ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               </button>
               {col ? (
                 // Masonry keeps a small banner slice; block view is one line.
-                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
+                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} fields={sortFields} />
               ) : (
                 <BlockCard
                   block={b}

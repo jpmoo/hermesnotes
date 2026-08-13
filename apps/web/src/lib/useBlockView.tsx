@@ -16,10 +16,12 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FieldDef } from "@hermes/shared";
-import { ChevronDown, ChevronUp, GripVertical, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText } from "./display.ts";
+import { shownFields, type ShownField } from "./field-text.ts";
+import { FieldChips } from "../components/FieldChips.tsx";
 import { StatusIcon } from "../components/StatusIcon.tsx";
 import { usePanels } from "./right-panel.tsx";
 import { useIsMobile } from "./useIsMobile.ts";
@@ -122,7 +124,17 @@ function MasonryCard({ blockId, render }: { blockId: string; render: (compact: b
  * the block into the info panel — or opens it as a page on a phone; the status
  * glyph stays interactive. A div (not a button) so the status button isn't
  * nested inside another button. */
-function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | undefined; grip?: ReactNode }) {
+function BlockChip({
+  item,
+  type,
+  grip,
+  fields = [],
+}: {
+  item: Viewable;
+  type: BlockType | undefined;
+  grip?: ReactNode;
+  fields?: ShownField[];
+}) {
   const { selectOrOpen } = usePanels();
   const text = oneLineText(item.properties, item.content);
   return (
@@ -143,12 +155,21 @@ function BlockChip({ item, type, grip }: { item: Viewable; type: BlockType | und
       {grip}
       <StatusIcon block={item} type={type} size={15} className="bv-chip-status" />
       <span className="bv-chip-text">{text || <span className="li-empty">Empty</span>}</span>
+      <FieldChips fields={fields} properties={item.properties} compact />
     </div>
   );
 }
 
 /** A draggable chip in manual mode: grip first, then the chip body. */
-function ManualChip({ item, type }: { item: Viewable; type: BlockType | undefined }) {
+function ManualChip({
+  item,
+  type,
+  fields,
+}: {
+  item: Viewable;
+  type: BlockType | undefined;
+  fields: ShownField[];
+}) {
   const s = useSortable({ id: item.id });
   const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
@@ -156,6 +177,7 @@ function ManualChip({ item, type }: { item: Viewable; type: BlockType | undefine
       <BlockChip
         item={item}
         type={type}
+        fields={fields}
         grip={
           <span
             className="drag-handle bv-chip-grip"
@@ -227,6 +249,8 @@ export function useBlockView<T extends Viewable>(
   sorted: T[];
   active: boolean;
   viewMode: ViewMode;
+  /** The properties the list is sorted by — show them on the cards. */
+  sortFields: ShownField[];
   toolbar: ReactNode;
   renderList: (renderCard: (item: T, compact: boolean) => ReactNode) => ReactNode;
 } {
@@ -367,6 +391,12 @@ export function useBlockView<T extends Viewable>(
   );
 
   const sortActive = !manualMode && levels.length > 0;
+  // What the list is ordered by, so it can be shown on whatever the list draws.
+  // Sorting by something invisible is a list in an order you can't account for.
+  const sortFields = useMemo(
+    () => (manualMode ? [] : shownFields(levels, fields)),
+    [levels, fields, manualMode],
+  );
   const sorted = useMemo(() => {
     if (manualMode) {
       if (externalManual) return items; // caller controls order
@@ -566,7 +596,7 @@ export function useBlockView<T extends Viewable>(
         >
           <SlidersHorizontal size={14} />
           <span>Sort &amp; view</span>
-          {toolsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          {toolsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </button>
       )}
       {(!isMobile || toolsOpen) && sortBar}
@@ -586,7 +616,12 @@ export function useBlockView<T extends Viewable>(
             {chips ? (
               <div className="bv-chips" style={{ gridTemplateColumns: `repeat(${chipCols}, minmax(0, 1fr))` }}>
                 {sorted.map((it) => (
-                  <ManualChip key={it.id} item={it} type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined} />
+                  <ManualChip
+                    key={it.id}
+                    item={it}
+                    type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined}
+                    fields={sortFields}
+                  />
                 ))}
               </div>
             ) : masonry ? (
@@ -614,7 +649,12 @@ export function useBlockView<T extends Viewable>(
       return (
         <div className="bv-chips" style={{ gridTemplateColumns: `repeat(${chipCols}, minmax(0, 1fr))` }}>
           {sorted.map((it) => (
-            <BlockChip key={it.id} item={it} type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined} />
+            <BlockChip
+              key={it.id}
+              item={it}
+              type={it.blockTypeId ? typeById.get(it.blockTypeId) : undefined}
+              fields={sortFields}
+            />
           ))}
         </div>
       );
@@ -646,5 +686,12 @@ export function useBlockView<T extends Viewable>(
     );
   };
 
-  return { sorted, active: sortActive, viewMode: enableView ? viewMode : "block", toolbar, renderList };
+  return {
+    sorted,
+    active: sortActive,
+    viewMode: enableView ? viewMode : "block",
+    sortFields,
+    toolbar,
+    renderList,
+  };
 }

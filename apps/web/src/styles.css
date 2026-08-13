@@ -7411,3 +7411,58 @@ input.cv-add-input {
   justify-content: flex-end;
   margin-bottom: 4px;
 }
+
+/* ── The properties a list is sorted by, shown on its blocks ───── */
+/* A collapsed card gives its title and nothing else, and a chip even less, so
+   sorting by a property put things in an order with nothing on screen to
+   account for it. These carry the value that decided the order. */
+.fld-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.fld-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fld-chip-label {
+  color: var(--text-faint);
+}
+.fld-chip-value {
+  color: var(--text-muted);
+}
+/* In the chips view there's one line and no room to name anything: the value
+   sits at the end, plain, and gives way to the title when space runs out. */
+.fld-chips.compact {
+  flex: none;
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+.fld-chips.compact .fld-chip {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 11px;
+}
+/* The collapsed row is a single line: the chips ride at its end. */
+.blk-collapsed .fld-chips {
+  flex: none;
+  margin-left: auto;
+  flex-wrap: nowrap;
+}
+/* On a branch heading the chips sit between the title and the count. */
+.ru-head .fld-chips {
+  flex: none;
+}

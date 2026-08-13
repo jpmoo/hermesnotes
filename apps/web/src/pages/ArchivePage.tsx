@@ -1,5 +1,5 @@
 import type { FilterGroup } from "@hermes/shared";
-import { Archive, ChevronDown, ChevronUp, Search, Trash2, X } from "lucide-react";
+import { Archive, ChevronDown, ChevronRight, Search, Trash2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType, type Collection, type Settings } from "../api.ts";
@@ -118,7 +118,9 @@ export function ArchivePage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter, archived: true }).then(setBlocks);
 
-  const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "archive" });
+  const { toolbar, renderList, viewMode, sortFields } = useBlockView(blocks, types, {
+    scope: "archive",
+  });
 
   const { collapsed, toggle: toggleCard, allCollapsed, toggleAll } = useCollapse(
     blocks.map((b) => b.id),
@@ -241,10 +243,10 @@ export function ArchivePage() {
                   toggleCard(b.id);
                 }}
               >
-                {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                {col ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               </button>
               {col ? (
-                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
+                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} fields={sortFields} />
               ) : (
                 <BlockCard
                   block={b}

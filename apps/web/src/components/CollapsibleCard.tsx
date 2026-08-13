@@ -1,8 +1,9 @@
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { Block, BlockType } from "../api.ts";
 import { BlockCard } from "./BlockCard.tsx";
 import { CollapsedRow } from "./CollapsedRow.tsx";
+import type { ShownField } from "../lib/field-text.ts";
 
 /**
  * Per-list collapse state: each card's collapsed flag, with an all-toggle. When
@@ -64,11 +65,14 @@ export function CollapsibleCard({
   onToggle,
   onConflict,
   onDeleted,
+  fields = [],
 }: {
   block: Block;
   type: BlockType | undefined;
   compact: boolean;
   collapsed: boolean;
+  /** Properties the list is sorted by, for the collapsed form to show. */
+  fields?: ShownField[];
   onToggle: () => void;
   onConflict: () => void;
   onDeleted: (id: string) => void;
@@ -84,10 +88,10 @@ export function CollapsibleCard({
           onToggle();
         }}
       >
-        {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+        {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
       </button>
       {collapsed ? (
-        <CollapsedRow block={block} type={type} />
+        <CollapsedRow block={block} type={type} fields={fields} />
       ) : (
         <BlockCard
           block={block}

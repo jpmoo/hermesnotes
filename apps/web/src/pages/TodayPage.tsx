@@ -6,6 +6,7 @@ import { Link, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsibleCard, useCollapse } from "../components/CollapsibleCard.tsx";
+import type { ShownField } from "../lib/field-text.ts";
 import { CollectionSection } from "../components/CollectionSection.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TextBlockEditor } from "../components/TextBlockEditor.tsx";
@@ -253,7 +254,7 @@ export function TodayPage() {
     defaultCollapsed: true,
   });
   const cardWith =
-    (col: ReturnType<typeof useCollapse>) => (b: Block, compact: boolean) =>
+    (col: ReturnType<typeof useCollapse>, fields: ShownField[]) => (b: Block, compact: boolean) =>
       // A collection isn't editable as a card — it's a place. Show it as a row
       // that opens it, rather than as a text editor over its properties.
       b.collectionKind ? (
@@ -267,6 +268,7 @@ export function TodayPage() {
           onToggle={() => col.toggle(b.id)}
           onConflict={load}
           onDeleted={() => void load()}
+          fields={fields}
         />
       );
 
@@ -323,7 +325,7 @@ export function TodayPage() {
                     </button>
                   )}
                 </div>
-                {relevantView.renderList(cardWith(relevantCollapse))}
+                {relevantView.renderList(cardWith(relevantCollapse, relevantView.sortFields))}
               </>
             )}
           </section>
@@ -344,7 +346,7 @@ export function TodayPage() {
                     </button>
                   )}
                 </div>
-                {activityView.renderList(cardWith(activityCollapse))}
+                {activityView.renderList(cardWith(activityCollapse, activityView.sortFields))}
               </>
             )}
           </section>

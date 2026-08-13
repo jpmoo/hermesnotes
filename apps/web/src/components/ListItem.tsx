@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ChevronDown, ChevronUp, GripVertical, X } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type Block, type BlockType, type Member } from "../api.ts";
 import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
@@ -310,7 +310,7 @@ export function ListItem({
               toggleItem();
             }}
           >
-            {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
           </button>
         )}
         {!readonly && (

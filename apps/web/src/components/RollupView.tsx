@@ -7,6 +7,8 @@ import { usePanels } from "../lib/right-panel.tsx";
 import { useRollup, walk, type RollupNode } from "../lib/rollup.ts";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
+import { FieldChips } from "./FieldChips.tsx";
+import type { ShownField } from "../lib/field-text.ts";
 
 type Views = Record<string, BlockViewState>;
 
@@ -78,6 +80,7 @@ function Branch({
   levels,
   branches,
   viewFor,
+  headFields,
   onChanged,
 }: {
   node: RollupNode;
@@ -88,6 +91,9 @@ function Branch({
   levels: number;
   branches: ReturnType<typeof useBranches>;
   viewFor: ReturnType<typeof useViews>;
+  /** What the list this heading belongs to is sorted by — shown on the heading,
+   *  since a heading is an item in that list like any other. */
+  headFields: ShownField[];
   onChanged: () => void;
 }) {
   const { selectOrOpen } = usePanels();
@@ -105,7 +111,7 @@ function Branch({
   // roots is the same project, and should look the same in both. Where the
   // children are headings rather than cards there's no view to choose and
   // nothing to drag — but there is still an order, so the sort stays.
-  const { sorted, toolbar, renderList, viewMode } = useBlockView(kids.map((k) => k.block), types, {
+  const { sorted, toolbar, renderList, viewMode, sortFields } = useBlockView(kids.map((k) => k.block), types, {
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
     enableManual: lastLevel,
@@ -150,6 +156,7 @@ function Branch({
         <button className="ru-title" onClick={() => selectOrOpen(node.block.id)} title={label}>
           {label}
         </button>
+        <FieldChips fields={headFields} properties={node.block.properties} />
         <span className="ru-count">{kids.length}</span>
       </header>
 
@@ -176,6 +183,7 @@ function Branch({
                   onToggle={() => cards.toggle(b.id)}
                   onConflict={onChanged}
                   onDeleted={onChanged}
+                  fields={sortFields}
                 />
               ))}
             </>
@@ -194,6 +202,7 @@ function Branch({
                     levels={levels}
                     branches={branches}
                     viewFor={viewFor}
+                    headFields={sortFields}
                     onChanged={onChanged}
                   />
                 ) : null;
@@ -238,7 +247,7 @@ export function RollupView({
   // The top row is a list like any other, so it sorts like one — by title, by
   // when it was made, by a property the headings share, by type.
   const tops = tree ?? [];
-  const { sorted: sortedTops, toolbar: topBar } = useBlockView(
+  const { sorted: sortedTops, toolbar: topBar, sortFields: topFields } = useBlockView(
     tops.map((n) => n.block),
     types,
     { scope: `rollup.${collection.id}.top`, enableView: false, enableManual: false, viewState: viewFor("top") },
@@ -308,6 +317,7 @@ export function RollupView({
             levels={config.levels.length}
             branches={branches}
             viewFor={viewFor}
+            headFields={topFields}
             onChanged={onChanged}
           />
         ) : null;

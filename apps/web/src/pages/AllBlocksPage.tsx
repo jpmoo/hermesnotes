@@ -1,5 +1,5 @@
 import type { FilterGroup } from "@hermes/shared";
-import { ChevronDown, ChevronUp, FolderPlus, Layers, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderPlus, Layers, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type Block, type BlockType, type Settings } from "../api.ts";
@@ -87,7 +87,9 @@ export function AllBlocksPage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter }).then(setBlocks);
 
-  const { toolbar, renderList, viewMode } = useBlockView(blocks, types, { scope: "allblocks" });
+  const { toolbar, renderList, viewMode, sortFields } = useBlockView(blocks, types, {
+    scope: "allblocks",
+  });
 
   // Per-card collapse (block view only; masonry cards are already compact),
   // persisted so the page keeps its state across navigation and reloads.
@@ -167,11 +169,11 @@ export function AllBlocksPage() {
                   toggleCard(b.id);
                 }}
               >
-                {col ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+                {col ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               </button>
               {col ? (
                 // Masonry keeps a small banner slice; block view is one line.
-                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} />
+                <CollapsedRow block={b} type={typeById.get(b.blockTypeId)} fields={sortFields} />
               ) : (
                 <BlockCard
                   block={b}

@@ -6,6 +6,8 @@ import { flattenMentions, oneLineText } from "../lib/display.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { Banner, type BannerValue } from "./Banner.tsx";
+import { FieldChips } from "./FieldChips.tsx";
+import type { ShownField } from "../lib/field-text.ts";
 
 /** A collapsed block in list (block) view: icon + title on one line. Clicking
  * the row selects it into the info panel; a typed block's status icon stays
@@ -13,9 +15,12 @@ import { Banner, type BannerValue } from "./Banner.tsx";
 export function CollapsedRow({
   block,
   type,
+  fields = [],
 }: {
   block: Block;
   type: BlockType | undefined;
+  /** Properties the list is sorted by — shown so the order can be read. */
+  fields?: ShownField[];
 }) {
   const { selectOrOpen } = usePanels();
   const isText = !type || type.isText;
@@ -73,6 +78,7 @@ export function CollapsedRow({
     <div className="blk-collapsed" onClick={() => selectOrOpen(block.id)}>
       {icon}
       <span className="blk-collapsed-title">{oneLineText(props, block.content) || "Untitled"}</span>
+      <FieldChips fields={fields} properties={props} />
     </div>
   );
   // Uniform collapsed card in every view: with a banner → slice on top, title

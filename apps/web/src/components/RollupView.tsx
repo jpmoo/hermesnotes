@@ -1,12 +1,36 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
-import type { Collection, BlockType } from "../api.ts";
+import { useRef, useState } from "react";
+import { api, type Collection, type BlockType } from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useRollup, walk, type RollupNode } from "../lib/rollup.ts";
-import { useBlockView } from "../lib/useBlockView.tsx";
+import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { BlockCard } from "./BlockCard.tsx";
+
+type Views = Record<string, BlockViewState>;
+
+/**
+ * Sort and view selections per list — one entry per heading, plus "top" for the
+ * row of headings itself. Kept on the collection rather than in this browser,
+ * because how a rollup is arranged is part of the rollup.
+ */
+function useViews(collectionId: string, initial: unknown) {
+  const map = useRef<Views>(
+    initial && typeof initial === "object" ? ({ ...(initial as Views) }) : {},
+  );
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  return (key: string) => ({
+    initial: map.current[key],
+    onChange: (vs: BlockViewState) => {
+      map.current = { ...map.current, [key]: vs };
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        void api.patch(`/collections/${collectionId}`, { rollup_views: map.current });
+      }, 600);
+    },
+  });
+}
 
 /** Open/closed per branch, remembered per rollup so a page reload keeps its shape. */
 function useBranches(collectionId: string) {
@@ -53,6 +77,7 @@ function Branch({
   depth,
   levels,
   branches,
+  viewFor,
   onChanged,
 }: {
   node: RollupNode;
@@ -62,6 +87,7 @@ function Branch({
   /** How many levels the rollup has, so the deepest one renders as cards. */
   levels: number;
   branches: ReturnType<typeof useBranches>;
+  viewFor: ReturnType<typeof useViews>;
   onChanged: () => void;
 }) {
   const { selectOrOpen } = usePanels();
@@ -76,12 +102,16 @@ function Branch({
   const lastLevel = depth + 1 >= levels;
 
   // Scoped to the block, not the branch: the same project reached from two
-  // roots is the same project, and should look the same in both.
-  const { toolbar, renderList } = useBlockView(
-    kids.map((k) => k.block),
-    types,
-    { scope: `rollup.${collectionId}.${node.block.id}` },
-  );
+  // roots is the same project, and should look the same in both. Where the
+  // children are headings rather than cards there's no view to choose and
+  // nothing to drag — but there is still an order, so the sort stays.
+  const { sorted, toolbar, renderList } = useBlockView(kids.map((k) => k.block), types, {
+    scope: `rollup.${collectionId}.${node.block.id}`,
+    enableView: lastLevel,
+    enableManual: lastLevel,
+    viewState: viewFor(node.block.id),
+  });
+  const byId = new Map(kids.map((k) => [k.block.id, k]));
 
   return (
     <section className={`ru-branch ru-d${Math.min(depth, 3)}`}>
@@ -134,18 +164,25 @@ function Branch({
               ))}
             </>
           ) : (
-            kids.map((k) => (
-              <Branch
-                key={k.path}
-                node={k}
-                types={types}
-                collectionId={collectionId}
-                depth={depth + 1}
-                levels={levels}
-                branches={branches}
-                onChanged={onChanged}
-              />
-            ))
+            <>
+              {toolbar}
+              {sorted.map((b) => {
+                const k = byId.get(b.id);
+                return k ? (
+                  <Branch
+                    key={k.path}
+                    node={k}
+                    types={types}
+                    collectionId={collectionId}
+                    depth={depth + 1}
+                    levels={levels}
+                    branches={branches}
+                    viewFor={viewFor}
+                    onChanged={onChanged}
+                  />
+                ) : null;
+              })}
+            </>
           )}
         </div>
       )}
@@ -180,7 +217,16 @@ export function RollupView({
     refreshTick,
   );
   const branches = useBranches(collection.id);
+  const viewFor = useViews(collection.id, collection.properties.rollup_views);
   const [allOpen, setAllOpen] = useState(true);
+  // The top row is a list like any other, so it sorts like one — by title, by
+  // when it was made, by a property the headings share, by type.
+  const tops = tree ?? [];
+  const { sorted: sortedTops, toolbar: topBar } = useBlockView(
+    tops.map((n) => n.block),
+    types,
+    { scope: `rollup.${collection.id}.top`, enableView: false, enableManual: false, viewState: viewFor("top") },
+  );
   // Deep levels can go quiet for a moment while each level is fetched; say so
   // rather than showing an empty rollup that looks configured wrong.
   const loading = tree === null;
@@ -212,6 +258,7 @@ export function RollupView({
   }
 
   const paths = walk(tree).map((n) => n.path);
+  const topById = new Map(tops.map((n) => [n.block.id, n]));
   return (
     <div className="ru-view">
       {notes}
@@ -232,18 +279,23 @@ export function RollupView({
             : `${tree.length} at the top · ${walk(tree).length - tree.length} below`}
         </span>
       </div>
-      {tree.map((n) => (
-        <Branch
-          key={n.path}
-          node={n}
-          types={types}
-          collectionId={collection.id}
-          depth={0}
-          levels={config.levels.length}
-          branches={branches}
-          onChanged={onChanged}
-        />
-      ))}
+      {topBar}
+      {sortedTops.map((b) => {
+        const n = topById.get(b.id);
+        return n ? (
+          <Branch
+            key={n.path}
+            node={n}
+            types={types}
+            collectionId={collection.id}
+            depth={0}
+            levels={config.levels.length}
+            branches={branches}
+            viewFor={viewFor}
+            onChanged={onChanged}
+          />
+        ) : null;
+      })}
     </div>
   );
 }

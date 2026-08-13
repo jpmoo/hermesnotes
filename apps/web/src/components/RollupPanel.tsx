@@ -151,6 +151,7 @@ export function RollupPanel({
             onAddCollection={addRoot}
             onAddNote={addRoot}
             onClose={() => setPicking(false)}
+            exclude={[collection.id, ...config.roots]}
           />
         ) : (
           <button className="ghost sec-add-btn" onClick={() => setPicking(true)}>

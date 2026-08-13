@@ -7394,3 +7394,16 @@ input.cv-add-input {
 .app-shell.mobile .ru-d3 > .ru-body {
   padding-left: 8px;
 }
+
+/* The rollup's own toolbars sit tighter than a page's: there are several of
+   them down the page (the top row, then one per branch), so they read as part
+   of the list rather than as a header for it. */
+.ru-problems {
+  margin-bottom: 10px;
+}
+.ru-view > .sort-bar-shell {
+  margin-bottom: 10px;
+}
+.ru-body > .sort-bar-shell {
+  margin-bottom: 8px;
+}

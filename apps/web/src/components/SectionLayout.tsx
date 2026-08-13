@@ -102,10 +102,14 @@ export function PickBlockMenu({
   onAddCollection,
   onAddNote,
   onClose,
+  exclude = [],
 }: {
   onAddCollection: (id: string) => void;
   onAddNote: (id: string) => void;
   onClose: () => void;
+  /** Ids that can't be picked here — a rollup can't be its own top level, and
+   *  two collections often share a name, so hiding it beats explaining it. */
+  exclude?: string[];
 }) {
   const [tab, setTab] = useState<"collection" | "note">("collection");
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -114,7 +118,9 @@ export function PickBlockMenu({
   const [notes, setNotes] = useState<BlockSearchResult[]>([]);
 
   useEffect(() => {
-    void api.get<Collection[]>("/collections").then(setCollections);
+    void api
+      .get<Collection[]>("/collections")
+      .then((cs) => setCollections(cs.filter((c) => !exclude.includes(c.id))));
     void api.get<BlockType[]>("/block-types").then(setTypes);
   }, []);
   useEffect(() => {
@@ -122,7 +128,7 @@ export function PickBlockMenu({
     const t = setTimeout(() => {
       void api
         .get<BlockSearchResult[]>(`/blocks/search?q=${encodeURIComponent(q)}`)
-        .then(setNotes)
+        .then((ns) => setNotes(ns.filter((n) => !exclude.includes(n.id))))
         .catch(() => setNotes([]));
     }, 200);
     return () => clearTimeout(t);

@@ -204,6 +204,9 @@ export function useBlockView<T extends Viewable>(
   types: BlockType[],
   opts: {
     enableView?: boolean;
+    /** Offer dragging into place. Off where the caller doesn't render the list
+     *  itself (a rollup's headings), since there'd be nothing to drag. */
+    enableManual?: boolean;
     scope?: string;
     manual?: { onMove: (activeId: string, overId: string) => void } | null;
     /** Inherit/persist sort + view selections (collection pages and embeds). */
@@ -220,7 +223,8 @@ export function useBlockView<T extends Viewable>(
   const externalManual = opts.manual ?? null;
   // Manual is offered when the caller wires persistence (onMove) or names a
   // scope (localStorage-backed order).
-  const manualAvailable = Boolean(externalManual) || Boolean(opts.scope);
+  const manualAvailable =
+    (opts.enableManual ?? true) && (Boolean(externalManual) || Boolean(opts.scope));
   const manualKey = opts.scope ? `hn.bv.manual.${opts.scope}` : "";
   const orderKey = opts.scope ? `hn.bv.order.${opts.scope}` : "";
   // View mode + column counts persist per scope (e.g. each type on the Types

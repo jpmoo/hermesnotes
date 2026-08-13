@@ -320,7 +320,7 @@ export function FavoritesPage() {
               className="ghost"
               onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(plain.map((b) => b.id)))}
             >
-              {allCollapsed ? "Expand all" : "Collapse all"}
+              {allCollapsed ? "Expand blocks" : "Collapse blocks"}
             </button>
           )}
         </div>

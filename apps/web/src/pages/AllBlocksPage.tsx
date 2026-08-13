@@ -141,7 +141,7 @@ export function AllBlocksPage() {
         </button>
         {viewMode !== "chips" && (
           <button className="ghost" onClick={toggleAll}>
-            {allCollapsed ? "Expand all" : "Collapse all"}
+            {allCollapsed ? "Expand blocks" : "Collapse blocks"}
           </button>
         )}
         <span className="hint">{blocks.length} block(s)</span>

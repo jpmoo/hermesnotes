@@ -162,7 +162,7 @@ function Branch({
               {viewMode !== "chips" && (
                 <div className="row ru-cardtools">
                   <button className="ghost" onClick={cards.toggleAll}>
-                    {cards.allCollapsed ? "Expand cards" : "Collapse cards"}
+                    {cards.allCollapsed ? "Expand blocks" : "Collapse blocks"}
                   </button>
                 </div>
               )}

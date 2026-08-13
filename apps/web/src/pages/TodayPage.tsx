@@ -319,7 +319,7 @@ export function TodayPage() {
                   {relevantView.toolbar}
                   {relevantView.viewMode !== "chips" && (
                     <button className="ghost" onClick={relevantCollapse.toggleAll}>
-                      {relevantCollapse.allCollapsed ? "Expand all" : "Collapse all"}
+                      {relevantCollapse.allCollapsed ? "Expand blocks" : "Collapse blocks"}
                     </button>
                   )}
                 </div>
@@ -340,7 +340,7 @@ export function TodayPage() {
                   {activityView.toolbar}
                   {activityView.viewMode !== "chips" && (
                     <button className="ghost" onClick={activityCollapse.toggleAll}>
-                      {activityCollapse.allCollapsed ? "Expand all" : "Collapse all"}
+                      {activityCollapse.allCollapsed ? "Expand blocks" : "Collapse blocks"}
                     </button>
                   )}
                 </div>

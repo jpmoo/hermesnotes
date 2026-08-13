@@ -147,7 +147,7 @@ export function ArchivePage() {
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
         {viewMode !== "chips" && blocks.length > 0 && (
           <button className="ghost" onClick={toggleAll}>
-            {allCollapsed ? "Expand all" : "Collapse all"}
+            {allCollapsed ? "Expand blocks" : "Collapse blocks"}
           </button>
         )}
         {archivedCount > 0 && (

@@ -103,7 +103,7 @@ function RecentsMenu() {
                       setOpen(false);
                     }}
                   >
-                    <CollectionIcon document={it?.document} matrix={it?.matrix} table={it?.table} canvas={it?.canvas} calendar={it?.calendar} smart={it?.smart} color={(it?.properties?.icon_color as string) ?? undefined} size={14} />
+                    <CollectionIcon document={it?.document} matrix={it?.matrix} table={it?.table} canvas={it?.canvas} calendar={it?.calendar} rollup={it?.rollup} smart={it?.smart} color={(it?.properties?.icon_color as string) ?? undefined} size={14} />
                     <span className="recent-label">{it?.label ?? "…"}</span>
                   </button>
                 );

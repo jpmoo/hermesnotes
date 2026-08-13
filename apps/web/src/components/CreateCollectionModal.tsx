@@ -8,7 +8,9 @@ import { QueryBuilder } from "./QueryBuilder.tsx";
 export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const [title, setTitle] = useState("Untitled");
-  const [kind, setKind] = useState<"list" | "document" | "matrix" | "table" | "canvas" | "calendar">("list");
+  const [kind, setKind] = useState<
+    "list" | "document" | "matrix" | "table" | "canvas" | "calendar" | "rollup"
+  >("list");
   const [cols, setCols] = useState(2);
   const [rows, setRows] = useState(2);
   const [mode, setMode] = useState<"explicit" | "smart">("explicit");
@@ -35,8 +37,10 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
       const c = await api.post<Collection>("/collections", {
         kind,
         title,
-        membershipMode: kind === "canvas" ? "explicit" : mode,
-        ...(kind !== "canvas" && mode === "smart" ? { smartMode, filterQuery: filter } : {}),
+        membershipMode: kind === "canvas" || kind === "rollup" ? "explicit" : mode,
+        ...(kind !== "canvas" && kind !== "rollup" && mode === "smart"
+          ? { smartMode, filterQuery: filter }
+          : {}),
         ...(kind === "matrix" ? { matrixCols: cols, matrixRows: rows } : {}),
       });
       // The modal is mounted in the sidebar, which outlives route changes —
@@ -104,6 +108,12 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             >
               Calendar
             </button>
+            <button
+              className={`seg${kind === "rollup" ? " active" : ""}`}
+              onClick={() => setKind("rollup")}
+            >
+              Rollup
+            </button>
           </div>
           <div className="hint" style={{ marginTop: 6 }}>
             {kind === "list"
@@ -116,7 +126,9 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
                     ? "A spreadsheet-style grid: one row per block, property columns you pick, inline editing."
                     : kind === "canvas"
                       ? "An infinite field: drop blocks anywhere, connect them with lines, zoom and pan. Add manually and by query at once."
-                      : "A month / week / 3-day calendar. A saved query feeds it; cards land on the days their date or datespan fields point to."}
+                      : kind === "calendar"
+                        ? "A month / week / 3-day calendar. A saved query feeds it; cards land on the days their date or datespan fields point to."
+                        : "What's nested under what: a heading per project, say, with its tasks beneath it. Set the top level and what hangs off it in the right panel — it holds nothing itself."}
           </div>
         </div>
 
@@ -155,6 +167,11 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
             Add blocks on the canvas itself: drop them manually, or build a query in the right
             panel and Apply to place the matches.
           </div>
+        ) : kind === "rollup" ? (
+          <div className="hint" style={{ marginBottom: 14 }}>
+            A rollup holds nothing of its own — it shows blocks where they already are. Choose the
+            top level and what hangs off it in the right panel once it opens.
+          </div>
         ) : (
         <div className="field">
           <span className="field-label">Membership</span>
@@ -174,7 +191,7 @@ export function CreateCollectionModal({ onClose }: { onClose: () => void }) {
         </div>
         )}
 
-        {kind !== "canvas" && mode === "smart" && (
+        {kind !== "canvas" && kind !== "rollup" && mode === "smart" && (
           <>
             <div className="field">
               <span className="field-label">Updates</span>

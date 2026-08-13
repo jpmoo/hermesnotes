@@ -49,6 +49,7 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
           table={target.collectionMeta?.table}
           canvas={target.collectionMeta?.canvas}
           calendar={target.collectionMeta?.calendar}
+          rollup={target.collectionMeta?.rollup}
           smart={target.collectionMeta?.smart}
           size={13}
         />

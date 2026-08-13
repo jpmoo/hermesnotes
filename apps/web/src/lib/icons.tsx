@@ -9,6 +9,7 @@ import {
   FileText,
   Flag,
   ListFilter,
+  ListTree,
   Folder,
   Grid3x3,
   Heart,
@@ -47,6 +48,7 @@ const CURATED: Record<string, LucideIcon> = {
   "layout-grid": LayoutGrid,
   "grid-3x3": Grid3x3,
   list: List,
+  "list-tree": ListTree,
   "file-text": FileText,
   type: Type,
   tag: Tag,
@@ -140,6 +142,7 @@ export function CollectionIcon({
   table = false,
   canvas = false,
   calendar = false,
+  rollup = false,
   smart = false,
   size = 16,
   color,
@@ -149,11 +152,14 @@ export function CollectionIcon({
   table?: boolean;
   canvas?: boolean;
   calendar?: boolean;
+  rollup?: boolean;
   smart?: boolean;
   size?: number;
   color?: string | null;
 }) {
-  const Icon = calendar
+  const Icon = rollup
+    ? ListTree
+    : calendar
     ? CalendarDays
     : canvas
     ? Workflow

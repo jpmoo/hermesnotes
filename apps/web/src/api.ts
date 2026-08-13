@@ -210,6 +210,7 @@ export interface SearchHit {
   table: boolean;
   canvas: boolean;
   calendar: boolean;
+  rollup: boolean;
   smart: boolean;
   semantic: boolean;
 }

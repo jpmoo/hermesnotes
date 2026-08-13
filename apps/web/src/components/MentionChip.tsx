@@ -52,7 +52,7 @@ export function MentionChip({ node }: NodeViewProps) {
       {isTag ? (
         <Hash size={13} />
       ) : collection ? (
-        <CollectionIcon document={collectionMeta?.document} matrix={collectionMeta?.matrix} table={collectionMeta?.table} canvas={collectionMeta?.canvas} calendar={collectionMeta?.calendar} smart={collectionMeta?.smart} size={13} />
+        <CollectionIcon document={collectionMeta?.document} matrix={collectionMeta?.matrix} table={collectionMeta?.table} canvas={collectionMeta?.canvas} calendar={collectionMeta?.calendar} rollup={collectionMeta?.rollup} smart={collectionMeta?.smart} size={13} />
       ) : (
         <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
       )}

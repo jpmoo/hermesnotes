@@ -52,6 +52,7 @@ function CollectionRow({ block }: { block: Block }) {
         table={kind === "table"}
         canvas={kind === "canvas"}
         calendar={kind === "calendar"}
+        rollup={kind === "rollup"}
         smart={props.membership_mode === "smart"}
         color={typeof props.icon_color === "string" ? props.icon_color : undefined}
         size={16}

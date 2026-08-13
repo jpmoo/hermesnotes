@@ -24,6 +24,7 @@ function collectionIcon(kind: string | null, smart: boolean, color: string | nul
       table={kind === "table"}
       canvas={kind === "canvas"}
       calendar={kind === "calendar"}
+      rollup={kind === "rollup"}
       smart={smart}
       color={color}
       size={15}

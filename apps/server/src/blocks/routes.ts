@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -602,6 +602,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         table: r.collectionKind === "table",
         canvas: r.collectionKind === "canvas",
         calendar: r.collectionKind === "calendar",
+        rollup: r.collectionKind === "rollup",
         smart: props?.membership_mode === "smart",
         semantic,
       };
@@ -692,6 +693,108 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       collectionKind: r.collectionKind,
       label: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
     }));
+  });
+
+  /**
+   * What hangs off a set of blocks — one level of a rollup, for every parent at
+   * that level at once.
+   *
+   * Two ways to belong under a parent, and a level may ask for either or both:
+   * a reference field on the child holding the parent's id (a task's `project`),
+   * and — when the parent is a collection — its membership. Answered as edges
+   * rather than a grouped map because a block can hang off more than one parent,
+   * and losing that would silently drop it from all but one.
+   *
+   * One query per level, not one per parent: a hundred projects is one round
+   * trip, not a hundred.
+   */
+  app.post("/blocks/children", async (req) => {
+    const userId = requireUser(req);
+    const { parents, typeId, refKey, members } = z
+      .object({
+        parents: z.array(z.string().uuid()).max(500),
+        typeId: z.string().uuid().nullish(),
+        refKey: z.string().min(1).nullish(),
+        members: z.boolean().optional(),
+      })
+      .parse(req.body);
+    if (parents.length === 0) return { edges: [] };
+
+    const cols = {
+      id: blocks.id,
+      blockTypeId: blocks.blockTypeId,
+      collectionKind: blocks.collectionKind,
+      content: blocks.content,
+      properties: blocks.properties,
+      version: blocks.version,
+      createdAt: blocks.createdAt,
+      updatedAt: blocks.updatedAt,
+    };
+    const typeFilter = typeId ? eq(blocks.blockTypeId, typeId) : sql`TRUE`;
+
+    // Everything pointing at ANY of these parents, in one pass. A reference
+    // field holds either one id or a list of them, so both shapes are checked;
+    // without a named field every property counts, which is what "connected to
+    // it, however you connected it" means.
+    const keyFilter = refKey ? sql`e.key = ${refKey}` : sql`TRUE`;
+    const pointing = await db
+      .select(cols)
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          notArchived,
+          typeFilter,
+          sql`EXISTS (
+            SELECT 1 FROM jsonb_each(${blocks.properties}) e
+            WHERE ${keyFilter}
+              AND (
+                (jsonb_typeof(e.value) = 'string' AND (e.value #>> '{}') = ANY(${parents}))
+                OR (jsonb_typeof(e.value) = 'array' AND EXISTS (
+                  SELECT 1 FROM jsonb_array_elements_text(e.value) x WHERE x = ANY(${parents})
+                ))
+              )
+          )`,
+        ),
+      );
+
+    // Which of them it points at is read back off the properties we already
+    // have: the row is here because it names at least one parent, and a block
+    // that names two belongs under both.
+    const wanted = new Set(parents);
+    const byRef = pointing.flatMap((row) => {
+      const hits = new Set<string>();
+      for (const [key, value] of Object.entries(row.properties ?? {})) {
+        if (refKey && key !== refKey) continue;
+        for (const v of Array.isArray(value) ? value : [value]) {
+          if (typeof v === "string" && v !== row.id && wanted.has(v)) hits.add(v);
+        }
+      }
+      return [...hits].map((parentId) => ({ parentId, ...row }));
+    });
+
+    let byMember: typeof byRef = [];
+    if (members) {
+      byMember = await db
+        .select({ parentId: sql<string>`${memberships.collectionId}::text`.as("parent_id"), ...cols })
+        .from(memberships)
+        .innerJoin(
+          blocks,
+          and(eq(blocks.id, memberships.blockId), eq(blocks.ownerId, userId), notArchived, typeFilter),
+        )
+        .where(inArray(memberships.collectionId, parents))
+        .orderBy(asc(memberships.position));
+    }
+
+    // Both routes can name the same pair; the child appears under its parent once.
+    const seen = new Set<string>();
+    const edges = [...byRef, ...byMember].filter((r) => {
+      const k = `${r.parentId}|${r.id}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return { edges };
   });
 
   app.get("/blocks/:id", async (req) => {
@@ -1214,7 +1317,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const seen = new Set<string>();
     const add = (from: string, to: string) => {
       if (from === to || !memberIds.has(to)) return;
-      const k = `${from} ${to}`;
+      const k = `${from}|${to}`;
       if (seen.has(k)) return;
       seen.add(k);
       pairs.push({ from, to });

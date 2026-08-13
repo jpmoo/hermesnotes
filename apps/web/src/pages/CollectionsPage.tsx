@@ -171,6 +171,7 @@ export function CollectionsPage() {
                   table={c.collectionKind === "table"}
                   canvas={c.collectionKind === "canvas"}
                   calendar={c.collectionKind === "calendar"}
+                  rollup={c.collectionKind === "rollup"}
                   smart={isSmart}
                   size={20}
                   color={iconColor}

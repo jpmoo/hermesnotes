@@ -16,6 +16,7 @@ export interface BlockBrief {
   table?: boolean;
   canvas?: boolean;
   calendar?: boolean;
+  rollup?: boolean;
   smart?: boolean;
 }
 
@@ -36,6 +37,7 @@ export function blockBrief(id: string): Promise<BlockBrief> {
         table: b.collectionKind === "table",
         canvas: b.collectionKind === "canvas",
         calendar: b.collectionKind === "calendar",
+        rollup: b.collectionKind === "rollup",
         smart: (b.properties as Record<string, unknown>)?.membership_mode === "smart",
       }),
     )

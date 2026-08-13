@@ -296,6 +296,7 @@ export function FavoritesPage() {
                       table={c.collectionKind === "table"}
                       canvas={c.collectionKind === "canvas"}
                       calendar={c.collectionKind === "calendar"}
+                      rollup={c.collectionKind === "rollup"}
                       smart={(c.properties as Record<string, unknown>)?.membership_mode === "smart"}
                       size={15}
                     />

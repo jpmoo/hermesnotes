@@ -35,7 +35,7 @@ interface Viewable {
   version?: number;
 }
 
-type SortKey = "alpha" | "created" | "edited" | `prop:${string}`;
+type SortKey = "alpha" | "created" | "edited" | "type" | `prop:${string}`;
 interface SortLevel {
   key: SortKey;
   dir: "asc" | "desc";
@@ -86,10 +86,11 @@ function commonFields(items: Viewable[], types: BlockType[]): FieldDef[] {
   return common ?? [];
 }
 
-function valueFor(b: Viewable, key: SortKey): string {
+function valueFor(b: Viewable, key: SortKey, typeName?: (b: Viewable) => string): string {
   if (key === "alpha") return oneLineText(b.properties, b.content).toLowerCase();
   if (key === "created") return b.createdAt;
   if (key === "edited") return b.updatedAt;
+  if (key === "type") return typeName?.(b) ?? "";
   const v = b.properties[key.slice(5)];
   return v == null ? "" : String(v);
 }
@@ -318,17 +319,23 @@ export function useBlockView<T extends Viewable>(
 
   const fields = useMemo(() => commonFields(items, types), [items, types]);
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+  const mixedTypes = useMemo(() => new Set(items.map((i) => i.blockTypeId)).size > 1, [items]);
+  const typeName = (b: Viewable) =>
+    (b.blockTypeId ? typeById.get(b.blockTypeId)?.name : "") ?? "";
   const options = useMemo(
     () => [
       { key: "alpha" as SortKey, label: "Alphabetical" },
       { key: "created" as SortKey, label: "Created" },
       { key: "edited" as SortKey, label: "Edited" },
+      // Offered only where it would actually group anything — a list that's all
+      // tasks has nothing to sort by type.
+      ...(mixedTypes ? [{ key: "type" as SortKey, label: "Type" }] : []),
       ...fields.map((f) => ({
         key: `prop:${f.key}` as SortKey,
         label: f.label?.trim() || pretty(f.key),
       })),
     ],
-    [fields],
+    [fields, mixedTypes],
   );
 
   const sortActive = !manualMode && levels.length > 0;
@@ -342,8 +349,8 @@ export function useBlockView<T extends Viewable>(
     const copy = [...items];
     copy.sort((a, b) => {
       for (const lv of levels) {
-        const va = valueFor(a, lv.key);
-        const vb = valueFor(b, lv.key);
+        const va = valueFor(a, lv.key, typeName);
+        const vb = valueFor(b, lv.key, typeName);
         if (va === "" || vb === "") {
           if (va === "" && vb === "") continue;
           return va === "" ? 1 : -1; // empties last
@@ -361,7 +368,7 @@ export function useBlockView<T extends Viewable>(
       return 0;
     });
     return copy;
-  }, [items, levels, manualMode, externalManual, localOrder]);
+  }, [items, levels, manualMode, externalManual, localOrder, typeById]);
 
   const applyLevels = (next: SortLevel[]) => {
     setLevels(next);

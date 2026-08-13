@@ -94,8 +94,11 @@ function Row({
   );
 }
 
-/** Add-section popover: pick an existing collection or search a note. */
-function AddMenu({
+/**
+ * Pick an existing collection, or search for a note. Shared: the document
+ * outline adds sections with it, and a rollup chooses its roots with it.
+ */
+export function PickBlockMenu({
   onAddCollection,
   onAddNote,
   onClose,
@@ -157,6 +160,7 @@ function AddMenu({
                 table={c.collectionKind === "table"}
                 canvas={c.collectionKind === "canvas"}
                 calendar={c.collectionKind === "calendar"}
+                rollup={c.collectionKind === "rollup"}
                 smart={c.properties.membership_mode === "smart"}
                 color={(c.properties.icon_color as string) ?? null}
                 size={15}
@@ -278,7 +282,7 @@ export function SectionLayout({
         <ScopeMenu title="Add section to…" onPick={commitAdd} onClose={() => setPendingAdd(null)} />
       ) : canModify ? (
         adding ? (
-          <AddMenu
+          <PickBlockMenu
             onAddCollection={(id) => handleAdd("collection", id)}
             onAddNote={(id) => handleAdd("note", id)}
             onClose={() => setAdding(false)}

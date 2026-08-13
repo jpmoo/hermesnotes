@@ -10,8 +10,48 @@ export const collectionKindSchema = z.enum([
   "masonry",
   "canvas",
   "calendar",
+  "rollup",
 ]);
 export type CollectionKind = z.infer<typeof collectionKindSchema>;
+
+/**
+ * Rollup collections (`rollup`) — a nesting view rather than a membership one.
+ *
+ * `roots` names what sits at the top: a collection contributes each of its
+ * members as a bucket, a plain block is a bucket on its own. Each entry in
+ * `levels` then says how to find what belongs *under* a parent one level up:
+ * blocks of some type that point at it through a reference field, and/or — when
+ * the parent is itself a collection — its members. So "Projects, then tasks"
+ * is one root and one level.
+ *
+ * Nothing here is membership: a rollup owns no memberships of its own and the
+ * blocks it shows keep living wherever they already live.
+ */
+export const rollupLevelSchema = z.object({
+  /** Only blocks of this type (null/absent = any type). */
+  typeId: z.string().uuid().nullable().optional(),
+  /** Which reference field must point at the parent (absent = any of them). */
+  refKey: z.string().nullable().optional(),
+  /** When the parent is a collection, count its members as children too. */
+  members: z.boolean().optional(),
+  /** Label shown on the level in the configuration panel. */
+  label: z.string().optional(),
+});
+export type RollupLevel = z.infer<typeof rollupLevelSchema>;
+
+export const rollupConfigSchema = z.object({
+  roots: z.array(z.string().uuid()).default([]),
+  levels: z.array(rollupLevelSchema).default([]),
+});
+export type RollupConfig = z.infer<typeof rollupConfigSchema>;
+
+export const emptyRollup = (): RollupConfig => ({ roots: [], levels: [] });
+
+/** Read a stored rollup config, falling back to an empty one. */
+export function normalizeRollup(value: unknown): RollupConfig {
+  const parsed = rollupConfigSchema.safeParse(value);
+  return parsed.success ? parsed.data : emptyRollup();
+}
 
 /** Explicit vs. smart membership (doc §6). */
 export const membershipModeSchema = z.enum(["explicit", "smart"]);

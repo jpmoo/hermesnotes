@@ -30,6 +30,8 @@ import { BlockCard } from "../components/BlockCard.tsx";
 import { CollectionSection } from "../components/CollectionSection.tsx";
 import { ListItem, type ListFormat as Format } from "../components/ListItem.tsx";
 import { QueryPanel } from "../components/QueryPanel.tsx";
+import { RollupPanel } from "../components/RollupPanel.tsx";
+import { RollupView } from "../components/RollupView.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
 import { TableView } from "../components/TableView.tsx";
 import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
@@ -133,13 +135,22 @@ export function CollectionView() {
   const isTable = collection?.collectionKind === "table";
   const isCanvas = collection?.collectionKind === "canvas";
   const isCalendar = collection?.collectionKind === "calendar";
+  const isRollup = collection?.collectionKind === "rollup";
   const filterQuery: unknown = collection?.properties.filter_query;
 
   // An edit anywhere (e.g. the info pane) can move a block in/out of a live
   // query, so re-run it. Dynamic smart lists + matrices re-evaluate; snapshots
   // stay frozen until an explicit refresh. Debounced against rapid typing.
   const reloadTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [rollupTick, setRollupTick] = useState(0);
   useAnyBlockChange(() => {
+    // A rollup is built out of the blocks' own references, so an edit anywhere
+    // can move something from one branch to another — rebuild rather than reload.
+    if (isRollup) {
+      clearTimeout(reloadTimer.current);
+      reloadTimer.current = setTimeout(() => setRollupTick((t) => t + 1), 350);
+      return;
+    }
     if (!(isDynamic || isMatrix)) return;
     clearTimeout(reloadTimer.current);
     reloadTimer.current = setTimeout(() => void load(), 350);
@@ -208,7 +219,7 @@ export function CollectionView() {
   // Right panel: query editor for smart collections (and canvases — their
   // query feeds the field), the section tool for documents, table tools.
   useEffect(() => {
-    if (!isSmart && !isDocument && !isTable && !isCanvas && !isCalendar) {
+    if (!isSmart && !isDocument && !isTable && !isCanvas && !isCalendar && !isRollup) {
       setHasContent(false);
       return;
     }
@@ -216,7 +227,7 @@ export function CollectionView() {
     return () => {
       setHasContent(false);
     };
-  }, [isSmart, isDocument, isTable, isCanvas, isCalendar, setHasContent]);
+  }, [isSmart, isDocument, isTable, isCanvas, isCalendar, isRollup, setHasContent]);
 
   const saveTitle = (v: string) => {
     setTitleVal(v);
@@ -310,9 +321,9 @@ export function CollectionView() {
         {!banner && <BannerAddButton className="page-head-add" onAdded={setBanner} />}
       </div>
 
-      {!isMatrix && (
+      {!isMatrix && !isRollup && (
       <div className="row" style={{ margin: "14px 0 18px", gap: 14 }}>
-        {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && (
+        {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && !isRollup && (
           <div className="segmented">
             {(["bullet", "ordered", "checklist", "blocks"] as Format[]).map((f) => (
               <button
@@ -325,7 +336,7 @@ export function CollectionView() {
             ))}
           </div>
         )}
-        {!isDynamic && !isMatrix && !isCanvas && !isCalendar && (
+        {!isDynamic && !isMatrix && !isCanvas && !isCalendar && !isRollup && (
           <div className="nav-kebab" ref={menuRef} style={{ position: "relative" }}>
             <button className="primary" onClick={() => setMenuOpen((o) => !o)}>
               + Add
@@ -363,7 +374,7 @@ export function CollectionView() {
 
         {isSmart && !isMatrix && smartControls}
 
-        {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && format !== "blocks" && members.length > 0 && (
+        {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && !isRollup && format !== "blocks" && members.length > 0 && (
           <button
             className="ghost"
             style={{ marginLeft: "auto" }}
@@ -379,9 +390,16 @@ export function CollectionView() {
       </div>
       )}
 
-      {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && members.length > 0 && sortBar}
+      {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && !isRollup && members.length > 0 && sortBar}
 
-      {isMatrix ? (
+      {isRollup ? (
+        <RollupView
+          collection={collection}
+          types={types}
+          refreshTick={rollupTick}
+          onChanged={() => setRollupTick((t) => t + 1)}
+        />
+      ) : isMatrix ? (
         <MatrixView
           collection={collection}
           members={members}
@@ -497,11 +515,16 @@ export function CollectionView() {
         />
       )}
       {bottomSlotEl &&
-        (isDocument || isSmart) &&
+        (isDocument || isSmart || isRollup) &&
         selectedBlockId === id &&
         createPortal(
           <>
             <div className="panel-divider" />
+            {isRollup && (
+              // The view reads its configuration off the collection, so the
+              // saved change has to come back before it can be built from.
+              <RollupPanel collection={collection} types={types} onSaved={() => void load()} />
+            )}
             {isSmart && (
               <>
                 <div className="panel-h">Query</div>

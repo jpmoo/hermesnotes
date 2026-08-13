@@ -644,11 +644,11 @@ export function useBlockView<T extends Viewable>(
     { key: "chips", label: "Chips" },
   ];
 
-  // Grouping asks "under what headings" and sorting "in what order": one
-  // question each, so one line each, grouping first because it decides what the
-  // sort is then ordering within.
-  const groupRow = !manualMode && groupsOffered && groupOptions.length > 0 && (
-    <div className="sort-bar bv-group-row">
+  // Grouping decides the headings and sorting the order within them: two
+  // questions, but small ones, and a line each left more empty bar than
+  // controls. Grouping leads, then a rule, then the sort.
+  const groupCtl = !manualMode && groupsOffered && groupOptions.length > 0 && (
+    <>
       <span className="sort-label">group</span>
       <span className="sort-level">
         <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
@@ -660,11 +660,13 @@ export function useBlockView<T extends Viewable>(
           ))}
         </select>
       </span>
-    </div>
+      <span className="sort-sep" />
+    </>
   );
 
   const sortBar = (
     <div className="sort-bar">
+      {groupCtl}
       {manualAvailable ? (
         <div className="segmented">
           <button
@@ -775,7 +777,6 @@ export function useBlockView<T extends Viewable>(
           {toolsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </button>
       )}
-      {(!isMobile || toolsOpen) && groupRow}
       {(!isMobile || toolsOpen) && sortBar}
     </div>
   );

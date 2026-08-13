@@ -7485,12 +7485,21 @@ input.cv-add-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Grouping gets its own line above the sort row: one question each. */
-.bv-group-row {
-  margin-bottom: 6px;
+/* Grouping shares the sort bar's line, with a rule between the two. */
+.sort-sep {
+  width: 1px;
+  align-self: stretch;
+  min-height: 20px;
+  background: var(--border);
+  margin: 0 2px;
 }
-.bv-group-row .sort-level select {
+.sort-bar .sort-level select {
   max-width: 220px;
+}
+/* On a phone every control takes its own full-width line, so the rule between
+   them would be a stray horizontal stripe. */
+.app-shell.mobile .sort-sep {
+  display: none;
 }
 /* The row above a branch's toolbar: collapse-all on the left, "use for all at
    this level" at the right end where a command that reaches beyond this list

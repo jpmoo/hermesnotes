@@ -7310,8 +7310,10 @@ input.cv-add-input {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0 6px;
+  padding: 5px 10px 6px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 9px 9px 0 0;
 }
 .ru-twist {
   flex: none;
@@ -7356,7 +7358,7 @@ input.cv-add-input {
 .ru-d1 > .ru-head,
 .ru-d2 > .ru-head,
 .ru-d3 > .ru-head {
-  border-bottom-style: dashed;
+  background: var(--surface-2);
 }
 
 
@@ -7471,8 +7473,10 @@ input.cv-add-input {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 2px 0 6px;
+  padding: 3px 10px 5px;
   border-bottom: 1px solid var(--border);
+  border-radius: 9px 9px 0 0;
+  background: var(--surface);
   margin-bottom: 10px;
 }
 .bv-group-label {

@@ -7398,7 +7398,6 @@ input.cv-add-input {
   margin-bottom: 8px;
 }
 .ru-cardtools {
-  justify-content: flex-end;
   margin-bottom: 4px;
 }
 
@@ -7492,4 +7491,14 @@ input.cv-add-input {
 }
 .bv-group-row select {
   max-width: 220px;
+}
+/* The row above a branch's toolbar: collapse-all on the left, "use for all at
+   this level" at the right end where a command that reaches beyond this list
+   belongs. */
+.ru-cardtools {
+  justify-content: space-between;
+  gap: 12px;
+}
+.ru-cardtools > :last-child:not(:first-child) {
+  margin-left: auto;
 }

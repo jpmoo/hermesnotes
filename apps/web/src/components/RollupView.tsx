@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useRef, useState } from "react";
+import { useReducer, useRef, useState } from "react";
 import { api, type Collection, type BlockType } from "../api.ts";
 import { oneLineText, rawOneLine } from "../lib/display.ts";
 import { MentionText } from "./MentionText.tsx";
@@ -23,16 +23,34 @@ function useViews(collectionId: string, initial: unknown) {
     initial && typeof initial === "object" ? ({ ...(initial as Views) }) : {},
   );
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  return (key: string) => ({
+  // Copying writes other lists' state, and those lists are other components:
+  // a ref alone would change what they'd read without telling them to look.
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+
+  const save = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      void api.patch(`/collections/${collectionId}`, { rollup_views: map.current });
+    }, 600);
+  };
+
+  const viewFor = (key: string) => ({
     initial: map.current[key],
     onChange: (vs: BlockViewState) => {
       map.current = { ...map.current, [key]: vs };
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        void api.patch(`/collections/${collectionId}`, { rollup_views: map.current });
-      }, 600);
+      save();
     },
   });
+  /** Give every list in `keys` the arrangement `from` is using. */
+  viewFor.copyTo = (from: string, keys: string[]) => {
+    const vs = map.current[from];
+    const next = { ...map.current };
+    for (const k of keys) next[k] = vs ? { ...vs } : {};
+    map.current = next;
+    save();
+    bump();
+  };
+  return viewFor;
 }
 
 /** Open/closed per branch, remembered per rollup so a page reload keeps its shape. */
@@ -81,6 +99,7 @@ function Branch({
   levels,
   branches,
   viewFor,
+  keysAtDepth,
   headFields,
   onChanged,
 }: {
@@ -92,6 +111,9 @@ function Branch({
   levels: number;
   branches: ReturnType<typeof useBranches>;
   viewFor: ReturnType<typeof useViews>;
+  /** Every list's key by depth, so a branch can hand its arrangement to the
+   *  others at its own level. */
+  keysAtDepth: string[][];
   /** What the list this heading belongs to is sorted by — shown on the heading,
    *  since a heading is an item in that list like any other. */
   headFields: ShownField[];
@@ -125,6 +147,19 @@ function Branch({
   const cards = useCollapse(
     kids.map((k) => k.block.id),
     `rollup.${collectionId}.${node.block.id}`,
+  );
+
+  // Arranging one project's tasks and then doing it again for every other
+  // project is the same work over and over; hand it across instead.
+  const others = (keysAtDepth[depth] ?? []).filter((k) => k !== node.block.id);
+  const spread = others.length > 0 && (
+    <button
+      className="ghost"
+      title="Give every list at this level the same grouping, sort and view"
+      onClick={() => viewFor.copyTo(node.block.id, others)}
+    >
+      Use for all {others.length + 1} at this level
+    </button>
   );
 
   return (
@@ -167,13 +202,14 @@ function Branch({
             <div className="hint ru-empty">Nothing at this level.</div>
           ) : lastLevel ? (
             <>
-              {viewMode !== "chips" && (
-                <div className="row ru-cardtools">
+              <div className="row ru-cardtools">
+                {viewMode !== "chips" && (
                   <button className="ghost" onClick={cards.toggleAll}>
                     {cards.allCollapsed ? "Expand blocks" : "Collapse blocks"}
                   </button>
-                </div>
-              )}
+                )}
+                {spread}
+              </div>
               {toolbar}
               {renderList((b, compact) => (
                 <CollapsibleCard
@@ -190,6 +226,7 @@ function Branch({
             </>
           ) : (
             <>
+              {spread && <div className="row ru-cardtools">{spread}</div>}
               {toolbar}
               {renderList((b) => {
                 const k = byId.get(b.id);
@@ -202,6 +239,7 @@ function Branch({
                     levels={levels}
                     branches={branches}
                     viewFor={viewFor}
+                    keysAtDepth={keysAtDepth}
                     headFields={sortFields}
                     onChanged={onChanged}
                   />
@@ -289,6 +327,13 @@ export function RollupView({
 
   const paths = walk(tree).map((n) => n.path);
   const topById = new Map(tops.map((n) => [n.block.id, n]));
+  // One list per branch, keyed by its block; the same block reached twice is
+  // one list, so it's named once.
+  const keysAtDepth: string[][] = [];
+  for (const n of walk(tree)) {
+    const at = (keysAtDepth[n.depth] ??= []);
+    if (!at.includes(n.block.id)) at.push(n.block.id);
+  }
   return (
     <div className="ru-view">
       {notes}
@@ -321,6 +366,7 @@ export function RollupView({
             levels={config.levels.length}
             branches={branches}
             viewFor={viewFor}
+            keysAtDepth={keysAtDepth}
             headFields={topFields}
             onChanged={onChanged}
           />

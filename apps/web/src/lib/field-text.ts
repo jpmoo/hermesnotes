@@ -1,5 +1,5 @@
 import { optionLabel, type FieldDef } from "@hermes/shared";
-import { fmtDateTime } from "./format.ts";
+import { fmtWhen } from "./format.ts";
 
 /** A field being shown alongside a block because the list is sorted by it. */
 export interface ShownField {
@@ -21,13 +21,13 @@ export function fieldText(field: FieldDef, value: unknown, part?: "start" | "end
   if (field.type === "datespan") {
     const span = (value ?? {}) as { start?: unknown; end?: unknown };
     const v = part ? span[part] : (span.start ?? span.end);
-    return typeof v === "string" && v ? fmtDateTime(v) : "";
+    return typeof v === "string" && v ? fmtWhen(v) : "";
   }
   if (value == null || value === "") return "";
   switch (field.type) {
     case "date":
     case "datetime":
-      return typeof value === "string" ? fmtDateTime(value) : "";
+      return typeof value === "string" ? fmtWhen(value) : "";
     case "status":
     case "select":
       return optionLabel(field, String(value));

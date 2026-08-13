@@ -7489,7 +7489,7 @@ input.cv-add-input {
 .bv-group-row {
   margin-bottom: 6px;
 }
-.bv-group-row select {
+.bv-group-row .sort-level select {
   max-width: 220px;
 }
 /* The row above a branch's toolbar: collapse-all on the left, "use for all at

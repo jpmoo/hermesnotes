@@ -163,7 +163,7 @@ function Branch({
   const { toolbar, renderList, viewMode, sortFields } = useBlockView(kids.map((k) => k.block), types, {
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
-    enableManual: lastLevel,
+    enableManual: false,
     viewState: viewFor(node.block.id),
   });
   const byId = new Map(kids.map((k) => [k.block.id, k]));

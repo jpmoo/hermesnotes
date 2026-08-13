@@ -650,14 +650,16 @@ export function useBlockView<T extends Viewable>(
   const groupRow = !manualMode && groupsOffered && groupOptions.length > 0 && (
     <div className="sort-bar bv-group-row">
       <span className="sort-label">group</span>
-      <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
-        <option value="">None</option>
-        {groupOptions.map((o) => (
-          <option key={o.key} value={o.key}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      <span className="sort-level">
+        <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+          <option value="">None</option>
+          {groupOptions.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </span>
     </div>
   );
 

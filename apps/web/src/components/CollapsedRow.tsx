@@ -2,7 +2,8 @@ import { optionLabel } from "@hermes/shared";
 import { useState } from "react";
 import { api, type Block, type BlockType } from "../api.ts";
 import { emitBlockChange, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
-import { flattenMentions, oneLineText } from "../lib/display.ts";
+import { flattenMentions, oneLineText, rawOneLine } from "../lib/display.ts";
+import { MentionText } from "./MentionText.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { Banner, type BannerValue } from "./Banner.tsx";
@@ -77,7 +78,13 @@ export function CollapsedRow({
   const row = (
     <div className="blk-collapsed" onClick={() => selectOrOpen(block.id)}>
       {icon}
-      <span className="blk-collapsed-title">{oneLineText(props, block.content) || "Untitled"}</span>
+      <span className="blk-collapsed-title">
+        {rawOneLine(props, block.content) ? (
+          <MentionText text={rawOneLine(props, block.content)} />
+        ) : (
+          "Untitled"
+        )}
+      </span>
       <FieldChips fields={fields} properties={props} />
     </div>
   );

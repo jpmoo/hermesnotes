@@ -29,7 +29,9 @@ interface PanelsApi {
   selectedPage: RailPage | null; // a rail page (All blocks / Collections / Favorites), if current
   selectedFeedEvent: FeedEvent | null; // a read-only calendar-feed event, if current
   selectFeedEvent: (ev: FeedEvent | null) => void; // show a feed event in the info panel
-  selectBlock: (id: string, opts?: { collection?: boolean }) => void; // log an interaction (no route change)
+  /** Log an interaction (no route change). `quiet` logs it without asking
+   *  for the info panel — for a page noting what it has just landed on. */
+  selectBlock: (id: string, opts?: { collection?: boolean; quiet?: boolean }) => void;
   /**
    * Tapping a block's representation — a row, chip, card or canvas node. On a
    * phone that opens it as a full page: the info panel is an off-screen drawer
@@ -37,7 +39,7 @@ interface PanelsApi {
    * where the panel is visible beside the content, it just selects.
    */
   selectOrOpen: (id: string, opts?: { collection?: boolean }) => void;
-  selectToday: (date: string, noteId: string) => void; // log the Today page for a date
+  selectToday: (date: string, noteId: string, opts?: { quiet?: boolean }) => void; // log the Today page for a date
   selectPage: (page: RailPage) => void; // log a rail page as the current location
   /** Log + open as a full page. `fresh` marks something just created, so the
    *  page it lands on can put the caret in its first field. */
@@ -238,7 +240,7 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
 
   // Log an entity as current: append to the history (dropping any forward
   // entries), unless it already is current.
-  const append = (entry: NavEntry) => {
+  const append = (entry: NavEntry, quiet = false) => {
     setSelectedFeedEvent(null); // selecting an entity supersedes a feed event
     setNav((n) => {
       const curEntry = n.pos >= 0 ? n.stack[n.pos] : undefined;
@@ -246,8 +248,11 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       const base = n.stack.slice(0, n.pos + 1);
       return { stack: [...base, entry], pos: base.length };
     });
-    // A page is a place, not a thing to inspect — only entities ask for the panel.
-    if (!entry.page) setRevealTick((t) => t + 1);
+    // A page is a place, not a thing to inspect — only entities ask for the
+    // panel. Nor does landing somewhere: arriving at a block's own page, or a
+    // collection's, is already showing you the thing, and the panel appearing
+    // over it is one more thing to put away.
+    if (!entry.page && !quiet) setRevealTick((t) => t + 1);
     if (entry.page) addRecent({ kind: "page", page: entry.page });
     else if (entry.today) addRecent({ kind: "today", date: entry.today });
     else {
@@ -265,15 +270,15 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
     setScrollTarget(cur && !cur.page ? { id: cur.id, nonce: ++scrollNonce.current } : null);
   };
 
-  const selectBlock = (id: string, opts?: { collection?: boolean }) =>
-    append({ id, collection: opts?.collection ?? false });
-  const selectToday = (date: string, noteId: string) =>
-    append({ id: noteId, collection: false, today: date });
+  const selectBlock = (id: string, opts?: { collection?: boolean; quiet?: boolean }) =>
+    append({ id, collection: opts?.collection ?? false }, opts?.quiet);
+  const selectToday = (date: string, noteId: string, opts?: { quiet?: boolean }) =>
+    append({ id: noteId, collection: false, today: date }, opts?.quiet);
   const selectPage = (page: RailPage) => append({ id: `page:${page}`, collection: false, page });
   const openBlock = (id: string, opts?: { collection?: boolean; fresh?: boolean }) => {
     const entry: NavEntry = { id, collection: opts?.collection ?? false };
     rememberOrigin();
-    append(entry);
+    append(entry, true);
     navigate(pageOf(entry), opts?.fresh ? { state: { fresh: true } } : undefined);
   };
   const selectOrOpen = (id: string, opts?: { collection?: boolean }) => {

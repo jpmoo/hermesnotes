@@ -19,7 +19,9 @@ import type { FieldDef } from "@hermes/shared";
 import { ChevronDown, ChevronRight, GripVertical, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
-import { oneLineText } from "./display.ts";
+import { oneLineText, rawOneLine } from "./display.ts";
+import { MentionText } from "../components/MentionText.tsx";
+import { isEditingTarget } from "./editing-target.ts";
 import { fieldText, shownFields, type ShownField } from "./field-text.ts";
 import { FieldChips } from "../components/FieldChips.tsx";
 import { StatusIcon } from "../components/StatusIcon.tsx";
@@ -126,7 +128,13 @@ function valueFor(b: Viewable, key: SortKey, typeName?: (b: Viewable) => string)
 function MasonryCard({ blockId, render }: { blockId: string; render: (compact: boolean) => ReactNode }) {
   const { selectOrOpen } = usePanels();
   return (
-    <div className="masonry-item" data-block-id={blockId} onClick={() => selectOrOpen(blockId)}>
+    <div
+      className="masonry-item"
+      data-block-id={blockId}
+      onClick={(e) => {
+        if (!isEditingTarget(e.target)) selectOrOpen(blockId);
+      }}
+    >
       {render(true)}
     </div>
   );
@@ -148,6 +156,7 @@ function BlockChip({
   fields?: ShownField[];
 }) {
   const { selectOrOpen } = usePanels();
+  const raw = rawOneLine(item.properties, item.content);
   const text = oneLineText(item.properties, item.content);
   return (
     <div
@@ -156,7 +165,9 @@ function BlockChip({
       role="button"
       tabIndex={0}
       title={text}
-      onClick={() => selectOrOpen(item.id)}
+      onClick={(e) => {
+        if (!isEditingTarget(e.target)) selectOrOpen(item.id);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -166,7 +177,9 @@ function BlockChip({
     >
       {grip}
       <StatusIcon block={item} type={type} size={15} className="bv-chip-status" />
-      <span className="bv-chip-text">{text || <span className="li-empty">Empty</span>}</span>
+      <span className="bv-chip-text">
+        {raw ? <MentionText text={raw} /> : <span className="li-empty">Empty</span>}
+      </span>
       <FieldChips fields={fields} properties={item.properties} compact />
     </div>
   );
@@ -227,7 +240,14 @@ function ManualMasonryItem({ id, children }: { id: string; children: ReactNode }
   const { selectOrOpen } = usePanels();
   const style = { transform: CSS.Translate.toString(s.transform), transition: s.transition };
   return (
-    <div ref={s.setNodeRef} style={style} className="masonry-item" onClick={() => selectOrOpen(id)}>
+    <div
+      ref={s.setNodeRef}
+      style={style}
+      className="masonry-item"
+      onClick={(e) => {
+        if (!isEditingTarget(e.target)) selectOrOpen(id);
+      }}
+    >
       <button className="drag-handle masonry-grip" {...s.attributes} {...s.listeners} title="Drag to arrange">
         <GripVertical size={15} />
       </button>

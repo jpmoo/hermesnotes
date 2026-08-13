@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useRef, useState } from "react";
 import { api, type Collection, type BlockType } from "../api.ts";
-import { oneLineText } from "../lib/display.ts";
+import { oneLineText, rawOneLine } from "../lib/display.ts";
+import { MentionText } from "./MentionText.tsx";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useRollup, walk, type RollupNode } from "../lib/rollup.ts";
@@ -155,7 +156,7 @@ function Branch({
           />
         )}
         <button className="ru-title" onClick={() => selectOrOpen(node.block.id)} title={label}>
-          {label}
+          <MentionText text={rawOneLine(node.block.properties, node.block.content) || label} />
         </button>
         <FieldChips fields={headFields} properties={node.block.properties} />
         <span className="ru-count">{kids.length}</span>

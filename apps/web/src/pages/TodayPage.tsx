@@ -169,7 +169,7 @@ export function TodayPage() {
   selRef.current = selectedToday;
   const noteId = sheet?.note?.id;
   useEffect(() => {
-    if (noteId && selRef.current !== date) selectToday(date, noteId);
+    if (noteId && selRef.current !== date) selectToday(date, noteId, { quiet: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, noteId]);
 

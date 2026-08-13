@@ -1,6 +1,7 @@
 import { Info, PanelRight, Pin, PinOff, Share2, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { isEditingTarget } from "../lib/editing-target.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import { useAiConfig } from "../lib/ai-config.tsx";
@@ -177,9 +178,7 @@ export function RightPanel() {
     // field selects that block — the panel should follow along quietly, not open
     // over the top of what's being written. Only a press on something that isn't
     // a writing surface counts as "show me this".
-    const editing = !!from?.closest?.(
-      'input:not([type="checkbox"]):not([type="radio"]), textarea, [contenteditable="true"], .md-editor, .mention-input',
-    );
+    const editing = isEditingTarget(from);
     // A selection made from inside the panel doesn't need the panel revealed.
     const fromPanel = !!from && !!asideRef.current?.contains(from);
     if (editing || fromPanel) return;

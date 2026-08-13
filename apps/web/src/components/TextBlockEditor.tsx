@@ -6,6 +6,7 @@ import { useRegisterEditor } from "../lib/editor-registry.ts";
 import { oneLineText } from "../lib/display.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { isEditingTarget } from "../lib/editing-target.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -210,7 +211,9 @@ export function TextBlockEditor({
       // it means "open this" — and on a phone that has to be a page, since the
       // info panel is an off-screen drawer. A full card IS the editor; tapping
       // into one is editing and must never navigate away.
-      onPointerDownCapture={() => (compact ? selectOrOpen(block.id) : selectBlock(block.id))}
+      onPointerDownCapture={(e) =>
+        isEditingTarget(e.target) ? undefined : compact ? selectOrOpen(block.id) : selectBlock(block.id)
+      }
     >
       {!hideBanner && !compact && banner && (
         <Banner value={banner} editable onChange={(v) => updateField("banner", v ?? null)} height={150} />

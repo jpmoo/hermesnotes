@@ -35,6 +35,24 @@ export function flattenMentions(s: string): string {
     .replace(/\|[0-9a-fA-F-]{36}/g, "|…");
 }
 
+/**
+ * The stored one-line label, mentions and all — for surfaces that render them
+ * (see MentionText). oneLineText flattens the same string for places that can
+ * only hold plain text, where a block mention becomes "|…" for want of anywhere
+ * to resolve it.
+ */
+export function rawOneLine(
+  properties: Record<string, unknown> | null | undefined,
+  content?: string | null,
+): string {
+  const title = properties?.title;
+  if (typeof title === "string" && title.trim()) return title.trim();
+  const desc = properties?.description;
+  const source =
+    typeof desc === "string" && desc.trim() ? desc : typeof content === "string" ? content : "";
+  return firstSentence(source);
+}
+
 /** The raw one-line source string (title, else first sentence of description/body). */
 export function oneLineText(
   properties: Record<string, unknown> | null | undefined,

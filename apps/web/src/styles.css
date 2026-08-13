@@ -7331,9 +7331,6 @@ input.cv-add-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ru-title:hover {
-  color: var(--accent-ink, var(--accent));
-}
 .ru-count {
   flex: none;
   font-size: 12px;

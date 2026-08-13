@@ -39,7 +39,7 @@ export function BlockPage() {
   const selRef = useRef(selectedBlockId);
   selRef.current = selectedBlockId;
   useEffect(() => {
-    if (id && selRef.current !== id) selectBlock(id);
+    if (id && selRef.current !== id) selectBlock(id, { quiet: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 

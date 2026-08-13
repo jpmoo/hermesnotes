@@ -16,7 +16,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
-import { ChevronDown, ChevronUp, Settings2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Settings2, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
@@ -1495,7 +1495,7 @@ export function MatrixView({
             drawerOpen ? (
               <ChevronDown size={15} />
             ) : (
-              <ChevronUp size={15} />
+              <ChevronRight size={15} />
             )
           ) : (
             <span style={{ width: 15 }} />

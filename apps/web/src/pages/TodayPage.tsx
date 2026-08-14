@@ -182,7 +182,7 @@ export function TodayPage() {
   useEffect(() => {
     void api
       .get<{ sections: { t: string; id?: string; source?: string }[] }>(
-        `/today/${date}/layout/sections`,
+        `/today/${date}/layout`,
       )
       .then((r) =>
         setStandingIds(

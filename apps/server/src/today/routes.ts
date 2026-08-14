@@ -104,9 +104,15 @@ async function findOrCreateNote(userId: string, date: string) {
     // born with for ever, while every later day got the text. Nothing here is
     // anybody's writing until it differs from what it was handed, so it can
     // be handed something newer.
+    // Never touched, which is not the same as empty. A note that was handed
+    // something and is empty now was emptied on purpose, and handing it the
+    // same text again every time it's opened makes it impossible to clear.
+    // Only a note that still holds exactly what it was given — or one from
+    // before any of this, which was given nothing — takes a fresh page.
     const untouched =
-      (existing.content ?? "") === "" ||
-      (existing.content ?? "") === String(props.seed ?? "\u0000");
+      props.seed === undefined
+        ? (existing.content ?? "") === ""
+        : (existing.content ?? "") === String(props.seed);
     if (untouched) {
       const seed = await seedFor(userId, date);
       if (seed !== (existing.content ?? "")) {

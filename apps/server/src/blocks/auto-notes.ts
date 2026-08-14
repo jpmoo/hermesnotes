@@ -11,6 +11,7 @@ import { db } from "../db.js";
  * that opened with text carried forward from the last one, or with a template in
  * it, has content from its first moment — so what it was given is recorded when
  * it's made, and a note still holding exactly that has had nothing said in it.
+ * An emptied one counts too: clearing a note is how you say you don't want it.
  *
  * The other guards are deliberately strict, because "empty content" alone
  * doesn't mean "empty note": a day with no text can still carry a banner or a
@@ -34,7 +35,10 @@ export async function purgeEmptyAutoNotes(userId: string, keepId?: string | null
      WHERE b.owner_id = ${userId}::uuid
        AND b.archived_at IS NULL
        AND b.created_at < now() - interval '10 minutes'
-       AND COALESCE(b.content, '') = COALESCE(b.properties->>'seed', '')
+       AND (
+         COALESCE(b.content, '') = ''
+         OR COALESCE(b.content, '') = COALESCE(b.properties->>'seed', '')
+       )
        AND (${markerTest})
        AND NOT jsonb_exists(b.properties, 'banner')
        AND NOT jsonb_exists(b.properties, 'layout')

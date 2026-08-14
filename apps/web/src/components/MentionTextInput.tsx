@@ -4,7 +4,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MentionNode } from "../lib/mention-node.ts";
+import { escapeLabel, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 
@@ -14,9 +14,17 @@ import { MentionMenu } from "./MentionMenu.tsx";
  * and picked items render as chips. Unlike the markdown editors, the stored
  * value keeps the RAW compact forms — `#tag`, `@Name_With_Underscores`,
  * `|<block-id>` — which the server scans for tag sync and connections.
+ *
+ * A placeholder is the exception, because there is no compact form for a name
+ * that isn't anything yet: it's stored as the markdown link `[name](new:name)`,
+ * which is what the placeholder rewrite looks for when the thing finally gets
+ * created — so a title that named it counts as one of the places to fix up.
  */
 
-const RAW_RE = /#([A-Za-z0-9][\w-]*)|@([A-Za-z0-9][\w-]*)|\|([0-9a-fA-F-]{36})/g;
+// Ordered so the markdown form wins over the bare tokens that can appear inside
+// it, the same way parseMentions reads a stored title.
+const RAW_RE =
+  /\[([^\]]*)\]\((block|tag|person|new|fwd):([^)]+)\)|#([A-Za-z0-9][\w-]*)|@([A-Za-z0-9][\w-]*)|\|([0-9a-fA-F-]{36})/g;
 
 /** Parse a stored line into paragraph content (text runs + mention chips). */
 function parseLine(value: string): JSONContent[] {
@@ -26,10 +34,11 @@ function parseLine(value: string): JSONContent[] {
   RAW_RE.lastIndex = 0;
   while ((m = RAW_RE.exec(value)) !== null) {
     if (m.index > last) parts.push({ type: "text", text: value.slice(last, m.index) });
-    if (m[1]) parts.push({ type: "mention", attrs: { label: `#${m[1]}`, href: `tag:${m[1].toLowerCase()}` } });
-    else if (m[2])
-      parts.push({ type: "mention", attrs: { label: m[2].replace(/_/g, " "), href: `person:${m[2]}` } });
-    else if (m[3]) parts.push({ type: "mention", attrs: { label: "", href: `block:${m[3]}` } });
+    if (m[2]) parts.push({ type: "mention", attrs: { label: m[1] ?? "", href: `${m[2]}:${m[3]}` } });
+    else if (m[4]) parts.push({ type: "mention", attrs: { label: `#${m[4]}`, href: `tag:${m[4].toLowerCase()}` } });
+    else if (m[5])
+      parts.push({ type: "mention", attrs: { label: m[5].replace(/_/g, " "), href: `person:${m[5]}` } });
+    else if (m[6]) parts.push({ type: "mention", attrs: { label: "", href: `block:${m[6]}` } });
     last = m.index + m[0].length;
   }
   if (last < value.length) parts.push({ type: "text", text: value.slice(last) });
@@ -41,6 +50,11 @@ function rawOf(href: string, label: string): string {
   if (href.startsWith("tag:")) return `#${href.slice(4)}`;
   if (href.startsWith("person:")) return `@${href.slice(7)}`;
   if (href.startsWith("block:")) return `|${href.slice(6)}`;
+  // A placeholder has no compact form to fall back on — and falling back on the
+  // bare label is how naming something that doesn't exist yet in a title came
+  // out the far side as plain words, the ⊕ gone and nothing left to click. Keep
+  // the markdown link every other surface already reads.
+  if (href) return `[${escapeLabel(label)}](${href})`;
   return label;
 }
 
@@ -93,13 +107,18 @@ export function MentionTextInput({
   const lastEmit = useRef(value);
 
   // `@` picks are stored by NAME (raw `@Name` form), so rewrite their href
-  // from block:<id> to person:<name> before the chip is inserted.
+  // from block:<id> to person:<name> before the chip is inserted. Only those:
+  // a placeholder chosen under `@` (which is what the menu offers when there's
+  // no Person type to pick from) is not a person, and rewriting it as one made
+  // it a mention of somebody who doesn't exist.
   const wrap = (s: MentionState): MentionState =>
     s.char === "@"
       ? {
           ...s,
           select: (item) =>
-            s.select({ label: item.label, href: `person:${item.label.replace(/ /g, "_")}` }),
+            item.href.startsWith("block:")
+              ? s.select({ label: item.label, href: `person:${item.label.replace(/ /g, "_")}` })
+              : s.select(item),
         }
       : s;
   const handlers = useMemo<MentionHandlers>(

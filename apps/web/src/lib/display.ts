@@ -30,7 +30,7 @@ export function firstSentence(text: string): string {
  * `@Name_X` → "@Name X", bare `|<id>` → a placeholder. `#tag` reads fine raw. */
 export function flattenMentions(s: string): string {
   return s
-    .replace(/\[([^\]]*)\]\((?:block|tag|person):[^)]+\)/g, "$1")
+    .replace(/\[([^\]]*)\]\((?:block|tag|person|new|fwd):[^)]+\)/g, "$1")
     .replace(/@([A-Za-z0-9][\w-]*)/g, (_m, n: string) => `@${n.replace(/_/g, " ")}`)
     .replace(/\|[0-9a-fA-F-]{36}/g, "|…");
 }

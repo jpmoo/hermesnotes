@@ -104,15 +104,14 @@ async function findOrCreateNote(userId: string, date: string) {
     // born with for ever, while every later day got the text. Nothing here is
     // anybody's writing until it differs from what it was handed, so it can
     // be handed something newer.
-    // Never touched, which is not the same as empty. A note that was handed
-    // something and is empty now was emptied on purpose, and handing it the
-    // same text again every time it's opened makes it impossible to clear.
-    // Only a note that still holds exactly what it was given — or one from
-    // before any of this, which was given nothing — takes a fresh page.
+    // Empty, or still holding exactly what it was handed: either way nobody has
+    // written in it, so it takes a fresh page. Emptying one and finding the
+    // carried text back is fine — that text is what the day is meant to open
+    // with. What matters is that a day like this doesn't count as a day with
+    // something on it (see /today/dates) or linger once it's left (see
+    // purgeEmptyAutoNotes).
     const untouched =
-      props.seed === undefined
-        ? (existing.content ?? "") === ""
-        : (existing.content ?? "") === String(props.seed);
+      (existing.content ?? "") === "" || (existing.content ?? "") === String(props.seed ?? "\u0000");
     if (untouched) {
       const seed = await seedFor(userId, date);
       if (seed !== (existing.content ?? "")) {

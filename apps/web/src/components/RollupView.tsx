@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, CopyPlus } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, CopyPlus } from "lucide-react";
 import { useReducer, useRef, useState } from "react";
 import { api, type Collection, type BlockType } from "../api.ts";
 import { oneLineText, rawOneLine } from "../lib/display.ts";
@@ -7,7 +7,7 @@ import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useRollup, walk, type RollupNode } from "../lib/rollup.ts";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
-import { CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
+import { CollapseAllButton, CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { FieldChips } from "./FieldChips.tsx";
 import type { ShownField } from "../lib/field-text.ts";
@@ -189,7 +189,7 @@ function Branch({
     </button>
   );
 
-  const { toolbar, renderList, viewMode, sortFields, state } = useBlockView(kids.map((k) => k.block), types, {
+  const { renderToolbar, renderList, viewMode, sortFields, state } = useBlockView(kids.map((k) => k.block), types, {
     scope: `rollup.${collectionId}.${node.block.id}`,
     enableView: lastLevel,
     enableManual: false,
@@ -244,20 +244,17 @@ function Branch({
             <div className="hint ru-empty">Nothing at this level.</div>
           ) : lastLevel ? (
             <>
-              {viewMode !== "chips" && (
-                <div className="row ru-cardtools">
-                  <button
-                    className="ghost"
-                    onClick={() => {
+              {renderToolbar(
+                viewMode !== "chips" && (
+                  <CollapseAllButton
+                    allCollapsed={cards.allCollapsed}
+                    onToggle={() => {
                       cards.toggleAll();
                       viewFor.patch(node.block.id, { cardsCollapsed: !cards.allCollapsed });
                     }}
-                  >
-                    {cards.allCollapsed ? "Expand blocks" : "Collapse blocks"}
-                  </button>
-                </div>
+                  />
+                ),
               )}
-              {toolbar}
               {renderList((b, compact) => (
                 <CollapsibleCard
                   block={b}
@@ -273,7 +270,7 @@ function Branch({
             </>
           ) : (
             <>
-              {toolbar}
+              {renderToolbar()}
               {renderList((b) => {
                 const k = byId.get(b.id);
                 return k ? (
@@ -399,7 +396,7 @@ export function RollupView({
       {notes}
       <div className="row ru-tools">
         <button
-          className="ghost"
+          className="bar-btn"
           onClick={() => {
             const open = !allOpen;
             setAllOpen(open);
@@ -409,6 +406,7 @@ export function RollupView({
             viewFor.allGroups(["top", ...keysAtDepth.flat()], open);
           }}
         >
+          {allOpen ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
           {allOpen ? "Collapse all" : "Expand all"}
         </button>
         <span className="hint">

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
-import { CollapsibleCard, useCollapse } from "../components/CollapsibleCard.tsx";
+import { CollapseAllButton, CollapsibleCard, useCollapse } from "../components/CollapsibleCard.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import type { ShownField } from "../lib/field-text.ts";
 import { CollectionSection } from "../components/CollectionSection.tsx";
@@ -47,6 +47,9 @@ interface TodaySheet {
   relevant: Block[];
   activity: Block[];
   layout: TodayLayout;
+  /** The day is exactly as it opens — nothing written, nothing arranged on it.
+   *  Decided by the server, which owns what "untouched" means. */
+  pristine?: boolean;
 }
 
 const idOf = (s: TodaySection) => (s.t === "collection" || s.t === "block" ? `${s.t}:${s.id}` : s.t);
@@ -163,6 +166,10 @@ export function TodayPage() {
   const [standingIds, setStandingIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  // Nothing written here and nothing arranged on it: there is nothing to put
+  // back, so the reset is dead rather than a no-op that looks like it did
+  // something. Assumed while the sheet is still loading.
+  const pristine = sheet?.pristine !== false;
   const { slotEl, bottomSlotEl, setHasContent, selectToday, selectedToday } = usePanels();
   const { banner, setBanner } = usePreferences();
   const typeById = new Map(types.map((t) => [t.id, t]));
@@ -389,14 +396,14 @@ export function TodayPage() {
               <div className="hint">Nothing dated to this day.</div>
             ) : (
               <>
-                <div className="row" style={{ gap: 12, marginBottom: 8 }}>
-                  {relevantView.toolbar}
-                  {relevantView.viewMode !== "chips" && (
-                    <button className="ghost" onClick={relevantCollapse.toggleAll}>
-                      {relevantCollapse.allCollapsed ? "Expand blocks" : "Collapse blocks"}
-                    </button>
-                  )}
-                </div>
+                {relevantView.renderToolbar(
+                  relevantView.viewMode !== "chips" && (
+                    <CollapseAllButton
+                      allCollapsed={relevantCollapse.allCollapsed}
+                      onToggle={relevantCollapse.toggleAll}
+                    />
+                  ),
+                )}
                 {relevantView.renderList(cardWith(relevantCollapse, relevantView.sortFields))}
               </>
             )}
@@ -410,14 +417,14 @@ export function TodayPage() {
               <div className="hint">No activity on this day.</div>
             ) : (
               <>
-                <div className="row" style={{ gap: 12, marginBottom: 8 }}>
-                  {activityView.toolbar}
-                  {activityView.viewMode !== "chips" && (
-                    <button className="ghost" onClick={activityCollapse.toggleAll}>
-                      {activityCollapse.allCollapsed ? "Expand blocks" : "Collapse blocks"}
-                    </button>
-                  )}
-                </div>
+                {activityView.renderToolbar(
+                  activityView.viewMode !== "chips" && (
+                    <CollapseAllButton
+                      allCollapsed={activityCollapse.allCollapsed}
+                      onToggle={activityCollapse.toggleAll}
+                    />
+                  ),
+                )}
                 {activityView.renderList(cardWith(activityCollapse, activityView.sortFields))}
               </>
             )}
@@ -462,6 +469,14 @@ export function TodayPage() {
         <CalendarDays size={22} color="#26282b" />
         {isToday ? `Today · ${label}` : label}
       </h1>
+        {/* Pinned to the right edge rather than trailing the title: the title
+            is a different length every day (and loses "Today ·" the moment you
+            step off it), so a control that followed it slid out from under the
+            finger clicking through the days. */}
+        <div className="page-head-right">
+        {!(banner("today")) && (
+          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("today", v)} />
+        )}
         <div className="day-nav">
           <div className="segmented day-nav-steps">
             <button
@@ -492,22 +507,26 @@ export function TodayPage() {
               <ChevronRight size={15} />
             </button>
           </div>
-          {/* Its own pill: a reset is not a fourth step through the days. */}
+          {/* Its own pill: a reset is not a fourth step through the days. Dead
+              on a day that's already as it opens — there's nothing to put
+              back, and offering it would suggest there were. */}
           <div className="segmented day-nav-reset">
             <button
               className="seg seg-icon"
-              title="Reset this day to a fresh page"
+              title={
+                pristine
+                  ? "This day is already as it opens"
+                  : "Reset this day to a fresh page"
+              }
               aria-label="Reset this day to a fresh page"
-              disabled={!sheet}
+              disabled={!sheet || pristine}
               onClick={() => setConfirmReset(true)}
             >
               <RotateCcw size={15} />
             </button>
           </div>
         </div>
-        {!(banner("today")) && (
-          <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("today", v)} />
-        )}
+        </div>
       </div>
       <ConfirmDialog
         open={confirmReset}

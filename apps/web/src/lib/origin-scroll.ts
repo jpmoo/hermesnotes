@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePanels } from "./right-panel.tsx";
 
 /**
@@ -19,13 +19,21 @@ export function useOriginScroll(ready: boolean) {
   const { scrollTarget } = usePanels();
   const id = scrollTarget?.id ?? null;
   const nonce = scrollTarget?.nonce ?? 0;
+  // An origin is somewhere you came FROM, once. It stays set until the next
+  // navigation records one, so a page that stays mounted and merely changes
+  // what it's showing — stepping from day to day on the Today sheet — kept
+  // being handed the same one and kept hunting for it. Landing halfway down
+  // today, on a card you opened from some other day, was that: the block was
+  // in the day's lists, so it was found and centred.
+  const consumed = useRef(0);
 
   useEffect(() => {
     if (!ready) return;
     // The scroll container survives the route change, so without this a new page
     // opens at the old page's offset.
     document.querySelector<HTMLElement>(".main")?.scrollTo({ top: 0 });
-    if (!id) return;
+    if (!id || nonce === consumed.current) return;
+    consumed.current = nonce;
 
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;

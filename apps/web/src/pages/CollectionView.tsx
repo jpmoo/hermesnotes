@@ -13,7 +13,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, RefreshCw, X } from "lucide-react";
+import { ChevronsDownUp, ChevronsUpDown, GripVertical, RefreshCw, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -376,7 +376,7 @@ export function CollectionView() {
 
         {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && !isRollup && format !== "blocks" && members.length > 0 && (
           <button
-            className="ghost"
+            className="bar-btn"
             style={{ marginLeft: "auto" }}
             onClick={() => {
               const open = !allExpanded;
@@ -384,6 +384,7 @@ export function CollectionView() {
               setExpandSignal((s) => ({ open, nonce: (s?.nonce ?? 0) + 1 }));
             }}
           >
+            {allExpanded ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
             {allExpanded ? "Collapse all" : "Expand all"}
           </button>
         )}

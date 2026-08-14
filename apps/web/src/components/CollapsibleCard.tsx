@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { useState } from "react";
 import type { Block, BlockType } from "../api.ts";
 import { BlockCard } from "./BlockCard.tsx";
@@ -51,6 +51,29 @@ export function useCollapse(ids: string[], scope?: string, opts?: { defaultColla
       return write(next);
     });
   return { collapsed, isCollapsed, toggle, allCollapsed, toggleAll };
+}
+
+/**
+ * The all-at-once collapse toggle, as a button in the view's own toolbar rather
+ * than a line of link text trailing off the end of it. It acts on what the
+ * toolbar is showing, so that's where it belongs — pass it to `renderToolbar`.
+ *
+ * Takes the pieces rather than the whole `useCollapse` result, because not every
+ * list keeps its collapse state that way (Favorites holds it in local state).
+ */
+export function CollapseAllButton({
+  allCollapsed,
+  onToggle,
+}: {
+  allCollapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button className="bar-btn" onClick={onToggle}>
+      {allCollapsed ? <ChevronsUpDown size={13} /> : <ChevronsDownUp size={13} />}
+      {allCollapsed ? "Expand blocks" : "Collapse blocks"}
+    </button>
+  );
 }
 
 /**

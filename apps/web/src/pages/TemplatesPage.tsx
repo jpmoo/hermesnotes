@@ -1,5 +1,13 @@
 import { templateName } from "@hermes/shared";
-import { ChevronDown, ChevronRight, FileType2, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  FileType2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, type Block } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
@@ -154,7 +162,8 @@ export function TemplatesPage() {
           <Plus size={15} /> New template
         </button>
         {rows.length > 0 && (
-          <button className="ghost" onClick={toggleAll}>
+          <button className="bar-btn" onClick={toggleAll}>
+            {allOpen ? <ChevronsDownUp size={13} /> : <ChevronsUpDown size={13} />}
             {allOpen ? "Collapse all" : "Expand all"}
           </button>
         )}

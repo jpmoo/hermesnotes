@@ -6,7 +6,7 @@ import { api, type Block, type BlockType, type Settings } from "../api.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
-import { useCollapse } from "../components/CollapsibleCard.tsx";
+import { CollapseAllButton, useCollapse } from "../components/CollapsibleCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { SaveAsCollectionModal } from "../components/SaveAsCollectionModal.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -87,7 +87,7 @@ export function AllBlocksPage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter }).then(setBlocks);
 
-  const { toolbar, renderList, viewMode, sortFields } = useBlockView(blocks, types, {
+  const { renderToolbar, renderList, viewMode, sortFields } = useBlockView(blocks, types, {
     scope: "allblocks",
   });
 
@@ -141,15 +141,15 @@ export function AllBlocksPage() {
           <FolderPlus size={15} />
           Save as collection
         </button>
-        {viewMode !== "chips" && (
-          <button className="ghost" onClick={toggleAll}>
-            {allCollapsed ? "Expand blocks" : "Collapse blocks"}
-          </button>
-        )}
         <span className="hint">{blocks.length} block(s)</span>
       </div>
 
-      {blocks.length > 0 && toolbar}
+      {blocks.length > 0 &&
+        renderToolbar(
+          viewMode !== "chips" && (
+            <CollapseAllButton allCollapsed={allCollapsed} onToggle={toggleAll} />
+          ),
+        )}
 
       {loading ? (
         <div className="hint">Loading…</div>

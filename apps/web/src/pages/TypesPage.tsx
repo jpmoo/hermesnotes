@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError, type BlockType } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -77,13 +77,18 @@ export function TypesPage() {
         </button>
         {types.length > 0 && (
           <button
-            className="ghost"
+            className="bar-btn"
             onClick={() =>
               setOpenIds((cur) =>
                 cur.size === types.length ? new Set() : new Set(types.map((t) => t.id)),
               )
             }
           >
+            {openIds.size === types.length ? (
+              <ChevronsDownUp size={13} />
+            ) : (
+              <ChevronsUpDown size={13} />
+            )}
             {openIds.size === types.length ? "Collapse all" : "Expand all"}
           </button>
         )}

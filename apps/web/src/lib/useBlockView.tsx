@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { FieldDef } from "@hermes/shared";
-import { ChevronDown, ChevronRight, GripVertical, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, GripVertical, Plus, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BlockType } from "../api.ts";
 import { oneLineText, rawOneLine } from "./display.ts";
@@ -302,6 +302,9 @@ export function useBlockView<T extends Viewable>(
   /** The properties the list is sorted by — show them on the cards. */
   sortFields: ShownField[];
   toolbar: ReactNode;
+  /** The toolbar with controls of the caller's own on the end — the collapse-all
+   *  toggle, most often. `toolbar` is this with nothing added. */
+  renderToolbar: (extra?: ReactNode) => ReactNode;
   renderList: (renderCard: (item: T, compact: boolean) => ReactNode) => ReactNode;
 } {
   const enableView = opts.enableView ?? true;
@@ -681,7 +684,7 @@ export function useBlockView<T extends Viewable>(
     </>
   );
 
-  const sortBar = (
+  const sortBar = (extra?: ReactNode) => (
     <div className="sort-bar">
       {groupCtl}
       {manualAvailable ? (
@@ -732,11 +735,12 @@ export function useBlockView<T extends Viewable>(
               </button>
             </span>
           ))}
-          <button className="ghost sort-add" onClick={addLevel}>
-            {levels.length > 0 ? "+ level" : "+ sort"}
+          <button className="bar-btn" onClick={addLevel}>
+            <Plus size={13} />
+            {levels.length > 0 ? "level" : "sort"}
           </button>
           {levels.length > 0 && (
-            <button className="ghost" onClick={() => applyLevels([])} title="Clear sort">
+            <button className="bar-btn" onClick={() => applyLevels([])} title="Clear sort">
               Clear
             </button>
           )}
@@ -779,10 +783,21 @@ export function useBlockView<T extends Viewable>(
         </span>
       )}
       {opts.toolbarExtra}
+      {extra}
     </div>
   );
 
-  const toolbar = (
+  /**
+   * The toolbar, optionally with controls of the caller's own on the end of it —
+   * the collapse-all toggle, most often. They go INSIDE the bar: they act on
+   * what it's showing, and left outside they were a line of link text with
+   * nothing holding it to the control it belongs to.
+   *
+   * Taken at render rather than as an option because these usually depend on
+   * `viewMode`, which is this hook's own output — an option would have to be
+   * built before the answer existed.
+   */
+  const renderToolbar = (extra?: ReactNode) => (
     <div className="sort-bar-shell">
       {isMobile && (
         <button
@@ -795,9 +810,10 @@ export function useBlockView<T extends Viewable>(
           {toolsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </button>
       )}
-      {(!isMobile || toolsOpen) && sortBar}
+      {(!isMobile || toolsOpen) && sortBar(extra)}
     </div>
   );
+  const toolbar = renderToolbar();
 
   const renderList = (renderCard: (item: T, compact: boolean) => ReactNode): ReactNode => {
     if (groups) {
@@ -919,6 +935,7 @@ export function useBlockView<T extends Viewable>(
     state: { manual: manualMode, sort: levels, viewMode, groupBy, columns, chipCols, groupsShut: shut },
     sortFields,
     toolbar,
+    renderToolbar,
     renderList,
   };
 }

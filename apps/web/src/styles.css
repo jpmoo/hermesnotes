@@ -2136,6 +2136,31 @@ input.collection-title:focus {
   color: var(--accent-ink);
 }
 
+/* A control that lives in a toolbar and acts on what the toolbar is showing —
+   expand and collapse, add a sort level, clear one. Built like a segment so a
+   bar reads as one row of controls rather than pills with loose words after
+   them; on its own rather than in a .segmented group, because these are single
+   actions and not a choice between states. */
+.bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 7px 12px;
+  border-radius: var(--radius-control);
+  white-space: nowrap;
+}
+.bar-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.bar-btn svg {
+  flex-shrink: 0;
+}
+
 .list-items {
   display: flex;
   flex-direction: column;
@@ -3523,9 +3548,6 @@ input.matrix-axis-y::placeholder {
   font-size: 14px;
   font-weight: 700;
   width: 30px;
-}
-.sort-add {
-  padding: 5px 10px;
 }
 .sort-summary {
   margin-left: auto;
@@ -7009,6 +7031,13 @@ input.cv-add-input {
 .page-head-add {
   margin-left: auto;
 }
+/* The right-hand end of a title line, held there whatever the title says. */
+.page-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
 .typed-head .head-banner-add {
   margin-left: auto;
 }
@@ -7240,7 +7269,8 @@ input.cv-add-input {
   height: 38px;
   flex-shrink: 0;
 }
-.app-shell.mobile .sort-bar .ghost {
+.app-shell.mobile .sort-bar .ghost,
+.app-shell.mobile .sort-bar .bar-btn {
   padding: 9px 14px;
 }
 .app-shell.mobile .cols-ctl {
@@ -7441,9 +7471,6 @@ button.ru-title:hover {
 .ru-body > .sort-bar-shell {
   margin-bottom: 8px;
 }
-.ru-cardtools {
-  margin-bottom: 4px;
-}
 
 /* ── The properties a list is sorted by, shown on its blocks ───── */
 /* A collapsed card gives its title and nothing else, and a chip even less, so
@@ -7550,16 +7577,6 @@ button.ru-title:hover {
    them would be a stray horizontal stripe. */
 .app-shell.mobile .sort-sep {
   display: none;
-}
-/* The row above a branch's toolbar: collapse-all on the left, "use for all at
-   this level" at the right end where a command that reaches beyond this list
-   belongs. */
-.ru-cardtools {
-  justify-content: space-between;
-  gap: 12px;
-}
-.ru-cardtools > :last-child:not(:first-child) {
-  margin-left: auto;
 }
 /* The copy-to-siblings button ends the controls line, away from the controls
    it copies — it acts on other lists, not on this one. */

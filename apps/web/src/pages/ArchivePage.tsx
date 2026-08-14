@@ -7,7 +7,7 @@ import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
-import { useCollapse } from "../components/CollapsibleCard.tsx";
+import { CollapseAllButton, useCollapse } from "../components/CollapsibleCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
 import { emptyGroup } from "../lib/filter.ts";
@@ -118,7 +118,7 @@ export function ArchivePage() {
   const reload = () =>
     void api.post<Block[]>("/blocks/query", { filterQuery: effectiveFilter, archived: true }).then(setBlocks);
 
-  const { toolbar, renderList, viewMode, sortFields } = useBlockView(blocks, types, {
+  const { renderToolbar, renderList, viewMode, sortFields } = useBlockView(blocks, types, {
     scope: "archive",
   });
 
@@ -147,11 +147,6 @@ export function ArchivePage() {
       </p>
 
       <div className="row" style={{ marginBottom: 14, gap: 12 }}>
-        {viewMode !== "chips" && blocks.length > 0 && (
-          <button className="ghost" onClick={toggleAll}>
-            {allCollapsed ? "Expand blocks" : "Collapse blocks"}
-          </button>
-        )}
         {archivedCount > 0 && (
           <button
             className="ghost archive-empty"
@@ -217,7 +212,12 @@ export function ArchivePage() {
         </div>
       )}
 
-      {blocks.length > 0 && toolbar}
+      {blocks.length > 0 &&
+        renderToolbar(
+          viewMode !== "chips" && (
+            <CollapseAllButton allCollapsed={allCollapsed} onToggle={toggleAll} />
+          ),
+        )}
 
       {loading ? (
         <div className="hint">Loading…</div>

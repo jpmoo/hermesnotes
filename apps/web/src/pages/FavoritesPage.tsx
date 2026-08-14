@@ -17,6 +17,7 @@ import { CollapsedRow } from "../components/CollapsedRow.tsx";
 import { ColorPickerModal } from "../components/ColorPickerModal.tsx";
 import { darkTextOn, oneLineText } from "../lib/display.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
+import { CollapseAllButton } from "../components/CollapsibleCard.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
 import { usePreferences } from "../lib/preferences.tsx";
@@ -175,7 +176,7 @@ export function FavoritesPage() {
     );
   };
 
-  const { toolbar, renderList, viewMode, sortFields } = useBlockView(plain, types, {
+  const { renderToolbar, renderList, viewMode, sortFields } = useBlockView(plain, types, {
     scope: "favorites",
   });
 
@@ -316,14 +317,15 @@ export function FavoritesPage() {
       {plain.length > 0 && (
         <div className="row fav-section-head fav-blocks-head">
           <span className="sort-label">Blocks</span>
-          {toolbar}
-          {viewMode !== "chips" && (
-            <button
-              className="ghost"
-              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(plain.map((b) => b.id)))}
-            >
-              {allCollapsed ? "Expand blocks" : "Collapse blocks"}
-            </button>
+          {renderToolbar(
+            viewMode !== "chips" && (
+              <CollapseAllButton
+                allCollapsed={allCollapsed}
+                onToggle={() =>
+                  setCollapsed(allCollapsed ? new Set() : new Set(plain.map((b) => b.id)))
+                }
+              />
+            ),
           )}
         </div>
       )}

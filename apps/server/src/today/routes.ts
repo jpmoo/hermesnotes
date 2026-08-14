@@ -170,6 +170,27 @@ async function findOrCreateNote(userId: string, date: string) {
   return created!;
 }
 
+/**
+ * Whether a day is still exactly as it opens: holding what it was handed and
+ * nothing arranged on it. The same four questions the calendar asks before it
+ * marks a day (see /today/dates), asked of one note — so a day the calendar
+ * doesn't mark is a day the Today page won't offer to reset, there being
+ * nothing to put back.
+ *
+ * Trailing whitespace ignored, because the seed ends with a blank line and the
+ * editor trims that away on its first save.
+ */
+function isPristine(note: { content: string | null; properties: unknown }): boolean {
+  const props = (note.properties ?? {}) as Record<string, unknown>;
+  const bare = (v: string) => v.replace(/\s+$/, "");
+  const asHanded = bare(note.content ?? "") === bare(String(props.seed ?? ""));
+  const arranged =
+    (Array.isArray(props.layout) && props.layout.length > 0) ||
+    (Array.isArray(props.layout_suppress) && props.layout_suppress.length > 0) ||
+    props.banner != null;
+  return asHanded && !arranged;
+}
+
 /** Excludes every kind of periodic note (daily scratchpads, weekly
  * reflections): they're system blocks, they're created merely by visiting the
  * page that owns them, and an empty one has no business in a day's listing. */
@@ -487,7 +508,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const { layout: dayLayout, suppress } = noteLayoutState(note);
     const defaults = await loadDefaults(userId);
     const layout = composeTodayLayout(dayLayout, suppress, defaults, date);
-    return { note, relevant, activity, layout };
+    return { note, relevant, activity, layout, pristine: isPristine(note) };
   });
 
   /** Persist the ordered section layout for a date's Today sheet. Sections that

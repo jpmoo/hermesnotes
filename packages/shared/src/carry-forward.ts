@@ -12,8 +12,18 @@
  * survives the round trip through markdown that any other marker wouldn't.
  */
 
-/** `[the text](fwd:<iso>)`, the form marked text is stored in. */
-const FORWARD_RE = /\[([^\]]*)\]\(fwd:([^)]+)\)/g;
+/**
+ * `<mark data-fwd="<iso>">…</mark>`, the form marked text is stored in. The
+ * inner text is kept as markdown, so mentions inside it travel as mentions.
+ */
+const FORWARD_RE = /<mark\s+data-fwd="([^"]*)"\s*>([\s\S]*?)<\/mark>/g;
+
+/**
+ * The first form: a mention node carrying the text as a flat label. Anything
+ * marked before the change is still read, and still travels — as the words it
+ * was reduced to, since that's all that was kept of it.
+ */
+const LEGACY_RE = /\[([^\]]*)\]\(fwd:([^)]+)\)/g;
 
 export interface ForwardedLine {
   /** The text itself, as written. */
@@ -22,15 +32,12 @@ export interface ForwardedLine {
   since: string;
 }
 
-/** Build the stored form. The label is escaped the same way a mention's is. */
-export function forwardMark(text: string, since: string): string {
-  const label = String(text ?? "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]")
+/** Build the stored form around a piece of markdown. */
+export function forwardMark(markdown: string, since: string): string {
+  const inner = String(markdown ?? "")
     .replace(/\s*\n\s*/g, " ")
     .trim();
-  return `[${label}](fwd:${encodeURIComponent(since)})`;
+  return `<mark data-fwd="${since.replace(/"/g, "&quot;")}">${inner}</mark>`;
 }
 
 /** Every piece of text a note is sending forward, oldest first. */
@@ -39,15 +46,23 @@ export function forwardedIn(content: string | null | undefined): ForwardedLine[]
   const out: ForwardedLine[] = [];
   const seen = new Set<string>();
   let m: RegExpExecArray | null;
+  // Both forms, so a note written before the change still carries its text.
+  const found: { text: string; since: string }[] = [];
   FORWARD_RE.lastIndex = 0;
   while ((m = FORWARD_RE.exec(content)) !== null) {
-    const text = (m[1] ?? "").trim();
+    found.push({ text: (m[2] ?? "").trim(), since: m[1] ?? "" });
+  }
+  LEGACY_RE.lastIndex = 0;
+  while ((m = LEGACY_RE.exec(content)) !== null) {
     let since = m[2] ?? "";
     try {
       since = decodeURIComponent(since);
     } catch {
-      /* stored before encoding, or hand-edited: take it as-is */
+      /* hand-edited: take it as-is */
     }
+    found.push({ text: (m[1] ?? "").trim(), since });
+  }
+  for (const { text, since } of found) {
     if (!text) continue;
     // The same text sent forward twice is one thing; keep the older claim.
     const key = `${text}${since}`;

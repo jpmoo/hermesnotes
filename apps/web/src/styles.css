@@ -7604,3 +7604,13 @@ button.ru-title:hover {
   border-color: var(--accent);
   color: var(--accent-ink);
 }
+
+/* Text that keeps coming back. A highlight you can read straight through: it
+   should be visible every morning without being loud every morning. */
+mark.fwd-mark,
+.md-body mark[data-fwd] {
+  background: rgba(232, 194, 92, 0.24);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 2px;
+}

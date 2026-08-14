@@ -11,7 +11,7 @@ import { IMG_SMALL, MdImage } from "../lib/image-node.ts";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
-import type { Editor } from "@tiptap/core";
+import { getMarkRange, type Editor } from "@tiptap/core";
 import {
   caretOffset,
   DAILY_TEMPLATE_PREF,
@@ -24,6 +24,7 @@ import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.
 import { ListGutter, ListIndent } from "../lib/list-tools.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { ForwardMark } from "../lib/forward-mark.ts";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
@@ -179,6 +180,7 @@ export function MarkdownEditor({
       SmartEnter,
       HeadingIndent,
       MentionNode,
+      ForwardMark,
       MdImage,
       SourceBlock,
       ActiveLineSource,
@@ -347,9 +349,13 @@ export function MarkdownEditor({
   const forwardAround = (doc: PMNode, from: number, to: number) => {
     let found: { from: number; to: number } | null = null;
     doc.descendants((n, pos) => {
-      if (n.type.name !== "mention") return;
-      if (!String(n.attrs.href ?? "").startsWith("fwd:")) return;
-      if (pos <= to && pos + n.nodeSize >= from) found = { from: pos, to: pos + n.nodeSize };
+      if (found || !n.isInline) return;
+      if (!n.marks.some((mk) => mk.type.name === "forwarded")) return;
+      if (pos <= to && pos + n.nodeSize >= from) {
+        // The mark may run across several inline nodes; take the whole run.
+        const range = getMarkRange(doc.resolve(pos + 1), n.marks.find((mk) => mk.type.name === "forwarded")!.type);
+        found = range ? { from: range.from, to: range.to } : { from: pos, to: pos + n.nodeSize };
+      }
     });
     return found;
   };
@@ -441,14 +447,13 @@ export function MarkdownEditor({
     if (!extract || !editor) return;
     const { from, to, titleText } = extract;
     setExtract(null);
-    const mention = editor.state.schema.nodes.mention;
-    if (!mention || !titleText.trim()) return;
-    const node = mention.create({
-      href: `fwd:${encodeURIComponent(new Date().toISOString())}`,
-      label: titleText.trim(),
-    });
-    editor.view.dispatch(editor.state.tr.replaceWith(from, to, node));
-    editor.view.focus();
+    if (!titleText.trim()) return;
+    editor
+      .chain()
+      .focus()
+      .setTextSelection({ from, to })
+      .setMark("forwarded", { since: new Date().toISOString() })
+      .run();
   };
 
   /**
@@ -460,14 +465,9 @@ export function MarkdownEditor({
     if (!extract || !editor || !extract.inForward) return;
     const { from, to } = extract.inForward;
     setExtract(null);
-    const node = editor.state.doc.nodeAt(from);
-    const text = String(node?.attrs.label ?? "");
-    editor.view.dispatch(
-      text && !alsoRemove
-        ? editor.state.tr.replaceWith(from, to, editor.state.schema.text(text))
-        : editor.state.tr.delete(from, to),
-    );
-    editor.view.focus();
+    const chain = editor.chain().focus().setTextSelection({ from, to });
+    if (alsoRemove) chain.deleteSelection().run();
+    else chain.unsetMark("forwarded").run();
   };
 
   // Create a new block of `type` from the selection, then replace the selection

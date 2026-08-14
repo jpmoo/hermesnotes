@@ -292,7 +292,10 @@ export async function templateBody(userId: string, id: unknown): Promise<string>
  * left alone, so ordinary markdown links keep their URLs searchable.
  */
 const flatten = (col: SQL | SQLWrapper) =>
-  sql`regexp_replace(COALESCE(${col}, ''), '\\[([^]]*)\\]\\((block|tag|person|new|fwd):[^)]*\\)', '\\1', 'g')`;
+  sql`regexp_replace(
+    regexp_replace(COALESCE(${col}, ''), '</?mark[^>]*>', '', 'g'),
+    '\\[([^]]*)\\]\\((block|tag|person|new|fwd):[^)]*\\)', '\\1', 'g'
+  )`;
 
 /** Reusable predicate: the block is active (not archived). */
 const notArchived = sql`${blocks.archivedAt} IS NULL`;

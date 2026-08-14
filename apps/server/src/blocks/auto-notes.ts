@@ -7,10 +7,15 @@ import { db } from "../db.js";
  * or an open review brings its note into being whether or not anything is ever
  * typed into it. Left alone, simply browsing accumulates empty notes.
  *
- * This deletes those never-written-in notes. The guards are deliberately strict,
- * because "empty content" alone doesn't mean "empty note": a day with no text can
- * still carry a banner or a customised layout, and either is worth keeping. Only
- * a note with no content AND nothing else hanging off it goes.
+ * This deletes those never-written-in notes. Untouched rather than empty: a note
+ * that opened with text carried forward from the last one, or with a template in
+ * it, has content from its first moment — so what it was given is recorded when
+ * it's made, and a note still holding exactly that has had nothing said in it.
+ *
+ * The other guards are deliberately strict, because "empty content" alone
+ * doesn't mean "empty note": a day with no text can still carry a banner or a
+ * customised layout, and either is worth keeping. Only a note nobody wrote in
+ * AND with nothing else hanging off it goes.
  *
  * `keepId` spares the note currently being viewed, which is legitimately empty
  * until its first keystroke. Notes minted in the last few minutes are spared too:
@@ -29,7 +34,7 @@ export async function purgeEmptyAutoNotes(userId: string, keepId?: string | null
      WHERE b.owner_id = ${userId}::uuid
        AND b.archived_at IS NULL
        AND b.created_at < now() - interval '10 minutes'
-       AND COALESCE(b.content, '') = ''
+       AND COALESCE(b.content, '') = COALESCE(b.properties->>'seed', '')
        AND (${markerTest})
        AND NOT jsonb_exists(b.properties, 'banner')
        AND NOT jsonb_exists(b.properties, 'layout')

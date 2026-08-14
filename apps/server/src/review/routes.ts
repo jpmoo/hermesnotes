@@ -212,6 +212,7 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
         eq(blocks.ownerId, userId),
         sql`${blocks.properties}->>${REFLECTION_MARK} < ${dueDate}`,
         sql`COALESCE(${blocks.content}, '') <> ''`,
+        sql`${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'`,
       ),
     )
     .orderBy(sql`${blocks.properties}->>${REFLECTION_MARK} DESC`)
@@ -223,7 +224,11 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
       ownerId: userId,
       blockTypeId: textType.id,
       content: seed,
-      properties: { [REFLECTION_MARK]: dueDate, title: fmtWeekEnding(dueDate) },
+      properties: {
+        [REFLECTION_MARK]: dueDate,
+        title: fmtWeekEnding(dueDate),
+        ...(seed ? { seed } : {}),
+      },
       embedSource: seed,
       embedSourceHash: null,
       blockTypeSchemaVersion: textType.schemaVersion,

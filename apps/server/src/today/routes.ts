@@ -94,6 +94,9 @@ async function findOrCreateNote(userId: string, date: string) {
         eq(blocks.ownerId, userId),
         sql`${blocks.properties}->>'today_note' < ${date}`,
         sql`COALESCE(${blocks.content}, '') <> ''`,
+        // A day that was opened and never written in is not the last day that
+        // was written on, however much text it was handed.
+        sql`${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'`,
       ),
     )
     .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
@@ -105,7 +108,12 @@ async function findOrCreateNote(userId: string, date: string) {
       ownerId: userId,
       blockTypeId: textType.id,
       content: seed,
-      properties: { today_note: date, title: scratchpadTitle(date) },
+      properties: {
+        today_note: date,
+        title: scratchpadTitle(date),
+        // What it opened with — see purgeEmptyAutoNotes.
+        ...(seed ? { seed } : {}),
+      },
       embedSource: seed,
       embedSourceHash: null,
       blockTypeSchemaVersion: textType.schemaVersion,
@@ -293,7 +301,12 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
           sql`jsonb_exists(${blocks.properties}, 'today_note')`,
           sql`${blocks.archivedAt} IS NULL`,
           sql`(
-            COALESCE(${blocks.content}, '') <> ''
+            (
+              COALESCE(${blocks.content}, '') <> ''
+              -- A day handed a template it was never written in isn't a day
+              -- with something on it.
+              AND ${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'
+            )
             OR jsonb_array_length(COALESCE(${blocks.properties}->'layout', '[]'::jsonb)) > 0
             OR jsonb_array_length(COALESCE(${blocks.properties}->'layout_suppress', '[]'::jsonb)) > 0
             OR jsonb_exists(${blocks.properties}, 'banner')

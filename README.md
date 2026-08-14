@@ -2,7 +2,7 @@
 
 **A block-first personal knowledge base — where notes, tasks, and projects are all the same thing, and everything connects.**
 
-Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task, a project, a person, a bookmark — is a **block** of a type you define. Blocks link to each other, roll up into flexible **collections** (lists, tables, kanban matrices, calendars, or an infinite canvas), and are searchable by keyword *and* meaning. It ships with daily notes, a weekly-review workflow, an optional local AI assistant, an MCP server for agents, and one-click export to Obsidian-compatible Markdown.
+Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task, a project, a person, a bookmark — is a **block** of a type you define. Blocks link to each other, roll up into flexible **collections** (lists, tables, kanban matrices, calendars, or an infinite canvas), and are searchable by keyword *and* meaning. It ships with daily notes, a weekly-review workflow, reusable templates, an optional local AI assistant, an MCP server for agents, and one-click export to Obsidian-compatible Markdown.
 
 > I'm a vibe-coder, and Claude did all of the heavy lifting here. Expect some hard edges here and there!
 
@@ -20,9 +20,11 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 
 - **Block-first data model.** Define your own block types (Task, Project, Person, Book…) with typed fields — text, long-text (Markdown), dates & date-spans, numbers, selects, status, references to other blocks, and file attachments.
 - **Everything links.** Inline `@`/`#`/`|` mentions, reference fields, and a live backlinks/connections panel. Links to deleted blocks are surfaced so you can clean them up.
-- **Collections, many shapes.** Group blocks as a **list**, **table**, **kanban matrix** (rows × columns × regions), **calendar**, **spread**, or **infinite canvas** — including *smart* collections driven by a query builder.
+- **Collections, many shapes.** Group blocks as a **list**, **table**, **kanban matrix** (rows × columns × regions), **calendar**, **spread**, **rollup** (a heading per project with its tasks nested under it), or **infinite canvas** — including *smart* collections driven by a query builder.
 - **Tasks & projects.** Statuses, due/scheduled date-spans, recurrence, and project relations. On a canvas, drawing a link from a task to a project files it under that project.
 - **Daily notes & weekly review.** A dated scratchpad per day, plus a configurable weekly-review flow with reflections.
+- **Send text forward.** Select anything in a daily note or weekly reflection and send it forward: it's copied into the next one, and the one after that, until you call it off. Days you never wrote in are skipped rather than breaking the thread, and earlier notes keep what they carried — stopping it tomorrow doesn't rewrite yesterday.
+- **Templates.** Named prose you keep reaching for. Right-click in any long-text field to apply one, attach one to a type's field so new blocks of that type start with it, or make one the shape every daily note or weekly reflection opens with. Two marks, each alone on a line: `/` is where the caret lands when you open the field, and `%` is where text sent forward from the last note arrives.
 - **Semantic + keyword search.** Full-text search everywhere, backed by vector embeddings (via your own Ollama model) for "find things like this."
 - **Local AI assistant (optional).** Chat over your knowledge base using an Ollama model you choose — nothing leaves your server.
 - **MCP server built in.** Point Claude or any MCP client at your notes to read, search, and manage tasks/projects.

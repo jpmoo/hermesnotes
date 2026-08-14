@@ -24,6 +24,7 @@ import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.
 import { ListGutter, ListIndent } from "../lib/list-tools.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { CaretSlot } from "../lib/caret-slot.ts";
 import { ForwardMark } from "../lib/forward-mark.ts";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
@@ -181,6 +182,7 @@ export function MarkdownEditor({
       HeadingIndent,
       MentionNode,
       ForwardMark,
+      CaretSlot,
       MdImage,
       SourceBlock,
       ActiveLineSource,

@@ -7646,3 +7646,15 @@ mark.fwd-mark,
   width: 2px;
   background: var(--accent);
 }
+
+/* The template's caret mark, in live preview. The line keeps its place and
+   loses its glyph: transparent rather than removed, so the height holds, the
+   caret still lands there, and the first keystroke replaces it. Raw view shows
+   the slash, which is right — that's the source. */
+.note-editor .caret-slot {
+  color: transparent;
+}
+.note-editor .caret-slot::selection,
+.note-editor .caret-slot *::selection {
+  background: rgba(95, 164, 181, 0.25);
+}

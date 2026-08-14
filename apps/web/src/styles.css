@@ -7622,3 +7622,27 @@ mark.fwd-mark,
   border-left: 3px solid var(--feed-color);
   padding-left: 6px;
 }
+
+/* The active line inside a striped list row.
+   A stripe reaches back over the marker and the control gutter to the note's
+   left edge so its background covers the whole row. The accent bar is a border,
+   so on those rows it was drawn at that pulled-out edge — out past the number,
+   instead of beside the text like every other active line. Draw it at the text
+   instead: the border goes transparent (keeping its width, so nothing shifts)
+   and the bar is placed where the padding ends. */
+:root[data-list-stripes="1"] .li-stripe > pre.source-line,
+:root[data-list-stripes="1"] .li-stripe > div > pre.source-line {
+  position: relative;
+  border-left-color: transparent;
+  padding-left: calc(var(--row-indent, 48px) + var(--outline-indent, 0px) + 10px);
+}
+:root[data-list-stripes="1"] .li-stripe > pre.source-line::before,
+:root[data-list-stripes="1"] .li-stripe > div > pre.source-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--row-indent, 48px) + var(--outline-indent, 0px));
+  width: 2px;
+  background: var(--accent);
+}

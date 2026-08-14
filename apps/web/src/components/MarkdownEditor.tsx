@@ -470,9 +470,13 @@ export function MarkdownEditor({
     if (!extract || !editor || !extract.inForward) return;
     const { from, to } = extract.inForward;
     setExtract(null);
-    const chain = editor.chain().focus().setTextSelection({ from, to });
-    if (alsoRemove) chain.deleteSelection().run();
-    else chain.unsetMark("forwarded").run();
+    // deleteRange, not select-then-deleteSelection: a chained deleteSelection
+    // reads the selection off the original state, not off the transaction the
+    // chain is building — so with the caret sitting where the right-click left
+    // it, there was nothing selected and it deleted nothing at all. unsetMark
+    // does use the chain's own selection, which is why the other one worked.
+    if (alsoRemove) editor.chain().focus().deleteRange({ from, to }).run();
+    else editor.chain().focus().setTextSelection({ from, to }).unsetMark("forwarded").run();
   };
 
   // Create a new block of `type` from the selection, then replace the selection

@@ -13,6 +13,7 @@ import {
   Search,
   Star,
   Settings,
+  FileType2,
   Shapes,
   Sun,
   type LucideIcon,
@@ -48,6 +49,7 @@ const FAVORITES_KEY = "favorites_colors";
 const ALLBLOCKS_KEY = "allblocks_colors";
 const COLLECTIONS_KEY = "collections_colors";
 const TYPES_KEY = "types_colors";
+const TEMPLATES_KEY = "templates_colors";
 const REVIEW_KEY = "review_colors";
 const ARCHIVE_KEY = "archive_colors";
 
@@ -262,6 +264,8 @@ export function Sidebar() {
         return colorRow(COLLECTIONS_KEY, "/collections", false, Library, "Collections");
       case "types":
         return colorRow(TYPES_KEY, "/types", false, Shapes, "Types");
+      case "templates":
+        return colorRow(TEMPLATES_KEY, "/templates", false, FileType2, "Templates");
       case "review":
         // Only appears once a review day is configured.
         return reviewConfigured ? colorRow(REVIEW_KEY, "/review", false, ListChecks, "Weekly Review") : null;

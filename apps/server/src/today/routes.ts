@@ -5,6 +5,7 @@ import {
   addToDefaults,
   carryForward,
   composeTodayLayout,
+  placeCarried,
   customTodaySectionSchema,
   normalizeDefaultLayout,
   normalizeTodayLayout,
@@ -97,7 +98,7 @@ async function findOrCreateNote(userId: string, date: string) {
     )
     .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
     .limit(1);
-  const seed = carryForward(previous?.content);
+  const seed = placeCarried("", carryForward(previous?.content));
   const [created] = await db
     .insert(blocks)
     .values({

@@ -7563,3 +7563,28 @@ button.ru-title:hover {
 .mention-chip.forwarded:hover {
   background: rgba(232, 194, 92, 0.32);
 }
+
+/* ── Templates page ───────────────────────────────────────────── */
+.tpl-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tpl-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+.tpl-body {
+  margin-top: 10px;
+}
+.tpl-hint {
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.tpl-hint code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}

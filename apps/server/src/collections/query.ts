@@ -212,6 +212,7 @@ export async function runQueryCounted(
     sql`${blocks.collectionKind} IS NULL`,
     // Weekly-review reflections are system blocks — always hidden.
     sql`NOT jsonb_exists(${blocks.properties}, 'review_reflection')`,
+    sql`NOT jsonb_exists(${blocks.properties}, 'template_name')`,
     // Archived blocks never appear in a normal query (smart collections, task
     // tools, All blocks, graph membership all flow through here); the Archive
     // page inverts this to show only archived ones.

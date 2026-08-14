@@ -8,6 +8,7 @@ import {
   normalizeFilter,
   oneLineLabel,
   periodicKindOf,
+  TEMPLATE_MARKER,
   recurrenceContinues,
   recurrenceSchema,
   type PropertySchema,
@@ -421,6 +422,109 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Templates: named prose to drop into any long-text field.
+   *
+   * They're text blocks wearing a marker rather than a new kind of thing, so
+   * they edit with the ordinary markdown surface and everything that surface
+   * can do — mentions included — keeps working once one has been applied.
+   * Being system blocks, they're kept out of the listings and queries the way
+   * daily notes are.
+   */
+  app.get("/templates", async (req) => {
+    const userId = requireUser(req);
+    return db
+      .select(blockView)
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          notArchived,
+          sql`jsonb_exists(${blocks.properties}, ${TEMPLATE_MARKER})`,
+        ),
+      )
+      .orderBy(sql`lower(${blocks.properties}->>${TEMPLATE_MARKER})`);
+  });
+
+  app.post("/templates", async (req, reply) => {
+    const userId = requireUser(req);
+    const { name, content } = z
+      .object({ name: z.string().min(1).max(120), content: z.string().max(20000).optional() })
+      .parse(req.body);
+    const [textType] = await db
+      .select({ id: blockTypes.id, schemaVersion: blockTypes.schemaVersion })
+      .from(blockTypes)
+      .where(and(eq(blockTypes.ownerId, userId), eq(blockTypes.isText, true)))
+      .orderBy(desc(blockTypes.builtin))
+      .limit(1);
+    if (!textType) throw badRequest("text block type missing");
+    const body = content ?? "";
+    const [row] = await db
+      .insert(blocks)
+      .values({
+        ownerId: userId,
+        blockTypeId: textType.id,
+        content: body,
+        properties: { [TEMPLATE_MARKER]: name.trim(), title: name.trim() },
+        embedSource: "",
+        embedSourceHash: null,
+        blockTypeSchemaVersion: textType.schemaVersion,
+      })
+      .returning(blockView);
+    reply.code(201);
+    return row;
+  });
+
+  /** Rename or rewrite one. Deleting is the ordinary block delete. */
+  app.patch("/templates/:id", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const { name, content } = z
+      .object({
+        name: z.string().min(1).max(120).optional(),
+        content: z.string().max(20000).optional(),
+      })
+      .parse(req.body);
+    const [current] = await db
+      .select({ properties: blocks.properties })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!current || !(TEMPLATE_MARKER in (current.properties ?? {}))) throw notFound("template");
+    const props = { ...current.properties };
+    if (name !== undefined) {
+      props[TEMPLATE_MARKER] = name.trim();
+      props.title = name.trim();
+    }
+    const [row] = await db
+      .update(blocks)
+      .set({
+        properties: props,
+        ...(content !== undefined ? { content } : {}),
+        version: sql`${blocks.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .returning(blockView);
+    return row;
+  });
+
+  /** A template is only ever deleted outright — it's not filed anywhere to
+   *  archive it from, and an archived one nobody can reach is just clutter. */
+  app.delete("/templates/:id", async (req, reply) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    if (req.authKind !== "cookie") throw forbidden("deleting requires a browser session");
+    const [row] = await db
+      .select({ properties: blocks.properties })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!row || !(TEMPLATE_MARKER in (row.properties ?? {}))) throw notFound("template");
+    await db.delete(blocks).where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
+    reply.code(204);
+    return null;
+  });
+  /**
    * Turn a placeholder into a real block.
    *
    * A placeholder is a mention of something that doesn't exist yet — written
@@ -497,6 +601,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
           eq(blocks.ownerId, userId),
           sql`${blocks.collectionKind} IS NULL`,
           sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      sql`NOT jsonb_exists(${blocks.properties}, ${TEMPLATE_MARKER})`,
           notArchived,
           // no parent (not a member of any collection)
           sql`NOT EXISTS (SELECT 1 FROM ${memberships} m WHERE m.block_id = ${blocks.id})`,
@@ -570,6 +675,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       eq(blocks.blockTypeId, typeId),
       sql`${blocks.collectionKind} IS NULL`,
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      sql`NOT jsonb_exists(${blocks.properties}, ${TEMPLATE_MARKER})`,
       notArchived,
     ];
     if (q && q.trim()) {
@@ -603,6 +709,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       eq(blocks.ownerId, userId),
       eq(blocks.blockTypeId, typeId),
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      sql`NOT jsonb_exists(${blocks.properties}, ${TEMPLATE_MARKER})`,
       notArchived,
     ];
     if (q && q.trim()) {
@@ -719,6 +826,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const filters = [
       eq(blocks.ownerId, userId),
       sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      sql`NOT jsonb_exists(${blocks.properties}, ${TEMPLATE_MARKER})`,
       notArchived,
     ];
     if (!includeCollections) filters.push(sql`${blocks.collectionKind} IS NULL`);
@@ -1057,6 +1165,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
             and(
               sql`jsonb_path_exists(${blocks.properties}, '$.** ? (@ == $v)', jsonb_build_object('v', ${id}::text))`,
               sql`NOT jsonb_exists(${blocks.properties}, 'today_note')`,
+      sql`NOT jsonb_exists(${blocks.properties}, ${TEMPLATE_MARKER})`,
               // Canvas edge/region bookkeeping holds member ids — placement,
               // not a reference (edges surface via canvasConnections instead).
               sql`${blocks.collectionKind} IS DISTINCT FROM 'canvas'`,

@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   carryForward,
   composeReviewSteps,
+  placeCarried,
   isComplete,
   parseWeeklyReview,
   reorderReviewSteps,
@@ -215,7 +216,7 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
     )
     .orderBy(sql`${blocks.properties}->>${REFLECTION_MARK} DESC`)
     .limit(1);
-  const seed = carryForward(previous?.content);
+  const seed = placeCarried("", carryForward(previous?.content));
   const [created] = await db
     .insert(blocks)
     .values({

@@ -16,6 +16,7 @@ export const RAIL_BUTTON_IDS = [
   "blocks",
   "collections",
   "types",
+  "templates",
   "review",
   "archive",
 ] as const;
@@ -48,6 +49,7 @@ export const START_PAGE_OPTIONS = [
   { path: "/blocks", label: "All blocks" },
   { path: "/collections", label: "Collections" },
   { path: "/types", label: "Types" },
+  { path: "/templates", label: "Templates" },
   { path: "/review", label: "Weekly Review" },
   { path: "/archive", label: "Archive" },
 ] as const;
@@ -71,6 +73,8 @@ export const DEFAULT_RAIL: RailLayout = [
   { kind: "button", id: "blocks" },
   { kind: "button", id: "collections" },
   { kind: "button", id: "types" },
+  { kind: "line" },
+  { kind: "button", id: "templates" },
   { kind: "line" },
   { kind: "button", id: "review" },
   { kind: "line" },

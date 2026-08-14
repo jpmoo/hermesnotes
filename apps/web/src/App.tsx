@@ -25,6 +25,7 @@ import { BlockPage } from "./pages/BlockPage.tsx";
 import { TodayPage } from "./pages/TodayPage.tsx";
 import { SettingsPage } from "./pages/SettingsPage.tsx";
 import { SetupPage } from "./pages/SetupPage.tsx";
+import { TemplatesPage } from "./pages/TemplatesPage.tsx";
 import { TypesPage } from "./pages/TypesPage.tsx";
 import { ReviewPage } from "./pages/ReviewPage.tsx";
 
@@ -148,6 +149,7 @@ function Shell() {
             <Route path="/collections" element={<CollectionsPage />} />
             <Route path="/collections/:id" element={<CollectionView />} />
             <Route path="/types" element={<TypesPage />} />
+            <Route path="/templates" element={<TemplatesPage />} />
             <Route path="/review" element={<ReviewPage />} />
             <Route path="/archive" element={<ArchivePage />} />
             <Route path="/settings" element={<SettingsPage />} />

@@ -1,4 +1,4 @@
-import { Archive, CalendarDays, ChevronLeft, ChevronRight, Clock, Layers, Library, ListChecks, Star } from "lucide-react";
+import { Archive, CalendarDays, ChevronLeft, ChevronRight, Clock, FileType2, Layers, Library, ListChecks, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { dailyNotePeriod } from "@hermes/shared";
@@ -72,6 +72,7 @@ function RecentsMenu() {
                   favorites: { Icon: Star, label: "Favorites", key: "favorites_colors" },
                   archive: { Icon: Archive, label: "Archive", key: "archive_colors" },
                   review: { Icon: ListChecks, label: "Weekly Review", key: "review_colors" },
+                  templates: { Icon: FileType2, label: "Templates", key: "templates_colors" },
                 }[e.page];
                 return (
                   <button

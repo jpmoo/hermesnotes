@@ -11,6 +11,8 @@ import { IMG_SMALL, MdImage } from "../lib/image-node.ts";
 import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
+import type { Editor } from "@tiptap/core";
+import { caretOffset, isCaretLine, templateName } from "@hermes/shared";
 import { ActiveLineSource, SourceableListItem, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ListGutter, ListIndent } from "../lib/list-tools.ts";
@@ -20,8 +22,31 @@ import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.t
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
 type Mode = "live" | "raw";
+
+/**
+ * Put the caret where the template said to.
+ *
+ * A template can mark a spot with a line holding nothing but a slash — under
+ * a heading, inside a section — so that writing starts where the writing goes
+ * rather than at the top or wherever the pointer happened to land. The mark is
+ * selected rather than merely passed, so the first keystroke replaces it and
+ * the slash never survives into the note.
+ */
+function placeCaret(editor: Editor, text: string): boolean {
+  if (caretOffset(text) == null) return false;
+  let found: { from: number; to: number } | null = null;
+  editor.state.doc.descendants((n, pos) => {
+    if (found || !n.isTextblock) return;
+    if (isCaretLine(n.textContent)) found = { from: pos + 1, to: pos + n.nodeSize - 1 };
+  });
+  if (!found) return false;
+  const at = found as { from: number; to: number };
+  editor.chain().focus().setTextSelection({ from: at.from, to: at.to }).run();
+  return true;
+}
 
 /** Soft breaks → newlines; strip backslash hard-breaks; cap blank-line runs. */
 function normalizeMarkdown(md: string): string {
@@ -59,7 +84,16 @@ export function MarkdownEditor({
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(value);
+  // The current text, readable from callbacks that were made once.
+  const markdownRef = useRef(value);
+  markdownRef.current = markdown;
+  // Whether this visit has already been sent to the template's mark.
+  const landed = useRef(false);
   const [sug, setSug] = useState<MentionState | null>(null);
+  // Templates offered in the right-click menu, and the one waiting on a
+  // yes/no because this field already has something in it.
+  const [templates, setTemplates] = useState<Block[]>([]);
+  const [pendingTemplate, setPendingTemplate] = useState<Block | null>(null);
   const [extract, setExtract] = useState<
     {
       x: number;
@@ -198,7 +232,13 @@ export function MarkdownEditor({
         },
       },
     },
-    onFocus: () => onFocusChange?.(true),
+    onFocus: ({ editor: ed }) => {
+      onFocusChange?.(true);
+      if (landed.current) return;
+      landed.current = true;
+      // After the click has finished setting its own selection.
+      requestAnimationFrame(() => placeCaret(ed as Editor, markdownRef.current));
+    },
     onBlur: () => onFocusChange?.(false),
     onCreate: ({ editor }) => {
       // Patch the parser (fixes empty checkboxes on every later parse); the
@@ -251,10 +291,62 @@ export function MarkdownEditor({
   // in a title field's compact form (`|<id>`, `#tag`, `@Name`) so the new block's
   // title preserves the connections; `mdText` keeps them as `[label](href)` for a
   // text block's body.
+  // The list is small and rarely changes; fetched once so the menu can open
+  // without a wait.
+  useEffect(() => {
+    void api.get<Block[]>("/templates").then(setTemplates).catch(() => {});
+  }, []);
+
+  /**
+   * Put a template's text in this field. Replacing what's there is the whole
+   * point when a field is empty and a serious thing to do when it isn't, so
+   * the second case asks first.
+   */
+  const applyTemplate = (tpl: Block, confirmed = false) => {
+    if (!editor) return;
+    const body = tpl.content ?? "";
+    const existing = editor.getText().trim();
+    if (existing && !confirmed) {
+      setPendingTemplate(tpl);
+      return;
+    }
+    setPendingTemplate(null);
+    setExtract(null);
+    editor.commands.setContent(body);
+    setMarkdown(body);
+    onChange(body);
+    // Straight to the spot the template marked, if it marked one.
+    placeCaret(editor, body);
+  };
+
   const onContextMenu = (e: React.MouseEvent) => {
     if (!editor || mode !== "live") return;
     const { from, to, empty } = editor.state.selection;
-    if (empty) return;
+    if (empty) {
+      // No selection: the only thing on offer is a template, and only when
+      // there are any.
+      if (templates.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void api
+        .get<BlockType[]>("/block-types")
+        .then((types) =>
+          setExtract({
+            x: e.clientX,
+            y: e.clientY,
+            from,
+            to,
+            titleText: "",
+            titleRaw: "",
+            mdText: "",
+            field: captureField(e.target),
+            inForward: null,
+            types,
+          }),
+        )
+        .catch(() => {});
+      return;
+    }
     const doc = editor.state.doc;
     const asLabel = (n: PMNode) => (n.type.name === "mention" ? String(n.attrs.label ?? "") : "");
     const asMarkdown = (n: PMNode) =>
@@ -449,6 +541,23 @@ export function MarkdownEditor({
               <div className="menu-sep" />
             </>
           )}
+          {templates.length > 0 && (
+            <>
+              <div className="hint" style={{ padding: "6px 10px" }}>
+                Apply a template
+              </div>
+              {templates.map((t) => (
+                <button
+                  key={t.id}
+                  className="menu-item"
+                  onClick={() => applyTemplate(t)}
+                >
+                  {templateName(t.properties) || "Untitled"}
+                </button>
+              ))}
+              {(extract.titleText.trim() || extract.inForward) && <div className="menu-sep" />}
+            </>
+          )}
           {periodic && (extract.inForward || extract.titleText.trim()) && (
             <>
               {extract.inForward ? (
@@ -463,20 +572,36 @@ export function MarkdownEditor({
               <div className="menu-sep" />
             </>
           )}
-          <div className="hint" style={{ padding: "6px 10px" }}>
-            Extract selection to a new…
-          </div>
-          {[...extract.types]
-            .sort((a, b) => (a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1))
-            .map((t) => (
-              <button key={t.id} className="menu-item type-item" onClick={() => void extractTo(t)}>
-                <BlockIcon iconKey={t.isText ? "type" : t.iconKey} color={t.isText ? null : t.iconColor} size={16} />
-                <span style={{ textTransform: "capitalize" }}>{t.name}</span>
-              </button>
-            ))}
+          {extract.titleText.trim() && (
+            <div className="hint" style={{ padding: "6px 10px" }}>
+              Extract selection to a new…
+            </div>
+          )}
+          {extract.titleText.trim() &&
+            [...extract.types]
+              .sort((a, b) => (a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1))
+              .map((t) => (
+                <button key={t.id} className="menu-item type-item" onClick={() => void extractTo(t)}>
+                  <BlockIcon
+                    iconKey={t.isText ? "type" : t.iconKey}
+                    color={t.isText ? null : t.iconColor}
+                    size={16}
+                  />
+                  <span style={{ textTransform: "capitalize" }}>{t.name}</span>
+                </button>
+              ))}
           </div>,
           document.body,
         )}
+      <ConfirmDialog
+        open={pendingTemplate !== null}
+        title={`Replace what's here with “${templateName(pendingTemplate?.properties) || "this template"}”?`}
+        message="This field already has something in it. Applying a template replaces all of it, and there's no undo."
+        confirmLabel="Replace"
+        danger
+        onCancel={() => setPendingTemplate(null)}
+        onConfirm={() => pendingTemplate && applyTemplate(pendingTemplate, true)}
+      />
     </div>
   );
 }

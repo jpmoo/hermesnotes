@@ -65,7 +65,7 @@ async function seedFor(userId: string, date: string): Promise<string> {
         sql`COALESCE(${blocks.content}, '') <> ''`,
         // A day that was opened and never written in is not the last day that
         // was written on, however much text it was handed.
-        sql`${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'`,
+        sql`regexp_replace(COALESCE(${blocks.content}, ''), '\\s+$', '') IS DISTINCT FROM regexp_replace(COALESCE(${blocks.properties}->>'seed', ''), '\\s+$', '')`,
       ),
     )
     .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
@@ -110,8 +110,14 @@ async function findOrCreateNote(userId: string, date: string) {
     // with. What matters is that a day like this doesn't count as a day with
     // something on it (see /today/dates) or linger once it's left (see
     // purgeEmptyAutoNotes).
+    // Trailing whitespace ignored on both sides: the seed ends with a blank
+    // line so writing starts on clean paper, and the editor trims that away
+    // on its first save — leaving a note holding exactly its seed's words
+    // while comparing unequal to it.
+    const bare = (v: string) => v.replace(/\s+$/, "");
     const untouched =
-      (existing.content ?? "") === "" || (existing.content ?? "") === String(props.seed ?? "\u0000");
+      (existing.content ?? "") === "" ||
+      bare(existing.content ?? "") === bare(String(props.seed ?? "\u0000"));
     if (untouched) {
       const seed = await seedFor(userId, date);
       if (seed !== (existing.content ?? "")) {
@@ -345,8 +351,9 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
             (
               COALESCE(${blocks.content}, '') <> ''
               -- A day handed a template it was never written in isn't a day
-              -- with something on it.
-              AND ${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'
+              -- with something on it. Trailing whitespace ignored: the seed
+              -- ends with a blank line, which the editor trims on first save.
+              AND regexp_replace(COALESCE(${blocks.content}, ''), '\\s+$', '') IS DISTINCT FROM regexp_replace(COALESCE(${blocks.properties}->>'seed', ''), '\\s+$', '')
             )
             OR jsonb_array_length(COALESCE(${blocks.properties}->'layout', '[]'::jsonb)) > 0
             OR jsonb_array_length(COALESCE(${blocks.properties}->'layout_suppress', '[]'::jsonb)) > 0

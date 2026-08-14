@@ -37,7 +37,7 @@ export async function purgeEmptyAutoNotes(userId: string, keepId?: string | null
        AND b.created_at < now() - interval '10 minutes'
        AND (
          COALESCE(b.content, '') = ''
-         OR COALESCE(b.content, '') = COALESCE(b.properties->>'seed', '')
+         OR regexp_replace(COALESCE(b.content, ''), '\\s+$', '') = regexp_replace(COALESCE(b.properties->>'seed', ''), '\\s+$', '')
        )
        AND (${markerTest})
        AND NOT jsonb_exists(b.properties, 'banner')

@@ -1,11 +1,20 @@
 import type { TodayLayout, TodayScope, TodaySection } from "@hermes/shared";
-import { Archive, CalendarDays, Maximize2, Trash2 } from "lucide-react";
+import {
+  Archive,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Eraser,
+  Maximize2,
+  Trash2,
+} from "lucide-react";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsibleCard, useCollapse } from "../components/CollapsibleCard.tsx";
+import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
 import type { ShownField } from "../lib/field-text.ts";
 import { CollectionSection } from "../components/CollectionSection.tsx";
 import { SectionLayout, type SectionEntry } from "../components/SectionLayout.tsx";
@@ -18,14 +27,19 @@ import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { useBlockView } from "../lib/useBlockView.tsx";
-import { useBlockDeleted } from "../lib/block-events.ts";
+import { emitBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { useOriginScroll } from "../lib/origin-scroll.ts";
 import { AsOfProvider } from "../lib/as-of.tsx";
 
 const pad = (n: number) => String(n).padStart(2, "0");
-const todayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayStr = () => ymd(new Date());
+/** The day `delta` days from a YYYY-MM-DD date. Built from the parts rather
+ * than by adding milliseconds, so the days either side of a clock change are
+ * still the days either side. */
+const shiftDay = (date: string, delta: number) => {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  return ymd(new Date(y, m - 1, d + delta));
 };
 
 interface TodaySheet {
@@ -128,8 +142,18 @@ function NoteSection({
 
 export function TodayPage() {
   const { date: dateParam } = useParams();
+  const nav = useNavigate();
   const date = dateParam ?? todayStr();
   const isToday = date === todayStr();
+  const [confirmClear, setConfirmClear] = useState(false);
+  // Bumped by a clear, and part of the editor's key: the box has its own copy
+  // of the text, and it holds on to it while the caret is in there. Emptying
+  // the note underneath it has to put a new box on the page.
+  const [clearNonce, setClearNonce] = useState(0);
+  // Today is the day itself, not a date it happens to equal: opening yesterday
+  // and stepping forward lands on /today, so the page still says "Today" after
+  // midnight rather than freezing on a date that has stopped being it.
+  const goToDay = (d: string) => nav(d === todayStr() ? "/today" : `/today/${d}`);
 
   const [sheet, setSheet] = useState<TodaySheet | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
@@ -253,6 +277,17 @@ export function TodayPage() {
       .catch(() => {});
   };
 
+  // Empty the day's note for good. The server records the emptying as a
+  // decision, so the day stops being re-seeded with the template and whatever
+  // was being sent forward; writing here again lifts it.
+  const clearDay = async () => {
+    setConfirmClear(false);
+    await api.post(`/today/${date}/clear`, {});
+    setClearNonce((n) => n + 1);
+    if (sheet?.note) emitBlockChange(sheet.note.id, "today-clear");
+    await load();
+  };
+
   // Arriving from something the day shows — an embedded collection, a note
   // section, the scratchpad itself — puts it back in front of you.
   useOriginScroll(!loading && sheet != null);
@@ -336,7 +371,7 @@ export function TodayPage() {
           <section key="scratchpad" className="today-section" data-block-id={sheet.note.id}>
             <h2 className="today-h">Scratchpad</h2>
             <TextBlockEditor
-              key={sheet.note.id}
+              key={`${sheet.note.id}:${clearNonce}`}
               block={sheet.note}
               type={typeById.get(sheet.note.blockTypeId)}
               onConflict={load}
@@ -427,15 +462,56 @@ export function TodayPage() {
         <CalendarDays size={22} color="#26282b" />
         {isToday ? `Today · ${label}` : label}
       </h1>
+        <div className="day-nav">
+          <button
+            className="icon-btn"
+            title="Previous day"
+            aria-label="Previous day"
+            onClick={() => goToDay(shiftDay(date, -1))}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          {/* Disabled rather than hidden: a control that comes and goes moves
+              the two beside it, so the arrow you meant to press again has
+              shifted under your finger. */}
+          <button
+            className="ghost day-nav-today"
+            disabled={isToday}
+            onClick={() => goToDay(todayStr())}
+          >
+            Today
+          </button>
+          <button
+            className="icon-btn"
+            title="Next day"
+            aria-label="Next day"
+            onClick={() => goToDay(shiftDay(date, 1))}
+          >
+            <ChevronRight size={16} />
+          </button>
+          <span className="day-nav-gap" />
+          <button
+            className="icon-btn day-nav-clear"
+            title="Clear this day's note"
+            aria-label="Clear this day's note"
+            disabled={!sheet}
+            onClick={() => setConfirmClear(true)}
+          >
+            <Eraser size={16} />
+          </button>
+        </div>
         {!(banner("today")) && (
           <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("today", v)} />
         )}
       </div>
-      {!isToday && (
-        <p className="page-sub">
-          <Link to="/today">back to today</Link>
-        </p>
-      )}
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear this day's note?"
+        message={`Everything written in ${label} goes, and the day stays blank — it won't be given the daily template or the text being sent forward again. Writing in it again puts it back to normal.`}
+        confirmLabel="Clear"
+        onConfirm={() => void clearDay()}
+        onCancel={() => setConfirmClear(false)}
+      />
 
       {loading ? (
         <div className="hint">Loading…</div>

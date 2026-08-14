@@ -6959,7 +6959,36 @@ input.cv-add-input {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* A long date and its day controls don't have to share one line on a narrow
+     window — the controls drop below the title rather than being squeezed. */
+  flex-wrap: wrap;
   margin-bottom: 4px;
+}
+
+/* The Today page's day controls: previous / today / next, then Clear, sat
+   beside the date they act on. */
+.day-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.day-nav-today {
+  padding: 4px 12px;
+}
+.day-nav-today:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* A gap wide enough to say the Clear button isn't a third arrow. */
+.day-nav-gap {
+  width: 8px;
+}
+.day-nav-clear:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.day-nav-clear:disabled {
+  opacity: 0.45;
 }
 .collection-head {
   display: flex;

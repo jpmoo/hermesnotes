@@ -73,7 +73,7 @@ function TemplateRow({
           <div className="hint tpl-hint">
             Two marks, each on a line of its own. <code>/</code> is where the caret lands when the
             field is opened — put it under the heading you actually want to write beneath.{" "}
-            <code>&gt;</code> is where text sent forward from the last daily note or weekly
+            <code>%%</code> is where text sent forward from the last daily note or weekly
             reflection arrives; without one it arrives at the very top. Both are used up when the
             template is applied, so neither shows in the note.
           </div>

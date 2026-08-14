@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP, isIPv4 } from "node:net";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { blockTypes, blocks, calendarConverted, calendarFeeds, userSettings } from "@hermes/db";
@@ -714,6 +714,27 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     // to hand the original feed event back (the block is hidden everywhere else,
     // so suppressing the feed event too would make the event vanish outright).
     // The row itself is kept, so unarchiving silently resumes the sync.
+    // Events converted before the block started recording which calendar it came
+    // from have no colour to show, and nothing else would ever give them one.
+    // The link rows know, so fill them in from there — idempotent, and matches
+    // nothing at all once it has run. (A "copy" conversion left no link row, so
+    // those keep their silence: there is genuinely no record of the origin.)
+    await db
+      .execute(
+        sql`
+      UPDATE blocks b
+         SET properties = COALESCE(b.properties, '{}'::jsonb)
+                          || jsonb_build_object('feed_origin', c.feed_id::text)
+        FROM calendar_converted c
+       WHERE c.block_id = b.id
+         AND c.feed_id IS NOT NULL
+         AND c.owner_id = ${userId}::uuid
+         AND b.owner_id = ${userId}::uuid
+         AND NOT jsonb_exists(COALESCE(b.properties, '{}'::jsonb), 'feed_origin')
+    `,
+      )
+      .catch(() => {});
+
     const links = await db
       .select({
         id: calendarConverted.id,

@@ -116,6 +116,9 @@ interface Item {
   props: Record<string, unknown>;
   /** The colour of the calendar this came out of, if it came out of one. */
   feedColor?: string | null;
+  /** …and its name, because colours repeat and a bar on its own can only say
+   *  "somewhere else". */
+  feedName?: string | null;
   version: number;
 }
 
@@ -149,6 +152,7 @@ function Chip({
     <div
       className={`cal-chip${hit ? " cal-hit" : ""}${item.feedColor ? " cal-from-feed" : ""}`}
       data-block-id={item.id}
+      title={item.feedName ? `${item.label} — from ${item.feedName}` : undefined}
       style={item.feedColor ? { ["--feed-color" as string]: item.feedColor } : undefined}
       onClick={(e) => {
         e.stopPropagation();
@@ -581,23 +585,27 @@ export function CalendarView({
     () => new Map(feeds.map((f) => [f.id, f.color])),
     [feeds],
   );
+  const feedNames = useMemo(() => new Map(feeds.map((f) => [f.id, f.name])), [feeds]);
 
   // Source blocks: smart → live query matches; else the explicit members.
   const source = useMemo<Item[]>(() => {
-    const toItem = (b: { id: string; blockTypeId: string | null; properties: unknown; content?: string | null; version: number }): Item => ({
-      id: b.id,
-      blockTypeId: b.blockTypeId,
-      label: oneLineText(b.properties as Record<string, unknown>, b.content) || "Untitled",
-      props: (b.properties ?? {}) as Record<string, unknown>,
+    const toItem = (b: { id: string; blockTypeId: string | null; properties: unknown; content?: string | null; version: number }): Item => {
       // Converted from a feed event: carry that calendar's colour, so a block
       // that walked in from Outlook still says so at a glance. A feed since
-      // deleted leaves no colour, which is the truth of it.
-      feedColor:
-        feedColors.get(String((b.properties as Record<string, unknown>)?.feed_origin ?? "")) ?? null,
-      version: b.version,
-    });
+      // deleted (or switched off) leaves no colour, which is the truth of it.
+      const origin = String((b.properties as Record<string, unknown>)?.feed_origin ?? "");
+      return {
+        id: b.id,
+        blockTypeId: b.blockTypeId,
+        label: oneLineText(b.properties as Record<string, unknown>, b.content) || "Untitled",
+        props: (b.properties ?? {}) as Record<string, unknown>,
+        feedColor: feedColors.get(origin) ?? null,
+        feedName: feedNames.get(origin) ?? null,
+        version: b.version,
+      };
+    };
     return (isSmart ? matches : members).map(toItem);
-  }, [isSmart, matches, members, feedColors]);
+  }, [isSmart, matches, members, feedColors, feedNames]);
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 

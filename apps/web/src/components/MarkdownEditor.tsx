@@ -339,13 +339,26 @@ export function MarkdownEditor({
     applyTemplate(tpl, editor?.getText().trim() === "");
   };
 
+  /** The marked run covering (or touching) a position, if there is one. */
+  const forwardAround = (doc: PMNode, from: number, to: number) => {
+    let found: { from: number; to: number } | null = null;
+    doc.descendants((n, pos) => {
+      if (n.type.name !== "mention") return;
+      if (!String(n.attrs.href ?? "").startsWith("fwd:")) return;
+      if (pos <= to && pos + n.nodeSize >= from) found = { from: pos, to: pos + n.nodeSize };
+    });
+    return found;
+  };
+
   const onContextMenu = (e: React.MouseEvent) => {
     if (!editor || mode !== "live") return;
     const { from, to, empty } = editor.state.selection;
     if (empty) {
-      // No selection: the only thing on offer is a template, and only when
-      // there are any.
-      if (templates.length === 0) return;
+      // No selection, but the click may still have landed on marked text —
+      // finding the ends of a highlight to select them is not something
+      // anyone should have to do to stop it.
+      const here = forwardAround(editor.state.doc, from, to);
+      if (templates.length === 0 && !here) return;
       e.preventDefault();
       e.stopPropagation();
       void api
@@ -360,7 +373,7 @@ export function MarkdownEditor({
             titleRaw: "",
             mdText: "",
             field: captureField(e.target),
-            inForward: null,
+            inForward: here,
             types,
           }),
         )
@@ -392,14 +405,9 @@ export function MarkdownEditor({
     // reach the node, which answers right-clicks with a menu of its own.
     e.stopPropagation();
     const field = captureField(e.target);
-    // Anywhere inside a forwarded run counts as clicking it: the reader
+    // Anywhere inside a marked run counts as clicking it: the reader
     // shouldn't have to find its exact edges to stop it.
-    let inForward: { from: number; to: number } | null = null;
-    doc.descendants((n, pos) => {
-      if (n.type.name !== "mention") return;
-      if (!String(n.attrs.href ?? "").startsWith("fwd:")) return;
-      if (pos < to && pos + n.nodeSize > from) inForward = { from: pos, to: pos + n.nodeSize };
-    });
+    const inForward = forwardAround(doc, from, to);
     void api
       .get<BlockType[]>("/block-types")
       .then((types) =>
@@ -439,16 +447,19 @@ export function MarkdownEditor({
     editor.view.focus();
   };
 
-  /** Stop sending it forward — here and from here on. What earlier notes
-   *  already carry is theirs, and stays as they were written. */
-  const stopForward = () => {
+  /**
+   * Stop sending it forward — from here on. What earlier notes already carry
+   * is theirs and stays as they were written; this note keeps the words too,
+   * unless `alsoRemove`, which is for the ones that have simply had their day.
+   */
+  const stopForward = (alsoRemove = false) => {
     if (!extract || !editor || !extract.inForward) return;
     const { from, to } = extract.inForward;
     setExtract(null);
     const node = editor.state.doc.nodeAt(from);
     const text = String(node?.attrs.label ?? "");
     editor.view.dispatch(
-      text
+      text && !alsoRemove
         ? editor.state.tr.replaceWith(from, to, editor.state.schema.text(text))
         : editor.state.tr.delete(from, to),
     );
@@ -596,9 +607,14 @@ export function MarkdownEditor({
           {periodicKind && (extract.inForward || extract.titleText.trim()) && (
             <>
               {extract.inForward ? (
-                <button className="menu-item" onClick={stopForward}>
-                  Stop sending this text forward
-                </button>
+                <>
+                  <button className="menu-item" onClick={() => stopForward(false)}>
+                    Stop sending this text forward
+                  </button>
+                  <button className="menu-item" onClick={() => stopForward(true)}>
+                    Remove it here and stop sending it forward
+                  </button>
+                </>
               ) : (
                 <button className="menu-item" onClick={sendForward}>
                   Send this text forward

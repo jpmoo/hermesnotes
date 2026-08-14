@@ -134,6 +134,9 @@ export function TodayPage() {
   const [sheet, setSheet] = useState<TodaySheet | null>(null);
   const [types, setTypes] = useState<BlockType[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
+  // Which sections stand on every day from here rather than only on this one.
+  // The sheet composes both together, so it can't be told from the layout alone.
+  const [standingIds, setStandingIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const { slotEl, bottomSlotEl, setHasContent, selectToday, selectedToday } = usePanels();
@@ -174,6 +177,24 @@ export function TodayPage() {
   }, [date, noteId]);
 
   const layout = sheet?.layout ?? [];
+  // Read alongside the sheet: the same list, said in terms of where each
+  // section comes from.
+  useEffect(() => {
+    void api
+      .get<{ sections: { t: string; id?: string; source?: string }[] }>(
+        `/today/${date}/layout/sections`,
+      )
+      .then((r) =>
+        setStandingIds(
+          new Set(
+            r.sections
+              .filter((x) => x.id && x.source === "default")
+              .map((x) => `${x.t}:${x.id}`),
+          ),
+        ),
+      )
+      .catch(() => {});
+  }, [date, sheet?.layout]);
   const saveLayout = (next: TodayLayout) => {
     setSheet((s) => (s ? { ...s, layout: next } : s));
     void api.put(`/today/${date}/layout`, { layout: next });
@@ -194,6 +215,17 @@ export function TodayPage() {
     const i = id.indexOf(":");
     const t = id.slice(0, i);
     return i > 0 && (t === "collection" || t === "block") ? { t, id: id.slice(i + 1) } : null;
+  };
+  const onRescope = (id: string, standing: boolean) => {
+    const section = scopedSection(id);
+    if (!section) return;
+    void api
+      .post(`/today/${date}/layout/rescope`, {
+        section,
+        scope: standing ? "today_forward" : "today",
+      })
+      .then(load)
+      .catch(() => {});
   };
   const onRemove = (id: string, scope?: TodayScope) => {
     const section = scopedSection(id);
@@ -280,7 +312,12 @@ export function TodayPage() {
   const entries: SectionEntry[] = layout.map((s) => {
     const id = idOf(s);
     if (s.t === "collection" || s.t === "block") {
-      return { id, label: labels[id] ?? (s.t === "collection" ? "Collection…" : "Note…"), removable: true };
+      return {
+        id,
+        label: labels[id] ?? (s.t === "collection" ? "Collection…" : "Note…"),
+        removable: true,
+        standing: standingIds.has(id),
+      };
     }
     return { id, label: STANDARD_LABELS[s.t] ?? s.t, removable: false };
   });
@@ -447,6 +484,7 @@ export function TodayPage() {
               onRemove={onRemove}
               onAddCollection={onAddCollection}
               onAddNote={onAddNote}
+              onRescope={onRescope}
             />
           </div>,
           bottomSlotEl,

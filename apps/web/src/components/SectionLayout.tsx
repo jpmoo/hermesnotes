@@ -19,6 +19,8 @@ export interface SectionEntry {
   id: string;
   label: string;
   removable: boolean;
+  /** On every day from here, rather than only on this one. */
+  standing?: boolean;
 }
 
 const SCOPES: { key: TodayScope; label: string }[] = [
@@ -57,11 +59,13 @@ function Row({
   canReorder,
   canModify,
   onRemove,
+  onRescope,
 }: {
   entry: SectionEntry;
   canReorder: boolean;
   canModify: boolean;
   onRemove: (id: string) => void;
+  onRescope?: (id: string, standing: boolean) => void;
 }) {
   const sortable = useSortable({ id: entry.id, disabled: !canReorder });
   const style = {
@@ -85,6 +89,19 @@ function Row({
         </span>
       )}
       <span className="sec-label">{entry.label}</span>
+      {onRescope && canModify && entry.removable && (
+        <button
+          className="sec-scope"
+          title={
+            entry.standing
+              ? "On every day from here — click to keep it on this day only"
+              : "Just this day — click to put it on every day from here"
+          }
+          onClick={() => onRescope(entry.id, !entry.standing)}
+        >
+          {entry.standing ? "every day" : "just today"}
+        </button>
+      )}
       {canModify && entry.removable && (
         <button className="icon-btn sec-remove" title="Remove section" onClick={() => onRemove(entry.id)}>
           <X size={13} />
@@ -227,6 +244,7 @@ export function SectionLayout({
   onRemove,
   onAddCollection,
   onAddNote,
+  onRescope,
 }: {
   entries: SectionEntry[];
   canReorder: boolean;
@@ -238,6 +256,9 @@ export function SectionLayout({
   onRemove: (id: string, scope?: TodayScope) => void;
   onAddCollection: (id: string, scope?: TodayScope) => void;
   onAddNote: (id: string, scope?: TodayScope) => void;
+  /** Change what a placed section means: this day only, or every day from
+   *  here. Absent where the distinction doesn't exist. */
+  onRescope?: (id: string, standing: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [pendingAdd, setPendingAdd] = useState<{ kind: "collection" | "note"; id: string } | null>(null);
@@ -277,6 +298,7 @@ export function SectionLayout({
               canReorder={canReorder}
               canModify={canModify}
               onRemove={handleRemove}
+              onRescope={onRescope}
             />
           ))}
         </SortableContext>

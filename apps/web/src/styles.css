@@ -7588,3 +7588,19 @@ button.ru-title:hover {
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
+
+/* Whether a section on a day's sheet stands on every day or was put there for
+   this one — said quietly on the row, and clicked to change its mind. */
+.sec-scope {
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.sec-scope:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

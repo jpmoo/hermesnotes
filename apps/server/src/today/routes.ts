@@ -501,6 +501,59 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     return { layout: composeTodayLayout(noteLayoutState(note).layout, suppress, defaults, date) };
   });
 
+  const rescopeBody = z.object({
+    section: customTodaySectionSchema,
+    scope: todayScopeSchema,
+  });
+
+  /**
+   * Change what a section already on this sheet means: something added just
+   * for today becomes part of every day from here, or a standing section stops
+   * standing and stays only on this one.
+   *
+   * Re-deciding is not the same as removing and adding back — that loses where
+   * the section sits — so the anchor it's under is read off the sheet as it
+   * stands and carried over.
+   */
+  app.post("/today/:date/layout/rescope", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    const { section, scope } = rescopeBody.parse(req.body);
+    const note = await findOrCreateNote(userId, date);
+    const state = noteLayoutState(note);
+    const key = sectionKey(section);
+    let defaults = await loadDefaults(userId);
+
+    // Which standard section it currently sits under, so it lands back in the
+    // same place rather than at the top.
+    const composed = composeTodayLayout(state.layout, state.suppress, defaults, date);
+    let after: StandardTodaySection = "scratchpad";
+    for (const sec of composed) {
+      if (sectionKey(sec) === key) break;
+      if (sec.t !== "collection" && sec.t !== "block") after = sec.t;
+    }
+
+    const dayLocal = state.layout.some((x) => sectionKey(x) === key);
+    if (scope === "today") {
+      // Stop standing from here on, and keep it on this day by name.
+      defaults = removeFromDefaults(defaults, key, "today_forward", date);
+      await saveDefaults(userId, defaults);
+      await writeNoteLayout(userId, note, {
+        layout: dayLocal ? state.layout : insertAfter(state.layout, section, after),
+        suppress: state.suppress.filter((k) => k !== key),
+      });
+    } else {
+      // Make it standing, and drop the day-local copy so it isn't counted twice.
+      defaults = addToDefaults(defaults, section, after, scope, date);
+      await saveDefaults(userId, defaults);
+      await writeNoteLayout(userId, note, {
+        layout: dayLocal ? state.layout.filter((x) => sectionKey(x) !== key) : state.layout,
+        suppress: state.suppress.filter((k) => k !== key),
+      });
+    }
+    const fresh = noteLayoutState(await findOrCreateNote(userId, date));
+    return { layout: composeTodayLayout(fresh.layout, fresh.suppress, await loadDefaults(userId), date) };
+  });
   const removeBody = z.object({
     section: customTodaySectionSchema,
     scope: todayScopeSchema.default("today"),

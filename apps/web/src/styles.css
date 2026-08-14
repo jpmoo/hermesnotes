@@ -7535,3 +7535,16 @@ button.ru-title:hover {
 .sort-bar > .bv-copy-btn:not(.view-controls + *) {
   margin-left: auto;
 }
+
+/* A placeholder mention: named, but not yet anything. Dashed rather than
+   filled — it's a space held open, and clicking it asks what goes there. */
+.mention-chip.placeholder {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-muted);
+  padding: 0 5px;
+}
+.mention-chip.placeholder:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

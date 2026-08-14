@@ -9,7 +9,7 @@ interface Opt {
   key: string;
   label: string;
   href?: string; // present for direct-insert items
-  create?: "person" | "tag"; // present for create items
+  create?: "person" | "tag" | "placeholder"; // present for create items
   raw?: string; // the query, for create
   iconKey?: string | null;
   iconColor?: string | null;
@@ -57,6 +57,14 @@ export function MentionMenu({
           }
           if (q.trim() && personType)
             opts.push({ key: "create", label: `Create person “${q.replace(/_/g, " ")}”`, create: "person", raw: q });
+          // No Person type set up: name it now, decide what it is later.
+          if (q.trim() && !personType)
+            opts.push({
+              key: "placeholder",
+              label: `Note “${q.replace(/_/g, " ")}” for later`,
+              create: "placeholder",
+              raw: q.replace(/_/g, " "),
+            });
         } else if (state.char === "|") {
           const rows = await api.get<BlockSearchResult[]>(
             `/blocks/search?includeCollections=1&q=${encodeURIComponent(q)}`,
@@ -88,6 +96,16 @@ export function MentionMenu({
                     : t?.iconKey,
                 iconColor: r.collectionKind ? null : t?.iconColor,
               };
+            });
+          // Nothing by that name yet. Writing it down shouldn't have to wait
+          // on deciding whether it's a project, a person or an idea — so it
+          // goes in as a placeholder, and clicking it later asks.
+          if (q.trim() && !rows.some((r) => r.label.toLowerCase() === q.trim().toLowerCase()))
+            opts.push({
+              key: "placeholder",
+              label: `Note “${q.trim()}” for later`,
+              create: "placeholder",
+              raw: q.trim(),
             });
         } else {
           const tags = await api.get<{ name: string }[]>("/tags");
@@ -126,6 +144,11 @@ export function MentionMenu({
       } catch {
         /* ignore */
       }
+    } else if (opt.create === "placeholder") {
+      const name = (opt.raw ?? "").trim();
+      // Percent-encoded so a name with a paren in it cannot break the
+      // markdown link the mention is stored as.
+      state.select({ label: name, href: `new:${encodeURIComponent(name)}` });
     } else if (opt.create === "tag") {
       const name = (opt.raw ?? "").trim();
       await api.post("/tags", { name }).catch(() => {});

@@ -421,6 +421,67 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
+   * Turn a placeholder into a real block.
+   *
+   * A placeholder is a mention of something that doesn't exist yet — written
+   * as `new:<label>` because at the time of writing nobody knew, or cared,
+   * what kind of thing it would turn out to be. Naming it is one thought;
+   * deciding it's a Project is another, and often a later one.
+   *
+   * Realizing it creates the block and rewrites every mention of that
+   * placeholder to point at it — the same sweep a title rename uses. The same
+   * name may have been written in a dozen notes; they all meant the one thing.
+   */
+  app.post("/blocks/placeholder", async (req, reply) => {
+    const userId = requireUser(req);
+    const { label, blockTypeId } = z
+      .object({ label: z.string().min(1).max(200), blockTypeId: z.string().uuid().optional() })
+      .parse(req.body);
+
+    const type = await resolveType(userId, blockTypeId);
+    const title = label.trim();
+    const content = type.isText ? title : null;
+    const properties = type.isText ? {} : { title };
+    const [row] = await db
+      .insert(blocks)
+      .values({
+        ownerId: userId,
+        blockTypeId: type.id,
+        content,
+        properties,
+        embedSource: computeEmbedSource(type, { content, properties }),
+        embedSourceHash: null,
+        blockTypeSchemaVersion: type.schemaVersion,
+      })
+      .returning(blockView);
+    if (!row) throw badRequest("could not create the block");
+
+    // The href carries the label percent-encoded, so a name with a bracket or a
+    // paren in it can't break the markdown link it lives inside.
+    const token = `](new:${encodeURIComponent(title)})`;
+    // Which blocks carried it, gathered before the sweep so the client can tell
+    // their editors to reread — otherwise a note still holding the old text
+    // would save the placeholder straight back over the rewrite.
+    const carriers = await db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          or(
+            sql`${blocks.properties}::text LIKE ${`%${token}%`}`,
+            sql`${blocks.content} LIKE ${`%${token}%`}`,
+          ),
+        ),
+      );
+    await rewriteReferences(userId, row.id, [token], (str) =>
+      str.split(token).join(`](block:${row.id})`),
+    );
+    reply.code(201);
+    return { block: row, rewritten: carriers.map((c) => c.id) };
+  });
+
+  /**
    * Unattached: blocks that nothing hangs off of — no parent, no children, and
    * not referenced (via a reference property) by any other block. Outgoing
    * references do NOT count: a block that only points at others still appears

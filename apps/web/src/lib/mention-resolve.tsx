@@ -162,7 +162,7 @@ export function parseMentions(raw: string): MentionPart[] {
   const parts: MentionPart[] = [];
   // Ordered so the markdown form wins over the bare tokens inside it.
   const re =
-    /\[([^\]]*)\]\((block|tag|person):([^)]+)\)|\|([0-9a-fA-F-]{36})|@([A-Za-z0-9][\w-]*)|#([A-Za-z0-9][\w-]*)/g;
+    /\[([^\]]*)\]\((block|tag|person|new):([^)]+)\)|\|([0-9a-fA-F-]{36})|@([A-Za-z0-9][\w-]*)|#([A-Za-z0-9][\w-]*)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(raw))) {

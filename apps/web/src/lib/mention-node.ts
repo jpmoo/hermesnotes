@@ -90,7 +90,7 @@ export function linksToMentions(ed: Editor): void {
   ed.state.doc.descendants((n, pos) => {
     if (!n.isText) return;
     const link = n.marks.find(
-      (m) => m.type === linkMark && /^(block|tag):/.test(String(m.attrs.href ?? "")),
+      (m) => m.type === linkMark && /^(block|tag|new):/.test(String(m.attrs.href ?? "")),
     );
     if (link) ranges.push({ from: pos, to: pos + n.nodeSize, href: link.attrs.href, label: n.text ?? "" });
   });

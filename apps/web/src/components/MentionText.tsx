@@ -1,5 +1,7 @@
-import { Hash } from "lucide-react";
+import { CirclePlus, Hash } from "lucide-react";
+import { useState } from "react";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
+import { PlaceholderMenu } from "./PlaceholderMenu.tsx";
 import { parseMentions, useMentionTarget } from "../lib/mention-resolve.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
@@ -10,6 +12,10 @@ import { usePanels } from "../lib/right-panel.tsx";
  */
 export function MentionChip({ href, label }: { href: string; label: string }) {
   const isTag = href.startsWith("tag:");
+  // A placeholder names something that doesn't exist yet. Clicking it asks
+  // what it should become; until then it resolves to nothing.
+  const placeholder = href.startsWith("new:") ? decodeURIComponent(href.slice(4)) : "";
+  const [askAt, setAskAt] = useState<{ x: number; y: number } | null>(null);
   const personName = href.startsWith("person:") ? href.slice(7) : "";
   const staticId = href.startsWith("block:") ? href.slice(6) : "";
   const target = useMentionTarget(staticId, personName, isTag, Boolean(label));
@@ -18,16 +24,23 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
   // The person glyph already says it's a person, so the "@" is just noise in a
   // title that's read rather than edited.
   const raw = label || target.fetchedLabel || (target.dead ? "missing" : "…");
-  const text = isTag ? raw.replace(/^#/, "") : raw.replace(/^@/, "");
+  const text = placeholder || (isTag ? raw.replace(/^#/, "") : raw.replace(/^@/, ""));
   return (
+    <>
     <span
-      className={`mention-chip mention-inline${isTag ? " tag" : ""}${target.dead ? " dead" : ""}${
+      className={`mention-chip mention-inline${isTag ? " tag" : ""}${
+        placeholder ? " placeholder" : ""
+      }${target.dead && !placeholder ? " dead" : ""}${
         target.archived && !target.dead ? " archived" : ""
       }`}
       // The chip sits inside cards that are themselves clickable, so a click here
       // must not also select the card behind it.
       onClick={(e) => {
         e.stopPropagation();
+        if (placeholder) {
+          setAskAt({ x: e.clientX, y: e.clientY });
+          return;
+        }
         if (isTag || target.dead || !target.id) return;
         selectOrOpen(target.id, { collection: target.collection });
       }}
@@ -40,7 +53,9 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
             : text
       }
     >
-      {isTag ? (
+      {placeholder ? (
+        <CirclePlus size={13} />
+      ) : isTag ? (
         <Hash size={13} />
       ) : target.collection ? (
         <CollectionIcon
@@ -58,6 +73,15 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
       )}
       <span>{text}</span>
     </span>
+    {askAt && (
+      <PlaceholderMenu
+        label={placeholder}
+        at={askAt}
+        onClose={() => setAskAt(null)}
+        onCreated={() => setAskAt(null)}
+      />
+    )}
+    </>
   );
 }
 

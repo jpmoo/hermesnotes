@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -284,6 +284,15 @@ export async function templateBody(userId: string, id: unknown): Promise<string>
   if (!row || !(TEMPLATE_MARKER in (row.properties ?? {}))) return "";
   return row.content ?? "";
 }
+
+/**
+ * A column read as prose: markdown mention links reduced to their labels, so a
+ * search phrase can run from ordinary words into a link and still match.
+ * `[Sherly](block:…)` becomes `Sherly`; anything that isn't a mention scheme is
+ * left alone, so ordinary markdown links keep their URLs searchable.
+ */
+const flatten = (col: SQL | SQLWrapper) =>
+  sql`regexp_replace(COALESCE(${col}, ''), '\\[([^]]*)\\]\\((block|tag|person|new|fwd):[^)]*\\)', '\\1', 'g')`;
 
 /** Reusable predicate: the block is active (not archived). */
 const notArchived = sql`${blocks.archivedAt} IS NULL`;
@@ -804,7 +813,17 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         and(
           eq(blocks.ownerId, userId),
           notArchived,
-          sql`(${blocks.properties}::text ILIKE ${like} OR ${blocks.content} ILIKE ${like})`,
+          // Search the text as it reads, not as it's stored. A mention is written
+          // `[Sherly](block:…)`, so "Tell Sherly" — a phrase that runs from plain
+          // words into a link — matched nothing, though it's exactly what the
+          // sentence says. Both forms are tried: the flattened one finds phrases
+          // that cross a mention, the raw one still finds an id pasted verbatim.
+          sql`(
+            ${blocks.properties}::text ILIKE ${like}
+            OR ${blocks.content} ILIKE ${like}
+            OR ${flatten(blocks.content)} ILIKE ${like}
+            OR ${flatten(sql`${blocks.properties}::text`)} ILIKE ${like}
+          )`,
         ),
       )
       .orderBy(desc(blocks.updatedAt))

@@ -118,11 +118,7 @@ async function findOrCreateNote(userId: string, date: string) {
     const untouched =
       (existing.content ?? "") === "" ||
       bare(existing.content ?? "") === bare(String(props.seed ?? "\u0000"));
-    // A day emptied on purpose is the exception: it stays empty (see POST
-    // /today/:date/clear). Being handed the carried text again is right for a
-    // day nobody has been to yet, and exactly wrong for one just cleared.
-    const cleared = props.cleared === true;
-    if (untouched && !cleared) {
+    if (untouched) {
       const seed = await seedFor(userId, date);
       if (seed !== (existing.content ?? "")) {
         const nextProps = { ...props, title: props.title ?? scratchpadTitle(date), seed };
@@ -132,18 +128,6 @@ async function findOrCreateNote(userId: string, date: string) {
           .where(and(eq(blocks.id, existing.id), eq(blocks.ownerId, userId)));
         return { ...existing, content: seed, properties: nextProps };
       }
-    }
-    // Written in again, so "empty on purpose" no longer describes it: the day
-    // goes back to ordinary rules, and emptying it by hand re-seeds it as
-    // before. Clearing it is how you say you mean it.
-    if (cleared && (existing.content ?? "") !== "") {
-      const { cleared: _lifted, ...rest } = props;
-      const nextProps = { ...rest, title: props.title ?? scratchpadTitle(date) };
-      await db
-        .update(blocks)
-        .set({ properties: nextProps })
-        .where(and(eq(blocks.id, existing.id), eq(blocks.ownerId, userId)));
-      return { ...existing, properties: nextProps };
     }
     // Backfill the title on notes created before scratchpads were titled.
     if (!props.title) {
@@ -394,36 +378,50 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
   });
 
   /**
-   * Empty a day's note and mean it.
+   * Put a day back to the page it would have opened with — the daily template
+   * with whatever the last written-in day is sending forward set down in it —
+   * as though nobody had ever been here.
    *
-   * Deleting the text by hand can't say this on its own: an empty note is how a
-   * day nobody has opened looks, so the next visit hands it the template and
-   * whatever the last written-in day is sending forward — and it fills back up.
-   * This records the emptying as a decision (`cleared`), which findOrCreateNote
-   * reads as "no fresh page" and the sweep reads as "not litter". Writing here
-   * again lifts it.
+   * Emptying the box by hand doesn't do this and can't: the note is left
+   * holding nothing, which every re-seed reads as a day still waiting for its
+   * page, so the next visit fills it back up. Writing the seed IS the reset,
+   * and it lands the day back in the state everything else already knows how
+   * to read — the calendar stops marking it as one you've been in, and the
+   * sweep will take the note away in its own time, exactly as it does for a day
+   * that was opened and never written in.
+   *
+   * The day's own arrangement goes too: sections pinned to this day alone,
+   * standing ones it was suppressing, its banner. They're things done to the
+   * day as much as the writing is, and a day still wearing them isn't one that
+   * was never opened.
    */
-  app.post("/today/:date/clear", async (req) => {
+  app.post("/today/:date/reset", async (req) => {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
     const note = await findOrCreateNote(userId, date);
-    // The seed goes with it: it recorded what this note opened with, and this
-    // note no longer opens with anything.
-    const { seed: _dropped, ...rest } = (note.properties ?? {}) as Record<string, unknown>;
-    const properties = { ...rest, cleared: true };
+    const props = (note.properties ?? {}) as Record<string, unknown>;
+    const seed = await seedFor(userId, date);
+    // Rebuilt rather than pared down, so a key added to daily notes later can't
+    // survive a reset by having been forgotten here: what a fresh note is made
+    // with is what a reset one is left with.
+    const properties: Record<string, unknown> = {
+      today_note: props.today_note ?? date,
+      title: props.title ?? scratchpadTitle(date),
+      ...(seed ? { seed } : {}),
+    };
     const [updated] = await db
       .update(blocks)
       .set({
-        content: "",
+        content: seed,
         properties,
-        embedSource: "",
+        embedSource: seed,
         embedSourceHash: null,
         version: sql`${blocks.version} + 1`,
         updatedAt: new Date(),
       })
       .where(and(eq(blocks.id, note.id), eq(blocks.ownerId, userId)))
       .returning(blockView);
-    return updated ?? { ...note, content: "", properties };
+    return updated ?? { ...note, content: seed, properties };
   });
 
   /** The Today sheet for a date: scratchpad note + relevant + activity blocks. */

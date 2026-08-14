@@ -15,7 +15,17 @@ const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.ge
  * Month calendar for the Today page. Dots mark dates with a (non-empty)
  * scratchpad note; clicking a day navigates to that day's Today sheet.
  */
-export function TodayCalendar({ selected }: { selected: string }) {
+export function TodayCalendar({
+  selected,
+  refreshKey,
+}: {
+  selected: string;
+  /** Bumped when the day you're on stops (or starts) being a day with
+   *  something on it without the date changing — resetting it, say. The dots
+   *  are otherwise only reread on the way to another day, so the day you just
+   *  put back would have kept its mark until you left. */
+  refreshKey?: number;
+}) {
   const nav = useNavigate();
   const [dates, setDates] = useState<Set<string>>(new Set());
   const seed = new Date(`${selected}T00:00`);
@@ -24,7 +34,7 @@ export function TodayCalendar({ selected }: { selected: string }) {
   // Refetch when the selected date changes — its note may have gained content.
   useEffect(() => {
     void api.get<string[]>("/today/dates").then((ds) => setDates(new Set(ds)));
-  }, [selected]);
+  }, [selected, refreshKey]);
 
   const today = ymd(new Date());
   const first = new Date(view.y, view.m, 1);

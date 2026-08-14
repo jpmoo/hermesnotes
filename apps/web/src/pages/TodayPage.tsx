@@ -4,8 +4,8 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Eraser,
   Maximize2,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -145,11 +145,11 @@ export function TodayPage() {
   const nav = useNavigate();
   const date = dateParam ?? todayStr();
   const isToday = date === todayStr();
-  const [confirmClear, setConfirmClear] = useState(false);
-  // Bumped by a clear, and part of the editor's key: the box has its own copy
-  // of the text, and it holds on to it while the caret is in there. Emptying
+  const [confirmReset, setConfirmReset] = useState(false);
+  // Bumped by a reset, and part of the editor's key: the box has its own copy
+  // of the text, and it holds on to it while the caret is in there. Rewriting
   // the note underneath it has to put a new box on the page.
-  const [clearNonce, setClearNonce] = useState(0);
+  const [resetNonce, setResetNonce] = useState(0);
   // Today is the day itself, not a date it happens to equal: opening yesterday
   // and stepping forward lands on /today, so the page still says "Today" after
   // midnight rather than freezing on a date that has stopped being it.
@@ -277,14 +277,14 @@ export function TodayPage() {
       .catch(() => {});
   };
 
-  // Empty the day's note for good. The server records the emptying as a
-  // decision, so the day stops being re-seeded with the template and whatever
-  // was being sent forward; writing here again lifts it.
-  const clearDay = async () => {
-    setConfirmClear(false);
-    await api.post(`/today/${date}/clear`, {});
-    setClearNonce((n) => n + 1);
-    if (sheet?.note) emitBlockChange(sheet.note.id, "today-clear");
+  // Put the day back to the page it would have opened with — the daily template
+  // and whatever is being sent forward — and drop the arrangement made for this
+  // day alone, so it reads as a day nobody has been to (the calendar included).
+  const resetDay = async () => {
+    setConfirmReset(false);
+    await api.post(`/today/${date}/reset`, {});
+    setResetNonce((n) => n + 1);
+    if (sheet?.note) emitBlockChange(sheet.note.id, "today-reset");
     await load();
   };
 
@@ -371,7 +371,7 @@ export function TodayPage() {
           <section key="scratchpad" className="today-section" data-block-id={sheet.note.id}>
             <h2 className="today-h">Scratchpad</h2>
             <TextBlockEditor
-              key={`${sheet.note.id}:${clearNonce}`}
+              key={`${sheet.note.id}:${resetNonce}`}
               block={sheet.note}
               type={typeById.get(sheet.note.blockTypeId)}
               onConflict={load}
@@ -463,54 +463,59 @@ export function TodayPage() {
         {isToday ? `Today · ${label}` : label}
       </h1>
         <div className="day-nav">
-          <button
-            className="icon-btn"
-            title="Previous day"
-            aria-label="Previous day"
-            onClick={() => goToDay(shiftDay(date, -1))}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          {/* Disabled rather than hidden: a control that comes and goes moves
-              the two beside it, so the arrow you meant to press again has
-              shifted under your finger. */}
-          <button
-            className="ghost day-nav-today"
-            disabled={isToday}
-            onClick={() => goToDay(todayStr())}
-          >
-            Today
-          </button>
-          <button
-            className="icon-btn"
-            title="Next day"
-            aria-label="Next day"
-            onClick={() => goToDay(shiftDay(date, 1))}
-          >
-            <ChevronRight size={16} />
-          </button>
-          <span className="day-nav-gap" />
-          <button
-            className="icon-btn day-nav-clear"
-            title="Clear this day's note"
-            aria-label="Clear this day's note"
-            disabled={!sheet}
-            onClick={() => setConfirmClear(true)}
-          >
-            <Eraser size={16} />
-          </button>
+          <div className="segmented day-nav-steps">
+            <button
+              className="seg seg-icon"
+              title="Previous day"
+              aria-label="Previous day"
+              onClick={() => goToDay(shiftDay(date, -1))}
+            >
+              <ChevronLeft size={15} />
+            </button>
+            {/* Disabled rather than hidden: a control that comes and goes moves
+                the two beside it, so the arrow you meant to press again has
+                shifted under your finger. Marked active on the day itself, the
+                same way the sort pills say which one you're on. */}
+            <button
+              className={`seg${isToday ? " active" : ""}`}
+              disabled={isToday}
+              onClick={() => goToDay(todayStr())}
+            >
+              Today
+            </button>
+            <button
+              className="seg seg-icon"
+              title="Next day"
+              aria-label="Next day"
+              onClick={() => goToDay(shiftDay(date, 1))}
+            >
+              <ChevronRight size={15} />
+            </button>
+          </div>
+          {/* Its own pill: a reset is not a fourth step through the days. */}
+          <div className="segmented day-nav-reset">
+            <button
+              className="seg seg-icon"
+              title="Reset this day to a fresh page"
+              aria-label="Reset this day to a fresh page"
+              disabled={!sheet}
+              onClick={() => setConfirmReset(true)}
+            >
+              <RotateCcw size={15} />
+            </button>
+          </div>
         </div>
         {!(banner("today")) && (
           <BannerAddButton className="page-head-add" onAdded={(v) => setBanner("today", v)} />
         )}
       </div>
       <ConfirmDialog
-        open={confirmClear}
-        title="Clear this day's note?"
-        message={`Everything written in ${label} goes, and the day stays blank — it won't be given the daily template or the text being sent forward again. Writing in it again puts it back to normal.`}
-        confirmLabel="Clear"
-        onConfirm={() => void clearDay()}
-        onCancel={() => setConfirmClear(false)}
+        open={confirmReset}
+        title="Reset this day?"
+        message={`${label} goes back to the page it would have opened with — the daily template, and anything being sent forward from the last day you wrote in. What's written here now, along with any sections or banner set for this day alone, is removed, and the day stops being marked as one you've been in.`}
+        confirmLabel="Reset"
+        onConfirm={() => void resetDay()}
+        onCancel={() => setConfirmReset(false)}
       />
 
       {loading ? (
@@ -538,7 +543,7 @@ export function TodayPage() {
       {slotEl &&
         createPortal(
           <>
-            <TodayCalendar selected={date} />
+            <TodayCalendar selected={date} refreshKey={resetNonce} />
             <div className="panel-divider" />
           </>,
           slotEl,

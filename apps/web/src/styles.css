@@ -6965,29 +6965,37 @@ input.cv-add-input {
   margin-bottom: 4px;
 }
 
-/* The Today page's day controls: previous / today / next, then Clear, sat
-   beside the date they act on. */
+/* The Today page's day controls, sat beside the date they act on: previous /
+   today / next as one segmented pill, and Reset as its own — the same control
+   the sort bars are built from, so the page has one kind of pill in it. */
 .day-nav {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
-.day-nav-today {
-  padding: 4px 12px;
+/* A segment carrying a glyph rather than a word sits tighter and centres it. */
+.day-nav .seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
 }
-.day-nav-today:disabled {
-  opacity: 0.45;
+.day-nav .seg:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.day-nav .seg:disabled {
   cursor: default;
 }
-/* A gap wide enough to say the Clear button isn't a third arrow. */
-.day-nav-gap {
-  width: 8px;
+/* Today's own day: shown as where you are, not as somewhere to go. */
+.day-nav .seg.active:disabled {
+  opacity: 1;
 }
-.day-nav-clear:hover:not(:disabled) {
+.day-nav-reset .seg:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
   color: var(--danger);
-  border-color: var(--danger);
 }
-.day-nav-clear:disabled {
+.day-nav-reset .seg:disabled {
   opacity: 0.45;
 }
 .collection-head {

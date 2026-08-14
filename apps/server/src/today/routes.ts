@@ -118,7 +118,11 @@ async function findOrCreateNote(userId: string, date: string) {
     const untouched =
       (existing.content ?? "") === "" ||
       bare(existing.content ?? "") === bare(String(props.seed ?? "\u0000"));
-    if (untouched) {
+    // A day emptied on purpose is the exception: it stays empty (see POST
+    // /today/:date/clear). Being handed the carried text again is right for a
+    // day nobody has been to yet, and exactly wrong for one just cleared.
+    const cleared = props.cleared === true;
+    if (untouched && !cleared) {
       const seed = await seedFor(userId, date);
       if (seed !== (existing.content ?? "")) {
         const nextProps = { ...props, title: props.title ?? scratchpadTitle(date), seed };
@@ -128,6 +132,18 @@ async function findOrCreateNote(userId: string, date: string) {
           .where(and(eq(blocks.id, existing.id), eq(blocks.ownerId, userId)));
         return { ...existing, content: seed, properties: nextProps };
       }
+    }
+    // Written in again, so "empty on purpose" no longer describes it: the day
+    // goes back to ordinary rules, and emptying it by hand re-seeds it as
+    // before. Clearing it is how you say you mean it.
+    if (cleared && (existing.content ?? "") !== "") {
+      const { cleared: _lifted, ...rest } = props;
+      const nextProps = { ...rest, title: props.title ?? scratchpadTitle(date) };
+      await db
+        .update(blocks)
+        .set({ properties: nextProps })
+        .where(and(eq(blocks.id, existing.id), eq(blocks.ownerId, userId)));
+      return { ...existing, properties: nextProps };
     }
     // Backfill the title on notes created before scratchpads were titled.
     if (!props.title) {
@@ -375,6 +391,39 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
     return findOrCreateNote(userId, date);
+  });
+
+  /**
+   * Empty a day's note and mean it.
+   *
+   * Deleting the text by hand can't say this on its own: an empty note is how a
+   * day nobody has opened looks, so the next visit hands it the template and
+   * whatever the last written-in day is sending forward — and it fills back up.
+   * This records the emptying as a decision (`cleared`), which findOrCreateNote
+   * reads as "no fresh page" and the sweep reads as "not litter". Writing here
+   * again lifts it.
+   */
+  app.post("/today/:date/clear", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    const note = await findOrCreateNote(userId, date);
+    // The seed goes with it: it recorded what this note opened with, and this
+    // note no longer opens with anything.
+    const { seed: _dropped, ...rest } = (note.properties ?? {}) as Record<string, unknown>;
+    const properties = { ...rest, cleared: true };
+    const [updated] = await db
+      .update(blocks)
+      .set({
+        content: "",
+        properties,
+        embedSource: "",
+        embedSourceHash: null,
+        version: sql`${blocks.version} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(blocks.id, note.id), eq(blocks.ownerId, userId)))
+      .returning(blockView);
+    return updated ?? { ...note, content: "", properties };
   });
 
   /** The Today sheet for a date: scratchpad note + relevant + activity blocks. */

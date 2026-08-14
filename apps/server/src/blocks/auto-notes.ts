@@ -11,7 +11,9 @@ import { db } from "../db.js";
  * that opened with text carried forward from the last one, or with a template in
  * it, has content from its first moment — so what it was given is recorded when
  * it's made, and a note still holding exactly that has had nothing said in it.
- * An emptied one counts too: clearing a note is how you say you don't want it.
+ * An emptied one counts too — with one exception: a note emptied through the
+ * day's Clear button carries that as a decision, and the note is where the
+ * decision lives, so it stays.
  *
  * The other guards are deliberately strict, because "empty content" alone
  * doesn't mean "empty note": a day with no text can still carry a banner or a
@@ -40,6 +42,10 @@ export async function purgeEmptyAutoNotes(userId: string, keepId?: string | null
          OR regexp_replace(COALESCE(b.content, ''), '\\s+$', '') = regexp_replace(COALESCE(b.properties->>'seed', ''), '\\s+$', '')
        )
        AND (${markerTest})
+       -- Except a day emptied on purpose: the flag is the whole record of that
+       -- decision, so deleting the note throws the decision away and the next
+       -- visit builds a fresh, re-seeded one.
+       AND NOT jsonb_exists(b.properties, 'cleared')
        AND NOT jsonb_exists(b.properties, 'banner')
        AND NOT jsonb_exists(b.properties, 'layout')
        AND (${keepId ?? null}::uuid IS NULL OR b.id <> ${keepId ?? null}::uuid)

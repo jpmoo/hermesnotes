@@ -74,9 +74,10 @@ function TemplateRow({
             There are a couple of marks that you can use. They need to be entered on their own
             line, with no other text on that line before or after. <code>/</code> is where the
             caret lands when the field is opened — put it under the heading you actually want to
-            write beneath. <code>^</code> is where text sent forward from the last daily note or
-            weekly reflection arrives; without one it arrives at the very top. Both are used up
-            when the template is applied, so neither shows in the note.
+            write beneath. <code>%</code> is where text sent forward from the last daily note or
+            weekly reflection arrives; without one it arrives at the very top, and if nothing came
+            through, the note says so where it would have gone. Both are used up when the template
+            is applied, so neither shows in the note.
           </div>
         </div>
       )}

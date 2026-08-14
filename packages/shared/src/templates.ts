@@ -19,19 +19,19 @@ export const WEEKLY_TEMPLATE_PREF = "weekly_template";
 const CARET_LINE = /^[ \t]*\/[ \t]*$/;
 
 /**
- * A line that is nothing but `^` marks where text carried forward from the last
+ * A line that is nothing but `%` marks where text carried forward from the last
  * daily note or weekly reflection should be set down. Without one it arrives at
  * the very top, which is right when there's nothing else there and wrong the
  * moment a template puts a heading above it.
  *
- * A caret because markdown claims almost every other punctuation mark at the
- * start of a line — and the first choice, `>`, claimed the worst of them: a
- * lone `>` parses as an empty blockquote, which can serialize back to nothing
- * at all, so the mark could disappear on its first round trip through the
- * editor. The two earlier spellings are still honoured, since a template
- * written with one shouldn't stop working.
+ * Markdown claims almost every punctuation mark at the start of a line, and the
+ * first choice, `>`, claimed the worst of them: a lone `>` parses as an empty
+ * blockquote, which can serialize back to nothing at all. Every spelling this
+ * has had is still honoured — a template written with one shouldn't stop
+ * working — and a leading backslash is allowed, since a markdown serializer
+ * that decides to escape the mark shouldn't stop it being the mark.
  */
-const INHERIT_LINE = /^[ \t]*(\^|%%|>)[ \t]*$/;
+const INHERIT_LINE = /^[ \t]*\\?(%%?|\^|>)[ \t]*$/;
 
 /** The template's name, or null for an ordinary block. */
 export function templateName(properties: unknown): string | null {
@@ -80,8 +80,13 @@ export function placeCarried(body: string, carried: string): string {
   const lines = body.split("\n");
   const at = lines.findIndex(isInheritLine);
   if (at < 0) return text ? `${text}\n\n${body}` : body;
-  // The mark is consumed: it says where, not what, and leaving it behind
-  // would collect a second copy every day.
-  lines.splice(at, 1, ...(text ? text.split("\n") : []));
+  // The mark is consumed: it says where, not what, and leaving it behind would
+  // collect a second copy every day. Somebody who asked for the space said it
+  // matters to them, so when nothing came through the space says so rather than
+  // closing up as if the question had never been asked.
+  lines.splice(at, 1, ...(text ? text.split("\n") : [EMPTY_CARRY]));
   return lines.join("\n");
 }
+
+/** Stands in for the carried text when there wasn't any. */
+export const EMPTY_CARRY = "*(nothing to carry forward from previous notes)*";

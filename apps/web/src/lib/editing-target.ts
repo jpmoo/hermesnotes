@@ -16,7 +16,15 @@ const EDITABLE =
   // as asking to inspect the block it acts on.
   ' .li-status, .extract-menu, .mention-menu, .ph-menu';
 
+/**
+ * Element, not HTMLElement: an icon is an `<svg>`, and an `<svg>` is an
+ * SVGElement. Pressing the glyph in the middle of a control therefore missed
+ * this test entirely and read as "inspect the block" — so the card underneath
+ * took the press, re-rendered, and the menu the icon was opening went with it.
+ * Pressing a millimetre to the side of the same icon worked, which is the kind
+ * of bug you retry rather than report.
+ */
 export function isEditingTarget(target: EventTarget | null): boolean {
-  const el = target instanceof HTMLElement ? target : null;
+  const el = target instanceof Element ? target : null;
   return !!el?.closest?.(EDITABLE);
 }

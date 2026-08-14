@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
+  carryForward,
   composeReviewSteps,
   isComplete,
   parseWeeklyReview,
@@ -200,14 +201,29 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
     .orderBy(desc(blockTypes.builtin))
     .limit(1);
   if (!textType) throw badRequest("text block type missing");
+  // Same thread as the daily notes, on its own cadence: the last reflection
+  // that had anything in it, skipping the weeks nobody wrote one.
+  const [previous] = await db
+    .select({ content: blocks.content })
+    .from(blocks)
+    .where(
+      and(
+        eq(blocks.ownerId, userId),
+        sql`${blocks.properties}->>${REFLECTION_MARK} < ${dueDate}`,
+        sql`COALESCE(${blocks.content}, '') <> ''`,
+      ),
+    )
+    .orderBy(sql`${blocks.properties}->>${REFLECTION_MARK} DESC`)
+    .limit(1);
+  const seed = carryForward(previous?.content);
   const [created] = await db
     .insert(blocks)
     .values({
       ownerId: userId,
       blockTypeId: textType.id,
-      content: "",
+      content: seed,
       properties: { [REFLECTION_MARK]: dueDate, title: fmtWeekEnding(dueDate) },
-      embedSource: "",
+      embedSource: seed,
       embedSourceHash: null,
       blockTypeSchemaVersion: textType.schemaVersion,
     })

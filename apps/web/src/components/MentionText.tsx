@@ -15,6 +15,8 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
   // A placeholder names something that doesn't exist yet. Clicking it asks
   // what it should become; until then it resolves to nothing.
   const placeholder = href.startsWith("new:") ? decodeURIComponent(href.slice(4)) : "";
+  // Words that keep coming back, marked rather than linked.
+  const forwarded = href.startsWith("fwd:");
   const [askAt, setAskAt] = useState<{ x: number; y: number } | null>(null);
   const personName = href.startsWith("person:") ? href.slice(7) : "";
   const staticId = href.startsWith("block:") ? href.slice(6) : "";
@@ -28,7 +30,7 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
   return (
     <>
     <span
-      className={`mention-chip mention-inline${isTag ? " tag" : ""}${
+      className={`mention-chip mention-inline${isTag ? " tag" : ""}${forwarded ? " forwarded" : ""}${
         placeholder ? " placeholder" : ""
       }${target.dead && !placeholder ? " dead" : ""}${
         target.archived && !target.dead ? " archived" : ""
@@ -37,6 +39,7 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
       // must not also select the card behind it.
       onClick={(e) => {
         e.stopPropagation();
+        if (forwarded) return;
         if (placeholder) {
           setAskAt({ x: e.clientX, y: e.clientY });
           return;
@@ -53,7 +56,7 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
             : text
       }
     >
-      {placeholder ? (
+      {forwarded ? null : placeholder ? (
         <CirclePlus size={13} />
       ) : isTag ? (
         <Hash size={13} />

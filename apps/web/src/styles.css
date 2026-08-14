@@ -7548,3 +7548,18 @@ button.ru-title:hover {
   border-color: var(--accent);
   color: var(--accent-ink);
 }
+
+/* Text sent forward from one periodic note to the next. Marked, not linked:
+   a highlight you can read straight through, so a sentence that keeps coming
+   back doesn't shout every morning. */
+.mention-chip.forwarded {
+  background: rgba(232, 194, 92, 0.22);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 3px;
+  cursor: text;
+  white-space: normal;
+}
+.mention-chip.forwarded:hover {
+  background: rgba(232, 194, 92, 0.32);
+}

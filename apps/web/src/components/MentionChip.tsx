@@ -13,6 +13,9 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
   const isTag = href.startsWith("tag:");
   // Named but not yet anything: clicking asks what it should become.
   const placeholder = href.startsWith("new:") ? decodeURIComponent(href.slice(4)) : "";
+  // Text that travels from one day's note to the next: not a link to
+  // anywhere, just words wearing a mark that says they keep coming back.
+  const forwarded = href.startsWith("fwd:");
   const [askAt, setAskAt] = useState<{ x: number; y: number } | null>(null);
   const personName = href.startsWith("person:") ? href.slice(7) : "";
   const staticId = href.startsWith("block:") ? href.slice(6) : "";
@@ -31,6 +34,7 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
   const onActivate = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (forwarded) return;
     if (placeholder) {
       setAskAt({ x: e.clientX, y: e.clientY });
       return;
@@ -46,7 +50,9 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`mention-chip${isTag ? " tag" : ""}${placeholder ? " placeholder" : ""}${
+      className={`mention-chip${isTag ? " tag" : ""}${forwarded ? " forwarded" : ""}${
+        placeholder ? " placeholder" : ""
+      }${
         dead && !placeholder ? " dead" : ""
       }${archived && !dead ? " archived" : ""}`}
       contentEditable={false}
@@ -60,7 +66,7 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
             : label || fetchedLabel
       }
     >
-      {placeholder ? (
+      {forwarded ? null : placeholder ? (
         <CirclePlus size={13} />
       ) : isTag ? (
         <Hash size={13} />

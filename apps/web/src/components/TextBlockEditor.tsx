@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { isComplete } from "@hermes/shared";
+import { isPeriodicNote } from "@hermes/shared";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { useRegisterEditor } from "../lib/editor-registry.ts";
@@ -241,6 +242,7 @@ export function TextBlockEditor({
           placeholder="Write a note…"
           autofocus={!block.content}
           blockId={block.id}
+          periodic={isPeriodicNote(block.properties)}
           onFocusChange={(f) => {
             focusedRef.current = f;
             if (!f && !dirty()) releaseSync();

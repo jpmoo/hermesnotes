@@ -43,6 +43,7 @@ export function MarkdownEditor({
   autofocus = false,
   blockId,
   onFocusChange,
+  periodic = false,
 }: {
   value: string;
   onChange: (markdown: string) => void;
@@ -52,6 +53,9 @@ export function MarkdownEditor({
   blockId?: string;
   /** Reports focus/blur so the host can hold live-sync updates while editing. */
   onFocusChange?: (focused: boolean) => void;
+  /** A daily scratchpad or weekly reflection: text here can be sent forward
+   *  into the next one, so the right-click menu offers it. */
+  periodic?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(value);
@@ -65,6 +69,8 @@ export function MarkdownEditor({
       titleText: string;
       titleRaw: string;
       field: FieldSelection | null;
+      /** The forwarded run the click landed in, if any. */
+      inForward: { from: number; to: number } | null;
       mdText: string;
       types: BlockType[];
     } | null
@@ -274,10 +280,67 @@ export function MarkdownEditor({
     // reach the node, which answers right-clicks with a menu of its own.
     e.stopPropagation();
     const field = captureField(e.target);
+    // Anywhere inside a forwarded run counts as clicking it: the reader
+    // shouldn't have to find its exact edges to stop it.
+    let inForward: { from: number; to: number } | null = null;
+    doc.descendants((n, pos) => {
+      if (n.type.name !== "mention") return;
+      if (!String(n.attrs.href ?? "").startsWith("fwd:")) return;
+      if (pos < to && pos + n.nodeSize > from) inForward = { from: pos, to: pos + n.nodeSize };
+    });
     void api
       .get<BlockType[]>("/block-types")
-      .then((types) => setExtract({ x: e.clientX, y: e.clientY, from, to, titleText, titleRaw, mdText, field, types }))
+      .then((types) =>
+        setExtract({
+          x: e.clientX,
+          y: e.clientY,
+          from,
+          to,
+          titleText,
+          titleRaw,
+          mdText,
+          field,
+          inForward,
+          types,
+        }),
+      )
       .catch(() => {});
+  };
+
+  /**
+   * Send the selection forward: mark it, and it's copied into the next daily
+   * note (or weekly reflection) as that note is made, and the one after that,
+   * for as long as it's still marked. The moment is recorded because several
+   * pieces travelling together read in the order they were first sent.
+   */
+  const sendForward = () => {
+    if (!extract || !editor) return;
+    const { from, to, titleText } = extract;
+    setExtract(null);
+    const mention = editor.state.schema.nodes.mention;
+    if (!mention || !titleText.trim()) return;
+    const node = mention.create({
+      href: `fwd:${encodeURIComponent(new Date().toISOString())}`,
+      label: titleText.trim(),
+    });
+    editor.view.dispatch(editor.state.tr.replaceWith(from, to, node));
+    editor.view.focus();
+  };
+
+  /** Stop sending it forward — here and from here on. What earlier notes
+   *  already carry is theirs, and stays as they were written. */
+  const stopForward = () => {
+    if (!extract || !editor || !extract.inForward) return;
+    const { from, to } = extract.inForward;
+    setExtract(null);
+    const node = editor.state.doc.nodeAt(from);
+    const text = String(node?.attrs.label ?? "");
+    editor.view.dispatch(
+      text
+        ? editor.state.tr.replaceWith(from, to, editor.state.schema.text(text))
+        : editor.state.tr.delete(from, to),
+    );
+    editor.view.focus();
   };
 
   // Create a new block of `type` from the selection, then replace the selection
@@ -383,6 +446,20 @@ export function MarkdownEditor({
                   {label}
                 </button>
               ))}
+              <div className="menu-sep" />
+            </>
+          )}
+          {periodic && (extract.inForward || extract.titleText.trim()) && (
+            <>
+              {extract.inForward ? (
+                <button className="menu-item" onClick={stopForward}>
+                  Stop sending this text forward
+                </button>
+              ) : (
+                <button className="menu-item" onClick={sendForward}>
+                  Send this text forward
+                </button>
+              )}
               <div className="menu-sep" />
             </>
           )}

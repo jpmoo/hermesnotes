@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   addToDefaults,
+  carryForward,
   composeTodayLayout,
   customTodaySectionSchema,
   normalizeDefaultLayout,
@@ -80,14 +81,31 @@ async function findOrCreateNote(userId: string, date: string) {
     .orderBy(desc(blockTypes.builtin))
     .limit(1);
   if (!textType) throw badRequest("text block type missing");
+  // Whatever the last day that was written on is still sending forward comes
+  // with it. The most recent day with anything in it, not simply yesterday:
+  // a weekend, a week off, a stretch of days nobody opened — the thread
+  // shouldn't drop because nothing was written on Sunday.
+  const [previous] = await db
+    .select({ content: blocks.content })
+    .from(blocks)
+    .where(
+      and(
+        eq(blocks.ownerId, userId),
+        sql`${blocks.properties}->>'today_note' < ${date}`,
+        sql`COALESCE(${blocks.content}, '') <> ''`,
+      ),
+    )
+    .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
+    .limit(1);
+  const seed = carryForward(previous?.content);
   const [created] = await db
     .insert(blocks)
     .values({
       ownerId: userId,
       blockTypeId: textType.id,
-      content: "",
+      content: seed,
       properties: { today_note: date, title: scratchpadTitle(date) },
-      embedSource: "",
+      embedSource: seed,
       embedSourceHash: null,
       blockTypeSchemaVersion: textType.schemaVersion,
     })

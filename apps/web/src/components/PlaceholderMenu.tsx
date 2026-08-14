@@ -69,7 +69,9 @@ export function PlaceholderMenu({
   return createPortal(
     <div ref={ref} className="menu ph-menu" style={style}>
       <div className="hint" style={{ padding: "6px 10px" }}>
-        Create “{label}” as…
+        {/* Named, not typed: the server strips the underscores a spaceless
+            trigger obliged you to write, so offer the name it will get. */}
+        Create “{label.replace(/_/g, " ")}” as…
       </div>
       {ordered.map((t) => (
         <button

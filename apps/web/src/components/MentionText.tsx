@@ -15,6 +15,11 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
   // A placeholder names something that doesn't exist yet. Clicking it asks
   // what it should become; until then it resolves to nothing.
   const placeholder = href.startsWith("new:") ? decodeURIComponent(href.slice(4)) : "";
+  // Read as a name, not as it had to be typed — the trigger can't take a space,
+  // so an underscore is where the space went. The href keeps the written form,
+  // which is what the notes carrying this placeholder say and what creating it
+  // has to match on.
+  const placeholderName = placeholder.replace(/_/g, " ");
   // Words that keep coming back, marked rather than linked.
   const forwarded = href.startsWith("fwd:");
   const [askAt, setAskAt] = useState<{ x: number; y: number } | null>(null);
@@ -26,7 +31,7 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
   // The person glyph already says it's a person, so the "@" is just noise in a
   // title that's read rather than edited.
   const raw = label || target.fetchedLabel || (target.dead ? "missing" : "…");
-  const text = placeholder || (isTag ? raw.replace(/^#/, "") : raw.replace(/^@/, ""));
+  const text = placeholderName || (isTag ? raw.replace(/^#/, "") : raw.replace(/^@/, ""));
   return (
     <>
     <span

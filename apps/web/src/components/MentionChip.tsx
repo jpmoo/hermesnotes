@@ -13,6 +13,10 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
   const isTag = href.startsWith("tag:");
   // Named but not yet anything: clicking asks what it should become.
   const placeholder = href.startsWith("new:") ? decodeURIComponent(href.slice(4)) : "";
+  // What it's called, as against how it had to be typed: the trigger can't take
+  // a space. The href keeps the written form — that's what the notes carrying
+  // this placeholder say, and what creating it matches on.
+  const placeholderName = placeholder.replace(/_/g, " ");
   // Text that travels from one day's note to the next: not a link to
   // anywhere, just words wearing a mark that says they keep coming back.
   const forwarded = href.startsWith("fwd:");
@@ -76,7 +80,8 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
         <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
       )}
       <span>
-        {placeholder || (isTag ? label.replace(/^#/, "") : label || fetchedLabel || (dead ? "missing" : "…"))}
+        {placeholderName ||
+          (isTag ? label.replace(/^#/, "") : label || fetchedLabel || (dead ? "missing" : "…"))}
       </span>
       {askAt && (
         <PlaceholderMenu
@@ -85,7 +90,7 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
           onClose={() => setAskAt(null)}
           // The node in hand is this editor's copy: point it at the block
           // now, or it would keep saying "new:" until the note reloaded.
-          onCreated={(b) => updateAttributes({ href: `block:${b.id}`, label: placeholder })}
+          onCreated={(b) => updateAttributes({ href: `block:${b.id}`, label: placeholderName })}
         />
       )}
     </NodeViewWrapper>

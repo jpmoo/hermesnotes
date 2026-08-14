@@ -100,12 +100,19 @@ export function MentionMenu({
           // Nothing by that name yet. Writing it down shouldn't have to wait
           // on deciding whether it's a project, a person or an idea — so it
           // goes in as a placeholder, and clicking it later asks.
-          if (q.trim() && !rows.some((r) => r.label.toLowerCase() === q.trim().toLowerCase()))
+          //
+          // Underscores become spaces, the same as an @name: the trigger can't
+          // take a space, so "Latino_Coalition" is how you're obliged to type a
+          // two-word name — not what you meant to call the thing. Matching on
+          // the spaced form too, so a block that already goes by that name is
+          // offered instead of being quietly duplicated.
+          const named = q.trim().replace(/_/g, " ");
+          if (named && !rows.some((r) => r.label.toLowerCase() === named.toLowerCase()))
             opts.push({
               key: "placeholder",
-              label: `Note “${q.trim()}” for later`,
+              label: `Note “${named}” for later`,
               create: "placeholder",
-              raw: q.trim(),
+              raw: named,
             });
         } else {
           const tags = await api.get<{ name: string }[]>("/tags");

@@ -576,7 +576,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .parse(req.body);
 
     const type = await resolveType(userId, blockTypeId);
-    const title = label.trim();
+    // The name it goes by, and the name it was written down as, are not always
+    // the same string: the mention trigger can't take a space, so a two-word
+    // name had to be typed with an underscore. That's typing, not naming — the
+    // block gets the spaced form, while the token below keeps the written one,
+    // since that's what the notes carrying it actually say.
+    const written = label.trim();
+    const title = written.replace(/_/g, " ");
     const content = type.isText ? title : null;
     const properties = type.isText ? {} : { title };
     const [row] = await db
@@ -595,7 +601,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     // The href carries the label percent-encoded, so a name with a bracket or a
     // paren in it can't break the markdown link it lives inside.
-    const token = `](new:${encodeURIComponent(title)})`;
+    const token = `](new:${encodeURIComponent(written)})`;
     // Which blocks carried it, gathered before the sweep so the client can tell
     // their editors to reread — otherwise a note still holding the old text
     // would save the placeholder straight back over the rewrite.

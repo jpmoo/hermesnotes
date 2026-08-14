@@ -137,7 +137,11 @@ export function MarkdownEditor({
         openOnClick: false,
         autolink: true,
         linkOnPaste: true,
-        protocols: ["block", "tag"],
+        // Every scheme a mention can carry has to be listed here, or the link
+        // extension refuses it on parse and drops the mark — the text stays,
+        // the connection doesn't, and the next save writes the loss back. That
+        // silently unmade placeholders and sent-forward text on every reload.
+        protocols: ["block", "tag", "person", "new", "fwd"],
       }),
       // tiptap-markdown marks lists "tight" (items on consecutive lines) via a
       // global attribute, but only registers it for bulletList and orderedList —

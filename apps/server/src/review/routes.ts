@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   carryForward,
   composeReviewSteps,
+  WEEKLY_TEMPLATE_PREF,
   placeCarried,
   isComplete,
   parseWeeklyReview,
@@ -17,6 +18,7 @@ import {
   type WeeklyReview,
 } from "@hermes/shared";
 import { blocks, blockTypes, userSettings } from "@hermes/db";
+import { templateBody } from "../blocks/routes.js";
 import { db } from "../db.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
@@ -217,7 +219,13 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
     )
     .orderBy(sql`${blocks.properties}->>${REFLECTION_MARK} DESC`)
     .limit(1);
-  const seed = placeCarried("", carryForward(previous?.content));
+  const [prefRow] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const shape = await templateBody(userId, (prefRow?.preferences ?? {})[WEEKLY_TEMPLATE_PREF]);
+  const seed = placeCarried(shape, carryForward(previous?.content));
   const [created] = await db
     .insert(blocks)
     .values({

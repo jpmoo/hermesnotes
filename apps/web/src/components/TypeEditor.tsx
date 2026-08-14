@@ -1,6 +1,6 @@
-import type { FieldType, PropertySchema } from "@hermes/shared";
+import { templateName, type FieldType, type PropertySchema } from "@hermes/shared";
 import { useEffect, useState } from "react";
-import { api, ApiError, type BlockType } from "../api.ts";
+import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { useAiConfig } from "../lib/ai-config.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
@@ -43,6 +43,7 @@ interface EditField {
   includeEmbed: boolean;
   options: string; // comma-separated in the UI
   refTypeId?: string; // for reference fields
+  templateId?: string | null; // longtext: the template a new block starts from
   startLabel?: string; // for datespan
   endLabel?: string; // for datespan
   units?: string; // for number
@@ -63,6 +64,7 @@ function toEditFields(schema: PropertySchema | null): EditField[] {
       includeEmbed: f.includeEmbed,
       options: formatOptionSpec(f.options, f.optionLabels),
       refTypeId: f.refTypeId,
+      templateId: f.templateId ?? null,
       startLabel: f.startLabel,
       endLabel: f.endLabel,
       units: f.units,
@@ -141,11 +143,14 @@ export function TypeEditor({
   const [colorOpen, setColorOpen] = useState(false);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   const [blockTypes, setBlockTypes] = useState<BlockType[]>([]);
+  // Offered on long-text fields: what a new block of this type starts with.
+  const [templates, setTemplates] = useState<Block[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void api.get<BlockType[]>("/block-types").then(setBlockTypes);
+    void api.get<Block[]>("/templates").then(setTemplates).catch(() => {});
   }, []);
 
   const statusFields = fields.filter((f) => f.type === "status");
@@ -203,6 +208,7 @@ export function TypeEditor({
             ? optColors
             : undefined,
         refTypeId: f.type === "reference" ? f.refTypeId : undefined,
+        templateId: f.type === "longtext" ? f.templateId || null : undefined,
         units: f.type === "number" ? f.units?.trim() || undefined : undefined,
         startLabel: f.type === "datespan" ? f.startLabel?.trim() || undefined : undefined,
         endLabel: f.type === "datespan" ? f.endLabel?.trim() || undefined : undefined,
@@ -330,6 +336,21 @@ export function TypeEditor({
                     onChange={(e) => setField(i, { endLabel: e.target.value })}
                   />
                 </>
+              )}
+              {f.type === "longtext" && (
+                <select
+                  className="f-options"
+                  title="A new block of this type starts this field from…"
+                  value={f.templateId ?? ""}
+                  onChange={(e) => setField(i, { templateId: e.target.value || null })}
+                >
+                  <option value="">no template</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {templateName(t.properties) || "Untitled"}
+                    </option>
+                  ))}
+                </select>
               )}
               {f.type === "reference" && (
                 <select

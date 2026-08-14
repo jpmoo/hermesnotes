@@ -242,7 +242,13 @@ export function TextBlockEditor({
           placeholder="Write a note…"
           autofocus={!block.content}
           blockId={block.id}
-          periodic={isPeriodicNote(block.properties)}
+          periodicKind={
+            block.properties?.today_note != null
+              ? "daily"
+              : block.properties?.review_reflection != null
+                ? "weekly"
+                : null
+          }
           onFocusChange={(f) => {
             focusedRef.current = f;
             if (!f && !dirty()) releaseSync();

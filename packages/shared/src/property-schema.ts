@@ -56,6 +56,8 @@ export const fieldDefSchema = z.object({
   optionColors: z.record(z.string()).optional(),
   /** for reference fields: the block_type id this field points at */
   refTypeId: z.string().uuid().optional(),
+  /** longtext fields: a template block whose text a new block starts with */
+  templateId: z.string().uuid().nullish(),
   /** for datespan fields: labels for the two endpoints (e.g. "Available" / "Due") */
   startLabel: z.string().optional(),
   endLabel: z.string().optional(),

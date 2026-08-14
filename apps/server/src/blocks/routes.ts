@@ -272,6 +272,19 @@ const blockView = {
   updatedAt: blocks.updatedAt,
 };
 
+/** A template's text, or "" — a template deleted since being assigned is
+ *  simply nothing to start from, not an error at the moment of writing. */
+export async function templateBody(userId: string, id: unknown): Promise<string> {
+  if (typeof id !== "string" || !id) return "";
+  const [row] = await db
+    .select({ content: blocks.content, properties: blocks.properties })
+    .from(blocks)
+    .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+    .limit(1);
+  if (!row || !(TEMPLATE_MARKER in (row.properties ?? {}))) return "";
+  return row.content ?? "";
+}
+
 /** Reusable predicate: the block is active (not archived). */
 const notArchived = sql`${blocks.archivedAt} IS NULL`;
 
@@ -403,6 +416,14 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       defaults[schema.status_field] = schema.default_value;
     }
     const properties = type.isText ? {} : { ...defaults, ...(body.properties ?? {}) };
+    // A field that names a template starts from it, unless the caller has
+    // already said what goes there.
+    for (const f of schema?.fields ?? []) {
+      if (f.type !== "longtext" || !f.templateId) continue;
+      if (properties[f.key] != null && properties[f.key] !== "") continue;
+      const body2 = await templateBody(userId, f.templateId);
+      if (body2) properties[f.key] = body2;
+    }
     const embedSource = computeEmbedSource(type, { content, properties });
 
     const [row] = await db

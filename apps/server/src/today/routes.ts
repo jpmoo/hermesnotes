@@ -5,6 +5,7 @@ import {
   addToDefaults,
   carryForward,
   composeTodayLayout,
+  DAILY_TEMPLATE_PREF,
   placeCarried,
   customTodaySectionSchema,
   normalizeDefaultLayout,
@@ -23,6 +24,7 @@ import {
   type TodayLayout,
 } from "@hermes/shared";
 import { blocks, blockTypes, userSettings } from "@hermes/db";
+import { templateBody } from "../blocks/routes.js";
 import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
 import { zonedDayRange } from "../lib/timezone.js";
@@ -101,7 +103,15 @@ async function findOrCreateNote(userId: string, date: string) {
     )
     .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
     .limit(1);
-  const seed = placeCarried("", carryForward(previous?.content));
+  // The day's shape, if one has been chosen, with what's travelling forward set
+  // down wherever that shape asks for it.
+  const [prefRow] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const shape = await templateBody(userId, (prefRow?.preferences ?? {})[DAILY_TEMPLATE_PREF]);
+  const seed = placeCarried(shape, carryForward(previous?.content));
   const [created] = await db
     .insert(blocks)
     .values({

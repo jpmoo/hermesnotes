@@ -11,6 +11,10 @@
 /** The `properties` key that marks a block as a template. Value: its name. */
 export const TEMPLATE_MARKER = "template_name";
 
+/** Preferences naming the template each kind of periodic note starts from. */
+export const DAILY_TEMPLATE_PREF = "daily_template";
+export const WEEKLY_TEMPLATE_PREF = "weekly_template";
+
 /** A line that is nothing but a slash marks where the caret should land. */
 const CARET_LINE = /^[ \t]*\/[ \t]*$/;
 

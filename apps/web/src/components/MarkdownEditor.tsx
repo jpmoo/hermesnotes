@@ -12,7 +12,13 @@ import StarterKit from "@tiptap/starter-kit";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import type { Editor } from "@tiptap/core";
-import { caretOffset, isCaretLine, templateName } from "@hermes/shared";
+import {
+  caretOffset,
+  DAILY_TEMPLATE_PREF,
+  isCaretLine,
+  templateName,
+  WEEKLY_TEMPLATE_PREF,
+} from "@hermes/shared";
 import { ActiveLineSource, SourceableListItem, SourceBlock } from "../lib/active-line-source.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ListGutter, ListIndent } from "../lib/list-tools.ts";
@@ -68,7 +74,7 @@ export function MarkdownEditor({
   autofocus = false,
   blockId,
   onFocusChange,
-  periodic = false,
+  periodicKind = null,
 }: {
   value: string;
   onChange: (markdown: string) => void;
@@ -79,8 +85,8 @@ export function MarkdownEditor({
   /** Reports focus/blur so the host can hold live-sync updates while editing. */
   onFocusChange?: (focused: boolean) => void;
   /** A daily scratchpad or weekly reflection: text here can be sent forward
-   *  into the next one, so the right-click menu offers it. */
-  periodic?: boolean;
+   *  into the next one, and a template can be made the shape they all take. */
+  periodicKind?: "daily" | "weekly" | null;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(value);
@@ -94,6 +100,7 @@ export function MarkdownEditor({
   // yes/no because this field already has something in it.
   const [templates, setTemplates] = useState<Block[]>([]);
   const [pendingTemplate, setPendingTemplate] = useState<Block | null>(null);
+  const [pendingForever, setPendingForever] = useState<Block | null>(null);
   const [extract, setExtract] = useState<
     {
       x: number;
@@ -317,6 +324,19 @@ export function MarkdownEditor({
     onChange(body);
     // Straight to the spot the template marked, if it marked one.
     placeCaret(editor, body);
+  };
+
+  /**
+   * Make this the shape every note of this kind takes from now on. Only the
+   * ones not yet made: a note already written in is somebody's writing, and
+   * a template is not worth overwriting it for.
+   */
+  const useForever = (tpl: Block) => {
+    setPendingForever(null);
+    setExtract(null);
+    const key = periodicKind === "weekly" ? WEEKLY_TEMPLATE_PREF : DAILY_TEMPLATE_PREF;
+    void api.patch("/settings/preferences", { [key]: tpl.id }).catch(() => {});
+    applyTemplate(tpl, editor?.getText().trim() === "");
   };
 
   const onContextMenu = (e: React.MouseEvent) => {
@@ -553,12 +573,27 @@ export function MarkdownEditor({
                   onClick={() => applyTemplate(t)}
                 >
                   {templateName(t.properties) || "Untitled"}
+                  {periodicKind && <span className="hint"> · just this one</span>}
                 </button>
               ))}
+              {periodicKind &&
+                templates.map((t) => (
+                  <button
+                    key={`fwd-${t.id}`}
+                    className="menu-item"
+                    onClick={() => setPendingForever(t)}
+                  >
+                    {templateName(t.properties) || "Untitled"}
+                    <span className="hint">
+                      {" "}· this and all future{" "}
+                      {periodicKind === "weekly" ? "reflections" : "days"}
+                    </span>
+                  </button>
+                ))}
               {(extract.titleText.trim() || extract.inForward) && <div className="menu-sep" />}
             </>
           )}
-          {periodic && (extract.inForward || extract.titleText.trim()) && (
+          {periodicKind && (extract.inForward || extract.titleText.trim()) && (
             <>
               {extract.inForward ? (
                 <button className="menu-item" onClick={stopForward}>
@@ -601,6 +636,20 @@ export function MarkdownEditor({
         danger
         onCancel={() => setPendingTemplate(null)}
         onConfirm={() => pendingTemplate && applyTemplate(pendingTemplate, true)}
+      />
+      <ConfirmDialog
+        open={pendingForever !== null}
+        title={`Start every ${periodicKind === "weekly" ? "weekly reflection" : "daily note"} with “${
+          templateName(pendingForever?.properties) || "this template"
+        }”?`}
+        message={
+          "Every one made from now on opens with it, and this one takes it now — replacing " +
+          "what's here if there's anything. Notes already written stay as they are."
+        }
+        confirmLabel="Use for all future"
+        danger
+        onCancel={() => setPendingForever(null)}
+        onConfirm={() => pendingForever && useForever(pendingForever)}
       />
     </div>
   );

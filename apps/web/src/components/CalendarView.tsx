@@ -114,6 +114,8 @@ interface Item {
   blockTypeId: string | null;
   label: string;
   props: Record<string, unknown>;
+  /** The colour of the calendar this came out of, if it came out of one. */
+  feedColor?: string | null;
   version: number;
 }
 
@@ -145,8 +147,9 @@ function Chip({
   };
   return (
     <div
-      className={`cal-chip${hit ? " cal-hit" : ""}`}
+      className={`cal-chip${hit ? " cal-hit" : ""}${item.feedColor ? " cal-from-feed" : ""}`}
       data-block-id={item.id}
+      style={item.feedColor ? { ["--feed-color" as string]: item.feedColor } : undefined}
       onClick={(e) => {
         e.stopPropagation();
         selectOrOpen(item.id);
@@ -574,6 +577,11 @@ export function CalendarView({
     return map;
   }, [feedEvents, convertedKeys, hiddenFeeds, days]);
 
+  const feedColors = useMemo(
+    () => new Map(feeds.map((f) => [f.id, f.color])),
+    [feeds],
+  );
+
   // Source blocks: smart → live query matches; else the explicit members.
   const source = useMemo<Item[]>(() => {
     const toItem = (b: { id: string; blockTypeId: string | null; properties: unknown; content?: string | null; version: number }): Item => ({
@@ -581,10 +589,15 @@ export function CalendarView({
       blockTypeId: b.blockTypeId,
       label: oneLineText(b.properties as Record<string, unknown>, b.content) || "Untitled",
       props: (b.properties ?? {}) as Record<string, unknown>,
+      // Converted from a feed event: carry that calendar's colour, so a block
+      // that walked in from Outlook still says so at a glance. A feed since
+      // deleted leaves no colour, which is the truth of it.
+      feedColor:
+        feedColors.get(String((b.properties as Record<string, unknown>)?.feed_origin ?? "")) ?? null,
       version: b.version,
     });
     return (isSmart ? matches : members).map(toItem);
-  }, [isSmart, matches, members]);
+  }, [isSmart, matches, members, feedColors]);
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 

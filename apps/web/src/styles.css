@@ -7614,3 +7614,11 @@ mark.fwd-mark,
   border-radius: 3px;
   padding: 0 2px;
 }
+
+/* A block converted from a calendar feed keeps that calendar's colour as a
+   bold left edge — the same signal its feed chip carried. Only the edge: the
+   tinted background says "still the feed's", and this one is yours now. */
+.cal-chip.cal-from-feed {
+  border-left: 3px solid var(--feed-color);
+  padding-left: 6px;
+}

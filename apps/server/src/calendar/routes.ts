@@ -823,7 +823,10 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     if (!feed) throw notFound("calendar feed");
 
     const type = await resolveEventType(userId);
-    const properties = eventProperties(type, body);
+    // Where it came from, kept on the block: converting it makes it yours, but
+    // which calendar it walked in from is still worth knowing at a glance, and
+    // the feed row is the only other place that colour lives.
+    const properties = { ...eventProperties(type, body), feed_origin: body.feedId };
     const embedSource = computeEmbedSource(type, { content: null, properties });
 
     const created = await db.transaction(async (tx) => {

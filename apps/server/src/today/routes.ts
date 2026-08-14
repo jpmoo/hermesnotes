@@ -45,6 +45,40 @@ function scratchpadTitle(date: string): string {
   return `${label} - Scratchpad`;
 }
 
+/**
+ * What a note for this date should open with: the shape chosen for daily
+ * notes, with whatever the last day that was written on is still sending
+ * forward set down where that shape asks for it.
+ *
+ * The most recent day with writing in it, not simply yesterday — a weekend, a
+ * week off, a run of days nobody opened: the thread shouldn't drop because
+ * nothing was written on Sunday.
+ */
+async function seedFor(userId: string, date: string): Promise<string> {
+  const [previous] = await db
+    .select({ content: blocks.content })
+    .from(blocks)
+    .where(
+      and(
+        eq(blocks.ownerId, userId),
+        sql`${blocks.properties}->>'today_note' < ${date}`,
+        sql`COALESCE(${blocks.content}, '') <> ''`,
+        // A day that was opened and never written in is not the last day that
+        // was written on, however much text it was handed.
+        sql`${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'`,
+      ),
+    )
+    .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
+    .limit(1);
+  const [prefRow] = await db
+    .select({ preferences: userSettings.preferences })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+  const shape = await templateBody(userId, (prefRow?.preferences ?? {})[DAILY_TEMPLATE_PREF]);
+  return placeCarried(shape, carryForward(previous?.content));
+}
+
 /** Find (or lazily create) the hidden scratchpad note for a date. If duplicate
  * notes exist for a date (e.g. a first-visit create race), prefer the one with
  * content, then the oldest — deterministically, so a day's note never "vanishes"
@@ -64,8 +98,27 @@ async function findOrCreateNote(userId: string, date: string) {
     .limit(1);
   if (existing) {
     sweep(existing.id);
-    // Backfill the title on notes created before scratchpads were titled.
     const props = (existing.properties ?? {}) as Record<string, unknown>;
+    // A day opened before anything was sent forward — flicking ahead in the
+    // calendar makes its note — would otherwise keep the empty page it was
+    // born with for ever, while every later day got the text. Nothing here is
+    // anybody's writing until it differs from what it was handed, so it can
+    // be handed something newer.
+    const untouched =
+      (existing.content ?? "") === "" ||
+      (existing.content ?? "") === String(props.seed ?? "\u0000");
+    if (untouched) {
+      const seed = await seedFor(userId, date);
+      if (seed !== (existing.content ?? "")) {
+        const nextProps = { ...props, title: props.title ?? scratchpadTitle(date), seed };
+        await db
+          .update(blocks)
+          .set({ content: seed, properties: nextProps, embedSource: seed, embedSourceHash: null })
+          .where(and(eq(blocks.id, existing.id), eq(blocks.ownerId, userId)));
+        return { ...existing, content: seed, properties: nextProps };
+      }
+    }
+    // Backfill the title on notes created before scratchpads were titled.
     if (!props.title) {
       const nextProps = { ...props, title: scratchpadTitle(date) };
       await db
@@ -84,34 +137,7 @@ async function findOrCreateNote(userId: string, date: string) {
     .orderBy(desc(blockTypes.builtin))
     .limit(1);
   if (!textType) throw badRequest("text block type missing");
-  // Whatever the last day that was written on is still sending forward comes
-  // with it. The most recent day with anything in it, not simply yesterday:
-  // a weekend, a week off, a stretch of days nobody opened — the thread
-  // shouldn't drop because nothing was written on Sunday.
-  const [previous] = await db
-    .select({ content: blocks.content })
-    .from(blocks)
-    .where(
-      and(
-        eq(blocks.ownerId, userId),
-        sql`${blocks.properties}->>'today_note' < ${date}`,
-        sql`COALESCE(${blocks.content}, '') <> ''`,
-        // A day that was opened and never written in is not the last day that
-        // was written on, however much text it was handed.
-        sql`${blocks.content} IS DISTINCT FROM ${blocks.properties}->>'seed'`,
-      ),
-    )
-    .orderBy(sql`${blocks.properties}->>'today_note' DESC`)
-    .limit(1);
-  // The day's shape, if one has been chosen, with what's travelling forward set
-  // down wherever that shape asks for it.
-  const [prefRow] = await db
-    .select({ preferences: userSettings.preferences })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
-  const shape = await templateBody(userId, (prefRow?.preferences ?? {})[DAILY_TEMPLATE_PREF]);
-  const seed = placeCarried(shape, carryForward(previous?.content));
+  const seed = await seedFor(userId, date);
   const [created] = await db
     .insert(blocks)
     .values({

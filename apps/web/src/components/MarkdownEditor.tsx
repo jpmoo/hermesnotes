@@ -367,7 +367,11 @@ export function MarkdownEditor({
       // No selection, but the click may still have landed on marked text —
       // finding the ends of a highlight to select them is not something
       // anyone should have to do to stop it.
-      const here = forwardAround(editor.state.doc, from, to);
+      // Where the pointer actually is, not where the caret happens to be: a
+      // right-click doesn't always move the selection, and "anywhere inside the
+      // highlight" has to mean anywhere.
+      const at = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })?.pos;
+      const here = forwardAround(editor.state.doc, at ?? from, at ?? to);
       if (templates.length === 0 && !here) return;
       e.preventDefault();
       e.stopPropagation();
@@ -417,7 +421,8 @@ export function MarkdownEditor({
     const field = captureField(e.target);
     // Anywhere inside a marked run counts as clicking it: the reader
     // shouldn't have to find its exact edges to stop it.
-    const inForward = forwardAround(doc, from, to);
+    const atSel = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })?.pos;
+    const inForward = forwardAround(doc, atSel ?? from, atSel ?? to) ?? forwardAround(doc, from, to);
     void api
       .get<BlockType[]>("/block-types")
       .then((types) =>

@@ -46,14 +46,16 @@ function headingLevelOf(node: { type: { name: string }; attrs: Record<string, un
 }
 
 /**
- * Live-preview outline indentation: a heading and the blocks that follow it share
- * one indent, so the heading leads its section instead of hanging above it. A
- * deeper heading steps itself AND its content in together:
+ * Live-preview outline indentation: a heading sits at its own level and what
+ * follows it sits one step inside, so a section reads as something the heading
+ * holds rather than a run of lines that happens to come after it. A deeper
+ * heading lands in the column its parent's text uses — it is one of the things
+ * that section contains — and takes its own content a step further in again:
  *
- *     ## Trip            <- indent 0
- *     packing list       <- indent 0
- *       ### Suitcase     <- indent 1
- *       shirts           <- indent 1
+ *     ## Trip              <- indent 0
+ *       packing list       <- indent 1
+ *       ### Suitcase       <- indent 1
+ *         shirts           <- indent 2
  *
  * The shallowest heading present sits at the margin, and a blank line clears the
  * indent. Purely visual (decorations); the stored markdown is untouched.
@@ -86,9 +88,10 @@ export const HeadingIndent = Extension.create({
               let indent = 0;
               if (lvl != null) {
                 indent = Math.max(0, lvl - minLevel);
-                // Content sits at its heading's own indent, not one deeper — the
-                // heading leads its section rather than hanging above it.
-                contentIndent = indent;
+                // One step inside the heading: the section is held by it, not
+                // merely underneath it. A deeper heading then lands in the same
+                // column as the text it sits among, which is what it is.
+                contentIndent = indent + 1;
               } else if (isEmpty) {
                 // An empty line (blank paragraph) clears the indent.
                 indent = 0;

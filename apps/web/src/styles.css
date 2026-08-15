@@ -2131,9 +2131,26 @@ input.collection-title:focus {
 .seg + .seg {
   border-left: 1px solid var(--border);
 }
+.seg:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
 .seg.active {
   background: #eef4f6;
   color: var(--accent-ink);
+}
+/* A segment carrying a glyph rather than a word sits tighter and centres it. */
+.seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+}
+/* Where you are, said by disabling the way there — so it reads as a position
+   rather than as a button greyed out for some reason of its own. */
+.seg.active:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 /* A control that lives in a toolbar and acts on what the toolbar is showing —
@@ -5850,13 +5867,9 @@ input.cv-add-input {
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
+/* The calendar's step-through-time pill; layout comes from .segmented. */
 .cal-nav {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.cal-today-btn {
-  padding: 4px 12px;
+  flex-shrink: 0;
 }
 .cal-range {
   font-family: var(--font-chrome);
@@ -6994,24 +7007,6 @@ input.cv-add-input {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-/* A segment carrying a glyph rather than a word sits tighter and centres it. */
-.day-nav .seg-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px 8px;
-}
-.day-nav .seg:not(:disabled):hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.day-nav .seg:disabled {
-  cursor: default;
-}
-/* Today's own day: shown as where you are, not as somewhere to go. */
-.day-nav .seg.active:disabled {
-  opacity: 1;
 }
 .day-nav-reset .seg:not(:disabled):hover {
   background: color-mix(in srgb, var(--danger) 12%, var(--surface));

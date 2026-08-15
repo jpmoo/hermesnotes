@@ -468,6 +468,10 @@ export function CalendarView({
 
   const rangeStart = days[0]!;
   const rangeEnd = days[days.length - 1]!;
+  // Today is on screen, so there's nowhere for "Today" to take you. True of
+  // every view for the same reason, month included — its grid runs to whole
+  // weeks, so the day is either in the cells or it isn't.
+  const showingToday = days.includes(today);
 
   // Subscribed calendar-feed events overlapping the visible range (read-only).
   useEffect(() => {
@@ -804,15 +808,32 @@ export function CalendarView({
             </button>
           ))}
         </span>
-        <span className="cal-nav">
-          <button className="icon-btn" title="Previous" onClick={(e) => { e.stopPropagation(); step(-1); }}>
-            <ChevronLeft size={16} />
+        {/* One pill, like the Today page's day nav — and Today is dead while
+            today is already on screen, so it says where you are rather than
+            being a button that does nothing. */}
+        <span className="segmented cal-nav">
+          <button
+            className="seg seg-icon"
+            title="Previous"
+            aria-label="Previous"
+            onClick={(e) => { e.stopPropagation(); step(-1); }}
+          >
+            <ChevronLeft size={15} />
           </button>
-          <button className="ghost cal-today-btn" onClick={(e) => { e.stopPropagation(); setAnchor(today); }}>
+          <button
+            className={`seg${showingToday ? " active" : ""}`}
+            disabled={showingToday}
+            onClick={(e) => { e.stopPropagation(); setAnchor(today); }}
+          >
             Today
           </button>
-          <button className="icon-btn" title="Next" onClick={(e) => { e.stopPropagation(); step(1); }}>
-            <ChevronRight size={16} />
+          <button
+            className="seg seg-icon"
+            title="Next"
+            aria-label="Next"
+            onClick={(e) => { e.stopPropagation(); step(1); }}
+          >
+            <ChevronRight size={15} />
           </button>
         </span>
         <span className="cal-range">{rangeLabel}</span>

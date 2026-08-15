@@ -35,7 +35,13 @@ export function SendToDaysModal({
   onClose: () => void;
   onSent: (days: string[]) => void;
 }) {
-  const seed = new Date(`${from}T00:00`);
+  // The earliest day this can land on: never behind the note it's leaving, and
+  // never in the past. Sending is a thing you do forwards — a day already gone
+  // can't be asked to bring anything to mind, and writing into it would just be
+  // editing history from a menu meant for planning.
+  const todayKey = ymd(new Date());
+  const floor = from > todayKey ? from : todayKey;
+  const seed = new Date(`${floor}T00:00`);
   const [view, setView] = useState({ y: seed.getFullYear(), m: seed.getMonth() });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -47,7 +53,6 @@ export function SendToDaysModal({
     return () => window.removeEventListener("keydown", esc);
   }, [onClose]);
 
-  const today = ymd(new Date());
   const first = new Date(view.y, view.m, 1);
   const gridStart = new Date(view.y, view.m, 1 - first.getDay());
   const cells = Array.from({ length: 42 }, (_, i) => {
@@ -107,22 +112,32 @@ export function SendToDaysModal({
           ))}
         </div>
         <div className="dtp-grid">
-          {cells.map((c) => (
-            <button
-              key={c.key}
-              className={
-                "dtp-day" +
-                (c.inMonth ? "" : " out") +
-                (picked.has(c.key) ? " sel" : "") +
-                (c.key === today ? " today" : "")
-              }
-              disabled={c.key === from}
-              title={c.key === from ? "This is the day it's being sent from" : undefined}
-              onClick={() => toggle(c.key)}
-            >
-              {c.day}
-            </button>
-          ))}
+          {cells.map((c) => {
+            const isSource = c.key === from;
+            const gone = c.key < floor;
+            return (
+              <button
+                key={c.key}
+                className={
+                  "dtp-day" +
+                  (c.inMonth ? "" : " out") +
+                  (picked.has(c.key) ? " sel" : "") +
+                  (c.key === todayKey ? " today" : "")
+                }
+                disabled={isSource || gone}
+                title={
+                  isSource
+                    ? "This is the day it's being sent from"
+                    : gone
+                      ? "Already been and gone"
+                      : undefined
+                }
+                onClick={() => toggle(c.key)}
+              >
+                {c.day}
+              </button>
+            );
+          })}
         </div>
 
         <div className="send-days-picked">

@@ -423,7 +423,11 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(req.body);
 
-    const targets = [...new Set(dates)].filter((d) => d !== from).sort();
+    // Strictly later than the note it's leaving. Dates sort as strings, so this
+    // is the comparison it looks like. The picker also keeps you out of days
+    // already gone; that floor is the browser's, since only it knows what day
+    // it is where the reader is sitting.
+    const targets = [...new Set(dates)].filter((d) => d > from).sort();
     const sent: string[] = [];
     for (const day of targets) {
       const note = await findOrCreateNote(userId, day);

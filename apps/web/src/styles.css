@@ -2350,6 +2350,58 @@ input.li-text:focus {
 .modal-card.banner-picker {
   max-width: 680px;
 }
+
+/* Choosing the days a piece of text should land on. */
+.modal-card.send-days {
+  max-width: 340px;
+}
+/* The words being sent, shown back — a right-click menu is a small target and
+   it should be clear what was caught by it. */
+.send-days-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 8px 10px;
+  margin: 0 0 14px;
+  max-height: 84px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+/* The days chosen so far, listed under the month — a run of Tuesdays picked
+   across three months is otherwise a claim you can't check from here. */
+.send-days-picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 4px;
+  min-height: 24px;
+}
+.send-days .dtp-day:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Brief confirmation of a send: the note it left doesn't change, so without
+   this nothing at all appears to happen. Positioned against the editor, which
+   otherwise has no positioning of its own. */
+.md-editor {
+  position: relative;
+}
+.editor-toast {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 12;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-lift);
+  pointer-events: none;
+  animation: modalFade 0.15s ease;
+}
 .banner-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -7657,11 +7709,36 @@ button.ru-title:hover {
 /* Text that keeps coming back. A highlight you can read straight through: it
    should be visible every morning without being loud every morning. */
 mark.fwd-mark,
-.md-body mark[data-fwd] {
+.md-body mark[data-fwd],
+.md-body mark[data-from] {
   background: rgba(232, 194, 92, 0.24);
   color: inherit;
   border-radius: 3px;
   padding: 0 2px;
+}
+/* Text that arrived from another day says which one, in front of the words —
+   a line you keep meeting every morning is a different thing depending on
+   whether you wrote it yesterday or three weeks ago, and the copy itself is
+   the only place that can tell you. Only copies carry the date: on the note
+   it was written in, the day is the page you're on. */
+mark[data-from]::before {
+  content: attr(data-from);
+  font-family: var(--font-chrome);
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-right: 5px;
+  /* Never breaks away from the words it stamps, and never inherits their
+     italics — it's a label on the text, not part of it. */
+  font-style: normal;
+  white-space: nowrap;
+}
+:root[data-theme="dark"] mark[data-from]::before {
+  background: rgba(0, 0, 0, 0.28);
 }
 
 /* A block converted from a calendar feed keeps that calendar's colour as a

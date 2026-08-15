@@ -1,4 +1,5 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
+import { forwardOpenTag } from "@hermes/shared";
 
 /**
  * Text that keeps coming back — a mark, not a node.
@@ -26,13 +27,26 @@ export const ForwardMark = Mark.create({
       since: {
         default: "",
         parseHTML: (el) => el.getAttribute("data-fwd") ?? "",
-        renderHTML: (attrs) => ({ "data-fwd": String(attrs.since ?? "") }),
+        renderHTML: (attrs) => (attrs.since ? { "data-fwd": String(attrs.since) } : {}),
+      },
+      // Where it set out from, on a copy that has travelled. Carried through
+      // the editor so a day you open and save doesn't quietly strip the origin
+      // off everything it was handed.
+      from: {
+        default: "",
+        parseHTML: (el) => el.getAttribute("data-from") ?? "",
+        renderHTML: (attrs) =>
+          attrs.from ? { "data-from": String(attrs.from) } : {},
       },
     };
   },
 
+  // Both: a mark with only an origin is text sent to this day in particular. It
+  // isn't travelling, but it is the same kind of thing, and if the editor didn't
+  // know it the first save of that day would drop the tag and with it the answer
+  // to "where did this come from".
   parseHTML() {
-    return [{ tag: "mark[data-fwd]" }];
+    return [{ tag: "mark[data-fwd]" }, { tag: "mark[data-from]" }];
   },
 
   renderHTML({ HTMLAttributes }) {
@@ -43,8 +57,11 @@ export const ForwardMark = Mark.create({
     return {
       markdown: {
         serialize: {
-          open: (_state: unknown, mark: { attrs: { since?: string } }) =>
-            `<mark data-fwd="${String(mark.attrs.since ?? "").replace(/"/g, "&quot;")}">`,
+          open: (_state: unknown, mark: { attrs: { since?: string; from?: string } }) =>
+            forwardOpenTag(
+              String(mark.attrs.since ?? "") || undefined,
+              String(mark.attrs.from ?? "") || undefined,
+            ),
           close: "</mark>",
           // The content between the tags is ordinary markdown, so a mention
           // inside serializes as a mention.

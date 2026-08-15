@@ -31,6 +31,7 @@ import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentio
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { SendToDaysModal } from "./SendToDaysModal.tsx";
 
 type Mode = "live" | "raw";
 
@@ -77,6 +78,7 @@ export function MarkdownEditor({
   blockId,
   onFocusChange,
   periodicKind = null,
+  periodicDate = null,
 }: {
   value: string;
   onChange: (markdown: string) => void;
@@ -89,6 +91,9 @@ export function MarkdownEditor({
   /** A daily scratchpad or weekly reflection: text here can be sent forward
    *  into the next one, and a template can be made the shape they all take. */
   periodicKind?: "daily" | "weekly" | null;
+  /** The day (or week) this note belongs to, YYYY-MM-DD. Stamped on text sent
+   *  to other days, so a piece that turns up on Tuesday says where it's from. */
+  periodicDate?: string | null;
 }) {
   const [mode, setMode] = useState<Mode>("live");
   const [markdown, setMarkdown] = useState(value);
@@ -464,6 +469,27 @@ export function MarkdownEditor({
   };
 
   /**
+   * Send it to days you choose instead of to every day from here. The text goes
+   * as markdown, so a mention in it arrives as a mention; nothing changes in
+   * this note, because this is a copy leaving rather than a mark being set.
+   */
+  const [sendTo, setSendTo] = useState<string | null>(null);
+  // How many days it went to, said briefly and then gone. Sending is otherwise
+  // invisible from here: the note it left doesn't change.
+  const [sentNote, setSentNote] = useState<number | null>(null);
+  useEffect(() => {
+    if (sentNote === null) return;
+    const t = setTimeout(() => setSentNote(null), 4000);
+    return () => clearTimeout(t);
+  }, [sentNote]);
+  const openSendTo = () => {
+    if (!extract) return;
+    const md = extract.mdText.trim();
+    setExtract(null);
+    if (md) setSendTo(md);
+  };
+
+  /**
    * Stop sending it forward — from here on. What earlier notes already carry
    * is theirs and stays as they were written; this note keeps the words too,
    * unless `alsoRemove`, which is for the ones that have simply had their day.
@@ -635,6 +661,11 @@ export function MarkdownEditor({
                   Send this text forward
                 </button>
               )}
+              {periodicDate && extract.mdText.trim() && (
+                <button className="menu-item" onClick={openSendTo}>
+                  Send this text to particular days…
+                </button>
+              )}
               <div className="menu-sep" />
             </>
           )}
@@ -682,6 +713,19 @@ export function MarkdownEditor({
         onCancel={() => setPendingForever(null)}
         onConfirm={() => pendingForever && useForever(pendingForever)}
       />
+      {sendTo !== null && periodicDate && (
+        <SendToDaysModal
+          text={sendTo}
+          from={periodicDate}
+          onClose={() => setSendTo(null)}
+          onSent={(days) => setSentNote(days.length)}
+        />
+      )}
+      {sentNote !== null && (
+        <div className="editor-toast" role="status">
+          Sent to {sentNote} day{sentNote === 1 ? "" : "s"}.
+        </div>
+      )}
     </div>
   );
 }

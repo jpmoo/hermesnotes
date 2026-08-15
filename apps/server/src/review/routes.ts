@@ -207,7 +207,10 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
   // Same thread as the daily notes, on its own cadence: the last reflection
   // that had anything in it, skipping the weeks nobody wrote one.
   const [previous] = await db
-    .select({ content: blocks.content })
+    .select({
+      content: blocks.content,
+      day: sql<string>`${blocks.properties}->>${REFLECTION_MARK}`,
+    })
     .from(blocks)
     .where(
       and(
@@ -225,7 +228,7 @@ async function findOrCreateReflection(userId: string, dueDate: string): Promise<
     .where(eq(userSettings.userId, userId))
     .limit(1);
   const shape = await templateBody(userId, (prefRow?.preferences ?? {})[WEEKLY_TEMPLATE_PREF]);
-  const seed = placeCarried(shape, carryForward(previous?.content));
+  const seed = placeCarried(shape, carryForward(previous?.content, previous?.day));
   const [created] = await db
     .insert(blocks)
     .values({

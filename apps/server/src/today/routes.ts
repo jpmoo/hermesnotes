@@ -6,6 +6,7 @@ import {
   carryForward,
   composeTodayLayout,
   DAILY_TEMPLATE_PREF,
+  fromMark,
   placeCarried,
   customTodaySectionSchema,
   normalizeDefaultLayout,
@@ -56,7 +57,7 @@ function scratchpadTitle(date: string): string {
  */
 async function seedFor(userId: string, date: string): Promise<string> {
   const [previous] = await db
-    .select({ content: blocks.content })
+    .select({ content: blocks.content, day: sql<string>`${blocks.properties}->>'today_note'` })
     .from(blocks)
     .where(
       and(
@@ -76,7 +77,7 @@ async function seedFor(userId: string, date: string): Promise<string> {
     .where(eq(userSettings.userId, userId))
     .limit(1);
   const shape = await templateBody(userId, (prefRow?.preferences ?? {})[DAILY_TEMPLATE_PREF]);
-  return placeCarried(shape, carryForward(previous?.content));
+  return placeCarried(shape, carryForward(previous?.content, previous?.day));
 }
 
 /** Find (or lazily create) the hidden scratchpad note for a date. If duplicate
@@ -396,6 +397,56 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
     return findOrCreateNote(userId, date);
+  });
+
+  /**
+   * Put a piece of text on particular days.
+   *
+   * Sending text forward hands it to tomorrow, and the day after, and on until
+   * you call it off — right for a question you're sitting with, wrong for a
+   * thing that belongs to next Tuesday. This sets the words down on the days
+   * you name and leaves them there: they arrive marked with the day they came
+   * from, so you know why they're in front of you, and they travel no further.
+   *
+   * A day nobody has opened is brought into being to receive them, exactly as
+   * visiting it would.
+   */
+  app.post("/today/send", async (req) => {
+    const userId = requireUser(req);
+    const { text, from, dates } = z
+      .object({
+        text: z.string().min(1).max(20_000),
+        from: DATE,
+        // Capped: this is a hand-picked list from a calendar, and an unbounded
+        // one would mint a note per entry.
+        dates: z.array(DATE).min(1).max(60),
+      })
+      .parse(req.body);
+
+    const targets = [...new Set(dates)].filter((d) => d !== from).sort();
+    const sent: string[] = [];
+    for (const day of targets) {
+      const note = await findOrCreateNote(userId, day);
+      const before = (note.content ?? "").replace(/\s+$/, "");
+      // A blank line between what was there and what's arriving: two paragraphs
+      // run together otherwise, and a bullet list appended to a paragraph would
+      // swallow the first item.
+      const content = before
+        ? `${before}\n\n${fromMark(text, from)}\n`
+        : `${fromMark(text, from)}\n`;
+      await db
+        .update(blocks)
+        .set({
+          content,
+          embedSource: content,
+          embedSourceHash: null,
+          version: sql`${blocks.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(blocks.id, note.id), eq(blocks.ownerId, userId)));
+      sent.push(day);
+    }
+    return { sent };
   });
 
   /**

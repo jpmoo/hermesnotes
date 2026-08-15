@@ -249,6 +249,11 @@ export function TextBlockEditor({
                 ? "weekly"
                 : null
           }
+          periodicDate={
+            (block.properties?.today_note as string | undefined) ??
+            (block.properties?.review_reflection as string | undefined) ??
+            null
+          }
           onFocusChange={(f) => {
             focusedRef.current = f;
             if (!f && !dirty()) releaseSync();

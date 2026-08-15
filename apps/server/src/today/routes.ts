@@ -8,6 +8,7 @@ import {
   DAILY_TEMPLATE_PREF,
   fromMark,
   placeCarried,
+  removeMarked,
   customTodaySectionSchema,
   normalizeDefaultLayout,
   normalizeTodayLayout,
@@ -451,6 +452,53 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       sent.push(day);
     }
     return { sent };
+  });
+
+  /**
+   * Take a piece of text back out of the days ahead.
+   *
+   * Calling something off says you're done with it, and days that haven't
+   * happened yet shouldn't still be holding it — whether it was going to arrive
+   * there by travelling or was set down on that day by hand. Days already past
+   * keep every word: what you wrote on Tuesday is what you wrote on Tuesday,
+   * and this has never rewritten history.
+   *
+   * `after` comes from the reader's own clock rather than this one, which can be
+   * a day out from theirs (see the timezone setting).
+   */
+  app.post("/today/retract", async (req) => {
+    const userId = requireUser(req);
+    const { text, after } = z
+      .object({ text: z.string().min(1).max(20_000), after: DATE })
+      .parse(req.body);
+
+    const rows = await db
+      .select({ id: blocks.id, content: blocks.content })
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.properties}->>'today_note' > ${after}`,
+          sql`${blocks.archivedAt} IS NULL`,
+        ),
+      );
+    const cleared: string[] = [];
+    for (const row of rows) {
+      const next = removeMarked(row.content, text);
+      if (next === (row.content ?? "")) continue;
+      await db
+        .update(blocks)
+        .set({
+          content: next,
+          embedSource: next,
+          embedSourceHash: null,
+          version: sql`${blocks.version} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(blocks.id, row.id), eq(blocks.ownerId, userId)));
+      cleared.push(row.id);
+    }
+    return { cleared };
   });
 
   /**

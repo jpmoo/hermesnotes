@@ -14,7 +14,13 @@ const EDITABLE =
   // A menu belonging to the field you're writing in — apply a template, send
   // this text forward — is part of the writing. Acting on it shouldn't be read
   // as asking to inspect the block it acts on.
-  ' .li-status, .extract-menu, .mention-menu, .ph-menu';
+  ' .li-status, .extract-menu, .mention-menu, .ph-menu,' +
+  // Same for a modal. These portal to <body> to escape the panel's stacking
+  // context, but a React portal still sends its events up the React tree — so
+  // every press inside one arrives at the card the modal was declared in, and
+  // picking dates off a calendar kept telling the panel to show you the block
+  // behind it.
+  ' .modal-backdrop';
 
 /**
  * Element, not HTMLElement: an icon is an `<svg>`, and an `<svg>` is an

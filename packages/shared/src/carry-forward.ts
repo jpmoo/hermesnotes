@@ -80,6 +80,44 @@ export function fromMark(markdown: string, from: string): string {
   return `${forwardOpenTag(undefined, from)}${inner}</mark>`;
 }
 
+/**
+ * The words as read, with the markdown around them taken off: a mention down to
+ * its name, emphasis and code ticks gone, escapes undone, whitespace collapsed.
+ *
+ * Copies of one piece of text reach a note by more than one route and are
+ * written out slightly differently by each — one carries a mention as a link,
+ * another names it; a line break lands where a space was. None of that makes
+ * two different sentences, and matching on the exact bytes said it did.
+ */
+function visibleText(v: string): string {
+  return String(v ?? "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\\(.)/g, "$1")
+    .replace(/[*_`~]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Take a piece of text back out of a note — every marked copy of it, however it
+ * got there: carried in when the note was made, or set down by hand on this
+ * particular day.
+ *
+ * Only marked copies. Words you typed yourself that happen to read the same are
+ * yours, and calling something off shouldn't reach into a note and take them.
+ */
+export function removeMarked(content: string | null | undefined, text: string): string {
+  const target = visibleText(text);
+  if (!content || !target) return content ?? "";
+  MARK_RE.lastIndex = 0;
+  const next = content.replace(MARK_RE, (whole, _attrs: string, inner: string) =>
+    visibleText(inner) === target ? "" : whole,
+  );
+  if (next === content) return content;
+  // A copy that had a paragraph to itself leaves the blank lines that framed it.
+  return next.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+}
+
 /** Every piece of text a note is sending forward, oldest first. */
 export function forwardedIn(content: string | null | undefined): ForwardedLine[] {
   if (!content) return [];

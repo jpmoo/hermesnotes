@@ -29,6 +29,7 @@ import { ForwardMark } from "../lib/forward-mark.ts";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
+import { emitBlockChange } from "../lib/block-events.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { SendToDaysModal } from "./SendToDaysModal.tsx";
@@ -55,6 +56,13 @@ function placeCaret(editor: Editor, text: string): boolean {
   const at = found as { from: number; to: number };
   editor.chain().focus().setTextSelection({ from: at.from, to: at.to }).run();
   return true;
+}
+
+/** A date as this browser reckons it, which is the only clock that knows what
+ *  day it is where the reader is sitting. */
+function ymdLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** Soft breaks → newlines; strip backslash hard-breaks; cap blank-line runs. */
@@ -352,6 +360,16 @@ export function MarkdownEditor({
     applyTemplate(tpl, editor?.getText().trim() === "");
   };
 
+  /** A range as it reads — mentions by name, no markdown around the words. It's
+   *  what copies of this text are matched on, wherever they ended up and by
+   *  whichever route they got there. */
+  const rangeText = (doc: PMNode, from: number, to: number) =>
+    doc
+      .textBetween(from, to, "\n", (n) =>
+        n.type.name === "mention" ? String(n.attrs.label ?? "") : "",
+      )
+      .trim();
+
   /** The marked run covering (or touching) a position, if there is one. */
   const forwardAround = (doc: PMNode, from: number, to: number) => {
     let found: { from: number; to: number } | null = null;
@@ -477,11 +495,16 @@ export function MarkdownEditor({
   // How many days it went to, said briefly and then gone. Sending is otherwise
   // invisible from here: the note it left doesn't change.
   const [sentNote, setSentNote] = useState<number | null>(null);
+  // …and how many days it was taken back out of, said the same way.
+  const [retractNote, setRetractNote] = useState<number | null>(null);
   useEffect(() => {
-    if (sentNote === null) return;
-    const t = setTimeout(() => setSentNote(null), 4000);
+    if (sentNote === null && retractNote === null) return;
+    const t = setTimeout(() => {
+      setSentNote(null);
+      setRetractNote(null);
+    }, 4000);
     return () => clearTimeout(t);
-  }, [sentNote]);
+  }, [sentNote, retractNote]);
   const openSendTo = () => {
     if (!extract) return;
     const md = extract.mdText.trim();
@@ -493,10 +516,16 @@ export function MarkdownEditor({
    * Stop sending it forward — from here on. What earlier notes already carry
    * is theirs and stays as they were written; this note keeps the words too,
    * unless `alsoRemove`, which is for the ones that have simply had their day.
+   *
+   * Days that haven't happened yet are a different matter from days that have.
+   * A copy already sitting in one of them — sent there by hand, or carried in
+   * when you flicked ahead and made the note — is something you've just said
+   * you're done with, so it's taken back out.
    */
   const stopForward = (alsoRemove = false) => {
     if (!extract || !editor || !extract.inForward) return;
     const { from, to } = extract.inForward;
+    const md = rangeText(editor.state.doc, from, to);
     setExtract(null);
     // deleteRange, not select-then-deleteSelection: a chained deleteSelection
     // reads the selection off the original state, not off the transaction the
@@ -505,6 +534,20 @@ export function MarkdownEditor({
     // does use the chain's own selection, which is why the other one worked.
     if (alsoRemove) editor.chain().focus().deleteRange({ from, to }).run();
     else editor.chain().focus().setTextSelection({ from, to }).unsetMark("forwarded").run();
+    if (!periodicDate || !md) return;
+    // The floor is this browser's idea of today, not the server's: only one of
+    // them knows what day it is where the reader is.
+    const now = ymdLocal(new Date());
+    void api
+      .post<{ cleared: string[] }>("/today/retract", {
+        text: md,
+        after: periodicDate > now ? periodicDate : now,
+      })
+      .then((r) => {
+        if (r.cleared.length) setRetractNote(r.cleared.length);
+        for (const id of r.cleared) emitBlockChange(id, "retract");
+      })
+      .catch(() => {});
   };
 
   // Create a new block of `type` from the selection, then replace the selection
@@ -724,6 +767,11 @@ export function MarkdownEditor({
       {sentNote !== null && (
         <div className="editor-toast" role="status">
           Sent to {sentNote} day{sentNote === 1 ? "" : "s"}.
+        </div>
+      )}
+      {retractNote !== null && (
+        <div className="editor-toast" role="status">
+          Taken back out of {retractNote} day{retractNote === 1 ? "" : "s"} ahead.
         </div>
       )}
     </div>

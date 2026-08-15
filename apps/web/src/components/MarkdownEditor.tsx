@@ -513,16 +513,21 @@ export function MarkdownEditor({
   };
 
   /**
-   * Stop sending it forward — from here on. What earlier notes already carry
-   * is theirs and stays as they were written; this note keeps the words too,
-   * unless `alsoRemove`, which is for the ones that have simply had their day.
+   * What to do with a copy in front of you. All three leave earlier notes
+   * alone: what you wrote on Tuesday is what you wrote on Tuesday.
    *
-   * Days that haven't happened yet are a different matter from days that have.
-   * A copy already sitting in one of them — sent there by hand, or carried in
-   * when you flicked ahead and made the note — is something you've just said
-   * you're done with, so it's taken back out.
+   *  - stop:       keep the words here, unmarked, and clear the days ahead.
+   *  - remove:     take the words out here, and clear the days ahead.
+   *  - removeHere: take the words out here and touch nothing else — for a copy
+   *                that's simply had its day, where the thing itself is still
+   *                worth meeting on the days it's already been given to.
+   *
+   * "Clear the days ahead" is the difference between the middle one and the
+   * last, and it's the whole reason there are three: a copy already sitting in
+   * a day that hasn't happened is either something you're done with or
+   * something you still want waiting there, and only you know which.
    */
-  const stopForward = (alsoRemove = false) => {
+  const stopForward = (mode: "stop" | "remove" | "removeHere") => {
     if (!extract || !editor || !extract.inForward) return;
     const { from, to } = extract.inForward;
     const md = rangeText(editor.state.doc, from, to);
@@ -532,9 +537,12 @@ export function MarkdownEditor({
     // chain is building — so with the caret sitting where the right-click left
     // it, there was nothing selected and it deleted nothing at all. unsetMark
     // does use the chain's own selection, which is why the other one worked.
-    if (alsoRemove) editor.chain().focus().deleteRange({ from, to }).run();
-    else editor.chain().focus().setTextSelection({ from, to }).unsetMark("forwarded").run();
-    if (!periodicDate || !md) return;
+    if (mode === "stop") {
+      editor.chain().focus().setTextSelection({ from, to }).unsetMark("forwarded").run();
+    } else {
+      editor.chain().focus().deleteRange({ from, to }).run();
+    }
+    if (mode === "removeHere" || !periodicDate || !md) return;
     // The floor is this browser's idea of today, not the server's: only one of
     // them knows what day it is where the reader is.
     const now = ymdLocal(new Date());
@@ -692,11 +700,14 @@ export function MarkdownEditor({
             <>
               {extract.inForward ? (
                 <>
-                  <button className="menu-item" onClick={() => stopForward(false)}>
+                  <button className="menu-item" onClick={() => stopForward("stop")}>
                     Stop sending this text forward
                   </button>
-                  <button className="menu-item" onClick={() => stopForward(true)}>
+                  <button className="menu-item" onClick={() => stopForward("remove")}>
                     Remove it here and stop sending it forward
+                  </button>
+                  <button className="menu-item" onClick={() => stopForward("removeHere")}>
+                    Remove from here only
                   </button>
                 </>
               ) : (

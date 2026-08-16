@@ -3,15 +3,21 @@ import { EventEmitter } from "node:events";
 /**
  * In-process fan-out of block-change events to a user's live SSE connections.
  * Single-process deploy, so a plain EventEmitter is enough — no external broker.
- * `origin` is the client-id of the tab that caused the change (from the request
- * header), so a tab can ignore the echo of its own edit.
+ *
+ * Events come from the change log (see events/watcher.ts), which reads what the
+ * database recorded rather than what the request looked like. That's why there's
+ * no origin here: the log knows a block changed, not which tab asked for it. A
+ * tab tells its own echo apart by the version instead — it knows what it last
+ * wrote, and news is anything newer than that.
  */
 export interface ChangeEvent {
   kind: "block" | "delete";
-  /** The affected block id; empty string means "something changed, re-query
-   * lists" (e.g. a create, whose id isn't in the request URL). */
+  /** The affected block. */
   id: string;
-  origin?: string;
+  /** The block's version after the write. Absent on a delete, and on a change
+   *  to a membership or tag — neither of which touches the block's own row, so
+   *  neither has a version to report. */
+  version?: number | null;
 }
 
 const emitter = new EventEmitter();

@@ -29,8 +29,6 @@ import { backupRoutes } from "./backup/routes.js";
 import { exportRoutes } from "./export/routes.js";
 import { adminRoutes } from "./admin/routes.js";
 import { eventRoutes } from "./events/routes.js";
-import { publishChange, type ChangeEvent } from "./events/hub.js";
-import { noteUrlSniffed } from "./events/watcher.js";
 
 // Built web bundle (apps/web/dist), served on the same port when present.
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist");
@@ -136,22 +134,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
-  // Fan out block mutations to the user's live-sync (SSE) connections. Runs at
-  // the REST layer on a successful mutating request, so edits from the UI AND
-  // from the AI assistant over MCP (which uses the loopback API) both broadcast.
-  // Best-effort — never touches the response. `x-client-id` lets the causing tab
-  // skip its own echo.
-  app.addHook("onResponse", async (req, reply) => {
-    if (reply.statusCode >= 300) return;
-    const userId = req.userId;
-    if (!userId || req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return;
-    const ev = changeFor(req.method, req.url.split("?")[0] ?? "");
-    if (!ev) return;
-    const cid = req.headers["x-client-id"];
-    if (typeof cid === "string") ev.origin = cid;
-    publishChange(userId, ev);
-    noteUrlSniffed(ev.id);
-  });
+  // Block mutations reach the user's live-sync (SSE) connections from the change
+  // log — see events/watcher.ts. This used to be worked out here instead, from
+  // the shape of the request that had just succeeded, which could only ever see
+  // writes recognisable from the outside: nothing done during a GET, and nothing
+  // whose URL didn't match a handful of patterns.
 
   app.get("/health", async () => ({ ok: true }));
 
@@ -190,28 +177,4 @@ export async function buildApp(): Promise<FastifyInstance> {
   }
 
   return app;
-}
-
-const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-// A block/collection endpoint (optionally a sub-action) → the affected id.
-const BLOCK_RE = new RegExp(`^/api/blocks/(${UUID})(?:/(?:archive|unarchive|tags))?$`);
-const COLL_RE = new RegExp(`^/api/collections/(${UUID})$`);
-const COLL_MEMBERS_RE = new RegExp(`^/api/collections/${UUID}/members`);
-
-/**
- * Map a successful mutating request to the change event to broadcast. A known
- * id targets that block (open cards/lists refetch it); an empty id means
- * "something was created/added — re-query lists" (the id isn't in the URL).
- * Returns null for requests that don't change a block.
- */
-function changeFor(method: string, path: string): ChangeEvent | null {
-  let m = path.match(BLOCK_RE);
-  if (m) return { kind: method === "DELETE" ? "delete" : "block", id: m[1]! };
-  m = path.match(COLL_RE);
-  if (m) return { kind: method === "DELETE" ? "delete" : "block", id: m[1]! };
-  if (COLL_MEMBERS_RE.test(path)) return { kind: "block", id: "" };
-  if ((path === "/api/blocks" || path === "/api/collections") && method === "POST") {
-    return { kind: "block", id: "" };
-  }
-  return null;
 }

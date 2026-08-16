@@ -87,6 +87,7 @@ export function TextBlockEditor({
       setExt((e) => ({ content: b.content ?? "", nonce: e.nonce + 1 }));
     },
     () => focusedRef.current || dirty(),
+    () => versionRef.current,
   );
 
   // See TypedBlockCard: adopt a newer snapshot from the surface that owns this

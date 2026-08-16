@@ -2,7 +2,7 @@ import { and, asc, gt, lt, sql } from "drizzle-orm";
 import type { FastifyBaseLogger } from "fastify";
 import { changes } from "@hermes/db";
 import { db, isDbReady } from "../db.js";
-import { publishChange } from "./hub.js";
+import { publishChange, type ChangeEvent } from "./hub.js";
 
 /** How often the log is read while anyone is listening. */
 const TICK_MS = 300;
@@ -33,33 +33,6 @@ export function noteListenerClosed(): void {
   listeners = Math.max(0, listeners - 1);
 }
 
-/**
- * Temporary, while the log runs alongside the URL-sniffing hook it replaces.
- *
- * The hook announces the block id it can read out of the request path; this
- * records that so the watcher can say which changes only the log saw. When the
- * quiet ones have been watched for a while and the hook comes out, this goes
- * with it.
- */
-const sniffed = new Map<string, number>();
-const SNIFF_WINDOW_MS = 5_000;
-
-export function noteUrlSniffed(blockId: string): void {
-  // The hook says "" for a create, whose id isn't in the URL — it can't name
-  // what changed, so there's nothing to match a log row against.
-  if (blockId) sniffed.set(blockId, Date.now());
-}
-
-/** Was this block's change also seen by the old hook, moments ago? */
-function wasSniffed(blockId: string): boolean {
-  const at = sniffed.get(blockId);
-  if (at == null) return false;
-  if (Date.now() - at > SNIFF_WINDOW_MS) {
-    sniffed.delete(blockId);
-    return false;
-  }
-  return true;
-}
 
 /**
  * Turn the change log into live-sync events.
@@ -71,8 +44,8 @@ function wasSniffed(blockId: string): boolean {
 export function startChangeWatcher(log: FastifyBaseLogger): () => void {
   let stopped = false;
   let timer: NodeJS.Timeout | undefined;
-  // Where we've read up to. Null until the first tick finds out — starting from
-  // zero would replay the entire table into every connected client on a restart.
+  // Where we've read up to. Null means "find the head first" — starting from
+  // zero would replay the whole table at whoever connected.
   let cursor: number | null = null;
   let lastPrune = 0;
 
@@ -80,13 +53,22 @@ export function startChangeWatcher(log: FastifyBaseLogger): () => void {
     if (stopped) return;
     try {
       if (isDbReady()) {
-        if (cursor === null) {
-          const [row] = await db
-            .select({ max: sql<number | null>`COALESCE(MAX(${changes.seq}), 0)` })
-            .from(changes);
-          cursor = Number(row?.max ?? 0);
+        if (listeners === 0) {
+          // Nobody to tell. Forget where we'd read up to, so the next connection
+          // starts from the head rather than being handed every change made
+          // while the app sat closed — these are "go and look again" nudges, and
+          // a page that has just loaded has already looked. It also means an
+          // idle server asks the database nothing at all.
+          cursor = null;
+        } else {
+          if (cursor === null) {
+            const [row] = await db
+              .select({ max: sql<number | null>`COALESCE(MAX(${changes.seq}), 0)` })
+              .from(changes);
+            cursor = Number(row?.max ?? 0);
+          }
+          await drain();
         }
-        if (listeners > 0) await drain();
         const now = Date.now();
         if (now - lastPrune > PRUNE_EVERY_MS) {
           lastPrune = now;
@@ -106,6 +88,7 @@ export function startChangeWatcher(log: FastifyBaseLogger): () => void {
         ownerId: changes.ownerId,
         blockId: changes.blockId,
         op: changes.op,
+        version: changes.version,
       })
       .from(changes)
       .where(
@@ -121,26 +104,24 @@ export function startChangeWatcher(log: FastifyBaseLogger): () => void {
 
     // One message per block, not per write. Renaming a tag or resolving a
     // placeholder touches every note that named it, and a hundred rows saying
-    // so is still one piece of news per block. A delete outranks an edit: a
-    // block that has gone is not a block to go and refetch.
-    const perUser = new Map<string, Map<string, "block" | "delete">>();
+    // so is still one piece of news per block. Rows arrive in order, so the
+    // last word about a block is the current one — except that a delete
+    // outranks everything: a block that has gone is not a block to refetch.
+    const perUser = new Map<string, Map<string, ChangeEvent>>();
     for (const r of rows) {
       let forUser = perUser.get(r.ownerId);
       if (!forUser) perUser.set(r.ownerId, (forUser = new Map()));
-      const kind = r.op === "delete" ? "delete" : "block";
-      if (kind === "delete" || !forUser.has(r.blockId)) forUser.set(r.blockId, kind);
+      if (forUser.get(r.blockId)?.kind === "delete") continue;
+      forUser.set(
+        r.blockId,
+        r.op === "delete"
+          ? { kind: "delete", id: r.blockId }
+          : { kind: "block", id: r.blockId, version: r.version },
+      );
     }
-    const quiet: string[] = [];
     for (const [userId, blocksChanged] of perUser) {
-      for (const [id, kind] of blocksChanged) {
-        publishChange(userId, { kind, id });
-        if (!wasSniffed(id)) quiet.push(id);
-      }
+      for (const ev of blocksChanged.values()) publishChange(userId, ev);
     }
-    // The whole point, said out loud while the two run side by side: these are
-    // changes nobody was told about before. Expect a note re-seeded on a GET, a
-    // day reset, a placeholder resolved across several notes, a swept note.
-    if (quiet.length) log.info({ blocks: quiet }, "change log saw writes the URL hook missed");
   };
 
   const prune = async () => {

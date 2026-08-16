@@ -119,6 +119,7 @@ export function TypedBlockCard({
       setExt((n) => n + 1);
     },
     () => focusedRef.current || dirty(),
+    () => versionRef.current,
   );
 
   // A newer snapshot from whoever owns this card (the info panel refetches when

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { api, apiBase, CLIENT_ID, type Block } from "../api.ts";
+import { api, apiBase, type Block } from "../api.ts";
 
 /**
  * App-wide block-change bus: every editing surface (page card, info-panel
@@ -8,16 +8,19 @@ import { api, apiBase, CLIENT_ID, type Block } from "../api.ts";
  * info block always mirror each other, in both directions.
  *
  * Origin tokens keep an editor from clobbering itself: events carry the
- * emitting instance's id, and instances ignore their own echoes.
+ * emitting instance's id, and instances ignore their own echoes. Events that
+ * arrive from the server carry no origin — the change log records that a block
+ * changed, not which tab caused it — so a surface holding the block compares
+ * versions instead, which also catches a stale repeat the origin never would.
  */
 
-type Listener = (blockId: string, origin: string) => void;
+type Listener = (blockId: string, origin: string, version?: number | null) => void;
 const listeners = new Set<Listener>();
 type DeleteListener = (blockId: string) => void;
 const deleteListeners = new Set<DeleteListener>();
 
-export function emitBlockChange(blockId: string, origin: string): void {
-  for (const l of [...listeners]) l(blockId, origin);
+export function emitBlockChange(blockId: string, origin: string, version?: number | null): void {
+  for (const l of [...listeners]) l(blockId, origin, version);
 }
 
 /**
@@ -45,17 +48,18 @@ export function useLiveSync(): void {
   useEffect(() => {
     const es = new EventSource(`${apiBase}/events`, { withCredentials: true });
     es.onmessage = (e) => {
-      let ev: { kind: "block" | "delete"; id: string; origin?: string };
+      let ev: { kind: "block" | "delete"; id: string; version?: number | null };
       try {
         ev = JSON.parse(e.data);
       } catch {
         return;
       }
-      if (ev.origin === CLIENT_ID) return; // our own change — already handled in-tab
       if (ev.kind === "delete") emitBlockDeleted(ev.id);
-      // A remote origin, so no in-tab listener will double-fire; the empty id
-      // (a create/membership change) still wakes list-level `useAnyBlockChange`.
-      else emitBlockChange(ev.id, "remote");
+      // Everything the database recorded arrives here, this tab's own writes
+      // included — the log knows a block changed, not who asked. A surface
+      // holding the block tells its own echo apart by the version (see
+      // useBlockSync); list-level `useAnyBlockChange` wants waking either way.
+      else emitBlockChange(ev.id, "remote", ev.version);
     };
     return () => es.close();
   }, []);
@@ -131,15 +135,31 @@ export function useBlockSync(
   origin: string,
   apply: (b: Block) => void,
   shouldHold?: () => boolean,
+  /**
+   * The version this surface is holding. Server events carry no origin — the
+   * change log records that a block changed, not who asked — so an echo of this
+   * surface's own save is told apart by its version instead: anything at or
+   * below what's already held is news to nobody, and refetching it would be a
+   * round trip to be told what we just said.
+   *
+   * Omit it and every event is taken at face value, which is only wasteful.
+   */
+  heldVersion?: () => number | undefined,
 ): () => void {
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const holdRef = useRef(shouldHold);
   holdRef.current = shouldHold;
+  const versionRef = useRef(heldVersion);
+  versionRef.current = heldVersion;
   const deferred = useRef<Block | null>(null);
   useEffect(() => {
-    const l: Listener = (id, src) => {
+    const l: Listener = (id, src, version) => {
       if (id !== blockId || src === origin) return;
+      // Null version: a membership or tag changed, or the block went — neither
+      // reports one, and both are worth hearing about.
+      const held = versionRef.current?.();
+      if (version != null && held != null && version <= held) return;
       void api
         .get<Block>(`/blocks/${blockId}`)
         .then((b) => {

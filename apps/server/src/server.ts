@@ -5,6 +5,7 @@ import { initConfig } from "./config.js";
 import { startEmbeddingWorker } from "./embeddings/worker.js";
 import { startBackupWorker } from "./backup/worker.js";
 import { startAutoArchiveWorker } from "./archive/worker.js";
+import { startChangeWatcher } from "./events/watcher.js";
 
 async function main() {
   // Resolve config (env + persisted file), generate the auth secret if needed,
@@ -15,12 +16,14 @@ async function main() {
   const stopWorker = startEmbeddingWorker(app.log);
   const stopBackups = startBackupWorker(app.log);
   const stopAutoArchive = startAutoArchiveWorker(app.log);
+  const stopChangeWatcher = startChangeWatcher(app.log);
 
   const shutdown = async (signal: string) => {
     app.log.info(`${signal} received, shutting down`);
     stopWorker();
     stopBackups();
     stopAutoArchive();
+    stopChangeWatcher();
     await app.close();
     process.exit(0);
   };

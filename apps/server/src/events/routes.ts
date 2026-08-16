@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { subscribeChanges, type ChangeEvent } from "./hub.js";
+import { noteListenerClosed, noteListenerOpened } from "./watcher.js";
 
 /**
  * Server-Sent Events: a per-user stream of block-change events so open surfaces
@@ -30,12 +31,18 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
       res.write(`data: ${JSON.stringify(ev)}\n\n`);
     };
     const unsubscribe = subscribeChanges(userId, send);
+    // The watcher reads the change log only while somebody is listening.
+    noteListenerOpened();
     // Comment ping keeps idle proxies from dropping the connection.
     const ping = setInterval(() => res.write(": ping\n\n"), 25_000);
 
+    let done = false;
     const cleanup = () => {
+      if (done) return; // close and error can both fire
+      done = true;
       clearInterval(ping);
       unsubscribe();
+      noteListenerClosed();
     };
     req.raw.on("close", cleanup);
     res.on("error", cleanup);

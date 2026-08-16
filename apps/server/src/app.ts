@@ -30,6 +30,7 @@ import { exportRoutes } from "./export/routes.js";
 import { adminRoutes } from "./admin/routes.js";
 import { eventRoutes } from "./events/routes.js";
 import { publishChange, type ChangeEvent } from "./events/hub.js";
+import { noteUrlSniffed } from "./events/watcher.js";
 
 // Built web bundle (apps/web/dist), served on the same port when present.
 const webDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist");
@@ -149,6 +150,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     const cid = req.headers["x-client-id"];
     if (typeof cid === "string") ev.origin = cid;
     publishChange(userId, ev);
+    noteUrlSniffed(ev.id);
   });
 
   app.get("/health", async () => ({ ok: true }));

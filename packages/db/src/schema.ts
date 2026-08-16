@@ -293,3 +293,23 @@ export interface AgentStep {
   result: string;
   ok: boolean;
 }
+
+/**
+ * Every block that changed, one row per write, put here by a database trigger
+ * rather than by the code that did the writing (see migration 0027).
+ *
+ * Written by the database, read by the app: nothing inserts into this from
+ * TypeScript, and nothing should. The point of it is that it sees writes the
+ * writer never thought to announce — a note re-seeded while somebody merely
+ * looked at the day, a sweep clearing away what nobody wrote in.
+ */
+export const changes = pgTable("changes", {
+  seq: bigserial("seq", { mode: "number" }).primaryKey(),
+  ownerId: uuid("owner_id").notNull(),
+  blockId: uuid("block_id").notNull(),
+  /** insert | update | delete */
+  op: text("op").notNull(),
+  /** The block's version after the write; null on a delete or a child-row change. */
+  version: integer("version"),
+  at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -1,5 +1,6 @@
 import { userLocalNow, type Condition, type FilterGroup, bodyFieldKey, type PropertySchema } from "@hermes/shared";
 import type { Api } from "./api.js";
+import { effectiveTimeZone } from "../lib/timezone.js";
 
 /**
  * Introspected shape of the user's task/project types. Types are user-editable,
@@ -209,7 +210,7 @@ export function fmtDate(v: string): string {
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const todayStr = (tz: string | null) => {
-  const d = userLocalNow(tz);
+  const d = userLocalNow(effectiveTimeZone(tz));
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
 

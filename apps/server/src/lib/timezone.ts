@@ -1,3 +1,23 @@
+import { isValidTimeZone } from "@hermes/shared";
+import { env } from "../env.js";
+
+/**
+ * The zone to reckon this user's days in: their own, else the one the instance
+ * was configured with, else nothing.
+ *
+ * "Nothing" leaves the caller on this process's clock, which is a fact about
+ * where the box is hosted rather than about the reader — a server running UTC
+ * is already on tomorrow's date from early evening in the Americas, which is
+ * enough to file a note under the wrong day. Every path that decides what day
+ * it is goes through here, so there's one answer to change and one place to
+ * look when the answer is wrong.
+ */
+export function effectiveTimeZone(userTz: string | null | undefined): string | null {
+  if (isValidTimeZone(userTz)) return userTz;
+  if (isValidTimeZone(env.DEFAULT_TIMEZONE)) return env.DEFAULT_TIMEZONE;
+  return null;
+}
+
 /** Minutes that `tz` is ahead of UTC at the given instant. */
 function tzOffsetMinutes(utcMs: number, tz: string): number {
   const dtf = new Intl.DateTimeFormat("en-US", {

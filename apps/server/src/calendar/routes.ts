@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { blockTypes, blocks, calendarConverted, calendarFeeds, userSettings } from "@hermes/db";
 import { db } from "../db.js";
+import { effectiveTimeZone } from "../lib/timezone.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
@@ -705,7 +706,9 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
       .from(userSettings)
       .where(eq(userSettings.userId, userId))
       .limit(1);
-    const tz = settings?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    // The reader's zone, else the instance's, else UTC — never this box's,
+    // which says where the server is hosted rather than where they are.
+    const tz = effectiveTimeZone(settings?.tz) ?? "UTC";
 
     // Sync links: (feed,uid) → block id. Only "sync" conversions have a row;
     // deleting the block cascades the row away, so the event returns to the feed.

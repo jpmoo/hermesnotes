@@ -12,6 +12,17 @@ const schema = z.object({
   // OAuth metadata endpoints), e.g. https://app.example.com/hermesnotes
   PUBLIC_BASE: z.string().url().optional(),
   EMBEDDING_INDEX_DIM: z.coerce.number().default(2000),
+  /**
+   * The zone to reckon days in for a user who hasn't got one of their own — an
+   * account made over the API, or by an older version that never asked.
+   *
+   * Without it the answer was this process's clock, which is a property of where
+   * the box is hosted and nothing to do with the reader: a server running UTC is
+   * already on tomorrow's date from early evening in the Americas, which is
+   * enough to put an agent's "today's daily note" on the wrong day. Naming the
+   * zone makes that a decision rather than an accident.
+   */
+  DEFAULT_TIMEZONE: z.string().max(64).optional(),
 });
 
 export const env = schema.parse(process.env);

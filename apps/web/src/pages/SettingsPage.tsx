@@ -555,7 +555,12 @@ export function SettingsPage() {
               <option key={t} value={t} />
             ))}
           </datalist>
-          <span className="hint">Sets the day boundary for the Today sheet's activity list.</span>
+          <span className="hint">
+            Where your days begin and end. Everything the server works out for itself reads this —
+            which day a note belongs to when an agent writes one, what “today” means in a saved
+            query, the Today sheet's activity list. Blank means the server's own clock, which is
+            wherever it happens to be hosted.
+          </span>
         </label>
 
         <label className="field" style={{ marginTop: 16 }}>

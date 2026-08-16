@@ -29,7 +29,7 @@ import { blocks, blockTypes, userSettings } from "@hermes/db";
 import { templateBody } from "../blocks/routes.js";
 import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
-import { zonedDayRange } from "../lib/timezone.js";
+import { effectiveTimeZone, zonedDayRange } from "../lib/timezone.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { purgeEmptyAutoNotes } from "../blocks/auto-notes.js";
 
@@ -561,7 +561,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       .from(userSettings)
       .where(eq(userSettings.userId, userId))
       .limit(1);
-    const { start, end } = zonedDayRange(date, tzRow?.tz ?? null);
+    const { start, end } = zonedDayRange(date, effectiveTimeZone(tzRow?.tz));
     const activity = await db
       .select(blockView)
       .from(blocks)

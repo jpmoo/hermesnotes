@@ -58,6 +58,22 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
  * literal values pass straight through.
  */
 /**
+ * Whether a string names a timezone this runtime knows. Used wherever one
+ * arrives from outside — a browser reporting where it is, a hand-typed setting
+ * — so a nonsense value is refused at the door rather than silently ignored
+ * later, which is how a box's own clock ends up deciding what day it is.
+ */
+export function isValidTimeZone(tz: string | null | undefined): tz is string {
+  if (!tz || typeof tz !== "string") return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * "Now" as a Date whose server-local Y/M/D/H:M mirror the user's wall clock in
  * their configured IANA timezone (null/undefined = server local), so a caller
  * reading its Y/M/D fields gets the user's calendar day — not the server's,

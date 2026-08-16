@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, type User } from "../api.ts";
+import { browserTimeZone, ensureTimeZone } from "../lib/timezone.ts";
 
 interface AuthState {
   user: User | null;
@@ -31,7 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       try {
-        setUser(await api.get<User>("/auth/me"));
+        const me = await api.get<User>("/auth/me");
+        setUser(me);
+        // An account made before sign-up asked where you are has no timezone,
+        // and the server has been falling back to its own clock ever since.
+        void ensureTimeZone();
       } catch (err) {
         if (!(err instanceof ApiError)) console.error(err);
       }
@@ -45,7 +50,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(
     async (email: string, password: string, displayName?: string) => {
-      setUser(await api.post<User>("/auth/register", { email, password, displayName }));
+      setUser(
+        await api.post<User>("/auth/register", {
+          email,
+          password,
+          displayName,
+          // Only this end knows what day it is where the reader is. Day
+          // boundaries are decided from it — which day a note belongs to, what
+          // "today" means to an agent writing over MCP — so it's worth having
+          // from the first minute rather than after the first wrong date.
+          timezone: browserTimeZone(),
+        }),
+      );
     },
     [],
   );

@@ -1,6 +1,7 @@
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { isValidTimeZone } from "@hermes/shared";
 import { apiTokens, users, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest, conflict, forbidden, unauthorized } from "../lib/errors.js";
@@ -16,6 +17,15 @@ const credentials = z.object({
   email: z.string().email(),
   password: z.string().min(8, "password must be at least 8 characters"),
   displayName: z.string().min(1).optional(),
+  /**
+   * Where the browser says it is, sent at sign-up. Day boundaries are decided
+   * from this — which day a daily note belongs to, what counts as today for an
+   * agent writing over MCP — and with nothing here the server falls back to its
+   * own clock, which on a box running UTC is already tomorrow by the evening.
+   * Asking at sign-up costs the user nothing; asking them to find the setting
+   * costs them a bug first.
+   */
+  timezone: z.string().max(64).optional(),
 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -36,7 +46,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // Open self-serve signup.
   app.post("/auth/register", async (req, reply) => {
-    const { email, password, displayName } = credentials.parse(req.body);
+    const { email, password, displayName, timezone } = credentials.parse(req.body);
     // The first account always may register (bootstrap); after that, honour the
     // admin's public-registration toggle.
     if (!getAllowRegistration()) {
@@ -73,7 +83,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         .innerJoin(users, eq(users.id, userSettings.userId))
         .where(eq(users.isAdmin, true))
         .limit(1);
-      await tx.insert(userSettings).values({ userId: id, ...(adminRow ?? {}) });
+      await tx.insert(userSettings).values({
+        userId: id,
+        ...(adminRow ?? {}),
+        // A zone this runtime doesn't recognise is no better than none: leave it
+        // null so the "which zone are you in" prompt still finds them.
+        ...(isValidTimeZone(timezone) ? { timezone } : {}),
+      });
       await seedBlockTypes(tx, id);
       return { userId: id, isAdmin: admin };
     });

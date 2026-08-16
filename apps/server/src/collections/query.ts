@@ -21,6 +21,7 @@ import {
 } from "@hermes/shared";
 import { db } from "../db.js";
 import { embed } from "../ollama/client.js";
+import { effectiveTimeZone } from "../lib/timezone.js";
 
 export interface QueriedBlock {
   id: string;
@@ -162,7 +163,7 @@ function collectSemantic(g: FilterGroup, out: Condition[]): void {
  * an hour to compare against.
  */
 function asOfNow(tz: string | null, asOf?: string | null): Date {
-  const now = userLocalNow(tz);
+  const now = userLocalNow(effectiveTimeZone(tz));
   if (!asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return now;
   const [y, m, d] = asOf.split("-").map(Number) as [number, number, number];
   return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());

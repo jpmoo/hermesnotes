@@ -10,6 +10,7 @@ import { authenticate, requireUser } from "../auth/middleware.js";
 import { Api, ApiError, type ApiAuth } from "../mcp/api.js";
 import { runAgent, runConfirmed } from "./agent.js";
 import { appendMessage, buildContext, clearThread, loadThread, maybeSummarize, modelContext } from "./store.js";
+import { effectiveTimeZone } from "../lib/timezone.js";
 
 export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -47,7 +48,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
    * in the user's configured timezone, so the model never guesses (and relative
    * asks like "tomorrow" line up with how task_find resolves its `when` tokens). */
   const todayLine = (tz: string | null): string => {
-    const now = userLocalNow(tz);
+    const now = userLocalNow(effectiveTimeZone(tz));
     const pad = (n: number) => String(n).padStart(2, "0");
     const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     const weekday = now.toLocaleDateString("en-US", { weekday: "long" });

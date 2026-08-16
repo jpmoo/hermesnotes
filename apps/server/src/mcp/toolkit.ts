@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { randomUUID } from "node:crypto";
 import { optionLabel, type Condition, type FilterGroup, type PropertySchema } from "@hermes/shared";
 import { z } from "zod";
+import { effectiveTimeZone } from "../lib/timezone.js";
 import { Api, ApiError } from "./api.js";
 import {
   ensurePersons,
@@ -1531,9 +1532,11 @@ export function defineTools(api: Api): ToolDef[] {
 
   const todayISO = async () => {
     const s = await api.get<{ timezone: string | null }>("/settings").catch(() => ({ timezone: null }));
-    // en-CA formats as YYYY-MM-DD. With no timezone set, fall back to the
-    // server's own clock, which is what this always used.
-    return new Intl.DateTimeFormat("en-CA", s.timezone ? { timeZone: s.timezone } : {}).format(new Date());
+    // en-CA formats as YYYY-MM-DD. The reader's zone, else the instance's; only
+    // with neither does this fall back to the box's own clock, which is where
+    // "add this to today's note" used to land on tomorrow's after about 8pm.
+    const tz = effectiveTimeZone(s.timezone);
+    return new Intl.DateTimeFormat("en-CA", tz ? { timeZone: tz } : {}).format(new Date());
   };
   // A canvas/table/etc. is a collection; anything else resolves as a note block.
   const resolveSection = async (

@@ -24,6 +24,7 @@ import { badRequest, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { purgeEmptyAutoNotes } from "../blocks/auto-notes.js";
 import { computeEmbedSource } from "../blocks/embed-source.js";
+import { effectiveTimeZone } from "../lib/timezone.js";
 
 /**
  * Weekly review: a guided, ordered set of steps driven by a recurring "Do weekly
@@ -143,7 +144,7 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
   // The task's project reference field (if any) — filed under the chosen project.
   const projRefKey = schema?.fields.find((f) => f.type === "reference")?.key;
 
-  const span = computeSpan(userLocalNow(tz), wr.dueWeekday, wr.availableDaysPrior);
+  const span = computeSpan(userLocalNow(effectiveTimeZone(tz)), wr.dueWeekday, wr.availableDaysPrior);
   const rec = reviewRecurrence(wr.dueWeekday);
 
   const active = await findActiveReviewTask(userId, task);
@@ -313,7 +314,7 @@ async function buildState(userId: string) {
   const due = dateOf(span.end);
   const cycleKey = available ?? due ?? "";
 
-  const nowYmd = ymd(userLocalNow(timezone));
+  const nowYmd = ymd(userLocalNow(effectiveTimeZone(timezone)));
   const isOpen = cycleKey ? nowYmd >= cycleKey : true;
   // A newly-available cycle clears the prior review's progress.
   if (isOpen && cycleKey && wr.cycle.key !== cycleKey) {

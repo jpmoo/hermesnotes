@@ -89,19 +89,19 @@ export function Sidebar() {
     const onDown = (e: PointerEvent) => {
       const press = classifyPress(e.target);
       if (press.kind === "panel" && press.side === "left") {
-        // Its own icons and menus are its business. Its background is empty
-        // space like any other, and with hover gone it's the only empty space
-        // reliably next to the rail — pressing it opens the rail.
+        // The rail's own empty parts — the logo, the gaps between icons, the
+        // space under the last one — are the handle. An icon is not: pressing
+        // one is going somewhere, and the rail has no business unfolding over
+        // the page on the way.
         const onControl = !!(e.target as Element)?.closest?.(".nav-link, .nav-row, button, a, input");
         if (!onControl) setOpened(true);
         return;
       }
-      // Empty space opens it; anything else — a thing, a control — is you
-      // getting on with something, and the rail gets out of the way. Not a
-      // toggle: pressing the page twice is two ways of saying the same thing,
-      // and having the second one undo the first made the rail flicker in and
-      // out as you clicked about.
-      setOpened(press.kind === "empty");
+      // Everywhere else closes it. Only the rail opens the rail: a press on the
+      // page is you getting on with something out there, and a panel that
+      // unfolds because you clicked the far side of the window is a panel with
+      // opinions about what you meant.
+      setOpened(false);
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);

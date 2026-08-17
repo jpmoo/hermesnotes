@@ -26,9 +26,9 @@ import { useAuth } from "../auth/AuthContext.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
 import { CreateCollectionModal } from "./CreateCollectionModal.tsx";
 import { SearchModal } from "./SearchModal.tsx";
+import { classifyPress } from "../lib/press.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
-import { useHoverIntent } from "../lib/useHoverIntent.ts";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 
 type Target = "bg" | "text" | "icon";
@@ -74,34 +74,39 @@ export function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [types, setTypes] = useState<BlockType[]>([]);
   const { openBlock } = usePanels();
-  const {
-    active: hovered,
-    setActive: setHovered,
-    arm,
-    onMouseLeave: collapse,
-    cancelOpen,
-  } = useHoverIntent();
+  /**
+   * Open because the page itself was pressed.
+   *
+   * A press on empty space says you've finished with whatever you were reading
+   * — it's the same gesture that puts the right panel away — and what's left to
+   * ask for is somewhere to go. Nothing else opens the rail: it used to reveal
+   * itself on a hover with a dwell timer, which meant it appeared when you were
+   * on your way past and didn't when you meant it, and the difference between
+   * those was measured in milliseconds nobody can feel.
+   */
+  const [opened, setOpened] = useState(false);
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const press = classifyPress(e.target);
+      if (press.kind === "panel" && press.side === "left") {
+        // Its own icons and menus are its business. Its background is empty
+        // space like any other, and with hover gone it's the only empty space
+        // reliably next to the rail — pressing it opens the rail.
+        const onControl = !!(e.target as Element)?.closest?.(".nav-link, .nav-row, button, a, input");
+        if (!onControl) setOpened((o) => !o);
+        return;
+      }
+      // Empty space toggles: the way to put it away is the way it came.
+      setOpened(press.kind === "empty" ? (o) => !o : false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, []);
 
-  // Hovering an icon usually means "I'm about to click it", so the rail waits
-  // there; over the logo or the gaps between icons a hover almost always means
-  // "open the rail", so it reveals quickly. Sliding off an icon into open space
-  // overtakes the longer wait rather than serving it out.
-  const RAIL_OPEN_OVER_ICON = 700;
-  const RAIL_OPEN_OVER_GAP = 140;
-  const onRailOver = (e: React.MouseEvent) => {
-    if (hovered) return; // already open — nothing to arm
-    const overIcon = !!(e.target as HTMLElement).closest(".nav-link, .nav-row, button");
-    // The kind matters as much as the delay: arriving over the rail's own
-    // background and then settling on an icon has to start the icon's wait,
-    // or every approach to an icon crosses a gap first and comes in on the
-    // quick one — which is why the dwell never seemed to happen.
-    arm(overIcon ? RAIL_OPEN_OVER_ICON : RAIL_OPEN_OVER_GAP, overIcon ? "icon" : "gap");
-  };
-
-  // The rail expands when pinned, when hovering an empty area, or while a
+  // The rail expands when pinned, when the page was pressed, or while a
   // kebab menu / color modal / create menu it spawned is open.
   const expanded =
-    leftPinned || hovered || openMenu !== null || modal !== null || plusOpen || newCollection;
+    leftPinned || opened || openMenu !== null || modal !== null || plusOpen || newCollection;
 
   // Block types for the + menu, fetched on first open.
   useEffect(() => {
@@ -141,8 +146,7 @@ export function Sidebar() {
 
   const unpin = () => {
     setLeftPinned(false);
-    setHovered(false);
-    cancelOpen();
+    setOpened(false);
   };
 
   const kebab = (key: string, label: string) => (
@@ -305,14 +309,7 @@ export function Sidebar() {
   });
 
   return (
-    // Anywhere on the rail asks for the rail. The handler used to sit on the
-    // icon strip alone, which left the logo — decoration, and the whole top of
-    // the collapsed rail — as a dead spot that swallowed the hover.
-    <aside
-      className={`sidebar${expanded ? " expanded" : ""}`}
-      onMouseOver={onRailOver}
-      onMouseLeave={collapse}
-    >
+    <aside className={`sidebar${expanded ? " expanded" : ""}`}>
       <div className="sidebar-head">
         {/* The pin sits in the rail column, over the icons it belongs to. On the
             right-hand panel the same button lands over its own rail because the

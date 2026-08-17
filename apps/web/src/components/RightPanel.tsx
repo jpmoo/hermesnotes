@@ -2,6 +2,7 @@ import { Info, PanelRight, Pin, PinOff, Share2, Sparkles, Trash2 } from "lucide-
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { isEditingTarget } from "../lib/editing-target.ts";
+import { classifyPress } from "../lib/press.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import { useAiConfig } from "../lib/ai-config.tsx";
@@ -23,8 +24,11 @@ const readTab = (): Tab => {
 };
 
 /**
- * Auto-hiding right panel. Reveals on hover; can be pinned open. A routed page
- * can portal content into its slot and flag `hasContent`.
+ * Auto-hiding right panel. Opens when you ask for something — a card, a row, a
+ * chip — and closes when you press the page itself or the thing it's already
+ * showing. Never on hover: crossing it on the way somewhere is not a request to
+ * read it, and reading it shouldn't be a race against a timer. Can be pinned. A
+ * routed page can portal content into its slot and flag `hasContent`.
  */
 const fmtLongDate = (date: string) =>
   new Date(`${date}T00:00`).toLocaleDateString(undefined, {
@@ -52,36 +56,13 @@ export function RightPanel() {
   const asideRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
 
-  // Keep-open is driven by the pointer's geometry, not mouseenter/leave — the
-  // latter misfired with the panel's width transition and portaled content
-  // (e.g. the Today calendar), collapsing the panel while the cursor was still
-  // over it. `over` = pointer within the panel's rect (+ a small left grace),
-  // with a short leave delay.
-  const [over, setOver] = useState(false);
   /**
-   * Set when the panel is collapsed deliberately, and cleared the moment the
-   * pointer leaves it. Hover is tracked by position rather than by enter/leave,
-   * so the pointer sitting on the pin button counts as "over the panel" — and
-   * unpinning collapsed it and then reopened it under the cursor, which reads as
-   * the button not working. The panel stays shut until the pointer goes away and
-   * comes back, which is the gesture that means "show me it" again.
-   */
-  const ignoreHover = useRef(false);
-  /**
-   * Shown because something was selected rather than because the pointer is
-   * here. Clicking a card is a request to look at it, and a shut panel makes
-   * that click look like it did nothing.
-   *
-   * It can't be tied to the pointer being over the panel: the pointer is on the
-   * card that was just clicked, which is somewhere else entirely, so the reveal
-   * would open and shut again within the grace period — a stutter, and worse on
-   * an embedded card where the click lands further away. It stays until it has
-   * been used and left: once the pointer has been inside the panel, leaving
-   * closes it. Selecting something else keeps it open and swaps the contents,
-   * which is what walking down a list of cards is.
+   * Open because something was asked for. The panel is driven by presses and
+   * nothing else — it no longer watches where the pointer is, so it can't open
+   * because you crossed it on the way somewhere, or shut because you left it
+   * sitting there while you read.
    */
   const [revealed, setRevealed] = useState(false);
-  const visited = useRef(false);
   /** Where the last press landed, for deciding what that press meant. */
   const pressedOn = useRef<HTMLElement | null>(null);
   /**
@@ -105,41 +86,7 @@ export function RightPanel() {
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, []);
-  useEffect(() => {
-    let leave: ReturnType<typeof setTimeout> | undefined;
-    const onMove = (e: PointerEvent) => {
-      const el = asideRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const inside =
-        e.clientX >= r.left - 10 && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-      if (inside) {
-        visited.current = true;
-        if (ignoreHover.current) return;
-        clearTimeout(leave);
-        setOver(true);
-      } else {
-        ignoreHover.current = false;
-        clearTimeout(leave);
-        leave = setTimeout(() => {
-          setOver(false);
-          // Only once it's been visited: otherwise the pointer sitting where it
-          // clicked would dismiss the thing that click asked for.
-          if (visited.current) {
-            visited.current = false;
-            setRevealed(false);
-          }
-        }, 240);
-      }
-    };
-    document.addEventListener("pointermove", onMove);
-    return () => {
-      document.removeEventListener("pointermove", onMove);
-      clearTimeout(leave);
-    };
-  }, []);
-
-  // Also hold open while a pointer interaction started inside it is ongoing, or
+  // Hold open while a pointer interaction started inside it is ongoing, or
   // while focus is inside it (drags that stray outside, typing in the builder).
   const [holdOpen, setHoldOpen] = useState(false);
   useEffect(() => {
@@ -191,22 +138,42 @@ export function RightPanel() {
       setRevealed(false);
       return;
     }
-    visited.current = false;
     setRevealed(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealTick]);
 
-  // Any press outside puts it away. Pressing something that selects reopens it
-  // on the way through, so walking from card to card still swaps the contents.
+  /**
+   * What puts it away: the page itself, or the thing it's already showing.
+   *
+   * Not "any press outside", which is what this used to be. Walking from one
+   * card to the next was meant to survive that by the selection reopening the
+   * panel on the way through — but a press into a card's title or body is a
+   * press into a field, and the reveal declines to open over the top of writing.
+   * So the panel shut and stayed shut, and the answer to "show me this one
+   * instead" was to be shown nothing.
+   *
+   * A press on something else leaves it alone. Either that thing gets selected,
+   * and the contents swap under a panel that never went anywhere, or it doesn't,
+   * and there was no reason to close.
+   */
   useEffect(() => {
-    if (!revealed) return;
     const onDown = (e: PointerEvent) => {
-      if (asideRef.current?.contains(e.target as Node)) return;
-      setRevealed(false);
+      const press = classifyPress(e.target);
+      // Pressing the panel — including the sliver of rail it collapses to — is
+      // asking to read it. With hover gone this is the only way in that isn't a
+      // request to look at something, and without it the rail would be a strip
+      // that does nothing.
+      if (press.kind === "panel") {
+        if (press.side === "right") setRevealed(true);
+        return;
+      }
+      if (press.kind === "empty" || (press.kind === "thing" && press.id === shownId.current)) {
+        setRevealed(false);
+      }
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [revealed]);
+  }, []);
 
   // Escape puts it away without having to go and touch it.
   useEffect(() => {
@@ -218,7 +185,7 @@ export function RightPanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [revealed]);
 
-  const expanded = rightPinned || over || holdOpen || revealed;
+  const expanded = rightPinned || holdOpen || revealed;
   const showFeedEvent = selectedFeedEvent !== null;
   const showInfo = selectedBlockId !== null && !showFeedEvent;
 
@@ -285,8 +252,6 @@ export function RightPanel() {
             onClick={(e) => {
               if (rightPinned) {
                 setRightPinned(false);
-                setOver(false); // collapse to the rail on unpin
-                ignoreHover.current = true;
                 // This panel also stays open while focus is inside it — which,
                 // after clicking this button, means this button. Without letting
                 // go of focus, unpinning left the panel open until something

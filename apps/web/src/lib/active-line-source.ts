@@ -238,7 +238,16 @@ export const ActiveLineSource = Extension.create({
          * to rendered text; it never got a say here because this handler runs
          * first on a raw line.
          */
-        if (before !== "" && !before.endsWith("\n")) {
+        /**
+         * Except on a line that can't hold a break. A heading is one line by
+         * definition and a rule is a line on its own: the newline renders as
+         * nothing and reads as nothing, so the first Enter appeared to do
+         * nothing at all — you were still in the heading, and a `- [ ]` typed
+         * next became part of its text rather than a checkbox. On those, one
+         * Enter means "done with this line".
+         */
+        const oneLiner = /^\s{0,3}(#{1,6}\s|-{3,}\s*$|={3,}\s*$|\*{3,}\s*$)/.test(text);
+        if (!oneLiner && before !== "" && !before.endsWith("\n")) {
           return editor.commands.command(({ tr, dispatch }) => {
             tr.insertText("\n", $head.pos);
             tr.setMeta(META, true);

@@ -71,6 +71,16 @@ export function RightPanel() {
    * apart from a press on something new.
    */
   const openAtPress = useRef(false);
+  /**
+   * And what it was showing when that press began.
+   *
+   * The toggle can't ask what's shown *now*: by the time it runs, the press has
+   * already selected whatever it landed on, so the thing you just asked for is
+   * the thing being shown — and "the same thing again" was true of every press,
+   * including the one that meant "show me this other one instead". Walking from
+   * card to card shut the panel every time, which is not what a toggle is for.
+   */
+  const shownAtPress = useRef<string | null>(null);
   const revealedRef = useRef(false);
   revealedRef.current = revealed;
   const shownId = useRef<string | null>(null);
@@ -82,6 +92,7 @@ export function RightPanel() {
     const onDown = (e: PointerEvent) => {
       pressedOn.current = e.target as HTMLElement;
       openAtPress.current = revealedRef.current;
+      shownAtPress.current = shownId.current;
     };
     document.addEventListener("pointerdown", onDown, true);
     return () => document.removeEventListener("pointerdown", onDown, true);
@@ -134,7 +145,7 @@ export function RightPanel() {
     // re-showing what's already shown does nothing anyone can see.
     const pressed = pressedOn.current?.closest?.<HTMLElement>("[data-block-id], [data-feed-key]");
     const pressedId = pressed?.dataset.blockId ?? pressed?.dataset.feedKey;
-    if (openAtPress.current && pressedId && pressedId === shownId.current) {
+    if (openAtPress.current && pressedId && pressedId === shownAtPress.current) {
       setRevealed(false);
       return;
     }

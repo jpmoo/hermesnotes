@@ -93,11 +93,15 @@ export function Sidebar() {
         // space like any other, and with hover gone it's the only empty space
         // reliably next to the rail — pressing it opens the rail.
         const onControl = !!(e.target as Element)?.closest?.(".nav-link, .nav-row, button, a, input");
-        if (!onControl) setOpened((o) => !o);
+        if (!onControl) setOpened(true);
         return;
       }
-      // Empty space toggles: the way to put it away is the way it came.
-      setOpened(press.kind === "empty" ? (o) => !o : false);
+      // Empty space opens it; anything else — a thing, a control — is you
+      // getting on with something, and the rail gets out of the way. Not a
+      // toggle: pressing the page twice is two ways of saying the same thing,
+      // and having the second one undo the first made the rail flicker in and
+      // out as you clicked about.
+      setOpened(press.kind === "empty");
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);

@@ -475,7 +475,8 @@ export function MarkdownEditor({
    */
   const sendForward = () => {
     if (!extract || !editor) return;
-    const { from, to, titleText } = extract;
+    const { from, to } = range.current ?? extract;
+    const { titleText } = extract;
     setExtract(null);
     if (!titleText.trim()) return;
     editor
@@ -532,7 +533,7 @@ export function MarkdownEditor({
    */
   const stopForward = (mode: "stop" | "remove" | "removeHere") => {
     if (!extract || !editor || !extract.inForward) return;
-    const { from, to } = extract.inForward;
+    const { from, to } = range.current?.inForward ?? extract.inForward;
     const md = rangeText(editor.state.doc, from, to);
     setExtract(null);
     // deleteRange, not select-then-deleteSelection: a chained deleteSelection
@@ -567,8 +568,17 @@ export function MarkdownEditor({
   // description is populated; a text block keeps the markdown as its body.
   const extractTo = async (type: BlockType) => {
     if (!extract || !editor) return;
-    const { from, to, titleText, titleRaw, mdText } = extract;
+    const { from, to } = range.current ?? extract;
+    const { titleText, titleRaw, mdText } = extract;
     setExtract(null);
+    // Checked before the block is made, not after: this used to create the
+    // block and then throw on the way to linking it, leaving one behind with
+    // nothing pointing at it and no word of what happened.
+    if (from < 0 || to > editor.state.doc.content.size || from > to) {
+      console.error("extract: the selection moved out from under the menu", { from, to });
+      setFailNote("That selection has moved — try again.");
+      return;
+    }
     const title = titleRaw.trim() || "Untitled";
     // Everything below the first line is the selection's body. A typed block
     // took the title and dropped the rest, so extracting a paragraph into a task
@@ -599,6 +609,45 @@ export function MarkdownEditor({
       setFailNote(`Couldn't make that ${type.name.toLowerCase()}.`);
     }
   };
+
+  /**
+   * The menu's range, kept true to the document while the menu is open.
+   *
+   * Choosing an item blurs the editor, and an unfocused note renders every line
+   * that was showing its raw markdown (see ActiveLineSource) — which replaces
+   * those nodes and shifts everything after them. The numbers captured when the
+   * menu opened then point at the wrong text, or past the end of the document,
+   * and the command either lands somewhere else or throws.
+   *
+   * Mapping through each transaction is exact here rather than approximate: a
+   * line is never sourced while a selection is live, so the change is always
+   * outside the range this is holding, never inside it.
+   */
+  const range = useRef<{ from: number; to: number; inForward: { from: number; to: number } | null } | null>(null);
+  useEffect(() => {
+    range.current = extract
+      ? { from: extract.from, to: extract.to, inForward: extract.inForward }
+      : null;
+  }, [extract]);
+  useEffect(() => {
+    if (!editor) return;
+    const onTransaction = ({ transaction }: { transaction: { docChanged: boolean; mapping: { map: (p: number) => number } } }) => {
+      const r = range.current;
+      if (!r || !transaction.docChanged) return;
+      const m = transaction.mapping;
+      range.current = {
+        from: m.map(r.from),
+        to: m.map(r.to),
+        inForward: r.inForward
+          ? { from: m.map(r.inForward.from), to: m.map(r.inForward.to) }
+          : null,
+      };
+    };
+    editor.on("transaction", onTransaction);
+    return () => {
+      editor.off("transaction", onTransaction);
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (!extract) return;

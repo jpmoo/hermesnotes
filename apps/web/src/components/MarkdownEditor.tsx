@@ -497,14 +497,17 @@ export function MarkdownEditor({
   const [sentNote, setSentNote] = useState<number | null>(null);
   // …and how many days it was taken back out of, said the same way.
   const [retractNote, setRetractNote] = useState<number | null>(null);
+  /** Something the reader asked for didn't happen, said where they're looking. */
+  const [failNote, setFailNote] = useState<string | null>(null);
   useEffect(() => {
-    if (sentNote === null && retractNote === null) return;
+    if (sentNote === null && retractNote === null && failNote === null) return;
     const t = setTimeout(() => {
       setSentNote(null);
       setRetractNote(null);
+      setFailNote(null);
     }, 4000);
     return () => clearTimeout(t);
-  }, [sentNote, retractNote]);
+  }, [sentNote, retractNote, failNote]);
   const openSendTo = () => {
     if (!extract) return;
     const md = extract.mdText.trim();
@@ -583,12 +586,17 @@ export function MarkdownEditor({
     try {
       const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
       const mention = editor.state.schema.nodes.mention;
-      if (!mention) return;
+      if (!mention) throw new Error("no mention node in this editor's schema");
       const tr = editor.state.tr.replaceWith(from, to, mention.create({ href: `block:${b.id}`, label: titleText }));
       editor.view.dispatch(tr);
       editor.view.focus();
-    } catch {
-      /* creation failed; selection left untouched */
+    } catch (err) {
+      // The menu is already gone by now, so a swallowed failure here was
+      // indistinguishable from the command doing nothing at all — the words
+      // stayed put and nothing said why. Say so, and leave the reason in the
+      // console for whoever goes looking.
+      console.error("extract to a new block failed", err);
+      setFailNote(`Couldn't make that ${type.name.toLowerCase()}.`);
     }
   };
 
@@ -783,6 +791,11 @@ export function MarkdownEditor({
       {retractNote !== null && (
         <div className="editor-toast" role="status">
           Taken back out of {retractNote} day{retractNote === 1 ? "" : "s"} ahead.
+        </div>
+      )}
+      {failNote !== null && (
+        <div className="editor-toast editor-toast-bad" role="alert">
+          {failNote}
         </div>
       )}
     </div>

@@ -2402,6 +2402,10 @@ input.li-text:focus {
   pointer-events: none;
   animation: modalFade 0.15s ease;
 }
+.editor-toast-bad {
+  background: var(--danger);
+  color: #fff;
+}
 .banner-gallery {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

@@ -225,7 +225,25 @@ function fmtSchemaFields(
  * agents, and the in-app assistant invokes the same handlers in-process. Define
  * every capability here exactly once.
  */
-export function defineTools(api: Api): ToolDef[] {
+export async function defineTools(api: Api): Promise<ToolDef[]> {
+  /**
+   * The statuses this user's task type actually declares, named in the
+   * descriptions of the tools that take one.
+   *
+   * Described in the abstract, an agent has to guess a word and find out by
+   * being refused — which is how "completed" arrived at a type whose word is
+   * "done". Naming them costs one context load per session (cached for a
+   * minute, and every tool call loads it anyway), and turns a guess into
+   * reading. A user with no task type gets the general wording, since there's
+   * nothing to name.
+   */
+  let statuses = "";
+  try {
+    const ctx = await loadContext(api);
+    if (ctx.statusOptions.length) statuses = ` Statuses on this account: ${ctx.statusOptions.join(", ")}.`;
+  } catch {
+    /* no task type configured: leave the descriptions general */
+  }
   const tools: ToolDef[] = [];
   // Generic so each handler's `args` is inferred from its zod schema (as the MCP
   // SDK did); stored type-erased in the registry.
@@ -253,7 +271,7 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "task_create",
-    "Create a task. Dates are YYYY-MM-DD (optionally with THH:mm). project/projects accept a project title or id — unknown names create the project. Tags are created as needed, and raw @Name mentions in the title/notes create Person blocks if missing.",
+    `Create a task. Dates are YYYY-MM-DD (optionally with THH:mm).${statuses} project/projects accept a project title or id — unknown names create the project. Tags are created as needed, and raw @Name mentions in the title/notes create Person blocks if missing.`,
     {
       title: z.string().min(1),
       notes: z.string().optional(),
@@ -301,7 +319,7 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "task_find",
-    "List/search tasks. All params optional and composable. status: open|done|... (or comma list); when: overdue|today|tomorrow|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id; region: a matrix region/row/column title within that list (e.g. \"Do\").",
+    `List/search tasks. All params optional and composable.${statuses} status takes any of those, or "open" for everything unfinished (comma-separated for several); when: overdue|today|tomorrow|week|available|unscheduled; term: text search; project: title or id; list: a saved collection's title or id; region: a matrix region/row/column title within that list (e.g. "Do").`,
     {
       status: z.string().optional(),
       when: z.string().optional(),
@@ -500,7 +518,7 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "task_update",
-    "Update a task by id or title. Only supplied fields change. Statuses are the ones this user's task type defines — case and spacing don't matter, and 'completed'/'finished' land on whichever of them means done. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing; unknown project names and new tags are created, and raw @Name mentions create Person blocks if missing.",
+    `Update a task by id or title. Only supplied fields change.${statuses} Case and spacing in a status don't matter, and "completed"/"finished" land on whichever of them means done. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing; unknown project names and new tags are created, and raw @Name mentions create Person blocks if missing.`,
     {
       task: z.string().min(1),
       title: z.string().optional(),
@@ -1958,8 +1976,8 @@ function fmtEventTime(s: string): string {
 
 /** MCP adapter: expose the shared tool registry to external agents, tagging
  *  destructive/read-only tools so MCP clients gate them natively. */
-export function buildTools(server: McpServer, api: Api): void {
-  for (const t of defineTools(api)) {
+export async function buildTools(server: McpServer, api: Api): Promise<void> {
+  for (const t of await defineTools(api)) {
     const annotations = {
       title: t.name,
       ...(t.destructive ? { destructiveHint: true } : {}),

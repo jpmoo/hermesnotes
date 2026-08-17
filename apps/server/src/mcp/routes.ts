@@ -34,7 +34,7 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
       req.raw.headers.accept = "application/json, text/event-stream";
     }
     const server = new McpServer({ name: "hermes", version: "1.0.0" });
-    buildTools(server, new Api(`http://127.0.0.1:${env.PORT}/api`, token));
+    await buildTools(server, new Api(`http://127.0.0.1:${env.PORT}/api`, token));
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

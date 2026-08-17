@@ -259,7 +259,7 @@ export async function runAgent(opts: {
    * here as they happen (in addition to the final AgentResult). */
   onEvent?: (ev: AgentEvent) => void;
 }): Promise<AgentResult> {
-  const registry = defineTools(opts.api);
+  const registry = await defineTools(opts.api);
   const byName = new Map(registry.map((t) => [t.name, t]));
   const tools = toOllamaTools(registry);
 
@@ -331,7 +331,7 @@ export async function runAgent(opts: {
 
 /** Execute a set of user-confirmed calls (destructive tools only). */
 export async function runConfirmed(opts: { api: Api; calls: PendingCall[] }): Promise<{ steps: AgentStep[] }> {
-  const byName = new Map(defineTools(opts.api).map((t) => [t.name, t]));
+  const byName = new Map((await defineTools(opts.api)).map((t) => [t.name, t]));
   const steps: AgentStep[] = [];
   for (const c of opts.calls) {
     if (!byName.get(c.tool)?.destructive) {

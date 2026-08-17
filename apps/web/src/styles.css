@@ -4649,14 +4649,30 @@ input.matrix-axis-y::placeholder {
    a fixed accent is unreadable on some of them, and the filled pill fought the
    card besides. */
 .mention-chip.mention-inline {
+  /* Plain inline content, not a flex box. An inline-flex takes its baseline from
+     its first item, and here that item is an icon, which has no baseline of its
+     own — so the browser used the icon's bottom edge instead and stood the whole
+     chip a shade proud of the words either side of it. Inline, the text simply
+     sits on the line's baseline like the rest of the sentence.
+
+     The pill variant above keeps its flex box: its background makes the same
+     offset invisible, and going inline there would shrink the pill to the text's
+     content box. */
+  display: inline;
   padding: 0;
-  gap: 2px;
   background: none;
   color: inherit;
   font-weight: 600;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
   text-underline-offset: 2px;
+}
+.mention-chip.mention-inline svg {
+  /* `gap` belongs to the flex box we just gave up. The nudge puts a fixed-size
+     icon back where centring had it — within half a pixel at the size these
+     read at, rather than sitting flat on the baseline. */
+  margin-right: 2px;
+  vertical-align: -0.02em;
 }
 .mention-chip.mention-inline:hover {
   background: none;

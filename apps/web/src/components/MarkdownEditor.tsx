@@ -23,7 +23,7 @@ import { ActiveLineSource, SourceableListItem, SourceBlock } from "../lib/active
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ListGutter, ListIndent } from "../lib/list-tools.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Fragment, Node as PMNode } from "@tiptap/pm/model";
 import { CaretSlot } from "../lib/caret-slot.ts";
 import { ForwardMark } from "../lib/forward-mark.ts";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
@@ -65,6 +65,23 @@ function ymdLocal(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+
+/** A mention's visible words — how it reads, for a label or a title. */
+const asLabel = (n: PMNode) => (n.type.name === "mention" ? String(n.attrs.label ?? "") : "");
+
+/**
+ * A mention as a title stores it: tags `#name`, people `@Name`, any other block
+ * `|<id>`. Plain web links (no scheme we recognize) fall back to their text.
+ */
+const asTitleRaw = (n: PMNode) => {
+  if (n.type.name !== "mention") return "";
+  const href = String(n.attrs.href ?? "");
+  const label = String(n.attrs.label ?? "");
+  if (href.startsWith("tag:")) return `#${href.slice(4)}`;
+  if (href.startsWith("person:")) return `@${href.slice(7).replace(/ /g, "_")}`;
+  if (href.startsWith("block:")) return `|${href.slice(6)}`;
+  return label;
+};
 
 /** Soft breaks → newlines; strip backslash hard-breaks; cap blank-line runs. */
 function normalizeMarkdown(md: string): string {
@@ -424,20 +441,8 @@ export function MarkdownEditor({
       return;
     }
     const doc = editor.state.doc;
-    const asLabel = (n: PMNode) => (n.type.name === "mention" ? String(n.attrs.label ?? "") : "");
     const asMarkdown = (n: PMNode) =>
       n.type.name === "mention" ? `[${escapeLabel(String(n.attrs.label ?? ""))}](${n.attrs.href})` : "";
-    // A mention in a title is stored raw: tags `#name`, people `@Name`, any other
-    // block `|<id>`. Plain web links (no scheme we recognize) fall back to text.
-    const asTitleRaw = (n: PMNode) => {
-      if (n.type.name !== "mention") return "";
-      const href = String(n.attrs.href ?? "");
-      const label = String(n.attrs.label ?? "");
-      if (href.startsWith("tag:")) return `#${href.slice(4)}`;
-      if (href.startsWith("person:")) return `@${href.slice(7).replace(/ /g, "_")}`;
-      if (href.startsWith("block:")) return `|${href.slice(6)}`;
-      return label;
-    };
     const titleText = doc.textBetween(from, to, "\n", asLabel).trim();
     // Titles are single-line — collapse any line breaks in the selection.
     const titleRaw = doc.textBetween(from, to, " ", asTitleRaw).replace(/\s+/g, " ").trim();
@@ -573,7 +578,6 @@ export function MarkdownEditor({
   const extractTo = async (type: BlockType) => {
     if (!extract || !editor) return;
     const { from, to } = range.current ?? extract;
-    const { titleText, titleRaw, mdText } = extract;
     setExtract(null);
     // Checked before the block is made, not after: this used to create the
     // block and then throw on the way to linking it, leaving one behind with
@@ -583,14 +587,27 @@ export function MarkdownEditor({
       setFailNote("That selection has moved — try again.");
       return;
     }
-    const title = titleRaw.trim() || "Untitled";
-    // Everything below the first line is the selection's body. A typed block
-    // took the title and dropped the rest, so extracting a paragraph into a task
-    // kept its first line and threw the paragraph away.
-    const rest = mdText.slice(mdText.split("\n")[0]?.length ?? 0).replace(/^\n+/, "");
+    // The first row names it; everything under that is its body. The row is
+    // found in the document rather than by splitting text, so a selection that
+    // starts mid-paragraph or inside a list item still ends its title where
+    // that line ends.
+    const doc = editor.state.doc;
+    const $from = doc.resolve(from);
+    const firstEnd = Math.min(to, $from.end($from.depth));
+    const titleText = doc.textBetween(from, firstEnd, " ", asLabel).trim();
+    const title = doc.textBetween(from, firstEnd, " ", asTitleRaw).replace(/\s+/g, " ").trim() || "Untitled";
+
+    // Serialized rather than read as text, so what arrives is what was written:
+    // the bullets stay bullets, the bold stays bold, and a mention stays a
+    // mention. Reading the range as text flattened all of that on the way out.
+    const md = editor.storage.markdown as { serializer: { serialize: (f: Fragment) => string | undefined } };
+    const asMd = (a: number, b: number) =>
+      a >= b ? "" : String(md.serializer.serialize(doc.slice(a, b).content) ?? "").trim();
+    const rest = asMd(firstEnd, to);
+
     const key = bodyFieldKey(type.propertySchema);
     const body = type.isText
-      ? { content: mdText }
+      ? { content: asMd(from, to) }
       : {
           properties: { title, ...(rest && key ? { [key]: rest } : {}) },
           // Nowhere to put prose on this type: keep it on the block rather than

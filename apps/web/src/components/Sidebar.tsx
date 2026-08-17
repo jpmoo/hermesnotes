@@ -92,18 +92,21 @@ export function Sidebar() {
         // Pinned is pinned: nothing here moves it.
         if (leftPinned) return;
         const onControl = !!(e.target as Element)?.closest?.(".nav-link, .nav-row, button, a, input");
-        setOpened((open) =>
-          open
-            ? // Open, so any press inside puts it away — a button as much as the
-              // background. You came for the thing you pressed, and the rail
-              // standing over the page afterwards is in the way of reading it.
-              false
-            : // Shut, so its own empty parts are the handle: the logo, the gaps
-              // between the icons, the space under the last one. An icon isn't —
-              // pressing one is going somewhere, and the rail has no business
-              // unfolding over the page on the way.
-              !onControl,
-        );
+        if (onControl) {
+          // A button does its own thing, and the rail gets out of the way of
+          // whatever that turns out to be.
+          setOpened(false);
+          return;
+        }
+        // The rail's own empty parts are its handle, both ways. Held open by a
+        // kebab or the create menu rather than by this, it still has to answer
+        // to a press on its background — otherwise "click the empty bit" works
+        // or doesn't depending on what happens to be open inside it, which is
+        // not a rule anybody could learn.
+        setOpenMenu(null);
+        setModal(null);
+        setPlusOpen(false);
+        setOpened((open) => !open);
         return;
       }
       // Everywhere else closes it. Only the rail opens the rail: a press on the

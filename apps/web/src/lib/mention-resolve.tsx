@@ -181,3 +181,41 @@ export function parseMentions(raw: string): MentionPart[] {
   if (last < raw.length) parts.push({ kind: "text", text: raw.slice(last) });
   return parts;
 }
+
+/**
+ * The words a mention stands for, resolved but rendered as plain text.
+ *
+ * A block's title can itself name another block, and it's stored the way titles
+ * are — `|<id>`. Read straight out, a chip for that block showed the raw id in
+ * the middle of its own label: the reference was resolved, and then the thing it
+ * resolved to had a reference in it that nobody looked at.
+ *
+ * No chip, no icon, no link: this is text inside something else's chip, and it
+ * resolves one level only — a title that names a block that names a block reads
+ * as far as the first one and stops, rather than fetching its way down a chain.
+ */
+export function ResolvedWords({ href, label }: { href: string; label: string }) {
+  const isTag = href.startsWith("tag:");
+  const personName = href.startsWith("person:") ? href.slice(7) : "";
+  const staticId = href.startsWith("block:") ? href.slice(6) : "";
+  const target = useMentionTarget(staticId, personName, isTag, Boolean(label));
+  const words = label || target.fetchedLabel || (target.dead ? "missing" : "…");
+  return <>{isTag ? words.replace(/^#/, "") : words.replace(/^@/, "")}</>;
+}
+
+/** A label with any mentions of its own resolved to the words they stand for. */
+export function ResolvedLabel({ text }: { text: string }) {
+  const parts = parseMentions(text);
+  if (parts.every((p) => p.kind === "text")) return <>{text}</>;
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === "text" ? (
+          <span key={i}>{p.text}</span>
+        ) : (
+          <ResolvedWords key={i} href={p.href} label={p.label} />
+        ),
+      )}
+    </>
+  );
+}

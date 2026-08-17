@@ -2,8 +2,9 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { CirclePlus, Hash } from "lucide-react";
 import { useState } from "react";
 import { PlaceholderMenu } from "./PlaceholderMenu.tsx";
+import { flattenMentions } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
-import { useMentionTarget } from "../lib/mention-resolve.tsx";
+import { ResolvedLabel, useMentionTarget } from "../lib/mention-resolve.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
 /** Renders a mention as an icon-prefixed, clickable chip inside the editor. */
@@ -62,12 +63,14 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
       contentEditable={false}
       onMouseDown={onActivate}
       onClick={swallow}
+      // One plain string, so a reference inside the name is flattened rather
+      // than resolved: `|…` says "and something else" without naming it.
       title={
         dead
-          ? `${label || "reference"} — no longer exists`
+          ? `${flattenMentions(label) || "reference"} — no longer exists`
           : archived
-            ? `${label || fetchedLabel || "reference"} — archived`
-            : label || fetchedLabel
+            ? `${flattenMentions(label || fetchedLabel) || "reference"} — archived`
+            : flattenMentions(label || fetchedLabel)
       }
     >
       {forwarded ? null : placeholder ? (
@@ -80,8 +83,15 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
         <BlockIcon iconKey={icon?.key} color={icon?.color} size={13} />
       )}
       <span>
-        {placeholderName ||
-          (isTag ? label.replace(/^#/, "") : label || fetchedLabel || (dead ? "missing" : "…"))}
+        {/* Resolved, not printed: a block's title can name another block, and it
+            keeps that the way titles do — `|<id>`. Straight out, the id showed
+            up in the middle of the chip's own words. */}
+        <ResolvedLabel
+          text={
+            placeholderName ||
+            (isTag ? label.replace(/^#/, "") : label || fetchedLabel || (dead ? "missing" : "…"))
+          }
+        />
       </span>
       {askAt && (
         <PlaceholderMenu

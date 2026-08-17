@@ -204,6 +204,33 @@ export async function ensurePersons(api: Api, ctx: Ctx, texts: (string | undefin
   return created;
 }
 
+/**
+ * The status option a caller meant.
+ *
+ * Statuses are the user's own — a type can call them anything — so an agent
+ * asking for "completed" against a type whose word is "done" was simply refused,
+ * and closing a task became an error with no way round it short of asking what
+ * the options were first.
+ *
+ * Matched on the letters rather than the exact string, so case, spaces,
+ * underscores and hyphens don't decide it. Failing that, a word that plainly
+ * means finished takes the type's own complete value — which the type declares,
+ * so that isn't a guess about what the user meant by it.
+ */
+const DONE_WORDS = new Set(["done", "complete", "completed", "finish", "finished", "closed"]);
+const letters = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+export function resolveStatus(ctx: Ctx, want: string): string | null {
+  const w = letters(want);
+  const exact = ctx.statusOptions.find((o) => letters(o) === w);
+  if (exact) return exact;
+  if (DONE_WORDS.has(w)) {
+    const done = ctx.completeValues.find((v) => ctx.statusOptions.includes(v));
+    if (done) return done;
+  }
+  return null;
+}
+
 export function fmtDate(v: string): string {
   return v.includes("T") ? v.replace("T", " ") : v;
 }

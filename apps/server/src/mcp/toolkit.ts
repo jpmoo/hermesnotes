@@ -8,6 +8,7 @@ import {
   ensurePersons,
   fmtTaskLine,
   fmtDate,
+  resolveStatus,
   loadContext,
   resolveProject,
   resolveTask,
@@ -277,7 +278,8 @@ export function defineTools(api: Api): ToolDef[] {
           ...(a.due_date ? { end: a.due_date } : {}),
         };
       if (a.status) {
-        if (!ctx.statusOptions.includes(a.status))
+        const status = resolveStatus(ctx, a.status);
+        if (!status)
           throw new Error(`Unknown status "${a.status}". Options: ${ctx.statusOptions.join(", ")}`);
         properties[ctx.statusKey] = a.status;
       }
@@ -408,9 +410,10 @@ export function defineTools(api: Api): ToolDef[] {
           items.push(
             group(
               wanted.map((s) => {
-                if (!ctx.statusOptions.includes(s))
+                const resolved = resolveStatus(ctx, s);
+                if (!resolved)
                   throw new Error(`Unknown status "${s}". Options: open, ${ctx.statusOptions.join(", ")}`);
-                return prop(ctx.statusKey, "eq", s);
+                return prop(ctx.statusKey, "eq", resolved);
               }),
               "any",
             ),
@@ -497,7 +500,7 @@ export function defineTools(api: Api): ToolDef[] {
 
   tool(
     "task_update",
-    "Update a task by id or title. Only supplied fields change. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing; unknown project names and new tags are created, and raw @Name mentions create Person blocks if missing.",
+    "Update a task by id or title. Only supplied fields change. Statuses are the ones this user's task type defines — case and spacing don't matter, and 'completed'/'finished' land on whichever of them means done. Empty string clears a date. add/remove_tags and add/remove_projects adjust without replacing; unknown project names and new tags are created, and raw @Name mentions create Person blocks if missing.",
     {
       task: z.string().min(1),
       title: z.string().optional(),
@@ -526,10 +529,11 @@ export function defineTools(api: Api): ToolDef[] {
         changed.push("notes");
       }
       if (a.status !== undefined) {
-        if (!ctx.statusOptions.includes(a.status))
+        const status = resolveStatus(ctx, a.status);
+        if (!status)
           throw new Error(`Unknown status "${a.status}". Options: ${ctx.statusOptions.join(", ")}`);
-        p[ctx.statusKey] = a.status;
-        changed.push(`status → ${a.status}`);
+        p[ctx.statusKey] = status;
+        changed.push(`status → ${status}`);
       }
       if (a.available_date !== undefined || a.due_date !== undefined) {
         const span = { ...((p[ctx.spanKey] ?? {}) as { start?: string; end?: string }) };

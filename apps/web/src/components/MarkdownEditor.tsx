@@ -864,10 +864,10 @@ export function MarkdownEditor({
       />
       <ConfirmDialog
         open={pendingExtract !== null}
-        title={`Move this into a new ${pendingExtract?.name.toLowerCase() || "block"}?`}
+        title="Are you sure?"
         message={
-          "The selected text leaves this note and becomes that block — its first line the name, " +
-          "the rest of it the body. A link to it takes its place here."
+          "This will remove the text from here, and put it in the new block, leaving an embedded " +
+          "link behind. Depending on the type of node, you may lose some formatting."
         }
         confirmLabel="Move it"
         danger={false}

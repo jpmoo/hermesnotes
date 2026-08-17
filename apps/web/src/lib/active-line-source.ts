@@ -225,6 +225,49 @@ export const ActiveLineSource = Extension.create({
         const after = text.slice(offset);
 
         /**
+         * A list line that hasn't been rendered yet: make the list and carry on
+         * down it, so one Enter both draws the checkbox and hands you the next
+         * one. This is the branch above, arrived at from the other side — there,
+         * the list already exists and the caret is in one of its items; here it
+         * exists only as the markdown you've typed, and Enter used to insert a
+         * newline into it that nobody could see.
+         *
+         * The marker is matched first and the text checked separately: a lone
+         * `- ` is somebody starting a list rather than finishing an item, and
+         * rendering an empty one under them helps nobody.
+         */
+        const marker = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/.exec(text);
+        if (marker && text.slice(marker[0].length).trim()) {
+          const rendered = mdToFragment(schema, md, text);
+          const item = rendered.firstChild?.firstChild;
+          const itemName = item?.type.name;
+          if (itemName === "listItem" || itemName === "taskItem") {
+            const from = $head.before();
+            const to = $head.after();
+            // Where the caret was, less the marker it sat behind — the marker is
+            // spent making the list and isn't part of the item's text.
+            const caret = Math.max(0, offset - marker[0].length);
+            editor.commands.command(({ tr, dispatch }) => {
+              tr.replaceWith(from, to, rendered);
+              tr = rechipMentions(tr, schema);
+              try {
+                // list > item > paragraph, then along the text.
+                const at = Math.min(from + 3 + caret, tr.doc.content.size);
+                tr.setSelection(TextSelection.near(tr.doc.resolve(at)));
+              } catch {
+                /* leave as mapped */
+              }
+              tr.setMeta(META, true);
+              if (dispatch) dispatch(tr);
+              return true;
+            });
+            // And now the ordinary list Enter: a new item, which the plugin
+            // sources on arrival because the caret is in it.
+            return editor.commands.splitListItem(itemName);
+          }
+        }
+
+        /**
          * One Enter is one newline. It stays INSIDE this block rather than
          * starting a new one, so what the markdown holds matches what you did:
          * previously every Enter ended the block, and a block break is a blank

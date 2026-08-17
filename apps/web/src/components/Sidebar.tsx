@@ -54,9 +54,10 @@ const REVIEW_KEY = "review_colors";
 const ARCHIVE_KEY = "archive_colors";
 
 /**
- * Left navigation. Auto-hides to a 56px icon rail. Hovering an empty area of the
- * rail reveals it (icons stay click-to-navigate with a tooltip); a pin keeps it
- * open. The Inbox and Collections rows each carry a kebab menu (when revealed)
+ * Left navigation. Auto-hides to a 56px icon rail, which is fully usable shut —
+ * the icons stay click-to-navigate with a tooltip. Pressing the rail's own empty
+ * parts unfolds it; pressing it again, anywhere, folds it back; a pin keeps it
+ * open regardless. The Inbox and Collections rows each carry a kebab menu (when revealed)
  * to customize their background / text / icon colors, which persist server-side
  * and sync across devices.
  */
@@ -75,26 +76,34 @@ export function Sidebar() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const { openBlock } = usePanels();
   /**
-   * Open because the page itself was pressed.
+   * Unfolded, because the rail was asked for.
    *
-   * A press on empty space says you've finished with whatever you were reading
-   * — it's the same gesture that puts the right panel away — and what's left to
-   * ask for is somewhere to go. Nothing else opens the rail: it used to reveal
-   * itself on a hover with a dwell timer, which meant it appeared when you were
-   * on your way past and didn't when you meant it, and the difference between
-   * those was measured in milliseconds nobody can feel.
+   * Only the rail opens the rail, and any press in it closes it again — so it's
+   * a thing you open, use, and are done with, rather than something that keeps
+   * happening to you. It used to reveal itself on a hover with a dwell timer,
+   * which meant it appeared when you were on your way past and didn't when you
+   * meant it, and the difference was measured in milliseconds nobody can feel.
    */
   const [opened, setOpened] = useState(false);
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       const press = classifyPress(e.target);
       if (press.kind === "panel" && press.side === "left") {
-        // The rail's own empty parts — the logo, the gaps between icons, the
-        // space under the last one — are the handle. An icon is not: pressing
-        // one is going somewhere, and the rail has no business unfolding over
-        // the page on the way.
+        // Pinned is pinned: nothing here moves it.
+        if (leftPinned) return;
         const onControl = !!(e.target as Element)?.closest?.(".nav-link, .nav-row, button, a, input");
-        if (!onControl) setOpened(true);
+        setOpened((open) =>
+          open
+            ? // Open, so any press inside puts it away — a button as much as the
+              // background. You came for the thing you pressed, and the rail
+              // standing over the page afterwards is in the way of reading it.
+              false
+            : // Shut, so its own empty parts are the handle: the logo, the gaps
+              // between the icons, the space under the last one. An icon isn't —
+              // pressing one is going somewhere, and the rail has no business
+              // unfolding over the page on the way.
+              !onControl,
+        );
         return;
       }
       // Everywhere else closes it. Only the rail opens the rail: a press on the
@@ -105,7 +114,8 @@ export function Sidebar() {
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, []);
+    // Re-read when the pin changes: a pinned rail answers to nothing but the pin.
+  }, [leftPinned]);
 
   // The rail expands when pinned, when the page was pressed, or while a
   // kebab menu / color modal / create menu it spawned is open.

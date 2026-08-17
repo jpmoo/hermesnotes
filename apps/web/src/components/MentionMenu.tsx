@@ -193,7 +193,23 @@ export function MentionMenu({
 
   const rect = state.rect();
   if (!rect) return null;
-  const style: CSSProperties = { position: "fixed", top: rect.bottom + 4, left: rect.left, zIndex: 80 };
+  // Below the caret where there's room, above it where there isn't. This list
+  // caps its own height and scrolls — it's a search result, and there may be
+  // any number of matches — but a menu that opens downward from the last line
+  // of a long note hangs off the bottom of the window, and the matches you were
+  // typing towards are the ones that fall off.
+  const MENU_MAX = 264; // keep in step with .mention-menu's max-height
+  const MARGIN = 8;
+  const below = window.innerHeight - rect.bottom - MARGIN;
+  const above = rect.top - MARGIN;
+  const flip = below < Math.min(MENU_MAX, above);
+  const style: CSSProperties = {
+    position: "fixed",
+    ...(flip ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+    left: Math.min(rect.left, Math.max(MARGIN, window.innerWidth - 340 - MARGIN)),
+    maxHeight: Math.max(120, Math.min(MENU_MAX, flip ? above : below)),
+    zIndex: 80,
+  };
 
   return createPortal(
     <div className="mention-menu" style={style}>

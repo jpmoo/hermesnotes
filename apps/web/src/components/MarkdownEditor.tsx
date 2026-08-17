@@ -29,6 +29,7 @@ import { ForwardMark } from "../lib/forward-mark.ts";
 import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.ts";
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
+import { useMenuPosition } from "../lib/menu-position.ts";
 import { emitBlockChange } from "../lib/block-events.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -132,6 +133,9 @@ export function MarkdownEditor({
     } | null
   >(null);
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
+  // Keeps the right-click menu on screen whole — down-right of the pointer
+  // where there's room, flipped back over it where there isn't.
+  const [menuRef, menuStyle] = useMenuPosition(extract?.x ?? 0, extract?.y ?? 0);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const lastEmit = useRef(value);
 
@@ -690,19 +694,18 @@ export function MarkdownEditor({
       {extract &&
         createPortal(
           <div
+            ref={menuRef}
             className="menu extract-menu"
-          style={{
-            position: "fixed",
-            left: extract.x,
-            top: extract.y,
-            right: "auto",
-            bottom: "auto",
-            zIndex: 1000,
-            maxHeight: 320,
-            overflowY: "auto",
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
+            // Placed by measurement rather than by a fixed height: this menu
+            // carries whatever the thing under the pointer offers, so it can be
+            // any height, and it used to cap itself at 320px and scroll. On
+            // macOS the scrollbar is an overlay that only appears while you're
+            // scrolling, so there was nothing to say the rest was down there —
+            // the last thing visible was a grey heading, and the commands under
+            // it may as well not have existed.
+            style={{ ...menuStyle, zIndex: 1000 }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
           {extract.field && (
             <>
               {(["Cut", "Copy", "Paste"] as const).map((label) => (

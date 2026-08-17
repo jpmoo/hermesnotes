@@ -34,3 +34,18 @@ export function isEditingTarget(target: EventTarget | null): boolean {
   const el = target instanceof Element ? target : null;
   return !!el?.closest?.(EDITABLE);
 }
+
+/**
+ * A press on a control: a button, a link, anything that answers for itself.
+ *
+ * Separate from the test above, because the two questions differ. "Is this a
+ * writing surface" decides whether the panel may open over what you're doing;
+ * this one decides whether a card should take the press as "show me this
+ * block" — and a button never is. Pressing Delete on a card was selecting the
+ * card as well, and the panel arriving over the corner the button sits in took
+ * the click with it, so the thing you pressed was the last thing to happen.
+ */
+export function isControlTarget(target: EventTarget | null): boolean {
+  const el = target instanceof Element ? target : null;
+  return !!el?.closest?.('button, a, [role="button"]');
+}

@@ -7,7 +7,7 @@ import { renderFeedText } from "../lib/feed-text.tsx";
 import { fmtDateTime } from "../lib/format.ts";
 import { emitBlockChange, emitBlockDeleted, useBlockOrigin, useBlockSync } from "../lib/block-events.ts";
 import { useRegisterEditor } from "../lib/editor-registry.ts";
-import { isEditingTarget } from "../lib/editing-target.ts";
+import { isControlTarget, isEditingTarget } from "../lib/editing-target.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { AttachmentsChip } from "./AttachmentsField.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -266,7 +266,11 @@ export function TypedBlockCard({
       // info panel is an off-screen drawer. A full card IS the editor; tapping
       // into one is editing and must never navigate away.
       onPointerDownCapture={(e) =>
-        isEditingTarget(e.target) ? undefined : compact ? selectOrOpen(block.id) : selectBlock(block.id)
+        isEditingTarget(e.target) || isControlTarget(e.target)
+          ? undefined
+          : compact
+            ? selectOrOpen(block.id)
+            : selectBlock(block.id)
       }
       onFocusCapture={() => {
         focusedRef.current = true;

@@ -134,6 +134,9 @@ export function MarkdownEditor({
   const [templates, setTemplates] = useState<Block[]>([]);
   const [pendingTemplate, setPendingTemplate] = useState<Block | null>(null);
   const [pendingForever, setPendingForever] = useState<Block | null>(null);
+  /** The type chosen to extract into, waiting on a yes — this moves words out
+   *  of the note, and that shouldn't happen on one click of a menu. */
+  const [pendingExtract, setPendingExtract] = useState<BlockType | null>(null);
   const [extract, setExtract] = useState<
     {
       x: number;
@@ -576,9 +579,9 @@ export function MarkdownEditor({
   // selection's mentions inline (so its @/#/| connections survive) — no separate
   // description is populated; a text block keeps the markdown as its body.
   const extractTo = async (type: BlockType) => {
-    if (!extract || !editor) return;
-    const { from, to } = range.current ?? extract;
-    setExtract(null);
+    const live = range.current;
+    if (!editor || !live) return;
+    const { from, to } = live;
     // Checked before the block is made, not after: this used to create the
     // block and then throw on the way to linking it, leaving one behind with
     // nothing pointing at it and no word of what happened.
@@ -607,13 +610,20 @@ export function MarkdownEditor({
 
     const key = bodyFieldKey(type.propertySchema);
     const body = type.isText
-      ? { content: asMd(from, to) }
-      : {
-          properties: { title, ...(rest && key ? { [key]: rest } : {}) },
-          // Nowhere to put prose on this type: keep it on the block rather than
-          // losing it on the way through.
-          ...(rest && !key ? { content: rest } : {}),
-        };
+      ? // A text block is body all the way down — no title to name it with, so
+        // it keeps the selection whole, first row and all.
+        { content: asMd(from, to) }
+      : key
+        ? { properties: { title, ...(rest ? { [key]: rest } : {}) } }
+        : // A type with nowhere to put prose takes the lot as its name. The line
+          // breaks and the formatting go, because a title is one line — but a
+          // shortened name is a smaller loss than words dropped on the floor, or
+          // hidden in a field the type never shows.
+          {
+            properties: {
+              title: doc.textBetween(from, to, " ", asTitleRaw).replace(/\s+/g, " ").trim() || "Untitled",
+            },
+          };
     try {
       const b = await api.post<Block>("/blocks", { blockTypeId: type.id, ...body });
       const mention = editor.state.schema.nodes.mention;
@@ -646,9 +656,10 @@ export function MarkdownEditor({
    */
   const range = useRef<{ from: number; to: number; inForward: { from: number; to: number } | null } | null>(null);
   useEffect(() => {
-    range.current = extract
-      ? { from: extract.from, to: extract.to, inForward: extract.inForward }
-      : null;
+    // Set when the menu opens and left alone when it closes: a confirmation now
+    // stands between choosing a type and the extraction happening, and the
+    // document goes on moving underneath both.
+    if (extract) range.current = { from: extract.from, to: extract.to, inForward: extract.inForward };
   }, [extract]);
   useEffect(() => {
     if (!editor) return;
@@ -809,7 +820,14 @@ export function MarkdownEditor({
             [...extract.types]
               .sort((a, b) => (a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1))
               .map((t) => (
-                <button key={t.id} className="menu-item type-item" onClick={() => void extractTo(t)}>
+                <button
+                  key={t.id}
+                  className="menu-item type-item"
+                  onClick={() => {
+                    setExtract(null);
+                    setPendingExtract(t);
+                  }}
+                >
                   <BlockIcon
                     iconKey={t.isText ? "type" : t.iconKey}
                     color={t.isText ? null : t.iconColor}
@@ -843,6 +861,22 @@ export function MarkdownEditor({
         danger
         onCancel={() => setPendingForever(null)}
         onConfirm={() => pendingForever && useForever(pendingForever)}
+      />
+      <ConfirmDialog
+        open={pendingExtract !== null}
+        title={`Move this into a new ${pendingExtract?.name.toLowerCase() || "block"}?`}
+        message={
+          "The selected text leaves this note and becomes that block — its first line the name, " +
+          "the rest of it the body. A link to it takes its place here."
+        }
+        confirmLabel="Move it"
+        danger={false}
+        onCancel={() => setPendingExtract(null)}
+        onConfirm={() => {
+          const t = pendingExtract;
+          setPendingExtract(null);
+          if (t) void extractTo(t);
+        }}
       />
       {sendTo !== null && periodicDate && (
         <SendToDaysModal

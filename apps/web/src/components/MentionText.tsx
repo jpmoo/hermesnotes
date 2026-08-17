@@ -2,8 +2,47 @@ import { CirclePlus, Hash } from "lucide-react";
 import { useState } from "react";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { PlaceholderMenu } from "./PlaceholderMenu.tsx";
+import { flattenMentions } from "../lib/display.ts";
 import { parseMentions, useMentionTarget } from "../lib/mention-resolve.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+
+/**
+ * The words a mention stands for, resolved but rendered as plain text.
+ *
+ * A block's title can itself name another block, and it's stored the way titles
+ * are — `|<id>`. Read straight out, a chip for that block showed the raw id in
+ * the middle of its own label: the reference was resolved, and then the thing it
+ * resolved to had a reference in it that nobody looked at.
+ *
+ * No chip, no icon, no link: this is text inside something else's chip, and it
+ * resolves one level only — a title that names a block that names a block reads
+ * as far as the first one and stops, rather than fetching its way down a chain.
+ */
+function ResolvedWords({ href, label }: { href: string; label: string }) {
+  const isTag = href.startsWith("tag:");
+  const personName = href.startsWith("person:") ? href.slice(7) : "";
+  const staticId = href.startsWith("block:") ? href.slice(6) : "";
+  const target = useMentionTarget(staticId, personName, isTag, Boolean(label));
+  const words = label || target.fetchedLabel || (target.dead ? "missing" : "…");
+  return <>{isTag ? words.replace(/^#/, "") : words.replace(/^@/, "")}</>;
+}
+
+/** A label with any mentions of its own resolved to the words they stand for. */
+function ResolvedLabel({ text }: { text: string }) {
+  const parts = parseMentions(text);
+  if (parts.every((p) => p.kind === "text")) return <>{text}</>;
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === "text" ? (
+          <span key={i}>{p.text}</span>
+        ) : (
+          <ResolvedWords key={i} href={p.href} label={p.label} />
+        ),
+      )}
+    </>
+  );
+}
 
 /**
  * One mention, outside the editor: same chip, but nothing to keep in sync.
@@ -53,12 +92,15 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
         selectOrOpen(target.id, { collection: target.collection });
       }}
       onPointerDown={(e) => e.stopPropagation()}
+      // The tooltip is one plain string, so a nested reference is flattened
+      // rather than resolved — `|…` says "and something else" without pretending
+      // to name it.
       title={
         target.dead
-          ? `${label || "reference"} — no longer exists`
+          ? `${flattenMentions(label) || "reference"} — no longer exists`
           : target.archived
-            ? `${text} — archived`
-            : text
+            ? `${flattenMentions(text)} — archived`
+            : flattenMentions(text)
       }
     >
       {forwarded ? null : placeholder ? (
@@ -79,7 +121,9 @@ export function MentionChip({ href, label }: { href: string; label: string }) {
       ) : (
         <BlockIcon iconKey={target.icon?.key} color={target.icon?.color} size={13} />
       )}
-      <span>{text}</span>
+      <span>
+        <ResolvedLabel text={text} />
+      </span>
     </span>
     {askAt && (
       <PlaceholderMenu

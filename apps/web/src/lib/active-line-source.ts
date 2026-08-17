@@ -144,7 +144,18 @@ function starterNode(text: string, schema: Schema): PMNode | null {
  * keeps literal emphasis/code from turning into formatting on the next render.)
  */
 function sourceForEdit(md: string): string {
-  return md.replace(/\\([[\]])/g, "$1");
+  return (
+    md
+      .replace(/\\([[\]])/g, "$1")
+      /**
+       * A line break inside a block serializes as a backslash at the end of the
+       * line. What gets saved doesn't keep it — normalizeMarkdown drops it on
+       * the way out, and the parser reads a lone newline as a break anyway — so
+       * Raw never showed one. Only the line you happened to have the cursor in
+       * did, which made it look like something you'd typed by accident.
+       */
+      .replace(/\\(\n|$)/g, "$1")
+  );
 }
 
 /** Map a caret offset in the rendered block to a plausible offset in its source. */

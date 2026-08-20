@@ -139,6 +139,10 @@ export const memberships = pgTable(
     blockId: uuid("block_id")
       .notNull()
       .references(() => blocks.id, { onDelete: "cascade" }),
+    /** Fractional index — sorts BETWEEN its neighbours, and only if compared
+     *  by bytes. The column is COLLATE "C" for that reason (migration 0028);
+     *  under a language collation "Zz" sorts after "a0" and the top of every
+     *  list is wrong. */
     position: text("position"),
     region: text("region"),
     context: jsonb("context").$type<MembershipContext>().notNull().default({}),

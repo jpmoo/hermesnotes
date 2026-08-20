@@ -1,0 +1,16 @@
+-- A membership's position is a fractional index: a short string chosen so that
+-- it sorts between its two neighbours. The whole scheme rests on the sort being
+-- by bytes, which is what the generator assumes when it picks a key.
+--
+-- The column had the database's own collation, which on a typical install is a
+-- language one — and a language collation reads letters before case, so "Zz"
+-- lands after "a0" rather than before it. Almost every drop generates a
+-- lowercase key and orders the same either way; the exception is dropping at
+-- the very top of a list, which is the one case that generates a capital. So a
+-- card dragged to the first line of a matrix region was written correctly,
+-- ordered by a rule its key was never meant for, and came back at the bottom.
+--
+-- Byte order is not a preference here, it's the contract the keys are written
+-- to. Nothing needs rewriting: the keys are already correct, they were only
+-- being read in the wrong order.
+ALTER TABLE memberships ALTER COLUMN position TYPE text COLLATE "C";

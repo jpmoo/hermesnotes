@@ -6258,17 +6258,47 @@ input.cv-add-input {
   max-height: 108px;
   overflow-y: auto;
 }
+/* Opened out: as tall as it needs, no scroll of its own. The hours below keep
+   their own scroll, so a long day pushes them down rather than off. */
+.cal-tg-allday.open {
+  max-height: none;
+  overflow-y: visible;
+}
+/* The label is the handle. Same caret the rest of the app folds with, and the
+   count is what's behind it while it's shut. */
 .cal-tg-allday-label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
   font-size: 10px;
   color: var(--text-muted);
-  text-align: right;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
   /* Left padding too: the label is nearly as wide as the gutter, so right-aligning
      alone left it touching the left edge. */
   padding: 6px 6px 0 8px;
-  border-right: 1px solid var(--border);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   white-space: nowrap;
+  cursor: pointer;
+  align-self: start;
+}
+.cal-tg-allday-label:hover {
+  color: var(--text);
+  background: none;
+}
+.cal-tg-allday-label svg {
+  flex-shrink: 0;
+}
+.cal-tg-allday-n {
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 0 5px;
+  letter-spacing: 0;
 }
 .cal-tg-allday-col {
   display: flex;
@@ -6329,12 +6359,6 @@ input.cv-add-input {
    above use, so "which sources am I looking at" has one answer and one shape.
    The colour comes from the type's own icon rather than a feed's, so these
    read as the app's own things next to somebody else's calendar. */
-.cal-dated-toggles {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
 .cal-dated-toggle {
   gap: 5px;
 }

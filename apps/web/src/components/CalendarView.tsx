@@ -1,9 +1,9 @@
 import { optionLabel } from "@hermes/shared";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
-import { AlertTriangle, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
-import { useBlockDeleted } from "../lib/block-events.ts";
+import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { useCalendarRefresh, useFeedEventConverted } from "../lib/calendar-events.ts";
 import { isOverdue, oneLineText } from "../lib/display.ts";
 import { normalizeFilter } from "../lib/filter.ts";
@@ -421,6 +421,29 @@ export function CalendarView({
    * Off the month view: a month of every dated block is a wall, and the
    * collection is the point at that zoom.
    */
+  /**
+   * The all-day band opened out, or kept to a few rows with the rest a scroll
+   * away. A day with a dozen dated things would otherwise push the hours off
+   * the bottom of the screen before you'd read any of them.
+   */
+  const allDayKey = `hn.cal.allday.${collection.id}`;
+  const [allDayOpen, setAllDayOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(allDayKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAllDay = () =>
+    setAllDayOpen((open) => {
+      try {
+        localStorage.setItem(allDayKey, open ? "0" : "1");
+      } catch {
+        /* private mode: the choice just doesn't outlive the tab */
+      }
+      return !open;
+    });
+
   const datedKey = `hn.cal.dated.${collection.id}`;
   const [datedOn, setDatedOn] = useState<Set<string>>(() => {
     try {
@@ -639,6 +662,17 @@ export function CalendarView({
   });
   // A "copy" left the feed unchanged but added a block — refetch matches.
   useCalendarRefresh(() => setQueryTick((t) => t + 1));
+
+  /**
+   * Any block changing anywhere re-asks. A calendar is a view of when things
+   * are, and when is a property like any other: moving a task's due date is an
+   * ordinary edit, which meant the calendar it belonged on carried on showing
+   * the old day until something else made it look again.
+   *
+   * Cheap enough to do bluntly — one query for the visible range, and a change
+   * that turns out not to matter costs a query nobody notices.
+   */
+  useAnyBlockChange(() => setQueryTick((t) => t + 1));
 
   // A deleted OR archived block leaves the calendar at once (both fire this).
   // If it was a synced feed event, its link is no longer active server-side —
@@ -902,6 +936,19 @@ export function CalendarView({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  /** How many distinct things sit in the all-day band — one thing spanning
+   *  three days is one thing, not three. */
+  const allDayCount = useMemo(() => {
+    const seen = new Set<string>();
+    for (const d of days) {
+      for (const ref of timeGrid.get(d)?.allDay ?? []) {
+        if (!ref) continue;
+        seen.add(ref.kind === "block" ? ref.item.id : `${ref.event.feedId}|${ref.event.uid}`);
+      }
+    }
+    return seen.size;
+  }, [timeGrid, days]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   // Open the time grid scrolled to the morning (7am) rather than midnight.
   useEffect(() => {
@@ -1018,35 +1065,6 @@ export function CalendarView({
           </button>
         </span>
         <span className="cal-range">{rangeLabel}</span>
-        {isAgenda(view) && datedByType.length > 0 && (
-          // Same pills as the calendars above, doing the same job: naming a
-          // source and saying whether it's in. A type is only offered while it
-          // has something in this range.
-          <span className="cal-dated-toggles" onClick={(e) => e.stopPropagation()}>
-            {datedByType.map(({ type, id, n }) => {
-              const on = datedOn.has(id);
-              return (
-                <button
-                  key={id}
-                  className={`cal-feed-toggle cal-dated-toggle${on ? "" : " off"}`}
-                  // The pill borrows the feed pills' colouring, so it needs a
-                  // colour to borrow it with: the type's own, else the accent.
-                  style={{ ["--feed-color" as string]: type!.iconColor || "var(--accent)" }}
-                  title={`${on ? "Hide" : "Show"} ${n} ${type!.name}${n === 1 ? "" : "s"} dated in this range`}
-                  onClick={() => toggleDatedType(id)}
-                >
-                  <BlockIcon
-                    iconKey={type!.isText ? "type" : type!.iconKey}
-                    color={type!.isText ? null : type!.iconColor}
-                    size={12}
-                  />
-                  {type!.name}
-                  <span className="cal-dated-count">{n}</span>
-                </button>
-              );
-            })}
-          </span>
-        )}
         {FIND_ENABLED && (
           <span className="cal-find">
           <Search size={13} />
@@ -1109,7 +1127,7 @@ export function CalendarView({
         {!isSmart && <span className="hint">Calendars are query-fed — give this collection a query.</span>}
       </div>
 
-      {feeds.length > 0 && (
+      {(feeds.length > 0 || (isAgenda(view) && datedByType.length > 0)) && (
         <div className="cal-feed-toggles" onClick={(e) => e.stopPropagation()}>
           <button
             className="icon-btn cal-feed-rescan"
@@ -1145,6 +1163,36 @@ export function CalendarView({
               </span>
             );
           })}
+          {isAgenda(view) && datedByType.length > 0 && (
+            // The app's own things, switched on and off exactly as the
+            // calendars beside them are — one row, one kind of decision: which
+            // sources am I looking at. A type is only offered while it has
+            // something in this range.
+            <>
+              {datedByType.map(({ type, id, n }) => {
+                const on = datedOn.has(id);
+                return (
+                  <button
+                    key={id}
+                    className={`cal-feed-toggle cal-dated-toggle${on ? "" : " off"}`}
+                    // Borrowing the feed pills' colouring means bringing a
+                    // colour to borrow it with: the type's own, else the accent.
+                    style={{ ["--feed-color" as string]: type!.iconColor || "var(--accent)" }}
+                    title={`${on ? "Hide" : "Show"} ${n} ${type!.name}${n === 1 ? "" : "s"} dated in this range`}
+                    onClick={() => toggleDatedType(id)}
+                  >
+                    <BlockIcon
+                      iconKey={type!.isText ? "type" : type!.iconKey}
+                      color={type!.isText ? null : type!.iconColor}
+                      size={12}
+                    />
+                    {type!.name}
+                    <span className="cal-dated-count">{n}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
 
@@ -1173,6 +1221,9 @@ export function CalendarView({
           types={types}
           onStatus={onStatus}
           scrollRef={scrollRef}
+          allDayOpen={allDayOpen}
+          allDayCount={allDayCount}
+          onToggleAllDay={toggleAllDay}
         />
       )}
       </div>
@@ -1191,6 +1242,9 @@ function TimeGrid({
   types,
   onStatus,
   scrollRef,
+  allDayOpen,
+  allDayCount,
+  onToggleAllDay,
 }: {
   view: ViewMode;
   days: string[];
@@ -1200,6 +1254,10 @@ function TimeGrid({
   types: BlockType[];
   onStatus: (item: Item, field: FieldDef, next: string) => void;
   scrollRef: React.RefObject<HTMLDivElement>;
+  /** The all-day band opened out rather than kept to a few rows. */
+  allDayOpen: boolean;
+  allDayCount: number;
+  onToggleAllDay: () => void;
 }) {
   // Wide enough for the "all-day" label to keep a left margin without wrapping
   // (it's the widest thing in the gutter — wider than "12 AM").
@@ -1237,8 +1295,25 @@ function TimeGrid({
         })}
       </div>
 
-      <div className="cal-tg-allday" style={{ gridTemplateColumns: template }}>
-        <span className="cal-tg-allday-label">all-day</span>
+      <div
+        className={`cal-tg-allday${allDayOpen ? " open" : ""}`}
+        style={{ gridTemplateColumns: template }}
+      >
+        {/* The same caret the rest of the app folds things with: down when open,
+            right when there's more behind it. */}
+        <button
+          className="cal-tg-allday-label"
+          title={allDayOpen ? "Collapse all-day" : `Expand all-day (${allDayCount})`}
+          aria-expanded={allDayOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleAllDay();
+          }}
+        >
+          {allDayOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          <span className="cal-tg-allday-word">all-day</span>
+          {!allDayOpen && allDayCount > 0 && <span className="cal-tg-allday-n">{allDayCount}</span>}
+        </button>
         {days.map((d) => (
           <div key={d} className={`cal-tg-allday-col${d === today ? " today" : ""}`}>
             {(grid.get(d)?.allDay ?? []).map((ref, row) =>

@@ -1310,13 +1310,18 @@ function TimeGrid({
             onToggleAllDay();
           }}
         >
-          {allDayOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          {allDayOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           <span className="cal-tg-allday-word">all-day</span>
-          {!allDayOpen && allDayCount > 0 && <span className="cal-tg-allday-n">{allDayCount}</span>}
         </button>
-        {days.map((d) => (
+        {days.map((d) => {
+          const rows = grid.get(d)?.allDay ?? [];
+          const n = rows.filter(Boolean).length;
+          return (
           <div key={d} className={`cal-tg-allday-col${d === today ? " today" : ""}`}>
-            {(grid.get(d)?.allDay ?? []).map((ref, row) =>
+            {/* Shut, each day says what it is holding — the days differ, so one
+                number in the gutter would have been true of none of them. */}
+            {!allDayOpen && n > 0 && <span className="cal-tg-allday-n">{n}</span>}
+            {rows.map((ref, row) =>
               ref ? (
                 <div key={ref.key} className="cal-tg-allday-item">{renderRef(ref)}</div>
               ) : (
@@ -1325,7 +1330,8 @@ function TimeGrid({
               ),
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="cal-tg-scroll" ref={scrollRef}>

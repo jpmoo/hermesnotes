@@ -6269,9 +6269,11 @@ input.cv-add-input {
 .cal-tg-allday-label {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  font-size: 10px;
+  /* The caret at the near edge and the word at the far one: the gutter is 62px
+     and the two only fit by using the whole of it. */
+  justify-content: space-between;
+  gap: 2px;
+  font-size: 9.5px;
   color: var(--text-muted);
   background: none;
   border: none;
@@ -6279,12 +6281,19 @@ input.cv-add-input {
   border-radius: 0;
   /* Left padding too: the label is nearly as wide as the gutter, so right-aligning
      alone left it touching the left edge. */
-  padding: 6px 6px 0 8px;
+  /* Measured: the word wants 39px and the caret 12, which is the gutter to
+     the pixel. Any more padding and it ellipsises to "ALL-DA…". */
+  padding: 6px 4px 0 2px;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   white-space: nowrap;
   cursor: pointer;
   align-self: start;
+}
+.cal-tg-allday-word {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cal-tg-allday-label:hover {
   color: var(--text);
@@ -6293,12 +6302,21 @@ input.cv-add-input {
 .cal-tg-allday-label svg {
   flex-shrink: 0;
 }
+/* What a day is holding while the band is shut. Out of the flow, so it neither
+   takes a row nor pushes the rows either side of it out of line. */
 .cal-tg-allday-n {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  z-index: 1;
+  font-size: 9.5px;
   font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
   background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0 5px;
-  letter-spacing: 0;
+  pointer-events: none;
 }
 .cal-tg-allday-col {
   display: flex;
@@ -6308,6 +6326,8 @@ input.cv-add-input {
   /* Same reason as the track's minmax(0, …): a flex item's automatic minimum is
      its content, and these hold text that doesn't wrap. */
   min-width: 0;
+  /* The day's count is pinned to this corner. */
+  position: relative;
   border-left: 1px solid var(--border);
 }
 .cal-tg-allday-col.today {

@@ -5931,6 +5931,9 @@ input.cv-add-input {
 /* ── Calendar collection ─────────────────────────────────────── */
 .cal-wrap {
   margin-bottom: 16px;
+  /* Clips the slide, so a range arriving from the side is never seen coming in
+     off the edge of the page. */
+  overflow-x: clip;
 }
 .cal-toolbar {
   display: flex;
@@ -6291,6 +6294,32 @@ input.cv-add-input {
 }
 .cal-tg-allday-gap {
   pointer-events: none;
+}
+
+/* Moving to the next range slides rather than cuts, so the days read as having
+   moved under you. The body is keyed on the range, so it remounts and the
+   animation plays from whichever side you're travelling towards. Clipped by the
+   wrapper (see .cal-wrap), so nothing is seen arriving from off the page. */
+@keyframes calSlideNext {
+  from { transform: translateX(28%); opacity: 0.35; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes calSlidePrev {
+  from { transform: translateX(-28%); opacity: 0.35; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.cal-slide-next {
+  animation: calSlideNext 0.22s ease-out;
+}
+.cal-slide-prev {
+  animation: calSlidePrev 0.22s ease-out;
+}
+/* Somebody who has asked for less movement gets the change without the travel. */
+@media (prefers-reduced-motion: reduce) {
+  .cal-slide-next,
+  .cal-slide-prev {
+    animation: none;
+  }
 }
 
 /* Show everything dated, not just this collection — beside the range label. */

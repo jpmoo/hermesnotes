@@ -26,8 +26,10 @@ const VIEWS: { key: ViewMode; label: string }[] = [
   { key: "day3", label: "3-day" },
   { key: "day", label: "Day" },
 ];
-/** Views that show hours down the side, and can carry everything else dated. */
-const isAgenda = (v: ViewMode) => v === "day" || v === "day3";
+/** Views that show hours down the side, and can carry everything else dated.
+ *  Month is left out: a month of every dated block is a wall, and the
+ *  collection is the point at that zoom. */
+const isAgenda = (v: ViewMode) => v === "day" || v === "day3" || v === "week";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -282,24 +284,29 @@ function blockPlacements(schema: PropertySchema | null | undefined, props: Recor
          * A span across days is on every day between its ends — a task
          * available Monday and due Friday is Wednesday's business too.
          *
-         * With times, each day gets the part of itself the span covers: the
-         * first from its start to midnight, the last from midnight to its end,
-         * and the days between in full. Without them there's nothing to place
-         * it against, so it's an all-day band instead.
+         * Each of those days shows it between the same two times, so it reads
+         * as one band running straight across the columns. Clipping it per day
+         * instead — start to midnight, then midnight to the end — is truer to
+         * the arithmetic and useless to look at: a staircase, with a
+         * full-height bar down the middle of every day in between crowding
+         * everything else into a lane.
+         *
+         * With no times there's nothing to place it against, so it's an
+         * all-day band on each day instead.
          */
-        const timed = hasTime(span.start) || hasTime(span.end);
-        const startMin = hasTime(span.start) ? minutesOf(span.start!) : 0;
-        const endMin = hasTime(span.end) ? minutesOf(span.end!) : 24 * 60;
+        const timed = hasTime(span.start);
+        const startMin = timed ? minutesOf(span.start!) : 0;
+        const endMin = timed
+          ? Math.max(hasTime(span.end) ? minutesOf(span.end!) : startMin + 60, startMin + 15)
+          : 0;
         const d = new Date(`${sDay}T00:00`);
         for (let i = 0; i < 366; i++) {
           const k = ymd(d);
-          if (!timed) out.push({ day: k, allDay: true, startMin: 0, endMin: 0 });
-          else {
-            const from = k === sDay ? startMin : 0;
-            const to = k === eDay ? endMin : 24 * 60;
-            // A last day ending at midnight has no part of itself to show.
-            if (to > from) out.push({ day: k, allDay: false, startMin: from, endMin: Math.max(to, from + 15) });
-          }
+          out.push(
+            timed
+              ? { day: k, allDay: false, startMin, endMin }
+              : { day: k, allDay: true, startMin: 0, endMin: 0 },
+          );
           if (k === eDay) break;
           d.setDate(d.getDate() + 1);
         }
@@ -482,7 +489,9 @@ export function CalendarView({
 
   const setViewMode = (v: ViewMode) => {
     setView(v);
-    selectCollection();
+    // Deliberately does NOT select the collection. Choosing how to look at a
+    // calendar is working the calendar; the panel arriving over it every time
+    // you switch is the opposite of what the switch was for.
     void api.patch(`/collections/${collection.id}`, { calendar_view: v }).then(onChanged);
   };
 
@@ -863,7 +872,13 @@ export function CalendarView({
     if (view !== "month" && scrollRef.current) scrollRef.current.scrollTop = 7 * HOUR_H;
   }, [view, anchor]);
 
+  const [slide, setSlide] = useState<"next" | "prev" | null>(null);
+  const slideTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(slideTimer.current), []);
   const step = (dir: -1 | 1) => {
+    setSlide(dir > 0 ? "next" : "prev");
+    clearTimeout(slideTimer.current);
+    slideTimer.current = setTimeout(() => setSlide(null), 260);
     if (view === "day") setAnchor(ymd(addDays(anchorDate, dir)));
     else if (view === "day3") setAnchor(ymd(addDays(anchorDate, dir * 3)));
     else if (view === "week") setAnchor(ymd(addDays(anchorDate, dir * 7)));
@@ -1087,6 +1102,10 @@ export function CalendarView({
         </div>
       )}
 
+      {/* Keyed on the range so a move remounts the body, which is what starts
+          the slide: it comes in from the side you're travelling towards, so
+          the days appear to move under you rather than to be swapped out. */}
+      <div key={rangeStart} className={`cal-slide${slide ? ` cal-slide-${slide}` : ""}`}>
       {view === "month" ? (
         <>
           <div className="cal-dow-row" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
@@ -1110,6 +1129,7 @@ export function CalendarView({
           scrollRef={scrollRef}
         />
       )}
+      </div>
     </div>
   );
 }

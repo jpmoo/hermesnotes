@@ -6275,6 +6275,9 @@ input.cv-add-input {
   flex-direction: column;
   gap: 3px;
   padding: 4px;
+  /* Same reason as the track's minmax(0, …): a flex item's automatic minimum is
+     its content, and these hold text that doesn't wrap. */
+  min-width: 0;
   border-left: 1px solid var(--border);
 }
 .cal-tg-allday-col.today {

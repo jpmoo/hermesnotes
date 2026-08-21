@@ -1203,7 +1203,15 @@ function TimeGrid({
 }) {
   // Wide enough for the "all-day" label to keep a left margin without wrapping
   // (it's the widest thing in the gutter — wider than "12 AM").
-  const template = `62px repeat(${cols}, 1fr)`;
+  /**
+   * minmax(0, 1fr), not 1fr: a plain fr is minmax(auto, 1fr), and that `auto`
+   * floor is the track's min-content width. The all-day chips hold titles that
+   * don't wrap, so a long one made its column refuse to shrink — the band laid
+   * itself out in two wide tracks where the hours below had three, and the
+   * chips ran on across the day beside them. Zero lets a column be as narrow
+   * as its share says, and the labels ellipsis as they were always meant to.
+   */
+  const template = `62px repeat(${cols}, minmax(0, 1fr))`;
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const todayVisible = days.includes(today);

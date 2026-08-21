@@ -412,19 +412,36 @@ export function CalendarView({
   const [matches, setMatches] = useState<Block[]>([]);
   const [queryTick, setQueryTick] = useState(0);
   /**
-   * Show everything dated in range, not only what this collection holds — the
-   * question a day view asks is "what is happening then", and the answer isn't
-   * usually one collection's worth. Day views only: a month of every dated
-   * block is a wall, and the collection is the point there.
+   * Bring in what else is dated in range, a type at a time — the question a day
+   * view asks is "what is happening then", and the answer isn't usually one
+   * collection's worth. A pill per type rather than one switch for the lot,
+   * because "show me my tasks alongside this" and "show me everything I own"
+   * are different requests, and only the first is usually meant.
+   *
+   * Off the month view: a month of every dated block is a wall, and the
+   * collection is the point at that zoom.
    */
   const datedKey = `hn.cal.dated.${collection.id}`;
-  const [showDated, setShowDated] = useState<boolean>(() => {
+  const [datedOn, setDatedOn] = useState<Set<string>>(() => {
     try {
-      return localStorage.getItem(datedKey) === "1";
+      const raw = JSON.parse(localStorage.getItem(datedKey) || "[]") as unknown;
+      return new Set(Array.isArray(raw) ? (raw as string[]) : []);
     } catch {
-      return false;
+      return new Set();
     }
   });
+  const toggleDatedType = (id: string) =>
+    setDatedOn((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(datedKey, JSON.stringify([...next]));
+      } catch {
+        /* private mode: the choice just doesn't outlive the tab */
+      }
+      return next;
+    });
   const [dated, setDated] = useState<Block[]>([]);
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
   const [convertedKeys, setConvertedKeys] = useState<Set<string>>(new Set());
@@ -540,7 +557,10 @@ export function CalendarView({
   }, [rangeStart, rangeEnd, feedTick]);
 
   useEffect(() => {
-    if (!showDated || !isAgenda(view)) {
+    // Fetched even with every pill off, because the pills are built from what
+    // the range actually holds — a type nobody has anything dated in that week
+    // is a pill worth nobody's attention.
+    if (!isAgenda(view)) {
       setDated([]);
       return;
     }
@@ -552,7 +572,7 @@ export function CalendarView({
     return () => {
       alive = false;
     };
-  }, [showDated, view, rangeStart, rangeEnd, queryTick]);
+  }, [view, rangeStart, rangeEnd, queryTick]);
 
   // Subscribed feeds (for the show/hide toggles). Only enabled feeds produce
   // events, so those are the only ones worth toggling.
@@ -669,15 +689,31 @@ export function CalendarView({
       };
     };
     const own = (isSmart ? matches : members).map(toItem);
-    if (!dated.length) return own;
+    const extra = dated.filter((b) => b.blockTypeId && datedOn.has(b.blockTypeId));
+    if (!extra.length) return own;
     // Everything else dated in range, minus what's already here on its own
     // account — a block in the collection shouldn't arrive twice for being
     // dated as well.
     const have = new Set(own.map((x) => x.id));
-    return [...own, ...dated.filter((b) => !have.has(b.id)).map(toItem)];
-  }, [isSmart, matches, members, feedColors, feedNames, dated]);
+    return [...own, ...extra.filter((b) => !have.has(b.id)).map(toItem)];
+  }, [isSmart, matches, members, feedColors, feedNames, dated, datedOn]);
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
+
+  /** The types with something dated in this range, and how much — one pill
+   *  each, and none for a type with nothing to offer. */
+  const datedByType = useMemo(() => {
+    const own = new Set((isSmart ? matches : members).map((b) => b.id));
+    const counts = new Map<string, number>();
+    for (const b of dated) {
+      if (!b.blockTypeId || own.has(b.id)) continue;
+      counts.set(b.blockTypeId, (counts.get(b.blockTypeId) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([id, n]) => ({ type: typeById.get(id), id, n }))
+      .filter((x) => x.type)
+      .sort((a, b) => (a.type!.name ?? "").localeCompare(b.type!.name ?? ""));
+  }, [dated, typeById, isSmart, matches, members]);
 
   // Day → items landing on it.
   const byDay = useMemo(() => {
@@ -982,24 +1018,34 @@ export function CalendarView({
           </button>
         </span>
         <span className="cal-range">{rangeLabel}</span>
-        {isAgenda(view) && (
-          <label className="cal-dated-toggle" title="Show everything with a date on it, not only this collection">
-            <input
-              type="checkbox"
-              checked={showDated}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                const on = e.target.checked;
-                setShowDated(on);
-                try {
-                  localStorage.setItem(datedKey, on ? "1" : "0");
-                } catch {
-                  /* private mode: the choice just doesn't outlive the tab */
-                }
-              }}
-            />
-            Everything dated
-          </label>
+        {isAgenda(view) && datedByType.length > 0 && (
+          // Same pills as the calendars above, doing the same job: naming a
+          // source and saying whether it's in. A type is only offered while it
+          // has something in this range.
+          <span className="cal-dated-toggles" onClick={(e) => e.stopPropagation()}>
+            {datedByType.map(({ type, id, n }) => {
+              const on = datedOn.has(id);
+              return (
+                <button
+                  key={id}
+                  className={`cal-feed-toggle cal-dated-toggle${on ? "" : " off"}`}
+                  // The pill borrows the feed pills' colouring, so it needs a
+                  // colour to borrow it with: the type's own, else the accent.
+                  style={{ ["--feed-color" as string]: type!.iconColor || "var(--accent)" }}
+                  title={`${on ? "Hide" : "Show"} ${n} ${type!.name}${n === 1 ? "" : "s"} dated in this range`}
+                  onClick={() => toggleDatedType(id)}
+                >
+                  <BlockIcon
+                    iconKey={type!.isText ? "type" : type!.iconKey}
+                    color={type!.isText ? null : type!.iconColor}
+                    size={12}
+                  />
+                  {type!.name}
+                  <span className="cal-dated-count">{n}</span>
+                </button>
+              );
+            })}
+          </span>
         )}
         {FIND_ENABLED && (
           <span className="cal-find">

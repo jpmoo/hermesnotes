@@ -6322,18 +6322,28 @@ input.cv-add-input {
   }
 }
 
-/* Show everything dated, not just this collection — beside the range label. */
-.cal-dated-toggle {
+/* What else is dated in range, a type at a time — the same pills the calendars
+   above use, so "which sources am I looking at" has one answer and one shape.
+   The colour comes from the type's own icon rather than a feed's, so these
+   read as the app's own things next to somebody else's calendar. */
+.cal-dated-toggles {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  cursor: pointer;
+  flex-wrap: wrap;
 }
-.cal-dated-toggle input {
-  margin: 0;
+.cal-dated-toggle {
+  gap: 5px;
+}
+/* Off is where these start, so it reads as "not added yet" rather than as
+   something struck out — unlike a calendar, which you switch off deliberately. */
+.cal-dated-toggle.off {
+  text-decoration: none;
+}
+.cal-dated-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+  font-size: 10.5px;
 }
 
 .cal-tg-scroll {

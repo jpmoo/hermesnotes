@@ -6277,6 +6277,35 @@ input.cv-add-input {
 .cal-tg-allday-col.today {
   background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
+/* Every row the same height, so a thing spanning several days sits at the same
+   level on each of them and reads as one bar rather than as chips that happen
+   to be near each other. A row left empty on a day still takes its height —
+   that's what holds the line. */
+.cal-tg-allday-item {
+  height: 22px;
+  flex: none;
+}
+.cal-tg-allday-item > .cal-chip {
+  height: 100%;
+  width: 100%;
+}
+.cal-tg-allday-gap {
+  pointer-events: none;
+}
+
+/* Show everything dated, not just this collection — beside the range label. */
+.cal-dated-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.cal-dated-toggle input {
+  margin: 0;
+}
 
 .cal-tg-scroll {
   max-height: 58vh;

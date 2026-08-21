@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   filterQuerySchema,
   isComplete,
+  datedInRange,
   nextSpan,
   normalizeFilter,
   oneLineLabel,
@@ -622,6 +623,54 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     );
     reply.code(201);
     return { block: row, rewritten: carriers.map((c) => c.id) };
+  });
+
+  /**
+   * Everything dated within a range, whatever type it is.
+   *
+   * A calendar collection shows what belongs to it. This answers the other
+   * question a day view asks — what else is happening then — across every type
+   * that carries a date at all, so a day can be read as a day rather than as
+   * one collection's slice of it.
+   *
+   * Scanned rather than queried: "any dated field touches these days" isn't
+   * something the filter language can say, since a datespan is an object and the
+   * key it lives under is named by each type for itself. The range is small (a
+   * day or three), the candidate cap is the same one the Today sheet uses, and
+   * the alternative is asking every type its own question.
+   */
+  app.get("/blocks/dated", async (req) => {
+    const userId = requireUser(req);
+    const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+    const { start, end } = z.object({ start: DAY, end: DAY }).parse(req.query);
+    if (end < start) throw badRequest("end is before start");
+
+    const types = await db
+      .select({ id: blockTypes.id, propertySchema: blockTypes.propertySchema })
+      .from(blockTypes)
+      .where(eq(blockTypes.ownerId, userId));
+    const schemaById = new Map(types.map((t) => [t.id, t.propertySchema]));
+
+    const candidates = await db
+      .select(blockView)
+      .from(blocks)
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          sql`${blocks.collectionKind} IS NULL`,
+          sql`${blocks.archivedAt} IS NULL`,
+        ),
+      )
+      .limit(2000);
+
+    return candidates.filter((b) =>
+      datedInRange(
+        b.blockTypeId ? schemaById.get(b.blockTypeId) ?? null : null,
+        (b.properties ?? {}) as Record<string, unknown>,
+        start,
+        end,
+      ),
+    );
   });
 
   /**

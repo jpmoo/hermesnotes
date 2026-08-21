@@ -162,3 +162,46 @@ export function isComplete(
   const current = properties[schema.status_field];
   return typeof current === "string" && schema.complete_values.includes(current);
 }
+
+/** The calendar day a stored date/datetime belongs to, or null if it isn't one. */
+export function dayOf(v: unknown): string | null {
+  if (typeof v !== "string" || !v) return null;
+  const d = v.split("T")[0];
+  return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
+/**
+ * Whether any dated field on a block touches the days [start, end], inclusive.
+ *
+ * Dates only: the time of day says where something sits on a day, never which
+ * day it belongs to. A datespan counts if it overlaps the range at all — a task
+ * available Monday and due Friday is a Wednesday's business too, which is the
+ * whole reason a range asks rather than each day asking separately.
+ */
+export function datedInRange(
+  schema: PropertySchema | null | undefined,
+  props: Record<string, unknown>,
+  start: string,
+  end: string,
+): boolean {
+  if (!schema) return false;
+  for (const f of schema.fields) {
+    if (f.type === "datetime" || f.type === "date") {
+      const d = dayOf(props[f.key]);
+      if (d && d >= start && d <= end) return true;
+    } else if (f.type === "datespan") {
+      const span = props[f.key] as { start?: unknown; end?: unknown } | undefined;
+      if (!span || typeof span !== "object") continue;
+      const s = dayOf(span.start);
+      const e = dayOf(span.end);
+      if (s && e) {
+        if (s <= end && e >= start) return true;
+      } else if (s) {
+        if (s >= start && s <= end) return true;
+      } else if (e) {
+        if (e >= start && e <= end) return true;
+      }
+    }
+  }
+  return false;
+}

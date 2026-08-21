@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   addToDefaults,
   carryForward,
+  datedInRange,
   composeTodayLayout,
   DAILY_TEMPLATE_PREF,
   fromMark,
@@ -244,22 +245,7 @@ function isRelevant(
   props: Record<string, unknown>,
   date: string,
 ): boolean {
-  if (!schema) return false;
-  for (const f of schema.fields) {
-    if (f.type === "datetime" || f.type === "date") {
-      if (dateOf(props[f.key]) === date) return true;
-    } else if (f.type === "datespan") {
-      const span = props[f.key] as { start?: unknown; end?: unknown } | undefined;
-      if (span && typeof span === "object") {
-        const s = dateOf(span.start);
-        const e = dateOf(span.end);
-        if (s && s === date) return true;
-        if (e && e === date) return true;
-        if (s && e && s <= date && date <= e) return true;
-      }
-    }
-  }
-  return false;
+  return datedInRange(schema, props, date, date);
 }
 
 /** Where the cross-day ("all Dailies" / "today-forward") default layout lives. */

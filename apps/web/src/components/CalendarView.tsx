@@ -19,12 +19,15 @@ import { FeedDiagnostics } from "./FeedDiagnostics.tsx";
  * reschedule by editing the card. The status chip stays interactive.
  */
 
-type ViewMode = "month" | "week" | "day3";
+type ViewMode = "month" | "week" | "day3" | "day";
 const VIEWS: { key: ViewMode; label: string }[] = [
   { key: "month", label: "Month" },
   { key: "week", label: "Week" },
   { key: "day3", label: "3-day" },
+  { key: "day", label: "Day" },
 ];
+/** Views that show hours down the side, and can carry everything else dated. */
+const isAgenda = (v: ViewMode) => v === "day" || v === "day3";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -275,11 +278,28 @@ function blockPlacements(schema: PropertySchema | null | undefined, props: Recor
       const eDay = span.end?.slice(0, 10) || sDay;
       if (!sDay && !eDay) continue;
       if (eDay > sDay) {
-        // Multi-day span: an all-day band on each covered day.
+        /**
+         * A span across days is on every day between its ends — a task
+         * available Monday and due Friday is Wednesday's business too.
+         *
+         * With times, each day gets the part of itself the span covers: the
+         * first from its start to midnight, the last from midnight to its end,
+         * and the days between in full. Without them there's nothing to place
+         * it against, so it's an all-day band instead.
+         */
+        const timed = hasTime(span.start) || hasTime(span.end);
+        const startMin = hasTime(span.start) ? minutesOf(span.start!) : 0;
+        const endMin = hasTime(span.end) ? minutesOf(span.end!) : 24 * 60;
         const d = new Date(`${sDay}T00:00`);
         for (let i = 0; i < 366; i++) {
           const k = ymd(d);
-          out.push({ day: k, allDay: true, startMin: 0, endMin: 0 });
+          if (!timed) out.push({ day: k, allDay: true, startMin: 0, endMin: 0 });
+          else {
+            const from = k === sDay ? startMin : 0;
+            const to = k === eDay ? endMin : 24 * 60;
+            // A last day ending at midnight has no part of itself to show.
+            if (to > from) out.push({ day: k, allDay: false, startMin: from, endMin: Math.max(to, from + 15) });
+          }
           if (k === eDay) break;
           d.setDate(d.getDate() + 1);
         }
@@ -364,12 +384,12 @@ export function CalendarView({
   const [view, setView] = useState<ViewMode>(
     ((): ViewMode => {
       const v = props.calendar_view;
-      return v === "week" || v === "day3" ? v : "month";
+      return v === "week" || v === "day3" || v === "day" ? v : "month";
     })(),
   );
   useEffect(() => {
     const v = collection.properties.calendar_view;
-    setView(v === "week" || v === "day3" ? v : "month");
+    setView(v === "week" || v === "day3" || v === "day" ? v : "month");
   }, [collection.properties.calendar_view]);
 
   // The day this view is about: the real today, or — embedded on a Today sheet
@@ -384,6 +404,21 @@ export function CalendarView({
   useEffect(() => setAnchor(today), [today]);
   const [matches, setMatches] = useState<Block[]>([]);
   const [queryTick, setQueryTick] = useState(0);
+  /**
+   * Show everything dated in range, not only what this collection holds — the
+   * question a day view asks is "what is happening then", and the answer isn't
+   * usually one collection's worth. Day views only: a month of every dated
+   * block is a wall, and the collection is the point there.
+   */
+  const datedKey = `hn.cal.dated.${collection.id}`;
+  const [showDated, setShowDated] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(datedKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [dated, setDated] = useState<Block[]>([]);
   const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
   const [convertedKeys, setConvertedKeys] = useState<Set<string>>(new Set());
   const [feedTick, setFeedTick] = useState(0);
@@ -455,6 +490,7 @@ export function CalendarView({
 
   // Visible days for the current view.
   const days = useMemo<string[]>(() => {
+    if (view === "day") return [anchor];
     if (view === "day3") return [-1, 0, 1].map((n) => ymd(addDays(anchorDate, n)));
     if (view === "week") {
       const start = addDays(anchorDate, -anchorDate.getDay());
@@ -493,6 +529,21 @@ export function CalendarView({
       clearTimeout(again);
     };
   }, [rangeStart, rangeEnd, feedTick]);
+
+  useEffect(() => {
+    if (!showDated || !isAgenda(view)) {
+      setDated([]);
+      return;
+    }
+    let alive = true;
+    void api
+      .get<Block[]>(`/blocks/dated?start=${rangeStart}&end=${rangeEnd}`)
+      .then((r) => alive && setDated(r))
+      .catch(() => alive && setDated([]));
+    return () => {
+      alive = false;
+    };
+  }, [showDated, view, rangeStart, rangeEnd, queryTick]);
 
   // Subscribed feeds (for the show/hide toggles). Only enabled feeds produce
   // events, so those are the only ones worth toggling.
@@ -608,8 +659,14 @@ export function CalendarView({
         version: b.version,
       };
     };
-    return (isSmart ? matches : members).map(toItem);
-  }, [isSmart, matches, members, feedColors, feedNames]);
+    const own = (isSmart ? matches : members).map(toItem);
+    if (!dated.length) return own;
+    // Everything else dated in range, minus what's already here on its own
+    // account — a block in the collection shouldn't arrive twice for being
+    // dated as well.
+    const have = new Set(own.map((x) => x.id));
+    return [...own, ...dated.filter((b) => !have.has(b.id)).map(toItem)];
+  }, [isSmart, matches, members, feedColors, feedNames, dated]);
 
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
@@ -700,7 +757,7 @@ export function CalendarView({
   // entries (blocks and feed events together).
   const timeGrid = useMemo(() => {
     const visible = new Set(days);
-    const perDay = new Map<string, { allDay: GridRef[]; timed: TimedEntry[] }>();
+    const perDay = new Map<string, { allDay: (GridRef | null)[]; timed: TimedEntry[] }>();
     const rawTimed = new Map<string, Omit<TimedEntry, "lane" | "lanes">[]>();
     for (const d of days) {
       perDay.set(d, { allDay: [], timed: [] });
@@ -726,8 +783,79 @@ export function CalendarView({
       }
     }
     for (const d of days) perDay.get(d)!.timed = layoutLanes(rawTimed.get(d)!);
+
+    /**
+     * Give each all-day thing a row it keeps for every day it covers, so a
+     * span reads as one bar running across the days rather than as separate
+     * chips at whatever height each day happened to stack them to. Days it
+     * doesn't cover leave that row empty, which is what holds the line.
+     *
+     * Lowest free row wins, longest spans first — so the things that have to
+     * stay level across the most days claim their row before anything shorter
+     * can sit in the middle of it.
+     */
+    const spans = new Map<string, { ref: GridRef; days: string[] }>();
+    for (const d of days) {
+      for (const ref of perDay.get(d)!.allDay) {
+        if (!ref) continue; // gaps arrive below; nothing is holding one yet
+        const key = ref.kind === "block" ? `b:${ref.item.id}` : `f:${ref.event.feedId}:${ref.event.uid}`;
+        const hit = spans.get(key);
+        if (hit) hit.days.push(d);
+        else spans.set(key, { ref, days: [d] });
+      }
+    }
+    const taken = new Map<string, Set<number>>(days.map((d) => [d, new Set<number>()]));
+    const rowed = new Map<string, (GridRef | null)[]>(days.map((d) => [d, []]));
+    const ordered = [...spans.values()].sort(
+      (a, b) => b.days.length - a.days.length || (a.days[0]! < b.days[0]! ? -1 : 1),
+    );
+    for (const span of ordered) {
+      let row = 0;
+      while (span.days.some((d) => taken.get(d)!.has(row))) row += 1;
+      for (const d of span.days) {
+        taken.get(d)!.add(row);
+        const list = rowed.get(d)!;
+        while (list.length <= row) list.push(null);
+        list[row] = span.ref;
+      }
+    }
+    for (const d of days) perDay.get(d)!.allDay = rowed.get(d)!;
     return perDay;
   }, [source, feedEvents, convertedKeys, hiddenFeeds, days, typeById]);
+
+  /**
+   * Two fingers sideways moves to the next range, the way a trackpad moves
+   * anything else sideways. A horizontal wheel is what that gesture arrives as;
+   * the guard is that it has to be plainly horizontal and plainly deliberate,
+   * or scrolling the hours would drag the days along with it.
+   *
+   * One gesture is one step: a swipe arrives as a burst of events, and the
+   * latch only lifts once they stop coming.
+   */
+  const swipeRef = useRef<HTMLDivElement>(null);
+  // Reached through a ref so the listener is bound once rather than on every
+  // render — `step` is rebuilt each time the anchor moves.
+  const stepRef = useRef<(dir: -1 | 1) => void>(() => {});
+  const swiping = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    const el = swipeRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // pinch-zoom, not a swipe
+      if (Math.abs(e.deltaX) < 24 || Math.abs(e.deltaX) < Math.abs(e.deltaY) * 1.4) return;
+      e.preventDefault();
+      if (swiping.current) {
+        // Still the same gesture — keep the latch shut until it settles.
+        clearTimeout(swiping.current);
+        swiping.current = setTimeout(() => (swiping.current = undefined), 260);
+        return;
+      }
+      swiping.current = setTimeout(() => (swiping.current = undefined), 260);
+      stepRef.current(e.deltaX > 0 ? 1 : -1);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Open the time grid scrolled to the morning (7am) rather than midnight.
@@ -736,17 +864,19 @@ export function CalendarView({
   }, [view, anchor]);
 
   const step = (dir: -1 | 1) => {
-    if (view === "day3") setAnchor(ymd(addDays(anchorDate, dir * 3)));
+    if (view === "day") setAnchor(ymd(addDays(anchorDate, dir)));
+    else if (view === "day3") setAnchor(ymd(addDays(anchorDate, dir * 3)));
     else if (view === "week") setAnchor(ymd(addDays(anchorDate, dir * 7)));
     else setAnchor(ymd(new Date(anchorDate.getFullYear(), anchorDate.getMonth() + dir, 1)));
   };
+  stepRef.current = step;
 
   const rangeLabel =
     view === "month"
       ? `${MONTHS[anchorDate.getMonth()]} ${anchorDate.getFullYear()}`
       : `${fmtShort(days[0]!)} – ${fmtShort(days[days.length - 1]!)}, ${anchorDate.getFullYear()}`;
 
-  const cols = view === "day3" ? 3 : 7;
+  const cols = view === "day3" ? 3 : view === "day" ? 1 : 7;
   const dayCell = (d: string) => {
     const items = byDay.get(d) ?? [];
     const feedItems = feedByDay.get(d) ?? [];
@@ -792,7 +922,7 @@ export function CalendarView({
   };
 
   return (
-    <div className="cal-wrap" onClick={selectCollection}>
+    <div className="cal-wrap" ref={swipeRef} onClick={selectCollection}>
       <div className="cal-toolbar">
         <span className="segmented">
           {VIEWS.map((v) => (
@@ -837,6 +967,25 @@ export function CalendarView({
           </button>
         </span>
         <span className="cal-range">{rangeLabel}</span>
+        {isAgenda(view) && (
+          <label className="cal-dated-toggle" title="Show everything with a date on it, not only this collection">
+            <input
+              type="checkbox"
+              checked={showDated}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setShowDated(on);
+                try {
+                  localStorage.setItem(datedKey, on ? "1" : "0");
+                } catch {
+                  /* private mode: the choice just doesn't outlive the tab */
+                }
+              }}
+            />
+            Everything dated
+          </label>
+        )}
         {FIND_ENABLED && (
           <span className="cal-find">
           <Search size={13} />
@@ -981,7 +1130,7 @@ function TimeGrid({
   days: string[];
   cols: number;
   today: string;
-  grid: Map<string, { allDay: GridRef[]; timed: TimedEntry[] }>;
+  grid: Map<string, { allDay: (GridRef | null)[]; timed: TimedEntry[] }>;
   types: BlockType[];
   onStatus: (item: Item, field: FieldDef, next: string) => void;
   scrollRef: React.RefObject<HTMLDivElement>;
@@ -1018,9 +1167,14 @@ function TimeGrid({
         <span className="cal-tg-allday-label">all-day</span>
         {days.map((d) => (
           <div key={d} className={`cal-tg-allday-col${d === today ? " today" : ""}`}>
-            {(grid.get(d)?.allDay ?? []).map((ref) => (
-              <div key={ref.key} className="cal-tg-allday-item">{renderRef(ref)}</div>
-            ))}
+            {(grid.get(d)?.allDay ?? []).map((ref, row) =>
+              ref ? (
+                <div key={ref.key} className="cal-tg-allday-item">{renderRef(ref)}</div>
+              ) : (
+                // Holds the row open so the bar either side of it stays level.
+                <div key={`gap:${row}`} className="cal-tg-allday-item cal-tg-allday-gap" />
+              ),
+            )}
           </div>
         ))}
       </div>

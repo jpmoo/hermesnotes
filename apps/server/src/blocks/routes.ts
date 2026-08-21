@@ -131,7 +131,17 @@ async function rewriteReferences(
         embedSource,
         embedSourceHash: null, // re-embed with the corrected text
         version: sql`${blocks.version} + 1`,
-        updatedAt: new Date(),
+        // Deliberately does NOT stamp `updated_at`. Nobody edited these notes:
+        // they named something whose name changed, and this is the app keeping
+        // its own references true. Stamping it said otherwise, and loudly —
+        // rename one block, or turn one placeholder into a real one, and every
+        // note that ever mentioned it claimed to have been edited today, which
+        // is how a day's "created or edited" filled up with things last touched
+        // weeks ago.
+        //
+        // `version` still moves: the text really did change, and an editor
+        // holding the old one has to be told rather than allowed to write the
+        // old label back over it.
       })
       .where(and(eq(blocks.id, row.id), eq(blocks.ownerId, userId)));
     changed++;
@@ -140,7 +150,8 @@ async function rewriteReferences(
 }
 
 /** A block's title changed: update raw `@Old_Title` tokens and the labels of
- * markdown `[label](block:<id>)` links that point at it. */
+ * markdown `[label](block:<id>)` links that point at it. Bookkeeping, so the
+ * notes doing the pointing aren't marked as edited — see rewriteReferences. */
 async function propagateTitleRename(
   userId: string,
   blockId: string,

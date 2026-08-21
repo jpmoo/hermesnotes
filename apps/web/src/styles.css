@@ -6052,6 +6052,20 @@ input.cv-add-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Finished, and still on the day it was finished. Muted rather than gone: it
+   says the day is done with rather than that nothing happened, and the status
+   is still there to press if it turns out not to be. Not struck through — the
+   status icon already says it, and a struck title is harder to read back. */
+.cal-chip.cal-chip-done {
+  opacity: 0.55;
+}
+.cal-chip.cal-chip-done:hover {
+  opacity: 1;
+}
+.cal-chip.cal-chip-done .cal-chip-label {
+  color: var(--text-muted);
+}
+
 .cal-chip-overdue {
   width: 7px;
   height: 7px;

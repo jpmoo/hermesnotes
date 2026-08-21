@@ -1,4 +1,4 @@
-import { optionLabel } from "@hermes/shared";
+import { isComplete, optionLabel } from "@hermes/shared";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -146,6 +146,9 @@ function Chip({
   const status = statusField ? String(item.props[statusField.key] ?? "") : "";
   const asOf = useAsOf();
   const dates = dateBits(t?.propertySchema ?? null, item.props, asOf);
+  // Finished, but still here: a done thing is worth seeing on the day it was
+  // done, and worth being able to put back if it wasn't.
+  const done = t?.propertySchema ? isComplete(t.propertySchema, item.props) : false;
   const cycle = () => {
     if (!statusField) return;
     const opts = statusField.options ?? [];
@@ -155,7 +158,9 @@ function Chip({
   };
   return (
     <div
-      className={`cal-chip${hit ? " cal-hit" : ""}${item.feedColor ? " cal-from-feed" : ""}`}
+      className={`cal-chip${hit ? " cal-hit" : ""}${item.feedColor ? " cal-from-feed" : ""}${
+        done ? " cal-chip-done" : ""
+      }`}
       data-block-id={item.id}
       title={item.feedName ? `${item.label} — from ${item.feedName}` : undefined}
       style={item.feedColor ? { ["--feed-color" as string]: item.feedColor } : undefined}
@@ -885,8 +890,22 @@ export function CalendarView({
     }
     const taken = new Map<string, Set<number>>(days.map((d) => [d, new Set<number>()]));
     const rowed = new Map<string, (GridRef | null)[]>(days.map((d) => [d, []]));
+    /**
+     * Finished things take the rows underneath. They stay — a task done on
+     * Tuesday belongs on Tuesday, and putting it back to active is a click on
+     * the status it's already wearing — but they sink, so what's still to do
+     * is what's at the top of the day.
+     */
+    const isDone = (ref: GridRef) => {
+      if (ref.kind !== "block") return false;
+      const schema = ref.item.blockTypeId ? typeById.get(ref.item.blockTypeId)?.propertySchema : null;
+      return schema ? isComplete(schema, ref.item.props) : false;
+    };
     const ordered = [...spans.values()].sort(
-      (a, b) => b.days.length - a.days.length || (a.days[0]! < b.days[0]! ? -1 : 1),
+      (a, b) =>
+        Number(isDone(a.ref)) - Number(isDone(b.ref)) ||
+        b.days.length - a.days.length ||
+        (a.days[0]! < b.days[0]! ? -1 : 1),
     );
     for (const span of ordered) {
       let row = 0;

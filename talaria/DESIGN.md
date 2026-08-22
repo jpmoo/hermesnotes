@@ -94,27 +94,37 @@ it can archive but never hard-delete. This is a gift: the brief's "read-first"
 posture is enforced by the server rather than by our good intentions. Nothing in
 Talaria should try to route around it.
 
-### F5 — Xcode is not installed on this machine, and Phase 3 needs it
+### F5 — Phase 3's toolchain is present (resolved 2026-08-22)
 
-```
-xcode-select -p  →  /Library/Developer/CommandLineTools
-xcodebuild       →  error: requires Xcode
-swift --version  →  Apple Swift 6.4, target arm64-apple-macosx27.0.0
-```
+Recorded as a blocker when this document was first written; resolved the same
+day. Kept rather than deleted because *why* Phase 3 needs it is still load-bearing.
 
-Swift itself is present. Xcode is not. App Intents requires a build-time
-metadata extraction pass (`appintentsmetadataprocessor`) that produces the
-`Metadata.appintents` bundle the system reads to discover intents; it is driven
-by the Xcode build system and depends on Swift reflection metadata being emitted
-at the default level. A SwiftPM-only build does not run it, and an app bundle
-without that metadata exposes no intents at all — silently, which is the worst
-failure mode available.
+App Intents requires a build-time metadata extraction pass
+(`appintentsmetadataprocessor`) that produces the `Metadata.appintents` bundle
+the system reads to discover intents. It is driven by the Xcode build system, not
+by `swiftc`. A SwiftPM-only build does not run it, and an app bundle without that
+metadata exposes no intents at all — silently, which is the worst failure mode
+available. Command Line Tools alone cannot do it.
 
-**Phase 3 is blocked until Xcode is installed.** Phases 1 and 2 are not: Phase 1
-is pure daemon work, and Phase 2's CoreSpotlight indexing needs a *bundle
-identity*, not Xcode — see §7.
+Xcode-beta 27.0 (build `27A5237l`) is now installed, and everything the phase
+needs is in it:
 
-This should be resolved before Phase 1 finishes, not discovered at Phase 3.
+| | |
+|---|---|
+| `appintentsmetadataprocessor` | present in `XcodeDefault.xctoolchain/usr/bin` |
+| `appintentsnltrainingprocessor` | present — this is what builds the Siri phrase model |
+| `AppIntents.framework` | present in the MacOSX 27.0 SDK |
+| `CoreSpotlight.framework` | present in the MacOSX 27.0 SDK |
+| Swift | 6.4, targeting `arm64-apple-macosx27.0.0` |
+
+**One step outstanding, and it needs a password:** `xcode-select` still points at
+`/Library/Developer/CommandLineTools`, so `xcodebuild` refuses to run. Until
+`sudo xcode-select -s /Applications/Xcode-beta.app/Contents/Developer` is run and
+the license accepted, the toolchain is installed but not active.
+
+Note the pairing: Xcode **beta** 27.0 against macOS **beta** 27.0 (F6). That is
+the correct pairing — a released Xcode would not carry the 27.0 SDK — but it
+means both halves of the Phase 3 toolchain are pre-release.
 
 ### F6 — This machine is on a beta OS
 
@@ -526,8 +536,9 @@ deliberately outside the pnpm graph.
 **Swift:** no third-party packages. `AppIntents`, `CoreSpotlight`,
 `UniformTypeIdentifiers`, `Network` — all system frameworks.
 
-**Toolchain gap:** **Xcode must be installed** (F5). Currently only Command Line
-Tools are present.
+**Toolchain:** Xcode-beta 27.0 with the macOS 27.0 SDK, carrying
+`appintentsmetadataprocessor` and both frameworks (F5). Active developer
+directory still needs switching to it.
 
 ---
 
@@ -568,7 +579,10 @@ Checked against Apple's documentation rather than recall, on 2026-08-22:
    the app over the UDS socket and the app calls `CSSearchableIndex`.
 
 2. **App Intents metadata is an Xcode build-system product** (F5). Absent it,
-   intents are not discovered and the failure is silence.
+   intents are not discovered and the failure is silence. The tooling is now
+   present; `talaria doctor` should still assert that the built bundle actually
+   contains `Metadata.appintents`, because a misconfigured build fails quietly
+   rather than loudly.
 
 **`talaria doctor` should exist from Phase 1, not Phase 4.** Everything above
 fails silently. Checks: Node path resolves, socket present and 0600, bearer
@@ -597,7 +611,8 @@ Calendar/Reminders/Contacts.
 
 1. **The block count** (§1.3) — one `curl`, decides whether the sync endpoint is
    required or merely correct.
-2. **A decision on Xcode** (F5) — Phases 1 and 2 proceed without it; Phase 3
-   cannot start.
+2. ~~**A decision on Xcode**~~ — resolved (F5). Xcode-beta 27.0 is installed
+   and complete; only `sudo xcode-select -s` remains, and that is a password
+   step rather than a decision.
 3. **Sign-off on the core endpoint** (§6) — it is the only thing here that
    touches Hermes proper.

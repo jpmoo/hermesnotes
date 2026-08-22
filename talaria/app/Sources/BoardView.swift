@@ -129,6 +129,8 @@ struct BoardView: View {
             if let board = model.board {
                 if board.kind == "calendar" {
                     AgendaView(model: model.agenda)
+                } else if board.rollup {
+                    rollup(board.groups)
                 } else if board.canvas {
                     CanvasBoard(board: board, model: model)
                 } else if board.gridded {
@@ -211,6 +213,46 @@ struct BoardView: View {
                 ForEach(cards) { card in CardRow(card: card, model: model) }
                 if cards.isEmpty {
                     Text("Nothing in this collection")
+                        .font(Theme.body(11)).foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 20)
+                }
+            }
+            .padding(10)
+        }
+    }
+
+    /// A rollup: a heading per bucket, with what hangs under it.
+    private func rollup(_ groups: [Daemon.Group]) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+                ForEach(groups) { group in
+                    Section {
+                        VStack(spacing: 3) {
+                            ForEach(group.children) { child in CardRow(card: child, model: model) }
+                            if group.children.isEmpty {
+                                Text("nothing under this")
+                                    .font(Theme.body(10.5)).foregroundStyle(.tertiary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.leading, 6)
+                            }
+                        }
+                    } header: {
+                        HStack(spacing: 6) {
+                            Text(group.title).font(Theme.chrome(11, weight: .semibold))
+                            Text("\(group.children.count)")
+                                .font(Theme.chrome(9.5)).foregroundStyle(.secondary)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Color.secondary.opacity(0.13)))
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                        .background(Rectangle().fill(.background))
+                        .contentShape(Rectangle())
+                        .onTapGesture { if let u = URL(string: group.url) { NSWorkspace.shared.open(u) } }
+                    }
+                }
+                if groups.isEmpty {
+                    Text("Nothing rolls up here")
                         .font(Theme.body(11)).foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity).padding(.vertical, 20)
                 }
@@ -332,14 +374,20 @@ private struct CardRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
-            Button { model.complete(card) } label: {
-                Image(systemName: card.done ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 12))
-                    .foregroundStyle(card.done ? Theme.accent : .secondary)
+            if card.completable {
+                Button { model.complete(card) } label: {
+                    Image(systemName: card.done ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 12))
+                        .foregroundStyle(card.done ? Theme.accent : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(card.done ? "Already done" : "Mark complete")
+                .disabled(card.done)
+            } else {
+                // No status to set — a checkbox here would offer nonsense.
+                Image(systemName: Theme.symbol(forTool: card.typeName))
+                    .font(.system(size: 11)).foregroundStyle(.tertiary)
             }
-            .buttonStyle(.borderless)
-            .help(card.done ? "Already done" : "Mark complete")
-            .disabled(card.done)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(card.title)

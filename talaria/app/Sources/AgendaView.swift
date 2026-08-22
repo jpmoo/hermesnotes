@@ -14,7 +14,9 @@ import SwiftUI
 final class AgendaModel: ObservableObject {
     @Published var days: [Daemon.AgendaDay] = []
     @Published var types: [String] = []
+    @Published var feeds: [Daemon.Feed] = []
     @Published var hidden: Set<String> = []
+    @Published var hiddenFeeds: Set<String> = []
     @Published var feedStale = false
     @Published var error: String?
     @Published var busy = false
@@ -32,14 +34,34 @@ final class AgendaModel: ObservableObject {
     var isToday: Bool { date == AgendaModel.todayISO() }
 
     private let hiddenKey = "talaria.agenda.hiddenTypes"
+    private let hiddenFeedsKey = "talaria.agenda.hiddenFeeds"
 
     init() {
         hidden = Set(UserDefaults.standard.stringArray(forKey: hiddenKey) ?? [])
+        hiddenFeeds = Set(UserDefaults.standard.stringArray(forKey: hiddenFeedsKey) ?? [])
     }
 
     func toggle(_ type: String) {
         if hidden.contains(type) { hidden.remove(type) } else { hidden.insert(type) }
         UserDefaults.standard.set(Array(hidden), forKey: hiddenKey)
+    }
+
+    func toggleFeed(_ id: String) {
+        if hiddenFeeds.contains(id) { hiddenFeeds.remove(id) } else { hiddenFeeds.insert(id) }
+        UserDefaults.standard.set(Array(hiddenFeeds), forKey: hiddenFeedsKey)
+    }
+
+    /// Tick a task off from here. The daemon queues it if Hermes is away, and
+    /// reloading shows it struck through either way.
+    func complete(_ item: Daemon.AgendaItem) {
+        Task.detached(priority: .userInitiated) { [self] in
+            do {
+                try Daemon.write(["kind": "complete", "blockId": item.id])
+            } catch {
+                await MainActor.run { self.error = "\(error)" }
+            }
+            await MainActor.run { self.load() }
+        }
     }
 
     func load() {
@@ -50,6 +72,7 @@ final class AgendaModel: ObservableObject {
                 await MainActor.run {
                     self.days = a.days
                     self.types = a.types
+                    self.feeds = a.feeds
                     self.feedStale = a.feedStale
                     self.error = nil
                     self.busy = false
@@ -77,7 +100,7 @@ struct AgendaView: View {
                         ForEach(visibleDays, id: \.date) { day in
                             Section {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    ForEach(day.events, id: \.uid) { event in feedRow(event) }
+                                    ForEach(events(day), id: \.uid) { event in feedRow(event) }
                                     ForEach(sorted(day.items), id: \.id) { item in itemRow(item) }
                                 }
                             } header: {
@@ -98,17 +121,19 @@ struct AgendaView: View {
     /// re-filter every time you open it is one you stop opening.
     private var typeBar: some View {
         HStack(spacing: 6) {
+            // Feeds first, each in its own colour, then the other dated types.
+            // Events themselves aren't offered: a calendar you can switch the
+            // calendar off in is a strange object, and the web app doesn't.
+            ForEach(model.feeds) { feed in
+                pill(feed.name,
+                     on: !model.hiddenFeeds.contains(feed.id),
+                     tint: Color(hex: feed.color) ?? Theme.accent) { model.toggleFeed(feed.id) }
+            }
+            if !model.feeds.isEmpty && !model.types.isEmpty {
+                Divider().frame(height: 12)
+            }
             ForEach(model.types, id: \.self) { type in
-                let on = !model.hidden.contains(type)
-                Button { model.toggle(type) } label: {
-                    Text(type)
-                        .font(Theme.chrome(10.5, weight: on ? .semibold : .regular))
-                        .foregroundStyle(on ? Theme.accentInk : Color.secondary)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(on ? Theme.accent.opacity(0.20) : Color.secondary.opacity(0.10)))
-                        .overlay(Capsule().strokeBorder(on ? Theme.accent.opacity(0.45) : .clear, lineWidth: 0.75))
-                }
-                .buttonStyle(.plain)
+                pill(type, on: !model.hidden.contains(type), tint: Theme.accent) { model.toggle(type) }
             }
             Spacer()
             if model.feedStale {
@@ -127,12 +152,28 @@ struct AgendaView: View {
             .sorted { a, b in a.done == b.done ? (a.at ?? "") < (b.at ?? "") : (!a.done && b.done) }
     }
 
+    private func pill(_ label: String, on: Bool, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(Theme.chrome(10.5, weight: on ? .semibold : .regular))
+                .foregroundStyle(on ? AnyShapeStyle(Theme.accentInk) : AnyShapeStyle(.secondary))
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .background(Capsule().fill(tint.opacity(on ? 0.25 : 0.08)))
+                .overlay(Capsule().strokeBorder(on ? tint.opacity(0.6) : .clear, lineWidth: 0.75))
+        }
+        .buttonStyle(.plain)
+    }
+
     /// Only days with something on them. A fortnight of empty headings is a
     /// lot of scrolling to learn nothing.
     private var visibleDays: [Daemon.AgendaDay] {
         model.days.filter { day in
-            !day.events.isEmpty || day.items.contains { !model.hidden.contains($0.typeName) }
+            !events(day).isEmpty || !sorted(day.items).isEmpty
         }
+    }
+
+    private func events(_ day: Daemon.AgendaDay) -> [Daemon.FeedEvent] {
+        day.events.filter { !model.hiddenFeeds.contains($0.feedId) }
     }
 
     private func header(_ date: String) -> some View {
@@ -191,9 +232,21 @@ struct AgendaView: View {
 
     private func itemRow(_ item: Daemon.AgendaItem) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: item.done ? "checkmark.square.fill" : Theme.symbol(forCollection: nil))
-                .font(.system(size: 11))
-                .foregroundStyle(item.done ? Theme.accent : Color.secondary)
+            if item.completable {
+                Button { model.complete(item) } label: {
+                    Image(systemName: item.done ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 12))
+                        .foregroundStyle(item.done ? Theme.accent : Color.secondary)
+                }
+                .buttonStyle(.borderless)
+                .disabled(item.done)
+                .help(item.done ? "Already done" : "Mark complete")
+            } else {
+                // Nothing to tick: this is a note or a person that happens to
+                // carry a date, so it gets a mark of what it is instead.
+                Image(systemName: Theme.symbol(forTool: item.typeName))
+                    .font(.system(size: 11)).foregroundStyle(.tertiary)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(Theme.body(11.5))

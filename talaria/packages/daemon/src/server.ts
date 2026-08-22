@@ -240,6 +240,10 @@ export function buildServer(deps: {
     // A canvas places its members at coordinates rather than in an order, and
     // carries loose notes and connections of its own on the collection block.
     const isCanvas = row.collectionKind === "canvas";
+    // A rollup owns no memberships at all — it is a nesting view over blocks
+    // that live elsewhere, so looking for members finds nothing and it appeared
+    // empty. It has to be resolved rather than read.
+    const isRollup = row.collectionKind === "rollup";
     const props = row.properties ?? {};
     const cols = gridded ? Math.min(6, Math.max(1, Number(props.matrix_cols) || 2)) : 1;
     const rows = gridded ? Math.min(6, Math.max(1, Number(props.matrix_rows) || 2)) : 0;
@@ -280,6 +284,9 @@ export function buildServer(deps: {
       const card = {
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
+        // A checkbox only belongs on something that can be completed. A note or
+        // a person has no status, and offering to tick one is offering nonsense.
+        completable: c.completion !== null,
         due: c.schedule?.end?.value ?? null, tags: c.tags, url: c.url,
         // Only meaningful on a canvas; null everywhere else. Size comes with
         // position: a canvas node is a box someone sized on purpose, and
@@ -345,6 +352,78 @@ export function buildServer(deps: {
           .filter((e) => e.from && e.to)
       : [];
 
+    // A rollup: each root is a heading, and each level says how to find what
+    // belongs under it — blocks of a type pointing at the parent through a
+    // reference field, and optionally a collection's own members.
+    const groups: unknown[] = [];
+    if (isRollup) {
+      const cfg = (props.rollup ?? {}) as { roots?: unknown; levels?: unknown };
+      const roots = Array.isArray(cfg.roots) ? (cfg.roots as string[]) : [];
+      const levels = Array.isArray(cfg.levels) ? (cfg.levels as Record<string, unknown>[]) : [];
+      const all = canon(mirror.search({ limit: 500 }));
+      const byId = new Map(all.map((b) => [b.id, b]));
+
+      const asCard = (b: (typeof all)[number]) => ({
+        id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
+        done: b.completion?.done ?? false, status: b.completion?.status ?? null,
+        completable: b.completion !== null,
+        due: b.schedule?.end?.value ?? null, tags: b.tags, url: b.url,
+        x: null, y: null, w: null, h: null,
+      });
+
+      /** What sits under one parent, per the first level. */
+      const childrenOf = (parentId: string) => {
+        const level = levels[0];
+        if (!level) return [];
+        const wantType = typeof level.typeId === "string" ? level.typeId : null;
+        const refKey = typeof level.refKey === "string" ? level.refKey : null;
+        const out = all.filter((b) => {
+          if (b.collectionKind) return false;
+          if (wantType && b.typeId !== wantType) return false;
+          if (b.archivedAt) return false;
+          return b.links.some((l) => l.id === parentId && (!refKey || l.role === refKey));
+        });
+        if (level.members) {
+          for (const m of mirror.membersOf(parentId)) {
+            const b = byId.get((JSON.parse(m.raw) as { id: string }).id);
+            if (b && !out.includes(b)) out.push(b);
+          }
+        }
+        return out;
+      };
+
+      for (const rootId of roots) {
+        const rootBlock = byId.get(rootId);
+        if (!rootBlock) continue;
+        // A collection root contributes each of its members as a heading; a
+        // plain block is a heading on its own.
+        //
+        // "Members" has to mean the same thing it means everywhere else: for a
+        // smart collection that is the query's answer, not the membership rows,
+        // of which it has none. Reading only memberships is why a rollup rooted
+        // on a smart list came back empty.
+        let buckets: (typeof all)[number][] = [];
+        if (rootBlock.collectionKind) {
+          const cached = mirror.get(`query.${rootId}`);
+          const ids = cached
+            ? (JSON.parse(cached) as string[])
+            : mirror.membersOf(rootId).map((m) => (JSON.parse(m.raw) as { id: string }).id);
+          buckets = ids.map((bid) => byId.get(bid)).filter((b): b is (typeof all)[number] => Boolean(b));
+        } else {
+          buckets = [rootBlock];
+        }
+        for (const bucket of buckets) {
+          groups.push({
+            id: bucket.id,
+            title: bucket.title,
+            typeName: bucket.typeName,
+            url: bucket.url,
+            children: childrenOf(bucket.id).map(asCard),
+          });
+        }
+      }
+    }
+
     const me = canon([raw])[0]!;
     // A sequence collection puts everything in one list; there are no regions to
     // put anything in, so what would have been "unplaced" is simply the contents.
@@ -361,6 +440,8 @@ export function buildServer(deps: {
       drawer: gridded ? drawer : [],
       members,
       canvas: isCanvas,
+      rollup: isRollup,
+      groups,
       notes,
       edges,
       smart: isSmart,
@@ -455,6 +536,7 @@ export function buildServer(deps: {
     const idx = types();
     const blocks = canon(mirror.search({ limit: 500 })).filter((b) => !b.archivedAt && !b.collectionKind);
     const typeNames = new Set<string>();
+    const feedsSeen = new Map<string, { id: string; name: string; color: string }>();
 
     const dayOf = (v: string | null | undefined) => (v ? v.split("T")[0] ?? null : null);
     const buckets = new Map<string, { items: unknown[]; events: unknown[] }>();
@@ -477,6 +559,7 @@ export function buildServer(deps: {
         bucket.items.push({
           id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
           done: b.completion?.done ?? false,
+          completable: b.completion !== null,
           at: b.schedule?.start?.allDay === false ? b.schedule?.start?.value ?? null : null,
           isEnd: e === date, url: b.url, tags: b.tags,
         });
@@ -487,21 +570,30 @@ export function buildServer(deps: {
       const date = dayOf(String(raw.start ?? ""));
       const bucket = date ? buckets.get(date) : undefined;
       if (!bucket) continue;
+      const feedId = String(raw.feedId ?? "");
+      const feedName = String(raw.feedName ?? "");
+      const color = String(raw.color ?? "");
+      if (feedId) feedsSeen.set(feedId, { id: feedId, name: feedName, color });
       bucket.events.push({
         uid: String(raw.uid ?? ""),
         summary: String(raw.summary ?? ""),
         location: String(raw.location ?? ""),
         start: String(raw.start ?? ""),
         allDay: Boolean(raw.allDay),
-        feedName: String(raw.feedName ?? ""),
-        color: String(raw.color ?? ""),
+        feedId,
+        feedName,
+        color,
       });
     }
 
     return envelope({
       start,
       end,
-      types: [...typeNames].sort(),
+      // Events are never offered as a togglable type: the web app doesn't offer
+      // it either, and a calendar you can switch the calendar off in is a
+      // strange object. Feeds are switchable individually instead.
+      types: [...typeNames].filter((t) => t.toLowerCase() !== "event").sort(),
+      feeds: [...feedsSeen.values()].sort((a, b) => a.name.localeCompare(b.name)),
       feedStale,
       days: [...buckets].map(([date, b]) => ({ date, items: b.items, events: b.events })),
     });

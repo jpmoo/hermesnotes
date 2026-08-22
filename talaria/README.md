@@ -177,8 +177,10 @@ what it wants to do and does nothing until you say. `"assistantHotkey"` in
   per-type pills persist; completed things sink and mute. Feed events are
   cached, so a lost connection gives you yesterday's copy and says so rather
   than an empty week.
-- **everything else** — list, table, rollup, masonry — as a sequence.
-  Deliberately one renderer rather than four near-misses.
+- **rollup** — a heading per bucket with what hangs under it. A rollup owns no
+  memberships at all; it is resolved from its roots and levels.
+- **everything else** — list, table, masonry — as a sequence. Deliberately one
+  renderer rather than three near-misses.
 
 The calendar is an agenda rather than a month grid on purpose: the web app's
 calendar has four range modes, an all-day band and multi-day lanes because it

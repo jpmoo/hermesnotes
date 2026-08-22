@@ -105,6 +105,9 @@ enum Daemon {
         let due: String?
         let tags: [String]
         let url: String
+        /// Whether this block has a status at all — a note or a person has none,
+        /// and a checkbox on one is an offer of nonsense.
+        let completable: Bool
         /// Where it sits on a canvas, and how big; nil on every other kind.
         let x: Double?
         let y: Double?
@@ -122,6 +125,13 @@ enum Daemon {
         let color: String?
     }
     struct Edge: Decodable { let from: String; let to: String; let dashed: Bool }
+    struct Group: Decodable, Identifiable {
+        let id: String
+        let title: String
+        let typeName: String
+        let url: String
+        let children: [Card]
+    }
     struct Board: Decodable {
         let id: String
         let title: String
@@ -129,6 +139,9 @@ enum Daemon {
         let rows: Int
         let regions: [Region]
         let cells: [String: [Card]]
+        /// A rollup's headings and what hangs under each.
+        let rollup: Bool
+        let groups: [Group]
         /// Matched by the collection's query but not placed in a region yet.
         let drawer: [Card]
         /// Whether a query governs membership at all.
@@ -192,15 +205,18 @@ enum Daemon {
         let location: String
         let start: String
         let allDay: Bool
+        let feedId: String
         let feedName: String
         let color: String
     }
+    struct Feed: Decodable, Identifiable { let id: String; let name: String; let color: String }
     struct AgendaItem: Decodable {
         let id: String
         let title: String
         let kind: String
         let typeName: String
         let done: Bool
+        let completable: Bool
         let at: String?
         let isEnd: Bool
         let url: String
@@ -212,6 +228,7 @@ enum Daemon {
     }
     struct Agenda: Decodable {
         let types: [String]
+        let feeds: [Feed]
         let feedStale: Bool
         let days: [AgendaDay]
     }

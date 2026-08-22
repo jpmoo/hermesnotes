@@ -27,6 +27,8 @@
   <string>dev.talaria.Talaria</string>
   <key>CFBundleExecutable</key>
   <string>Talaria</string>
+  <key>CFBundleIconFile</key>
+  <string>Talaria</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

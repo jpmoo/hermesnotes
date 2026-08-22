@@ -25,6 +25,13 @@ sed "s|__REPO_ROOT__|$REPO_ROOT|" "$HERE/Info.plist" > "$APP/Contents/Info.plist
 grep -q "__REPO_ROOT__" "$APP/Contents/Info.plist" && { echo "!! repo root not substituted"; exit 1; }
 [ -f "$REPO_ROOT/packages/daemon/src/index.ts" ] || { echo "!! no daemon at $REPO_ROOT"; exit 1; }
 
+echo "==> Icon"
+# Needs Pillow. It is a build-time dependency on this machine only — nothing
+# the daemon or the app depends on at runtime.
+mkdir -p "$APP/Contents/Resources"
+python3 "$HERE/make-icon.py" "$REPO_ROOT/../assets/HermesLogo.png" "$APP/Contents/Resources"
+rm -rf "$APP/Contents/Resources/Talaria.iconset"
+
 echo "==> Compiling"
 xcrun swiftc \
   -O \

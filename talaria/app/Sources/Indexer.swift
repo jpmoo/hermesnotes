@@ -11,6 +11,19 @@ enum Indexer {
     /// A domain per kind, so a whole category can be dropped in one call.
     private static func domain(_ kind: String) -> String { "kind.\(kind)" }
 
+    /// The logo, read once and reused.
+    ///
+    /// Spotlight will otherwise show a generic placeholder beside every result:
+    /// an item's icon comes from its own `thumbnailData`, not from the app that
+    /// indexed it, so the bundle having an icon is not enough on its own.
+    private static let thumbnail: Data? = {
+        guard let url = Bundle.main.url(forResource: "Talaria", withExtension: "png") else {
+            NSLog("talaria: no Talaria.png in the bundle — results will have no icon")
+            return nil
+        }
+        return try? Data(contentsOf: url)
+    }()
+
     static func reindex(_ payload: Daemon.SpotlightPayload) async throws {
         let index = CSSearchableIndex.default()
 
@@ -28,6 +41,7 @@ enum Indexer {
             // Not contentURL: that would make Spotlight treat this as a file on
             // disk. Activation comes back to us with the identifier instead.
             attrs.relatedUniqueIdentifier = item.id
+            attrs.thumbnailData = thumbnail
 
             return CSSearchableItem(
                 uniqueIdentifier: item.id,

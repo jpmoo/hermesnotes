@@ -76,6 +76,7 @@ function usage(): void {
   talaria sync                                       ask for a sync right now
   talaria status                                     what the daemon knows
   talaria doctor                                     check everything that fails quietly
+  talaria alfred <text>                              Alfred Script Filter JSON
 
 Reads never touch the network. Writes go out when they can and queue when they can't.
 Socket: ${SOCKET}`);
@@ -235,6 +236,53 @@ async function main(argv: string[]): Promise<number> {
           : warn(`${r.sync.state}: ${r.sync.detail ?? ""}`),
       );
       return r.sync.state === "ok" ? 0 : 1;
+    }
+
+    /**
+     * Alfred's Script Filter format.
+     *
+     * Alfred searches the file metadata index, and CoreSpotlight items are not
+     * in it — the two stores are separate, which is why ⌘Space finds a block
+     * and Alfred cannot. So Alfred is fed directly rather than through the
+     * system index.
+     *
+     * The `arg` is the https link rather than `talaria://`. The scheme exists to
+     * keep *written down* links working after Hermes moves; a launcher resolves
+     * fresh on every keystroke, so it has no stale links to protect and is
+     * better off with the address that works unconditionally.
+     */
+    case "alfred": {
+      const q = new URLSearchParams();
+      const text = words.join(" ").trim();
+      if (text) q.set("q", text);
+      q.set("limit", "25");
+      try {
+        const env = await call<Envelope<CanonicalBlock[]>>("GET", `/blocks?${q}`);
+        const stale = env.freshness !== "fresh" ? ` · ${env.note}` : "";
+        const items = env.data.map((b) => ({
+          uid: b.id,
+          title: b.title,
+          subtitle:
+            [b.completion?.done ? "done" : null, b.typeName, b.tags.map((t) => `#${t}`).join(" ")]
+              .filter(Boolean)
+              .join("  ·  ") + stale,
+          arg: b.url,
+          // Alfred keys its own ranking off this when told to.
+          match: `${b.title} ${b.typeName} ${b.tags.join(" ")}`,
+          valid: true,
+          mods: { cmd: { arg: b.appUrl, subtitle: "Open via talaria:// (host-independent)" } },
+        }));
+        console.log(JSON.stringify({ items }));
+      } catch (err) {
+        // A Script Filter has nowhere to put an error but the result list, and
+        // an empty list would read as "no matches" rather than "nothing asked".
+        console.log(
+          JSON.stringify({
+            items: [{ title: "Talaria isn't answering", subtitle: (err as Error).message, valid: false }],
+          }),
+        );
+      }
+      return 0;
     }
 
     case "doctor": {

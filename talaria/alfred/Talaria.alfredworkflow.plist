@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>dev.talaria.alfred</string>
+	<key>connections</key>
+	<dict>
+		<key>62125088-BABA-52CC-8E49-E4BEBB05E7E9</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>9A9C381E-A53C-5B86-8984-E89D47A98C1C</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
+	</dict>
+	<key>createdby</key>
+	<string>Talaria</string>
+	<key>description</key>
+	<string>Search Hermes Notes from the local mirror. Works offline.</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Talaria</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<true/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>0</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>hn</string>
+				<key>queuedelaycustom</key>
+				<integer>3</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>1</integer>
+				<key>runningsubtext</key>
+				<string>Searching…</string>
+				<key>script</key>
+				<string>"$HOME/.local/bin/talaria" alfred "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>skipuniversalaction</key>
+				<false/>
+				<key>subtext</key>
+				<string>Search your blocks from the local mirror</string>
+				<key>title</key>
+				<string>Search Hermes</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>62125088-BABA-52CC-8E49-E4BEBB05E7E9</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>browser</key>
+				<string></string>
+				<key>skipqueryencode</key>
+				<true/>
+				<key>skipvarencode</key>
+				<true/>
+				<key>spaces</key>
+				<string></string>
+				<key>url</key>
+				<string>{query}</string>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.openurl</string>
+			<key>uid</key>
+			<string>9A9C381E-A53C-5B86-8984-E89D47A98C1C</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>Type `hn` followed by anything to search your Hermes blocks.
+
+Results come from Talaria's local mirror, so this works with no network at all. Alfred cannot see these through the system index — CoreSpotlight items and file metadata are separate stores — so the workflow asks the daemon directly.
+
+Return opens the block in the web app. Cmd-Return opens it via talaria://, which resolves the host at click time.
+
+Requires the talaria daemon to be running: `talaria doctor` will say.</string>
+	<key>uidata</key>
+	<dict>
+		<key>62125088-BABA-52CC-8E49-E4BEBB05E7E9</key>
+		<dict>
+			<key>xpos</key>
+			<integer>40</integer>
+			<key>ypos</key>
+			<integer>40</integer>
+		</dict>
+		<key>9A9C381E-A53C-5B86-8984-E89D47A98C1C</key>
+		<dict>
+			<key>xpos</key>
+			<integer>300</integer>
+			<key>ypos</key>
+			<integer>40</integer>
+		</dict>
+	</dict>
+	<key>variablesdontexport</key>
+	<array/>
+	<key>version</key>
+	<string>0.1.0</string>
+	<key>webaddress</key>
+	<string></string>
+</dict>
+</plist>

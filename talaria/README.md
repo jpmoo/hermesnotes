@@ -12,6 +12,7 @@ asks of Hermes proper.
 
 ```
 app/                 Talaria.app — Spotlight indexing, the talaria:// scheme
+alfred/              an Alfred workflow, since Alfred can't see CoreSpotlight
 packages/canonical   the seam — the only code that sees a Hermes payload
 packages/daemon      local SQLite mirror, sync loop, Unix-socket server
 packages/cli         the `hermes` command
@@ -136,6 +137,27 @@ Checking the index without ⌘Space — CoreSpotlight items are invisible to
 ```
 
 `--index` forces a reindex and `--clear` empties it.
+
+## Alfred (and anything else that isn't Spotlight)
+
+**Alfred cannot see CoreSpotlight items.** Its search is built on the file
+metadata index, and app content indexed through `CSSearchableIndex` lives in a
+different store entirely — which is why ⌘Space finds a block and `mdfind`
+returns nothing for it. The same is true of Raycast's file search, LaunchBar, and
+anything else built on `mdfind`.
+
+So Alfred is fed directly rather than through the system index:
+
+```bash
+./talaria/alfred/build.sh && open talaria/alfred/Talaria.alfredworkflow
+```
+
+Then `hn <anything>` in Alfred. Return opens the block in the web app;
+Cmd-Return opens it via `talaria://`.
+
+The workflow calls `talaria alfred "$1"`, which emits Script Filter JSON. Any
+launcher that can run a command and read JSON can use the same call — the
+integration is one command, not one plugin per launcher.
 
 ## Running the acceptance scenario
 

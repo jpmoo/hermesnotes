@@ -14,6 +14,14 @@
   - KeepAlive is conditional on a clean exit rather than unconditional. The
     daemon exits 78 (EX_CONFIG) when its config is missing or wrong, and
     restarting that forever would turn one clear error into a log full of them.
+    launchd can only tell zero from non-zero, so this has a cost worth knowing:
+    a daemon stopped by SIGTERM exits 0 and stays stopped until the next login.
+    That is the right answer when you meant to stop it and the wrong one when
+    something else stopped it for you — `talaria doctor` is what tells the
+    difference, so it is worth running when the mirror looks frozen.
+
+  Restart it after a code change with:
+    launchctl kickstart -k gui/$(id -u)/dev.talaria.daemon
 -->
 <plist version="1.0">
 <dict>

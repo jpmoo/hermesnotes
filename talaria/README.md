@@ -84,6 +84,24 @@ says how old it is. Writes go out immediately when Hermes is reachable and queue
 when it isn't; a task created offline gets its real id straight away, so it is
 findable and linkable before it has ever reached a server.
 
+## Running it as a background service
+
+```bash
+cp talaria/launchd/dev.talaria.daemon.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.talaria.daemon.plist
+```
+
+Restart it after pulling changes:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/dev.talaria.daemon
+```
+
+Logs go to `~/Library/Logs/talaria.log`. A daemon stopped by SIGTERM exits
+cleanly and so is **not** restarted by launchd until the next login — deliberate,
+so a bad config doesn't become a restart loop, but it means `talaria doctor` is
+the thing to run when the mirror looks frozen.
+
 ## Running the acceptance scenario
 
 ```bash

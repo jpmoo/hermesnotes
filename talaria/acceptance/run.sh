@@ -6,7 +6,7 @@ REPO="${1:-$(cd "$S/../.." && pwd)}"
 WORK="${TMPDIR:-/tmp}/talaria-acceptance"
 mkdir -p "$WORK"
 export TALARIA_HOME="$WORK/home"
-export TALARIA_SOCKET="/tmp/talaria-test.sock"
+export TALARIA_SOCKET="/tmp/talaria-acceptance.sock"
 export STUB_STORE="$WORK/stub.json"
 TSX="$REPO/apps/server/node_modules/.bin/tsx"
 HERMES="$TSX $REPO/talaria/packages/cli/src/index.ts"
@@ -17,12 +17,21 @@ cat > "$TALARIA_HOME/config.json" <<JSON
 JSON
 chmod 600 "$TALARIA_HOME/config.json"
 
-cleanup(){ pkill -f "acceptance/stub.mjs" 2>/dev/null; pkill -f "talaria/packages/daemon" 2>/dev/null; }
+# Only ever kill what this script started. `pkill -f talaria/packages/daemon`
+# also matches a daemon the user is actually running — which is how this suite
+# once stopped a live one, and then launchd declined to bring it back because a
+# clean shutdown exits 0.
+cleanup(){
+  [ -f "$WORK/daemon.pid" ] && kill "$(cat "$WORK/daemon.pid")" 2>/dev/null
+  [ -f "$WORK/stub.pid" ] && kill "$(cat "$WORK/stub.pid")" 2>/dev/null
+  rm -f "$WORK/daemon.pid" "$WORK/stub.pid"
+  return 0
+}
 trap cleanup EXIT
 cleanup
 hr() { echo; echo "════ $* ════"; }
 stub_up()  { node "$S/stub.mjs" > "$WORK/stub.log" 2>&1 & echo $! > "$WORK/stub.pid"; sleep 1; }
-stub_down(){ pkill -f "acceptance/stub.mjs" 2>/dev/null; sleep 0.5; }
+stub_down(){ [ -f "$WORK/stub.pid" ] && kill "$(cat "$WORK/stub.pid")" 2>/dev/null; sleep 0.5; return 0; }
 
 hr "1. Hermes up, daemon starts cold"
 stub_up

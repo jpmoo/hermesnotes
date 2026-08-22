@@ -29,6 +29,10 @@
   <string>Talaria</string>
   <key>CFBundleIconFile</key>
   <string>Talaria</string>
+  <!-- The asset catalog's icon set. This is the one current macOS looks for;
+       CFBundleIconFile above stays for anything still reading the old key. -->
+  <key>CFBundleIconName</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

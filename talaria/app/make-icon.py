@@ -7,6 +7,7 @@ Generated at build time rather than committed. The source of truth is the logo
 in assets/, so the artwork stays in one place — and a binary that is derived
 from something else in the same repo is a thing to rebuild, not to keep.
 """
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -93,13 +94,37 @@ def tile(size: int, bleed: bool) -> Image.Image:
 # The thumbnail Spotlight shows beside a result.
 tile(512, bleed=False).save(out / "Talaria.png")
 
-# An iconset is a directory of exact sizes with exact names; iconutil is fussy
-# about both.
+# Two consumers, two formats.
+#
+# The .icns is the legacy path and still what CFBundleIconFile points at. On its
+# own, though, macOS treats the icon as non-conforming and insets it inside a
+# generic frame — which is then what Spotlight badges every result with. The
+# asset catalog is what current apps ship (Notes and Reminders both carry
+# CFBundleIconName plus an Assets.car), so we build both and let the system
+# prefer the one it likes.
+SIZES = (16, 32, 128, 256, 512)
+
 iconset = out / "Talaria.iconset"
 iconset.mkdir(exist_ok=True)
-for base in (16, 32, 128, 256, 512):
+for base in SIZES:
     tile(base, bleed=True).save(iconset / f"icon_{base}x{base}.png")
     tile(base * 2, bleed=True).save(iconset / f"icon_{base}x{base}@2x.png")
 
 subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(out / "Talaria.icns")], check=True)
-print(f"icon: {out / 'Talaria.icns'}")
+
+appiconset = out / "Talaria.xcassets" / "AppIcon.appiconset"
+appiconset.mkdir(parents=True, exist_ok=True)
+images = []
+for base in SIZES:
+    for scale in (1, 2):
+        name = f"icon_{base}x{base}{'@2x' if scale == 2 else ''}.png"
+        tile(base * scale, bleed=True).save(appiconset / name)
+        images.append({"idiom": "mac", "size": f"{base}x{base}", "scale": f"{scale}x", "filename": name})
+(appiconset / "Contents.json").write_text(
+    json.dumps({"images": images, "info": {"version": 1, "author": "talaria"}}, indent=2)
+)
+(out / "Talaria.xcassets" / "Contents.json").write_text(
+    json.dumps({"info": {"version": 1, "author": "talaria"}}, indent=2)
+)
+
+print(f"icon: {out / 'Talaria.icns'} and {appiconset}")

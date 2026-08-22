@@ -32,6 +32,17 @@ mkdir -p "$APP/Contents/Resources"
 python3 "$HERE/make-icon.py" "$REPO_ROOT/../assets/HermesLogo.png" "$APP/Contents/Resources"
 rm -rf "$APP/Contents/Resources/Talaria.iconset"
 
+# Compile the asset catalog. A bare .icns is the legacy path, and macOS shapes
+# what it considers a non-conforming icon by insetting it inside a frame.
+xcrun actool "$APP/Contents/Resources/Talaria.xcassets" \
+  --compile "$APP/Contents/Resources" \
+  --platform macosx \
+  --minimum-deployment-target 13.0 \
+  --app-icon AppIcon \
+  --output-partial-info-plist "$APP/Contents/Resources/.actool.plist" \
+  >/dev/null
+rm -rf "$APP/Contents/Resources/Talaria.xcassets" "$APP/Contents/Resources/.actool.plist"
+
 echo "==> Compiling"
 xcrun swiftc \
   -O \

@@ -377,6 +377,12 @@ export function buildServer(deps: {
         }),
         z.object({ kind: z.literal("complete"), blockId: z.string().uuid(), status: z.string().optional() }),
         z.object({ kind: z.literal("append"), date: z.string(), text: z.string().min(1) }),
+        z.object({
+          kind: z.literal("move"),
+          collectionId: z.string().uuid(),
+          blockId: z.string().uuid(),
+          region: z.number().int().min(0).max(35),
+        }),
       ])
       .parse(req.body);
 
@@ -406,6 +412,12 @@ export function buildServer(deps: {
       if (!status) return reply.code(400).send({ error: "that block's type has no completed status" });
       baseVersion = row.version;
       intent = { kind: "complete", blockId: body.blockId, status };
+    } else if (body.kind === "move") {
+      intent = { kind: "move", collectionId: body.collectionId, blockId: body.blockId, region: body.region };
+      // Show the card in its new cell straight away. The sync loop will confirm
+      // it, and a drag that snapped back while the request was in flight would
+      // read as the drag having failed.
+      mirror.placeLocally(body.collectionId, body.blockId, body.region);
     } else {
       intent = { kind: "append", date: body.date, text: body.text };
     }
@@ -443,6 +455,10 @@ export function buildServer(deps: {
         properties: intent.properties,
       });
       return { id: row.id };
+    }
+    if (intent.kind === "move") {
+      await hermes.placeMember(intent.collectionId, intent.blockId, { region: intent.region });
+      return { id: intent.blockId };
     }
     if (intent.kind === "complete") {
       const page = await hermes.blocksByIds([intent.blockId]);

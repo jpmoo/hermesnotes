@@ -38,7 +38,14 @@ export interface AppendIntent {
   date: string;
   text: string;
 }
-export type Intent = CreateIntent | CompleteIntent | AppendIntent;
+export interface MoveIntent {
+  kind: "move";
+  collectionId: string;
+  blockId: string;
+  /** The cell it was dragged into. */
+  region: number;
+}
+export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent;
 
 export type ReplayResult =
   | { id: number; outcome: "applied" | "already" }
@@ -112,6 +119,8 @@ export class Queue {
         return this.replayComplete(row, intent);
       case "append":
         return this.replayAppend(row, intent);
+      case "move":
+        return this.replayMove(row, intent);
     }
   }
 
@@ -164,6 +173,23 @@ export class Queue {
       properties: { ...current.properties, [schema.status_field]: intent.status },
     });
     return { id: row.id, outcome: "applied" };
+  }
+
+  /**
+   * Where a card sits is a single value, so a replayed move is simply the last
+   * word on it. No merge to do and nothing to conflict with — except the card
+   * having left the collection entirely, which is a person's business.
+   */
+  private async replayMove(row: QueuedIntent, intent: MoveIntent): Promise<ReplayResult> {
+    try {
+      await this.hermes.placeMember(intent.collectionId, intent.blockId, { region: intent.region });
+      return { id: row.id, outcome: "applied" };
+    } catch (err) {
+      if (err instanceof HermesError && (err.status === 404 || err.status === 400)) {
+        return { id: row.id, outcome: "parked", reason: "that card is no longer in this collection" };
+      }
+      throw err;
+    }
   }
 
   /**

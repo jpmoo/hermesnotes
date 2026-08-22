@@ -92,6 +92,68 @@ enum Daemon {
         return try JSONDecoder().decode(Captured.self, from: data)
     }
 
+    // MARK: Boards
+
+    struct BoardSummary: Decodable { let id: String; let title: String }
+    struct Region: Decodable { let index: Int; let title: String; let color: String? }
+    struct Card: Decodable, Identifiable, Hashable {
+        let id: String
+        let title: String
+        let kind: String
+        let typeName: String
+        let done: Bool
+        let due: String?
+        let tags: [String]
+        let url: String
+    }
+    struct Board: Decodable {
+        let id: String
+        let title: String
+        let cols: Int
+        let rows: Int
+        let regions: [Region]
+        let cells: [String: [Card]]
+    }
+    private struct Envelope<T: Decodable>: Decodable {
+        let data: T
+        let freshness: String
+        let note: String
+    }
+
+    static func boards() throws -> [BoardSummary] {
+        try JSONDecoder().decode(Envelope<[BoardSummary]>.self, from: get("/boards")).data
+    }
+
+    static func board(_ id: String) throws -> (board: Board, freshness: String, note: String) {
+        let e = try JSONDecoder().decode(Envelope<Board>.self, from: get("/board/\(id)"))
+        return (e.data, e.freshness, e.note)
+    }
+
+    /// A write, through the daemon's own queueing path — so a card dragged with
+    /// the network down still moves, and goes out on reconnect.
+    static func write(_ body: [String: Any]) throws {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = [
+            "-s", "--fail-with-body", "--unix-socket", socketPath,
+            "-H", "content-type: application/json", "--data-binary", "@-",
+            "http://talaria/write",
+        ]
+        let stdin = Pipe(), out = Pipe()
+        task.standardInput = stdin
+        task.standardOutput = out
+        task.standardError = Pipe()
+        try task.run()
+        stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: body))
+        stdin.fileHandleForWriting.closeFile()
+        _ = out.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        // 202 means queued, which is a success from here: the daemon has it.
+        guard task.terminationStatus == 0 || task.terminationStatus == 22 else {
+            throw Failure(description: "the write didn't go through (curl exit \(task.terminationStatus))")
+        }
+    }
+
     static func health() throws -> Health {
         try JSONDecoder().decode(Health.self, from: get("/health"))
     }

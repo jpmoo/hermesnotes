@@ -31,7 +31,7 @@ export interface StoredBlock {
 
 export interface QueuedIntent {
   id: number;
-  kind: "create" | "complete" | "append";
+  kind: "create" | "complete" | "append" | "move";
   /** What the user meant, as JSON — never the document that would result. */
   payload: string;
   /** The block version this was based on, when there was one. */
@@ -233,6 +233,17 @@ export class Mirror {
       )
       .all(...params) as { raw: string }[];
     return rows.map((r) => r.raw);
+  }
+
+  /** Move a card locally, so the board redraws before the network answers. */
+  placeLocally(collectionId: string, blockId: string, region: number): void {
+    this.db
+      .prepare(
+        `UPDATE memberships
+         SET context = json_set(COALESCE(NULLIF(context, ''), '{}'), '$.region', ?)
+         WHERE collection_id = ? AND block_id = ?`,
+      )
+      .run(region, collectionId, blockId);
   }
 
   /** What's in a collection, in position order, with where each sits. */

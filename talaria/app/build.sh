@@ -66,13 +66,15 @@ rm -rf "$APP/Contents/Resources/Talaria.xcassets" "$APP/Contents/Resources/.acto
 plutil -replace CFBundleIconName -string "$ICON_NAME" "$APP/Contents/Info.plist"
 plutil -replace CFBundleIconFile -string "$ICON_NAME" "$APP/Contents/Info.plist"
 
+cp "$HERE/MenuBar.png" "$HERE/MenuBar@2x.png" "$APP/Contents/Resources/" 2>/dev/null || true
+
 echo "==> Compiling"
 xcrun swiftc \
   -O \
   -target arm64-apple-macos13.0 \
   -framework AppKit -framework CoreSpotlight -framework UniformTypeIdentifiers \
   -o "$APP/Contents/MacOS/Talaria" \
-  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/main.swift"
+  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/main.swift"
 
 echo "==> Signing (ad-hoc; personal machine, no notarization)"
 codesign --force --sign - --identifier dev.talaria.Talaria "$APP"

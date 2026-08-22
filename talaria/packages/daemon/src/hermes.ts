@@ -129,6 +129,11 @@ export class Hermes {
     return this.req<SyncBlockRow>("PATCH", `/blocks/${id}`, input);
   }
 
+  /** Where a block sits inside a collection. */
+  placeMember(collectionId: string, blockId: string, context: Record<string, unknown>) {
+    return this.req<unknown>("PATCH", `/collections/${collectionId}/members/${blockId}`, { context });
+  }
+
   dailyNote(date: string) {
     return this.req<{ id: string; content: string | null; version: number }>("GET", `/today/${date}/note`);
   }

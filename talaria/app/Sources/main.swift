@@ -1,6 +1,7 @@
 import AppKit
 import CoreSpotlight
 import Foundation
+import SwiftUI
 import UserNotifications
 
 /// Talaria.app — a daemon wearing a bundle.
@@ -79,11 +80,15 @@ final class DaemonProcess {
 
 // MARK: - App
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var daemon: DaemonProcess?
     private var timer: Timer?
     private var lastIndexedEpoch = -1
     private var signalSources: [DispatchSourceSignal] = []
+    private var statusItem: NSStatusItem?
+    private var popover: NSPopover?
+    private let boardModel = BoardModel()
 
     /// Where the daemon's code lives.
     ///
@@ -111,6 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
 
+        installStatusItem()
+
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, err in
             if let err { NSLog("talaria: notifications unavailable — \(err)") }
             else if !granted { NSLog("talaria: notifications not permitted; captures will be silent") }
@@ -119,10 +126,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Poll for a moved cursor rather than reindexing on a schedule: the
         // check is one cheap call and reindexing when nothing changed is pure
         // waste. First pass is delayed so the daemon has a socket to answer on.
-        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.syncIndexIfChanged()
+        // Timers fire on the main run loop, which is where this object lives —
+        // saying so explicitly is what lets the compiler agree.
+        timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
+            MainActor.assumeIsolated { self.syncIndexIfChanged() }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.syncIndexIfChanged() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            MainActor.assumeIsolated { self.syncIndexIfChanged() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -152,11 +163,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncIndexIfChanged() {
-        Task.detached(priority: .background) { [weak self] in
-            guard let self else { return }
+        let since = lastIndexedEpoch
+        Task.detached(priority: .background) { [self] in
             do {
                 let health = try Daemon.health()
-                guard health.cursor != self.lastIndexedEpoch else { return }
+                guard health.cursor != since else { return }
                 let payload = try Daemon.spotlight()
                 try await Indexer.reindex(payload)
                 await MainActor.run { self.lastIndexedEpoch = payload.epoch }
@@ -167,6 +178,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSLog("talaria: index skipped — \(error)")
             }
         }
+    }
+
+    // MARK: The menu bar
+
+    /// The one visible thing this app has.
+    ///
+    /// An app with LSUIElement set has no Dock icon and no menu bar of its own,
+    /// so without this there is no way to reach it at all — which is fine for a
+    /// daemon and not fine for a board you want to look at.
+    private func installStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
+            // The template flag lets macOS invert it for light and dark menu
+            // bars, which a coloured icon would not survive.
+            if let icon = Bundle.main.image(forResource: "MenuBar") {
+                icon.isTemplate = true
+                icon.size = NSSize(width: 18, height: 18)
+                button.image = icon
+            } else {
+                button.title = "H"
+            }
+            button.action = #selector(toggleBoard(_:))
+            button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        statusItem = item
+
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.contentSize = NSSize(width: 560, height: 460)
+        pop.contentViewController = NSHostingController(rootView: BoardView(model: boardModel))
+        popover = pop
+    }
+
+    @objc private func toggleBoard(_ sender: NSStatusBarButton) {
+        // Right-click is the way out of an app with no menu bar.
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            let menu = NSMenu()
+            menu.addItem(withTitle: "Refresh", action: #selector(refreshBoard), keyEquivalent: "r").target = self
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Quit Talaria", action: #selector(quit), keyEquivalent: "q").target = self
+            statusItem?.menu = menu
+            statusItem?.button?.performClick(nil)
+            statusItem?.menu = nil
+            return
+        }
+        guard let pop = popover else { return }
+        if pop.isShown {
+            pop.performClose(sender)
+        } else {
+            boardModel.load()
+            pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+            // A popover from a status item does not take focus on its own, and
+            // without it the drag never starts.
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    @objc private func refreshBoard() { boardModel.load() }
+
+    @objc private func quit() {
+        daemon?.stop()
+        NSApp.terminate(nil)
     }
 
     // MARK: The Services menu
@@ -314,8 +388,14 @@ if args.first == "--index" || args.first == "--clear" {
     exit(0)
 }
 
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
-app.run()
+// Top-level code is not main-actor isolated on its own, and everything below
+// touches AppKit — which only ever runs here.
+MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    // Keep the delegate alive: NSApplication holds it weakly.
+    objc_setAssociatedObject(app, "talaria.delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+    app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
+    app.run()
+}

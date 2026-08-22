@@ -156,9 +156,17 @@ pbpaste | talaria capture --note   # as a note
 A matrix collection in a floating window: cards drag between quadrants, the
 checkbox completes, clicking one opens it in the web app.
 
+Cards drag between regions **and to and from the drawer** — dragging one out of
+the drawer is the moment it joins the collection, and dropping one back takes it
+out of the grid without taking it out of the collection.
+
 Two ways in. **⌃⌥B** opens it from anywhere; the menu bar item does the same.
 Set `"boardHotkey"` in `config.json` to change it (e.g. `"cmd+shift+h"`); it
 takes effect on the next app restart. ⌃⌥Space is deliberately left free.
+
+The menu bar uses an SF Symbol, not the logo: the mark is line art that draws
+eleven meaningful pixels at 18 points, and thickened enough to see it becomes a
+blob. `"menuBarSymbol"` in `config.json` picks a different one.
 
 The second entrance is not a convenience: macOS drops status items that don't
 fit, and on a Mac with a notch and a busy menu bar ours is the newest and so the

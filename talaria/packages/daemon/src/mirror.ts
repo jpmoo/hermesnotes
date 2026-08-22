@@ -235,15 +235,21 @@ export class Mirror {
     return rows.map((r) => r.raw);
   }
 
-  /** Move a card locally, so the board redraws before the network answers. */
-  placeLocally(collectionId: string, blockId: string, region: number): void {
+  /**
+   * Move a card locally, so the board redraws before the network answers.
+   *
+   * A card from the drawer has no membership row yet, so this inserts one:
+   * dragging it into a region is the moment it joins the collection.
+   */
+  placeLocally(collectionId: string, blockId: string, region: number | null): void {
+    const ctx = JSON.stringify(region === null ? {} : { region });
     this.db
       .prepare(
-        `UPDATE memberships
-         SET context = json_set(COALESCE(NULLIF(context, ''), '{}'), '$.region', ?)
-         WHERE collection_id = ? AND block_id = ?`,
+        `INSERT INTO memberships (collection_id, block_id, position, region, context, hidden)
+         VALUES (?, ?, NULL, NULL, ?, 0)
+         ON CONFLICT(collection_id, block_id) DO UPDATE SET context = excluded.context`,
       )
-      .run(region, collectionId, blockId);
+      .run(collectionId, blockId, ctx);
   }
 
   /** What's in a collection, in position order, with where each sits. */

@@ -413,7 +413,9 @@ export function buildServer(deps: {
           kind: z.literal("move"),
           collectionId: z.string().uuid(),
           blockId: z.string().uuid(),
-          region: z.number().int().min(0).max(35),
+          // null means "put it back in the drawer": still a member of the
+          // collection, just not placed anywhere in the grid.
+          region: z.number().int().min(0).max(35).nullable(),
         }),
       ])
       .parse(req.body);

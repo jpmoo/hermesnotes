@@ -191,22 +191,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            // The template flag lets macOS invert it for light and dark menu
-            // bars, which a coloured icon would not survive.
+            // An SF Symbol rather than the logo.
             //
-            // Loaded by path rather than by name: the bundle also carries a
-            // compiled asset catalog, and `image(forResource:)` searching that
-            // first is a good way to miss a loose file sitting next to it.
-            let path = Bundle.main.bundlePath + "/Contents/Resources/MenuBar.png"
-            let icon = NSImage(contentsOfFile: path) ?? Bundle.main.image(forResource: "MenuBar")
-            if let icon {
+            // The mark is line art of two speech bubbles behind a wing, and at
+            // the 18 points a menu bar gives you it does not survive: undilated
+            // it drew eleven meaningful pixels of a possible 324, and thickened
+            // enough to see it became a blob. Symbols are drawn for this size.
+            // This one is the same two overlapping bubbles, which is as close to
+            // the mark as legibility allows.
+            let symbolName = Self.configured("menuBarSymbol") ?? "bubble.left.and.bubble.right"
+            if let sym = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Hermes") {
+                sym.isTemplate = true // so macOS inverts it for a dark menu bar
+                button.image = sym.withSymbolConfiguration(
+                    NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
+                ) ?? sym
+                NSLog("talaria: status item using symbol '\(symbolName)'")
+            } else if let icon = NSImage(contentsOfFile: Bundle.main.bundlePath + "/Contents/Resources/MenuBar.png") {
                 icon.isTemplate = true
                 icon.size = NSSize(width: 18, height: 18)
                 button.image = icon
-                NSLog("talaria: status item installed with icon from \(path)")
+                NSLog("talaria: status item fell back to MenuBar.png")
             } else {
                 button.title = "Hermes"
-                NSLog("talaria: status item installed WITHOUT an icon — no MenuBar.png at \(path)")
+                NSLog("talaria: status item has no image at all")
             }
             button.action = #selector(toggleBoard(_:))
             button.target = self
@@ -228,18 +235,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // and a busy menu bar ours is the newest and so the first to go. An
         // entrance that can vanish without saying anything is not an entrance.
         // ctrl+opt+space is deliberately left free for the assistant panel.
-        let spec = Self.configuredHotkey() ?? "ctrl+opt+b"
+        let spec = Self.configured("boardHotkey") ?? "ctrl+opt+b"
         hotkey = Hotkey(spec: spec) { [weak self] in self?.toggleBoardWindow() }
     }
 
-    /// The hotkey from config.json, if it names one.
-    private static func configuredHotkey() -> String? {
+    /// A string setting from config.json, if it names one.
+    private static func configured(_ key: String) -> String? {
         let path = NSHomeDirectory() + "/Library/Application Support/Talaria/config.json"
         guard let data = FileManager.default.contents(atPath: path),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let spec = obj["boardHotkey"] as? String, !spec.isEmpty
+              let value = obj[key] as? String, !value.isEmpty
         else { return nil }
-        return spec
+        return value
     }
 
     /// A window rather than a popover.

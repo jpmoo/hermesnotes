@@ -143,9 +143,23 @@ export class Hermes {
     return this.req<SyncBlockRow>("PATCH", `/blocks/${id}`, input);
   }
 
-  /** Where a block sits inside a collection. */
-  placeMember(collectionId: string, blockId: string, context: Record<string, unknown>) {
-    return this.req<unknown>("PATCH", `/collections/${collectionId}/members/${blockId}`, { context });
+  /**
+   * Where a block sits inside a collection, adding it if it isn't in one yet.
+   *
+   * A card dragged out of a smart matrix's drawer has never been a member — the
+   * drawer is what the query matched, not what has been placed — so patching
+   * its membership finds nothing to patch. Placing and joining are the same
+   * gesture from the user's end, so they are one call from here.
+   */
+  async placeMember(collectionId: string, blockId: string, context: Record<string, unknown>) {
+    try {
+      return await this.req<unknown>("PATCH", `/collections/${collectionId}/members/${blockId}`, { context });
+    } catch (err) {
+      if (err instanceof HermesError && err.status === 404) {
+        return await this.req<unknown>("POST", `/collections/${collectionId}/members`, { blockId, context });
+      }
+      throw err;
+    }
   }
 
   dailyNote(date: string) {

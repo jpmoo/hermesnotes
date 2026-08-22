@@ -42,8 +42,8 @@ export interface MoveIntent {
   kind: "move";
   collectionId: string;
   blockId: string;
-  /** The cell it was dragged into. */
-  region: number;
+  /** The cell it was dragged into, or null for back into the drawer. */
+  region: number | null;
 }
 export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent;
 

@@ -69,11 +69,15 @@ final class BoardModel: ObservableObject {
     /// Optimistic: the daemon writes the move into the mirror before answering,
     /// so reloading shows the card where it was dropped whether or not Hermes
     /// was reachable.
-    func move(_ card: Daemon.Card, to region: Int) {
+    /// `region` of nil puts it back in the drawer.
+    func move(_ card: Daemon.Card, to region: Int?) {
         guard let boardId = board?.id else { return }
         Task.detached(priority: .userInitiated) { [self] in
             do {
-                try Daemon.write(["kind": "move", "collectionId": boardId, "blockId": card.id, "region": region])
+                try Daemon.write([
+                    "kind": "move", "collectionId": boardId, "blockId": card.id,
+                    "region": region as Any? ?? NSNull(),
+                ])
             } catch {
                 await MainActor.run { self.error = "\(error)" }
             }
@@ -199,6 +203,14 @@ struct BoardView: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.2))
+        // Dropping here takes a card out of the grid without taking it out of
+        // the collection — the way back from a region, which otherwise had none.
+        .dropDestination(for: String.self) { ids, _ in
+            guard let id = ids.first, let card = model.allCards.first(where: { $0.id == id })
+            else { return false }
+            model.move(card, to: nil)
+            return true
+        }
     }
 
     private func cell(_ region: Daemon.Region, cards: [Daemon.Card]) -> some View {

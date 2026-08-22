@@ -171,8 +171,17 @@ what it wants to do and does nothing until you say. `"assistantHotkey"` in
 - **canvas** — read-only, at the coordinates the web app placed things at, with
   the sticky notes and the connections. Pan, zoom, click to open. Nothing is
   moved from here: a canvas is a spatial argument someone made on purpose.
-- **everything else** — list, table, rollup, calendar, masonry — as a sequence.
-  Deliberately one renderer rather than five near-misses.
+- **calendar** — an agenda: the next fortnight, day by day, merging dated
+  blocks with your calendar-feed events. Feed events wear their feed's colour;
+  per-type pills persist; completed things sink and mute. Feed events are
+  cached, so a lost connection gives you yesterday's copy and says so rather
+  than an empty week.
+- **everything else** — list, table, rollup, masonry — as a sequence.
+  Deliberately one renderer rather than four near-misses.
+
+The calendar is an agenda rather than a month grid on purpose: the web app's
+calendar has four range modes, an all-day band and multi-day lanes because it
+has a screen to spend. In a panel the useful question is "what's coming".
 
 The picker names each collection's kind with its icon, and remembers the last
 one. Right-click the menu bar item to choose whether a plain click opens the

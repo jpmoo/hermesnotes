@@ -18,6 +18,10 @@ final class BoardModel: ObservableObject {
     @Published var error: String?
     @Published var busy = false
 
+    /// The agenda has its own state — types shown, feed staleness — and is
+    /// only ever drawn for a calendar collection.
+    let agenda = AgendaModel()
+
     private let lastBoardKey = "talaria.lastBoard"
 
     func load() {
@@ -123,7 +127,9 @@ struct BoardView: View {
             header
             Divider()
             if let board = model.board {
-                if board.canvas {
+                if board.kind == "calendar" {
+                    AgendaView(model: model.agenda)
+                } else if board.canvas {
                     CanvasBoard(board: board, model: model)
                 } else if board.gridded {
                     grid(board)
@@ -391,9 +397,6 @@ struct CanvasBoard: View {
     @State private var offset: CGSize = .zero
     @State private var dragged: CGSize = .zero
 
-    private let cardW: CGFloat = 170
-    private let cardH: CGFloat = 54
-
     var body: some View {
         GeometryReader { geo in
             ZStack {
@@ -414,43 +417,83 @@ struct CanvasBoard: View {
         }
     }
 
-    private var canvasContent: some View {
-        ZStack(alignment: .topLeading) {
-            // Connections first, so cards sit above their own lines.
-            ForEach(Array(board.edges.enumerated()), id: \.offset) { _, edge in
-                if let a = placed.first(where: { $0.id == edge.from }),
-                   let b = placed.first(where: { $0.id == edge.to }) {
-                    Path { p in
-                        p.move(to: CGPoint(x: (a.x ?? 0) + cardW / 2, y: (a.y ?? 0) + cardH / 2))
-                        p.addLine(to: CGPoint(x: (b.x ?? 0) + cardW / 2, y: (b.y ?? 0) + cardH / 2))
-                    }
-                    .stroke(Theme.accent.opacity(0.45), lineWidth: 1.5)
-                }
-            }
-            ForEach(Array(board.notes.enumerated()), id: \.offset) { _, note in
-                Text(note.text)
-                    .font(Theme.body(10.5))
-                    .padding(7)
-                    .frame(width: 140, alignment: .topLeading)
-                    .background(RoundedRectangle(cornerRadius: 4)
-                        .fill(note.color.flatMap { Color(hex: $0) } ?? Theme.postit))
-                    .shadow(color: .black.opacity(0.12), radius: 2, x: 1, y: 1)
-                    .offset(x: note.x, y: note.y)
-            }
-            ForEach(placed) { card in
-                CardRow(card: card, model: model)
-                    .frame(width: cardW)
-                    .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(.background))
-                    .shadow(color: .black.opacity(0.10), radius: 3, x: 1, y: 2)
-                    .offset(x: card.x ?? 0, y: card.y ?? 0)
-            }
-        }
+    /// Every drawable thing on the canvas, by the id an edge would name it by.
+    private struct Node {
+        let id: String
+        let rect: CGRect
     }
 
     /// Only members that were actually placed; an unplaced one has no position
     /// to draw it at and would pile up at the origin.
     private var placed: [Daemon.Card] {
         board.members.filter { $0.x != nil && $0.y != nil }
+    }
+
+    private var nodes: [Node] {
+        placed.map { Node(id: $0.id, rect: CGRect(x: $0.x ?? 0, y: $0.y ?? 0, width: $0.w ?? 220, height: $0.h ?? 90)) }
+            + board.notes.map { Node(id: $0.id, rect: CGRect(x: $0.x, y: $0.y, width: $0.w, height: $0.h)) }
+    }
+
+    private var canvasContent: some View {
+        ZStack(alignment: .topLeading) {
+            // Connections first, so nodes sit above their own lines.
+            //
+            // Resolved against notes as well as blocks: on a real canvas most
+            // connections are between stickies, and matching only blocks drew
+            // nothing at all while looking like it had tried.
+            let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.rect) })
+            ForEach(Array(board.edges.enumerated()), id: \.offset) { _, edge in
+                if let a = index[edge.from], let b = index[edge.to] {
+                    Path { p in
+                        p.move(to: CGPoint(x: a.midX, y: a.midY))
+                        p.addLine(to: CGPoint(x: b.midX, y: b.midY))
+                    }
+                    .stroke(
+                        Theme.accentInk.opacity(0.45),
+                        style: StrokeStyle(lineWidth: 1.4, dash: edge.dashed ? [4, 3] : [])
+                    )
+                }
+            }
+
+            ForEach(board.notes) { note in
+                // Sized as drawn on the web, and scrolling: a sticky holds as
+                // much as someone typed into it, and clipping it silently is
+                // how a note becomes half a note.
+                ScrollView {
+                    Text(note.text)
+                        .font(Theme.body(10.5))
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .padding(8)
+                }
+                .frame(width: note.w, height: note.h)
+                .background(RoundedRectangle(cornerRadius: 5)
+                    .fill(note.color.flatMap { Color(hex: $0) } ?? Theme.postit))
+                .overlay(RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color.black.opacity(0.10), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.10), radius: 2, x: 1, y: 1)
+                .offset(x: note.x, y: note.y)
+            }
+
+            ForEach(placed) { card in
+                node(card)
+            }
+        }
+    }
+
+    /// One placed block. Split out because the whole canvas as a single
+    /// expression was more than the type checker would take.
+    private func node(_ card: Daemon.Card) -> some View {
+        ScrollView {
+            CardRow(card: card, model: model).padding(6)
+        }
+        .frame(width: card.w ?? 220, height: card.h ?? 90)
+        .background(RoundedRectangle(cornerRadius: Theme.cardRadius).fill(.background))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cardRadius)
+                .strokeBorder(Theme.accent.opacity(0.30), lineWidth: 0.75)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 3, x: 1, y: 2)
+        .offset(x: card.x ?? 0, y: card.y ?? 0)
     }
 
     private var zoomControls: some View {
@@ -468,8 +511,9 @@ struct CanvasBoard: View {
     /// Start with the content in view rather than wherever the origin happens
     /// to be — a canvas laid out around (2000, 1200) otherwise opens on nothing.
     private func centre(in size: CGSize) {
-        let xs = placed.compactMap(\.x) + board.notes.map(\.x)
-        let ys = placed.compactMap(\.y) + board.notes.map(\.y)
+        let boxes = nodes.map(\.rect)
+        let xs = boxes.flatMap { [$0.minX, $0.maxX] }
+        let ys = boxes.flatMap { [$0.minY, $0.maxY] }
         guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return }
         offset = CGSize(
             width: -((minX + maxX) / 2) * scale,

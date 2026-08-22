@@ -130,7 +130,7 @@ struct AssistantView: View {
                 .font(Theme.body(12)).foregroundStyle(.secondary)
             ForEach(["What's due this week?",
                      "Mark the roof task done",
-                     "Summarise my notes on dual enrollment"], id: \.self) { example in
+                     "Summarize my notes on dual enrollment"], id: \.self) { example in
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: 9)).foregroundStyle(Theme.accent.opacity(0.7))

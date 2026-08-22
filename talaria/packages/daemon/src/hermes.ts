@@ -35,6 +35,19 @@ export interface MembershipRow {
   hidden: boolean;
 }
 
+export interface FeedEvent {
+  uid: string;
+  summary: string;
+  description: string;
+  location: string;
+  start: string;
+  end: string | null;
+  allDay: boolean;
+  feedId: string;
+  feedName: string;
+  color: string;
+}
+
 export interface PendingCall {
   tool: string;
   /** Whatever the tool takes; shapes differ per tool and none of it is ours. */
@@ -136,6 +149,21 @@ export class Hermes {
    */
   queryMatches(filterQuery: unknown) {
     return this.req<{ id: string }[]>("POST", "/blocks/query", { filterQuery });
+  }
+
+  /**
+   * External calendar-feed events for a window.
+   *
+   * The endpoint answers `{ events, stale }`, not a bare array — `stale` being
+   * its way of saying a feed host didn't answer and these are the last known
+   * ones, which is worth passing along rather than flattening away.
+   */
+  async feedEvents(start: string, end: string): Promise<{ events: FeedEvent[]; stale: boolean }> {
+    const got = await this.req<{ events?: FeedEvent[]; stale?: boolean }>(
+      "GET",
+      `/calendar/events?start=${start}&end=${end}`,
+    );
+    return { events: got.events ?? [], stale: Boolean(got.stale) };
   }
 
   blockTypes() {

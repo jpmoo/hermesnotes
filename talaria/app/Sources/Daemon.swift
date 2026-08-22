@@ -105,13 +105,23 @@ enum Daemon {
         let due: String?
         let tags: [String]
         let url: String
-        /// Where it sits on a canvas; nil on every other kind.
+        /// Where it sits on a canvas, and how big; nil on every other kind.
         let x: Double?
         let y: Double?
+        let w: Double?
+        let h: Double?
     }
 
-    struct StickyNote: Decodable { let text: String; let x: Double; let y: Double; let color: String? }
-    struct Edge: Decodable { let from: String; let to: String }
+    struct StickyNote: Decodable, Identifiable {
+        let id: String
+        let text: String
+        let x: Double
+        let y: Double
+        let w: Double
+        let h: Double
+        let color: String?
+    }
+    struct Edge: Decodable { let from: String; let to: String; let dashed: Bool }
     struct Board: Decodable {
         let id: String
         let title: String
@@ -172,6 +182,42 @@ enum Daemon {
         guard task.terminationStatus == 0 || task.terminationStatus == 22 else {
             throw Failure(description: "the write didn't go through (curl exit \(task.terminationStatus))")
         }
+    }
+
+    // MARK: The agenda
+
+    struct FeedEvent: Decodable {
+        let uid: String
+        let summary: String
+        let location: String
+        let start: String
+        let allDay: Bool
+        let feedName: String
+        let color: String
+    }
+    struct AgendaItem: Decodable {
+        let id: String
+        let title: String
+        let kind: String
+        let typeName: String
+        let done: Bool
+        let at: String?
+        let isEnd: Bool
+        let url: String
+    }
+    struct AgendaDay: Decodable {
+        let date: String
+        let items: [AgendaItem]
+        let events: [FeedEvent]
+    }
+    struct Agenda: Decodable {
+        let types: [String]
+        let feedStale: Bool
+        let days: [AgendaDay]
+    }
+
+    static func agenda(days: Int) throws -> Agenda {
+        try JSONDecoder().decode(Envelope<Agenda>.self, from: get("/agenda?days=\(days)")).data
     }
 
     // MARK: The assistant

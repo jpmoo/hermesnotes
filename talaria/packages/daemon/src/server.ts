@@ -22,6 +22,11 @@ import type { Sync } from "./sync.js";
  *   curl --unix-socket ~/Library/Application\ Support/Talaria/talaria.sock \
  *        'http://x/blocks?q=roofer'
  */
+/** A number, or null — canvas geometry arrives as numbers or not at all. */
+function num(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
 export function buildServer(deps: {
   config: Config;
   mirror: Mirror;
@@ -276,9 +281,13 @@ export function buildServer(deps: {
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
         due: c.schedule?.end?.value ?? null, tags: c.tags, url: c.url,
-        // Only meaningful on a canvas; null everywhere else.
-        x: typeof (ctx as { x?: unknown }).x === "number" ? (ctx as { x: number }).x : null,
-        y: typeof (ctx as { y?: unknown }).y === "number" ? (ctx as { y: number }).y : null,
+        // Only meaningful on a canvas; null everywhere else. Size comes with
+        // position: a canvas node is a box someone sized on purpose, and
+        // drawing them all alike loses the shape of the thing.
+        x: num((ctx as Record<string, unknown>).x),
+        y: num((ctx as Record<string, unknown>).y),
+        w: num((ctx as Record<string, unknown>).w),
+        h: num((ctx as Record<string, unknown>).h),
       };
       // A member with no region and a query match nobody has placed are the
       // same thing to look at — in this collection, not on the board — so they
@@ -315,15 +324,24 @@ export function buildServer(deps: {
     // nothing more, which is all a read-only view of a canvas needs.
     const notes = isCanvas && Array.isArray(props.canvas_notes)
       ? (props.canvas_notes as Record<string, unknown>[]).map((n) => ({
+          // The id matters: connections are mostly between notes, not blocks,
+          // so an edge with nothing to resolve its ends against draws nothing.
+          id: String(n.id ?? ""),
           text: String(n.text ?? ""),
-          x: Number(n.x ?? 0),
-          y: Number(n.y ?? 0),
+          x: num(n.x) ?? 0,
+          y: num(n.y) ?? 0,
+          w: num(n.w) ?? 200,
+          h: num(n.h) ?? 120,
           color: typeof n.color === "string" ? n.color : null,
         }))
       : [];
     const edges = isCanvas && Array.isArray(props.canvas_edges)
       ? (props.canvas_edges as Record<string, unknown>[])
-          .map((e) => ({ from: String(e.from ?? ""), to: String(e.to ?? "") }))
+          .map((e) => ({
+            from: String(e.from ?? ""),
+            to: String(e.to ?? ""),
+            dashed: e.dash === "dotted" || e.dash === "dashed",
+          }))
           .filter((e) => e.from && e.to)
       : [];
 
@@ -385,6 +403,101 @@ export function buildServer(deps: {
     } catch (err) {
       return reply.code(502).send({ ok: false, error: (err as Error).message });
     }
+  });
+
+  /**
+   * What's coming up: dated blocks and calendar-feed events, day by day.
+   *
+   * An agenda rather than a month grid. The web app's calendar is the most
+   * elaborate view it has — feeds, type pills, multi-day spans, an all-day
+   * band, four range modes — and most of that exists because it has a full
+   * screen to spend. In a panel this size the useful question is "what is
+   * coming", so that is what this answers, while keeping the two things that
+   * change what you see: which feeds an event came from, and which types show.
+   *
+   * Feed events are cached. They are the one part that must be fetched, and a
+   * yesterday's copy of the calendar beats an empty one.
+   */
+  app.get("/agenda", async (req) => {
+    const { days } = z.object({ days: z.coerce.number().int().min(1).max(60).optional() }).parse(req.query);
+    const span = days ?? 14;
+    const today = new Date();
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const start = iso(today);
+    const endDate = new Date(today);
+    endDate.setDate(endDate.getDate() + span - 1);
+    const end = iso(endDate);
+
+    let feed: unknown[] = [];
+    let feedStale = false;
+    try {
+      const got = await hermes.feedEvents(start, end);
+      feed = got.events;
+      feedStale = got.stale;
+      mirror.set(`feed.${start}.${end}`, JSON.stringify(feed));
+    } catch {
+      const cached = mirror.get(`feed.${start}.${end}`);
+      if (cached) {
+        feed = JSON.parse(cached) as unknown[];
+        // Served from the last copy, which is worth saying: an agenda missing
+        // half its meetings should not look like a quiet afternoon.
+        feedStale = true;
+      }
+    }
+
+    const idx = types();
+    const blocks = canon(mirror.search({ limit: 500 })).filter((b) => !b.archivedAt && !b.collectionKind);
+    const typeNames = new Set<string>();
+
+    const dayOf = (v: string | null | undefined) => (v ? v.split("T")[0] ?? null : null);
+    const buckets = new Map<string, { items: unknown[]; events: unknown[] }>();
+    for (let i = 0; i < span; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      buckets.set(iso(d), { items: [], events: [] });
+    }
+
+    for (const b of blocks) {
+      const s = dayOf(b.schedule?.start?.value);
+      const e = dayOf(b.schedule?.end?.value);
+      if (!s && !e) continue;
+      typeNames.add(b.typeName);
+      // A span belongs to every day it covers, the way the web app treats one:
+      // a task available Monday and due Friday is Wednesday's business too.
+      for (const [date, bucket] of buckets) {
+        const on = s && e ? date >= s && date <= e : date === (s ?? e);
+        if (!on) continue;
+        bucket.items.push({
+          id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
+          done: b.completion?.done ?? false,
+          at: b.schedule?.start?.allDay === false ? b.schedule?.start?.value ?? null : null,
+          isEnd: e === date, url: b.url, tags: b.tags,
+        });
+      }
+    }
+
+    for (const raw of feed as Record<string, unknown>[]) {
+      const date = dayOf(String(raw.start ?? ""));
+      const bucket = date ? buckets.get(date) : undefined;
+      if (!bucket) continue;
+      bucket.events.push({
+        uid: String(raw.uid ?? ""),
+        summary: String(raw.summary ?? ""),
+        location: String(raw.location ?? ""),
+        start: String(raw.start ?? ""),
+        allDay: Boolean(raw.allDay),
+        feedName: String(raw.feedName ?? ""),
+        color: String(raw.color ?? ""),
+      });
+    }
+
+    return envelope({
+      start,
+      end,
+      types: [...typeNames].sort(),
+      feedStale,
+      days: [...buckets].map(([date, b]) => ({ date, items: b.items, events: b.events })),
+    });
   });
 
   app.get("/types", async () => envelope([...types().values()].map((t) => ({ id: t.id, name: t.name }))));

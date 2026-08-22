@@ -263,7 +263,11 @@ async function main(argv: string[]): Promise<number> {
           uid: b.id,
           title: b.title,
           subtitle:
-            [b.completion?.done ? "done" : null, b.typeName, b.tags.map((t) => `#${t}`).join(" ")]
+            [
+              `Hermes ${b.typeName}`,
+              b.completion?.done ? "done" : null,
+              b.tags.map((t) => `#${t}`).join(" ") || null,
+            ]
               .filter(Boolean)
               .join("  ·  ") + stale,
           arg: b.url,

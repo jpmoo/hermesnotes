@@ -41,6 +41,7 @@ enum Daemon {
         let id: String
         let title: String
         let description: String
+        let subtitle: String
         let kind: String
         let typeName: String
         let tags: [String]

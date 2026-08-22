@@ -174,6 +174,19 @@ export function buildServer(deps: {
         // Enough to recognise it by in a result row, without pasting a whole
         // note into the index.
         description: (b.body ?? "").replace(/\s+/g, " ").trim().slice(0, 300),
+        /**
+         * The second line of a Spotlight result.
+         *
+         * Leads with where it came from, because a result row appearing next to
+         * files, mail and contacts has to say what kind of thing it is before it
+         * says anything else — "Task" alone could be anything on the machine.
+         * The type's own name is used, so a renamed type reads the way the user
+         * named it.
+         */
+        subtitle: [`Hermes ${b.typeName}`, (b.body ?? "").replace(/\s+/g, " ").trim()]
+          .filter(Boolean)
+          .join("  ·  ")
+          .slice(0, 300),
         kind: b.kind,
         typeName: b.typeName,
         tags: b.tags,

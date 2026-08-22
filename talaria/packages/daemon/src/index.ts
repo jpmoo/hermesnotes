@@ -90,6 +90,24 @@ async function main(): Promise<void> {
     mirror.close();
     process.exit(0);
   };
+  /**
+   * If whoever started us has gone, go too.
+   *
+   * The app is supposed to stop this process when it stops, and does — but a
+   * kill -9, a crash, or a signal path that skips the handler all leave this
+   * running with no one to answer to. Every orphan holds the same SQLite file,
+   * so they pile up as writers that don't know about each other. Re-parenting
+   * to init is the one unambiguous sign it has happened.
+   */
+  if (process.env.TALARIA_SUPERVISED === "1") {
+    setInterval(() => {
+      if (process.ppid === 1) {
+        log("supervisor is gone — exiting");
+        void shutdown("orphaned");
+      }
+    }, 5000).unref();
+  }
+
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }

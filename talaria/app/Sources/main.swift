@@ -35,16 +35,27 @@ final class DaemonProcess {
     func start() {
         guard !stopping else { return }
         let node = URL(fileURLWithPath: "/opt/homebrew/bin/node")
-        let tsx = root.appendingPathComponent("packages/daemon/node_modules/tsx/dist/cli.mjs")
-        let entry = root.appendingPathComponent("packages/daemon/src/index.ts")
+        let pkg = root.appendingPathComponent("packages/daemon")
+        let entry = pkg.appendingPathComponent("src/index.ts")
         guard FileManager.default.fileExists(atPath: node.path),
-              FileManager.default.fileExists(atPath: tsx.path) else {
-            NSLog("talaria: cannot find node or tsx — expected \(node.path) and \(tsx.path)")
+              FileManager.default.fileExists(atPath: entry.path) else {
+            NSLog("talaria: cannot find node or the daemon — expected \(node.path) and \(entry.path)")
             return
         }
         let p = Process()
         p.executableURL = node
-        p.arguments = [tsx.path, entry.path]
+        // `--import tsx` rather than running tsx's CLI, which forks a second
+        // process to do the actual work. That fork is what made the orphan
+        // guard useless: killing this app reparented the *wrapper*, while the
+        // process holding the mirror open went on believing its parent was
+        // fine. One process, one parent, one thing to notice going away.
+        p.arguments = ["--import", "tsx", entry.path]
+        // tsx is resolved as a module specifier, so this has to be the package
+        // that has it installed.
+        p.currentDirectoryURL = pkg
+        var env = ProcessInfo.processInfo.environment
+        env["TALARIA_SUPERVISED"] = "1"
+        p.environment = env
         p.terminationHandler = { [weak self] proc in
             guard let self, !self.stopping else { return }
             NSLog("talaria: daemon exited (\(proc.terminationStatus)); restarting in 5s")
@@ -71,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var daemon: DaemonProcess?
     private var timer: Timer?
     private var lastIndexedEpoch = -1
+    private var signalSources: [DispatchSourceSignal] = []
 
     /// Where the daemon's code lives.
     ///
@@ -89,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let d = DaemonProcess(root: repoRoot)
         daemon = d
+        installSignalHandlers()
         d.start()
 
         // Poll for a moved cursor rather than reindexing on a schedule: the
@@ -103,6 +116,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         daemon?.stop()
+    }
+
+    /// Take the daemon down with us when we are signalled.
+    ///
+    /// `applicationWillTerminate` is an AppKit courtesy and a SIGTERM is not —
+    /// launchd stopping this app does not run it, so the node process it
+    /// started was simply abandoned. Orphans then accumulate, and because they
+    /// all hold the same SQLite file open, the mirror ends up with several
+    /// writers that know nothing about each other.
+    func installSignalHandlers() {
+        for sig in [SIGTERM, SIGINT] {
+            signal(sig, SIG_IGN) // the dispatch source handles it instead
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler { [weak self] in
+                NSLog("talaria: signal \(sig) — stopping the daemon")
+                self?.daemon?.stop()
+                exit(0)
+            }
+            source.resume()
+            signalSources.append(source)
+        }
     }
 
     private func syncIndexIfChanged() {

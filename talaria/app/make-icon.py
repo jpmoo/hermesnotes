@@ -16,21 +16,49 @@ src = Path(sys.argv[1])
 out = Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 
-logo = Image.open(src).convert("RGBA")
+from PIL import ImageDraw
 
-def square(size: int, inset: float = 0.10) -> Image.Image:
-    """The logo centred on a transparent square.
+art = Image.open(src).convert("RGBA")
 
-    macOS icons sit inside a margin rather than filling the tile; without one
-    this reads as a screenshot of a logo instead of an icon. The logo is wider
-    than it is tall, so it is fitted by whichever dimension runs out first.
+# The artwork is a wordmark: a small glyph followed by "Hermes" and a tagline,
+# far wider than it is tall. Squared as-is it becomes a thin band across an empty
+# tile, and at the ~32px Spotlight actually draws it that band is an illegible
+# smudge. So take the glyph and leave the words behind — the words are
+# unreadable at this size anyway, which is what a mark is for.
+bbox = art.getbbox()
+art = art.crop(bbox)
+# The glyph is roughly as tall as it is wide and sits at the left, so a square
+# taken off the left edge is it.
+mark = art.crop((0, 0, min(art.height, art.width), art.height))
+mark = mark.crop(mark.getbbox())
+
+
+def square(size: int) -> Image.Image:
+    """The mark on a rounded tile.
+
+    A tile rather than transparency: this is line art in a mid-tone teal, and
+    Spotlight draws results on backgrounds it chooses, not ones we do. On the
+    dark one it disappeared entirely.
     """
-    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    box = int(size * (1 - 2 * inset))
-    art = logo.copy()
-    art.thumbnail((box, box), Image.LANCZOS)
-    canvas.paste(art, ((size - art.width) // 2, (size - art.height) // 2), art)
-    return canvas
+    scale = 4  # supersample, so the rounded corners aren't jagged at 16px
+    big = size * scale
+    canvas = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    draw.rounded_rectangle(
+        [(0, 0), (big - 1, big - 1)],
+        radius=int(big * 0.2237),  # the macOS squircle, near enough
+        fill=(255, 255, 255, 255),
+    )
+    inset = int(big * 0.16)
+    box = big - inset * 2
+    # resize, not thumbnail: thumbnail only ever shrinks, and the glyph is a few
+    # hundred pixels being placed on a supersampled canvas several times larger,
+    # so it needs to grow.
+    ratio = min(box / mark.width, box / mark.height)
+    glyph = mark.resize((max(1, round(mark.width * ratio)), max(1, round(mark.height * ratio))), Image.LANCZOS)
+    canvas.paste(glyph, ((big - glyph.width) // 2, (big - glyph.height) // 2), glyph)
+    return canvas.resize((size, size), Image.LANCZOS)
+
 
 # The thumbnail Spotlight shows beside a result.
 square(512).save(out / "Talaria.png")

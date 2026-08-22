@@ -31,7 +31,7 @@ enum Indexer {
             let attrs = CSSearchableItemAttributeSet(contentType: UTType.content)
             attrs.title = item.title
             attrs.displayName = item.title
-            attrs.contentDescription = item.description.isEmpty ? item.typeName : item.description
+            attrs.contentDescription = item.subtitle
             // What someone might plausibly type: the tags they applied, and the
             // name of the type in their own vocabulary — "project", or whatever
             // they renamed it to.

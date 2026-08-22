@@ -95,6 +95,18 @@ export interface CanonicalBlock {
   /** The type's prose field, or a text block's own content. */
   body: string | null;
   completion: CanonicalCompletion | null;
+  /**
+   * Whether this block *can* be completed — a property of its type, not of its
+   * current value.
+   *
+   * Distinct from `completion` being non-null on purpose. A block of a
+   * status-bearing type that has no status set yet has nothing to report about
+   * its completion and is still perfectly completable; deriving one from the
+   * other took the checkbox away from exactly those. Nothing here mentions
+   * tasks: any type with a status field and something that counts as complete
+   * qualifies, which is the whole point of the property schema.
+   */
+  completable: boolean;
   schedule: CanonicalSpan | null;
   recurrence: CanonicalRecurrence | null;
   tags: string[];

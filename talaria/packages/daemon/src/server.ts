@@ -284,9 +284,11 @@ export function buildServer(deps: {
       const card = {
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
-        // A checkbox only belongs on something that can be completed. A note or
-        // a person has no status, and offering to tick one is offering nonsense.
-        completable: c.completion !== null,
+        // A checkbox only belongs on something that can be completed — which is
+        // a question about the type, not about whether a value happens to be
+        // set. A note or a person has no status; a brand-new task has one it
+        // hasn't used yet.
+        completable: c.completable,
         due: c.schedule?.end?.value ?? null, tags: c.tags, url: c.url,
         // Only meaningful on a canvas; null everywhere else. Size comes with
         // position: a canvas node is a box someone sized on purpose, and
@@ -366,7 +368,7 @@ export function buildServer(deps: {
       const asCard = (b: (typeof all)[number]) => ({
         id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
         done: b.completion?.done ?? false, status: b.completion?.status ?? null,
-        completable: b.completion !== null,
+        completable: b.completable,
         due: b.schedule?.end?.value ?? null, tags: b.tags, url: b.url,
         x: null, y: null, w: null, h: null,
       });
@@ -559,7 +561,7 @@ export function buildServer(deps: {
         bucket.items.push({
           id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
           done: b.completion?.done ?? false,
-          completable: b.completion !== null,
+          completable: b.completable,
           at: b.schedule?.start?.allDay === false ? b.schedule?.start?.value ?? null : null,
           isEnd: e === date, url: b.url, tags: b.tags,
         });

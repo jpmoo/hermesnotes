@@ -60,6 +60,17 @@ for (const [label, row, typeId] of rows) {
     links: c.links, isDailyNote: c.isDailyNote, noteDate: c.noteDate, url: c.url, appUrl: c.appUrl,
   }, null, 1));
 }
+// Completability is a fact about the type, not about the value: a task with no
+// status set yet is still a task you can finish.
+console.log("\n── completable");
+const noStatusYet = { ...base, id: "b9", blockTypeId: "t-task", content: null, properties: { title: "Never touched" } };
+const asTask = toCanonical(noStatusYet, types.find((t) => t.id === "t-task"), { appOrigin: "https://x" });
+console.log("task with no status value ->", asTask.completable, "(completion:", asTask.completion, ")");
+const person = toCanonical(
+  { ...base, id: "b10", blockTypeId: "t-person", content: null, properties: { title: "Someone" } },
+  types.find((t) => t.id === "t-person"), { appOrigin: "https://x" });
+console.log("a person                  ->", person.completable);
+
 console.log("\n── kind fallbacks");
 // The real case this got wrong: Hermes' seeding migrations skip any user who
 // already made a type of that name, so a hand-made Project is user data with

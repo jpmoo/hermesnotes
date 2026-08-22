@@ -159,6 +159,7 @@ export function toCanonical(
       : null;
 
   const recField = (schema?.fields ?? []).find((f) => f.type === "recurrence");
+  const completable = Boolean(schema?.status_field && schema.complete_values?.length);
 
   return {
     id: row.id,
@@ -172,6 +173,7 @@ export function toCanonical(
     title,
     body: rawBody ? rawBody : null,
     completion,
+    completable,
     schedule: scheduleOf(schema, props),
     recurrence: recField
       ? toCanonicalRecurrence(props[recField.key], { typeId: row.blockTypeId, title })

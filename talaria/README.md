@@ -4,14 +4,14 @@ A macOS system-integration layer for [Hermes Notes](../README.md): it keeps a
 local mirror of your blocks so the rest of the operating system can find and act
 on them, whether or not the home server is reachable.
 
-**Phase 1 (daemon, mirror, CLI) works.** Phases 2 (Spotlight, `hermes://`) and 3
-(App Intents) are not built yet. See [DESIGN.md](DESIGN.md) for what was decided
+**Phases 1 and 2 work.** Phase 3 (App Intents) is not built yet. See [DESIGN.md](DESIGN.md) for what was decided
 and why, and [HERMES-CORE-CHANGES.md](HERMES-CORE-CHANGES.md) for everything this
 asks of Hermes proper.
 
 ## What exists
 
 ```
+app/                 Talaria.app — Spotlight indexing, the talaria:// scheme
 packages/canonical   the seam — the only code that sees a Hermes payload
 packages/daemon      local SQLite mirror, sync loop, Unix-socket server
 packages/cli         the `hermes` command
@@ -109,6 +109,33 @@ launchctl bootout gui/$(id -u)/dev.talaria.daemon
 
 A bad config therefore respawns rather than staying down; `ThrottleInterval`
 holds that to one attempt a minute so the error stays readable in the log.
+
+## Spotlight and links
+
+The app indexes the mirror into CoreSpotlight, so ⌘Space finds your blocks and
+opens them. It reindexes when the daemon's cursor moves, not on a timer.
+
+`talaria://block/<uuid>` opens a block; `talaria://collection/<uuid>` opens a
+collection. Paste one anywhere that linkifies URLs, or `open talaria://block/…`
+from a terminal.
+
+Why a custom scheme when the https link already works: **the https link names a
+host**, so every one ever pasted dies the day Hermes moves. A `talaria://` link
+is resolved by the daemon at click time out of the one config file that knows
+where Hermes lives. The canonical object carries both — `url` to share, `appUrl`
+for here.
+
+Spotlight does **not** go through the scheme: activating a result calls the app
+back with the item's identifier, which for us is the block UUID.
+
+Checking the index without ⌘Space — CoreSpotlight items are invisible to
+`mdfind`, which searches a different store entirely:
+
+```bash
+"$HOME/Library/Application Support/Talaria/Talaria.app/Contents/MacOS/Talaria" --search "dual enrollment"
+```
+
+`--index` forces a reindex and `--clear` empties it.
 
 ## Running the acceptance scenario
 

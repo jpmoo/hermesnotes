@@ -26,6 +26,12 @@ export interface HermesTypeRow {
   builtin: boolean;
 }
 
+/**
+ * The scheme the app bundle claims. Not `hermes`: that is another tool on this
+ * machine, and the CLI is `talaria` for the same reason.
+ */
+export const URL_SCHEME = "talaria";
+
 const UUID = "[0-9a-fA-F-]{36}";
 const LINK_RE = new RegExp(`\\[([^\\]]*)\\]\\(block:(${UUID})\\)`, "g");
 const BARE_RE = new RegExp(`\\|(${UUID})`, "g");
@@ -179,6 +185,9 @@ export function toCanonical(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     version: row.version,
-    url: `${opts.appOrigin.replace(/\/$/, "")}/block/${row.id}`,
+    // A collection is a block, but the web app routes to it differently, and a
+    // Spotlight hit that opens an error page is worse than no hit at all.
+    url: `${opts.appOrigin.replace(/\/$/, "")}/${row.collectionKind ? "collections" : "block"}/${row.id}`,
+    appUrl: `${URL_SCHEME}://${row.collectionKind ? "collection" : "block"}/${row.id}`,
   };
 }

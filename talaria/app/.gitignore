@@ -1,4 +1,6 @@
-# The signature is produced by install.sh on the machine that runs the app. A
-# committed one is stale the moment anything in the bundle changes, and would
-# make codesign's own output a source of diffs.
-Talaria.app/Contents/_CodeSignature/
+# The bundle is a build artifact, assembled by build.sh into
+# ~/Library/Application Support/Talaria. It is not kept here for two reasons:
+# a signature is stale the moment anything inside changes, and this repo lives
+# under ~/Documents, which is iCloud-managed — codesign refuses a bundle
+# carrying the extended attributes iCloud puts on it, and puts back.
+Talaria.app/

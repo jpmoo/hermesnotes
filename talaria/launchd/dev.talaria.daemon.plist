@@ -38,7 +38,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/jpmoore/Documents/Misc/Scripts/hermesnotes/talaria/app/Talaria.app/Contents/MacOS/Talaria</string>
+    <string>/Users/jpmoore/Library/Application Support/Talaria/Talaria.app/Contents/MacOS/Talaria</string>
   </array>
 
   <key>RunAtLoad</key>

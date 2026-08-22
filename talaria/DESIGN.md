@@ -1,8 +1,9 @@
 # Talaria — Phase 0 Design
 
-**Status:** Phases 0 and 1 done. Both core changes landed and verified; the
-daemon, mirror and CLI work, with the offline/reconnect scenario passing in
-`acceptance/`. Phase 2 (Spotlight, `hermes://`) not started.
+**Status:** Phases 0, 1 and 2 done. Both core changes landed and verified; the
+daemon, mirror and CLI work with the offline/reconnect scenario passing in
+`acceptance/`; Talaria.app indexes into CoreSpotlight and owns the `talaria://`
+scheme. Phase 3 (App Intents) not started.
 **Scope:** Answers the open questions in the brief (§5), records what recon
 actually found, and names the two things that block later phases.
 **Companion:** `HERMES-CORE-CHANGES.md` — everything this project asks of Hermes

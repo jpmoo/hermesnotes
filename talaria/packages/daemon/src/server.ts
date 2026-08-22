@@ -153,6 +153,38 @@ export function buildServer(deps: {
     return envelope(canon([raw])[0]);
   });
 
+  /**
+   * The mirror as Spotlight wants it.
+   *
+   * Flattened here rather than in Swift because this is where the block types
+   * and the seam already are, and because Swift is the part that is slow and
+   * awkward to change (brief §3, §8). The app that consumes this only has to
+   * copy fields into a CSSearchableItemAttributeSet.
+   *
+   * Archived blocks are left out: archive means "not part of my working set",
+   * so an archived block in Spotlight is the index disagreeing with the app.
+   * `epoch` lets a caller skip the work when nothing has moved.
+   */
+  app.get("/spotlight", async () => {
+    const items = canon(mirror.search({ limit: 500 }))
+      .filter((b) => !b.archivedAt)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        // Enough to recognise it by in a result row, without pasting a whole
+        // note into the index.
+        description: (b.body ?? "").replace(/\s+/g, " ").trim().slice(0, 300),
+        kind: b.kind,
+        typeName: b.typeName,
+        tags: b.tags,
+        url: b.url,
+        appUrl: b.appUrl,
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+      }));
+    return { epoch: sync.cursor, count: items.length, items };
+  });
+
   app.get("/types", async () => envelope([...types().values()].map((t) => ({ id: t.id, name: t.name }))));
 
   app.post("/sync", async () => {

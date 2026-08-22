@@ -110,6 +110,17 @@ export interface CanonicalBlock {
   updatedAt: string;
   /** Carried so a queued write can tell whether the block moved underneath it. */
   version: number;
-  /** Deep link into the web app. */
+  /**
+   * Deep link into the web app. Shareable: works from any device, for anyone,
+   * with nothing installed — which is exactly why it names a host, and exactly
+   * why it dies if that host ever changes.
+   */
   url: string;
+  /**
+   * The same block, addressed without naming a host. Resolved at click time by
+   * whatever is holding the config, so a link pasted into a note two years ago
+   * still opens after Hermes has moved. Local to this machine by nature: it
+   * means nothing to anyone you send it to.
+   */
+  appUrl: string;
 }

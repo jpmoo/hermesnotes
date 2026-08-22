@@ -57,7 +57,7 @@ for (const [label, row, typeId] of rows) {
     schedule: c.schedule && { start: c.schedule.start, end: c.schedule.end, endLabel: c.schedule.endLabel },
     recurrence: c.recurrence && { seriesId: c.recurrence.seriesId, anchor: c.recurrence.anchor,
       occurrence: c.recurrence.occurrence, rrule: c.recurrence.expressibleAsRRULE },
-    links: c.links, isDailyNote: c.isDailyNote, noteDate: c.noteDate, url: c.url,
+    links: c.links, isDailyNote: c.isDailyNote, noteDate: c.noteDate, url: c.url, appUrl: c.appUrl,
   }, null, 1));
 }
 console.log("\n── kind fallbacks");

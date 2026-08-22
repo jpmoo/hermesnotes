@@ -35,8 +35,37 @@
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
+  <!-- Where the daemon's code lives; stamped in by build.sh, since the bundle
+       is assembled outside the repo and cannot find it by looking around. -->
+  <key>TalariaRepoRoot</key>
+  <string>__REPO_ROOT__</string>
+
   <key>LSUIElement</key>
   <true/>
+
+  <!--
+    The URL scheme. Not `hermes`: that is another tool on this machine.
+
+    Its job is host-independence. An https link to a block names a server, so
+    every one ever pasted into a note dies the day that server moves; a
+    talaria:// link is resolved by the daemon at click time, out of the one
+    config file that knows where Hermes lives.
+
+    Note that Spotlight does NOT come through here — activating a result calls
+    the app back with the item's identifier instead. This is for links pasted
+    into other apps, Shortcuts, and `open talaria://block/<uuid>`.
+  -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>dev.talaria.block</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>talaria</string>
+      </array>
+    </dict>
+  </array>
   <key>LSBackgroundOnly</key>
   <true/>
 </dict>

@@ -94,7 +94,7 @@ enum Daemon {
 
     // MARK: Boards
 
-    struct BoardSummary: Decodable { let id: String; let title: String }
+    struct BoardSummary: Decodable { let id: String; let title: String; let kind: String? }
     struct Region: Decodable { let index: Int; let title: String; let color: String? }
     struct Card: Decodable, Identifiable, Hashable {
         let id: String
@@ -105,7 +105,13 @@ enum Daemon {
         let due: String?
         let tags: [String]
         let url: String
+        /// Where it sits on a canvas; nil on every other kind.
+        let x: Double?
+        let y: Double?
     }
+
+    struct StickyNote: Decodable { let text: String; let x: Double; let y: Double; let color: String? }
+    struct Edge: Decodable { let from: String; let to: String }
     struct Board: Decodable {
         let id: String
         let title: String
@@ -117,6 +123,16 @@ enum Daemon {
         let drawer: [Card]
         /// Whether a query governs membership at all.
         let smart: Bool
+        /// What kind of collection this is — "matrix", "list", "calendar"…
+        let kind: String?
+        /// Matrix and kanban get a grid; everything else is a sequence.
+        let gridded: Bool
+        /// The contents, when it isn't gridded.
+        let members: [Card]
+        /// A canvas draws its members at coordinates, with notes and links.
+        let canvas: Bool
+        let notes: [StickyNote]
+        let edges: [Edge]
     }
     private struct Envelope<T: Decodable>: Decodable {
         let data: T
@@ -161,26 +177,35 @@ enum Daemon {
     // MARK: The assistant
 
     struct PendingCall: Decodable, Encodable { let tool: String }
+    /// One tool the assistant ran, and how it went.
+    struct Step: Decodable {
+        let tool: String
+        let ok: Bool?
+        let result: String?
+    }
     private struct Turn: Decodable {
         let ok: Bool?
         let reply: String?
         let pending: [PendingCall]?
+        let steps: [Step]?
         let error: String?
     }
-    struct AssistantTurn { let reply: String; let pending: [PendingCall] }
+    struct AssistantTurn { let reply: String; let pending: [PendingCall]; let steps: [Step] }
 
     static func assistant(_ message: String) throws -> AssistantTurn {
         let data = try post("/assistant", ["message": message])
         let t = try JSONDecoder().decode(Turn.self, from: data)
         if let err = t.error { throw Failure(description: err) }
-        return AssistantTurn(reply: t.reply ?? "", pending: t.pending ?? [])
+        return AssistantTurn(reply: t.reply ?? "", pending: t.pending ?? [], steps: t.steps ?? [])
     }
 
-    static func assistantConfirm(_ calls: [PendingCall]) throws {
+    @discardableResult
+    static func assistantConfirm(_ calls: [PendingCall]) throws -> [Step] {
         let payload = calls.map { ["tool": $0.tool] }
         let data = try post("/assistant/confirm", ["calls": payload])
         let t = try JSONDecoder().decode(Turn.self, from: data)
         if let err = t.error { throw Failure(description: err) }
+        return t.steps ?? []
     }
 
     /// POST JSON, and give back the body whatever the status — the daemon puts

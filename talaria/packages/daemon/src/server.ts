@@ -199,12 +199,13 @@ export function buildServer(deps: {
     return { epoch: sync.cursor, count: items.length, items };
   });
 
-  /** The matrix collections in the mirror, for a picker. */
+  /** Every collection in the mirror, for the picker. */
   app.get("/boards", async () =>
     envelope(
       canon(mirror.search({ limit: 500 }))
-        .filter((b) => b.collectionKind === "matrix")
-        .map((b) => ({ id: b.id, title: b.title })),
+        .filter((b) => b.collectionKind !== null)
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .map((b) => ({ id: b.id, title: b.title, kind: b.collectionKind })),
     ),
   );
 
@@ -223,12 +224,20 @@ export function buildServer(deps: {
     const raw = mirror.rawBlock(id);
     if (!raw) return reply.code(404).send({ error: "no such collection in the mirror" });
     const row = JSON.parse(raw) as { properties: Record<string, unknown>; collectionKind: string | null };
-    if (row.collectionKind !== "matrix") {
-      return reply.code(400).send({ error: `that is a ${row.collectionKind ?? "block"}, not a matrix` });
+    if (!row.collectionKind) {
+      return reply.code(400).send({ error: "that block isn't a collection" });
     }
+    // A kanban is a matrix with different chrome — same regions, same
+    // placement — so the two share a renderer. Everything else is a sequence,
+    // and gets shown as one rather than being given a bespoke half-imitation of
+    // the web app's view.
+    const gridded = row.collectionKind === "matrix" || row.collectionKind === "kanban";
+    // A canvas places its members at coordinates rather than in an order, and
+    // carries loose notes and connections of its own on the collection block.
+    const isCanvas = row.collectionKind === "canvas";
     const props = row.properties ?? {};
-    const cols = Math.min(6, Math.max(1, Number(props.matrix_cols) || 2));
-    const rows = Math.min(6, Math.max(1, Number(props.matrix_rows) || 2));
+    const cols = gridded ? Math.min(6, Math.max(1, Number(props.matrix_cols) || 2)) : 1;
+    const rows = gridded ? Math.min(6, Math.max(1, Number(props.matrix_rows) || 2)) : 0;
     const defs = Array.isArray(props.matrix_regions) ? (props.matrix_regions as Record<string, unknown>[]) : [];
     const regions = Array.from({ length: cols * rows }, (_, i) => ({
       index: i,
@@ -267,6 +276,9 @@ export function buildServer(deps: {
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
         due: c.schedule?.end?.value ?? null, tags: c.tags, url: c.url,
+        // Only meaningful on a canvas; null everywhere else.
+        x: typeof (ctx as { x?: unknown }).x === "number" ? (ctx as { x: number }).x : null,
+        y: typeof (ctx as { y?: unknown }).y === "number" ? (ctx as { y: number }).y : null,
       };
       // A member with no region and a query match nobody has placed are the
       // same thing to look at — in this collection, not on the board — so they
@@ -298,8 +310,43 @@ export function buildServer(deps: {
       }
     }
 
+    // Stickies and connections live on the collection, not on any block, so
+    // they have no ids of their own worth addressing — they are drawn and
+    // nothing more, which is all a read-only view of a canvas needs.
+    const notes = isCanvas && Array.isArray(props.canvas_notes)
+      ? (props.canvas_notes as Record<string, unknown>[]).map((n) => ({
+          text: String(n.text ?? ""),
+          x: Number(n.x ?? 0),
+          y: Number(n.y ?? 0),
+          color: typeof n.color === "string" ? n.color : null,
+        }))
+      : [];
+    const edges = isCanvas && Array.isArray(props.canvas_edges)
+      ? (props.canvas_edges as Record<string, unknown>[])
+          .map((e) => ({ from: String(e.from ?? ""), to: String(e.to ?? "") }))
+          .filter((e) => e.from && e.to)
+      : [];
+
     const me = canon([raw])[0]!;
-    return envelope({ id, title: me.title, cols, rows, regions, cells, drawer, smart: isSmart });
+    // A sequence collection puts everything in one list; there are no regions to
+    // put anything in, so what would have been "unplaced" is simply the contents.
+    const members = gridded ? [] : drawer.slice();
+    return envelope({
+      id,
+      title: me.title,
+      kind: row.collectionKind,
+      gridded,
+      cols,
+      rows,
+      regions: gridded ? regions : [],
+      cells: gridded ? cells : {},
+      drawer: gridded ? drawer : [],
+      members,
+      canvas: isCanvas,
+      notes,
+      edges,
+      smart: isSmart,
+    });
   });
 
   /**

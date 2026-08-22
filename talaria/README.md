@@ -162,10 +162,21 @@ Anything destructive comes back for approval before it runs: the panel lists
 what it wants to do and does nothing until you say. `"assistantHotkey"` in
 `config.json` rebinds it.
 
-## The board
+## Collections
 
-A matrix collection in a floating window: cards drag between quadrants, the
-checkbox completes, clicking one opens it in the web app.
+**Any** collection in a floating window, styled from the web app's own palette:
+
+- **matrix / kanban** — the grid, with cards draggable between regions and a
+  drawer for what the query matched but nobody placed
+- **canvas** — read-only, at the coordinates the web app placed things at, with
+  the sticky notes and the connections. Pan, zoom, click to open. Nothing is
+  moved from here: a canvas is a spatial argument someone made on purpose.
+- **everything else** — list, table, rollup, calendar, masonry — as a sequence.
+  Deliberately one renderer rather than five near-misses.
+
+The picker names each collection's kind with its icon, and remembers the last
+one. Right-click the menu bar item to choose whether a plain click opens the
+collections window or Ask Hermes.
 
 Cards drag between regions **and to and from the drawer** — dragging one out of
 the drawer is the moment it joins the collection, and dropping one back takes it

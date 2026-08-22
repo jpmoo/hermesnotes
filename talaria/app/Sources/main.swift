@@ -347,17 +347,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Right-click is the way out of an app with no menu bar.
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
-            menu.addItem(withTitle: "Ask Hermes…", action: #selector(showAssistant), keyEquivalent: "").target = self
-            menu.addItem(withTitle: "Refresh", action: #selector(refreshBoard), keyEquivalent: "r").target = self
+            let ask = menu.addItem(withTitle: "Ask Hermes", action: #selector(showAssistant), keyEquivalent: "")
+            ask.target = self
+            ask.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
+            let coll = menu.addItem(withTitle: "Collections", action: #selector(showBoard), keyEquivalent: "")
+            coll.target = self
+            coll.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)
+
             menu.addItem(.separator())
+            // Which of the two a plain click opens. A menu bar item has exactly
+            // one left click to give, and which one you want depends on how you
+            // work — so it is a choice rather than my guess.
+            let submenu = NSMenu()
+            for (title, value) in [("Ask Hermes", "assistant"), ("Collections", "board")] {
+                let item = submenu.addItem(withTitle: title, action: #selector(setPrimary(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = value
+                item.state = (Self.primaryPanel == value) ? .on : .off
+            }
+            let picker = menu.addItem(withTitle: "Click opens", action: nil, keyEquivalent: "")
+            menu.setSubmenu(submenu, for: picker)
+
+            menu.addItem(.separator())
+            menu.addItem(withTitle: "Refresh", action: #selector(refreshBoard), keyEquivalent: "r").target = self
             menu.addItem(withTitle: "Quit Talaria", action: #selector(quit), keyEquivalent: "q").target = self
             statusItem?.menu = menu
             statusItem?.button?.performClick(nil)
             statusItem?.menu = nil
             return
         }
-        toggleBoardWindow()
+        if Self.primaryPanel == "assistant" { toggleAssistantWindow() } else { toggleBoardWindow() }
     }
+
+    /// Which panel a left click opens, remembered between launches.
+    private static var primaryPanel: String {
+        UserDefaults.standard.string(forKey: "talaria.primaryPanel") ?? "board"
+    }
+
+    @objc private func setPrimary(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(value, forKey: "talaria.primaryPanel")
+    }
+
+    @objc private func showBoard() { toggleBoardWindow() }
 
     @objc private func refreshBoard() { boardModel.load() }
 

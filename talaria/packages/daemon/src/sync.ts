@@ -174,22 +174,28 @@ export class Sync {
   /**
    * Refresh the cached match set for every smart collection.
    *
-   * A matrix's members are explicit memberships, but a smart one also carries a
-   * query, and the app uses it twice: to drop members that no longer match — a
-   * task completed, a date now out of range — and to fill the drawer with
-   * matches that have not been placed yet. Both need the query's answer, and
-   * the answer only comes from the server.
+   * A smart collection's query is used twice: to drop members that no longer
+   * match — a task completed, a date now out of range — and to supply the ones
+   * that were never placed. For a matrix the second lot fill the drawer; for a
+   * list or a table they *are* the contents, since those hold no explicit
+   * memberships at all. Either way the answer only comes from the server.
    */
-  async refreshQueries(): Promise<void> {
+  async refreshQueries(opts: { onlyMissing?: boolean } = {}): Promise<void> {
     for (const raw of this.mirror.search({ limit: 500 })) {
       const row = JSON.parse(raw) as {
         id: string;
         collectionKind: string | null;
         properties: Record<string, unknown>;
       };
-      if (row.collectionKind !== "matrix") continue;
+      // Every kind, not just matrices. A smart table or list has no explicit
+      // memberships at all — its contents *are* the query's answer — so
+      // skipping them left those collections looking empty.
+      if (!row.collectionKind) continue;
       const q = row.properties?.filter_query;
       if (!q) continue;
+      // On a quiet tick only fill the gaps: asking the server to re-run every
+      // saved query every thirty seconds is a lot of work to confirm nothing.
+      if (opts.onlyMissing && this.mirror.get(`query.${row.id}`) !== null) continue;
       try {
         const matched = await this.hermes.queryMatches(q);
         this.mirror.set(`query.${row.id}`, JSON.stringify(matched.map((b) => b.id)));
@@ -250,6 +256,11 @@ export class Sync {
       }
 
       if (!touched.size && !gone.size) {
+        // Still check the query sets. A quiet tick used to skip this entirely,
+        // so a collection whose answer had never been fetched stayed empty for
+        // as long as nothing else in the account moved — which for a smart list
+        // is the whole of its contents.
+        await this.refreshQueries({ onlyMissing: true });
         this.mirror.set(CURSOR, String(since));
         this.mirror.set(LAST_OK, new Date().toISOString());
         return { state: "ok", changed: 0, walked: false };

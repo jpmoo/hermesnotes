@@ -123,13 +123,19 @@ struct BoardView: View {
             header
             Divider()
             if let board = model.board {
-                grid(board)
-                // Always drawn, even with nothing in it. Hiding it when empty
-                // took the drop target away at exactly the moment it was needed
-                // — there was nowhere to put the first card you wanted out of
-                // the grid.
-                Divider()
-                drawer(board.drawer).frame(height: board.drawer.isEmpty ? 52 : 88)
+                if board.canvas {
+                    CanvasBoard(board: board, model: model)
+                } else if board.gridded {
+                    grid(board)
+                    // Always drawn, even with nothing in it. Hiding it when
+                    // empty took the drop target away at exactly the moment it
+                    // was needed — there was nowhere to put the first card you
+                    // wanted out of the grid.
+                    Divider()
+                    drawer(board.drawer).frame(height: board.drawer.isEmpty ? 52 : 88)
+                } else {
+                    sequence(board.members)
+                }
             } else if let error = model.error {
                 message(error, systemImage: "exclamationmark.triangle")
             } else {
@@ -154,10 +160,20 @@ struct BoardView: View {
                 get: { model.selected ?? "" },
                 set: { model.choose($0) }
             )) {
-                ForEach(model.boards, id: \.id) { b in Text(b.title).tag(b.id) }
+                ForEach(model.boards, id: \.id) { b in
+                    // Kind and name together: several collections can share a
+                    // name across shapes, and which shape it is changes what
+                    // you are about to be shown.
+                    Label {
+                        Text("\(b.title)  ·  \(b.kind ?? "collection")")
+                    } icon: {
+                        Image(systemName: Theme.symbol(forCollection: b.kind))
+                    }
+                    .tag(b.id)
+                }
             }
             .labelsHidden()
-            .frame(maxWidth: 260)
+            .frame(maxWidth: 300)
             .disabled(model.boards.count < 2)
             Spacer()
             if model.busy { ProgressView().controlSize(.small) }
@@ -175,6 +191,26 @@ struct BoardView: View {
                 .multilineTextAlignment(.center).padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Everything that isn't a grid or a canvas: a list, in its own order.
+    ///
+    /// Deliberately one renderer rather than five near-misses. A table, a
+    /// masonry and a rollup differ in the web app in ways that matter there and
+    /// would be a poor imitation here; what they have in common is a sequence of
+    /// blocks, which is the useful part at this size.
+    private func sequence(_ cards: [Daemon.Card]) -> some View {
+        ScrollView {
+            VStack(spacing: 4) {
+                ForEach(cards) { card in CardRow(card: card, model: model) }
+                if cards.isEmpty {
+                    Text("Nothing in this collection")
+                        .font(Theme.body(11)).foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity).padding(.vertical, 20)
+                }
+            }
+            .padding(10)
+        }
     }
 
     private func grid(_ board: Daemon.Board) -> some View {
@@ -244,11 +280,18 @@ struct BoardView: View {
         let tint = region.color.flatMap { Color(hex: $0) }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text(region.title).font(.caption.weight(.semibold))
+                // The region's colour as a bar rather than a wash: a card has to
+                // stay readable on top, and a full-strength tint behind small
+                // text is what made this look like a toy.
+                Capsule().fill(tint ?? Theme.accent.opacity(0.5)).frame(width: 3, height: 11)
+                Text(region.title).font(Theme.chrome(11, weight: .semibold))
                 Spacer()
-                Text("\(cards.count)").font(.caption2).foregroundStyle(.secondary)
+                Text("\(cards.count)")
+                    .font(Theme.chrome(10)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.13)))
             }
-            .padding(.horizontal, 8).padding(.top, 6)
+            .padding(.horizontal, 9).padding(.top, 7)
 
             ScrollView(showsIndicators: true) {
                 VStack(spacing: 3) {
@@ -263,12 +306,13 @@ struct BoardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                // The region's own colour, at a weight that a card can still be
-                // read on top of. Hermes stores it with alpha already.
-                .fill(tint ?? Color.secondary.opacity(0.12))
+            RoundedRectangle(cornerRadius: Theme.cardRadius)
+                .fill((tint ?? Color.secondary).opacity(0.07))
         )
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary, lineWidth: 0.5))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.cardRadius)
+                .strokeBorder((tint ?? Color.secondary).opacity(0.25), lineWidth: 0.75)
+        )
         .onDrop(of: [.text], isTargeted: nil) { providers in
             acceptDrop(providers, into: region.index, model: model)
         }
@@ -284,26 +328,41 @@ private struct CardRow: View {
         HStack(alignment: .top, spacing: 6) {
             Button { model.complete(card) } label: {
                 Image(systemName: card.done ? "checkmark.square.fill" : "square")
-                    .foregroundStyle(card.done ? Color.accentColor : .secondary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(card.done ? Theme.accent : .secondary)
             }
             .buttonStyle(.borderless)
             .help(card.done ? "Already done" : "Mark complete")
             .disabled(card.done)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(card.title)
-                    .font(.caption)
+                    .font(Theme.body(11.5))
                     .strikethrough(card.done)
                     .foregroundStyle(card.done ? .secondary : .primary)
                     .lineLimit(2)
-                if let due = card.due {
-                    Text(due).font(.caption2).foregroundStyle(.tertiary)
+                HStack(spacing: 5) {
+                    if let due = card.due {
+                        Label(due, systemImage: "calendar")
+                            .font(Theme.chrome(9.5)).foregroundStyle(.tertiary).labelStyle(.titleAndIcon)
+                    }
+                    ForEach(card.tags.prefix(2), id: \.self) { tag in
+                        Text("#\(tag)")
+                            .font(Theme.chrome(9.5)).foregroundStyle(Theme.accent)
+                    }
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 3).padding(.horizontal, 5)
-        .background(RoundedRectangle(cornerRadius: 5).fill(hovering ? AnyShapeStyle(.selection) : AnyShapeStyle(.background.opacity(0.6))))
+        .padding(.vertical, 5).padding(.horizontal, 7)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.controlRadius)
+                .fill(hovering ? AnyShapeStyle(Theme.accent.opacity(0.10)) : AnyShapeStyle(.background.opacity(0.75)))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.controlRadius)
+                .strokeBorder(hovering ? Theme.accent.opacity(0.35) : Color.secondary.opacity(0.14), lineWidth: 0.5)
+        )
         .onHover { hovering = $0 }
         .contentShape(Rectangle())
         // onDrag before the tap, so a press that turns into a drag is a drag.
@@ -318,24 +377,103 @@ private struct CardRow: View {
     }
 }
 
-extension Color {
-    /// Region colours arrive as hex, and Hermes writes eight digits — the last
-    /// two being alpha, which a six-digit parser silently reads as blue.
-    init?(hex: String) {
-        var s = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")).lowercased()
-        if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
-        var alpha = 1.0
-        if s.count == 8 {
-            alpha = Double(Int(s.suffix(2), radix: 16) ?? 255) / 255
-            s = String(s.prefix(6))
+/// A canvas, read-only.
+///
+/// Members sit at the coordinates the web app placed them at, with the
+/// collection's own sticky notes and the connections between blocks. Pan and
+/// zoom, and click a card to open it — but nothing is moved from here: a canvas
+/// is a spatial argument someone made deliberately, and nudging it by accident
+/// from a small window would be a poor trade for a convenience nobody asked for.
+struct CanvasBoard: View {
+    let board: Daemon.Board
+    @ObservedObject var model: BoardModel
+    @State private var scale: CGFloat = 0.75
+    @State private var offset: CGSize = .zero
+    @State private var dragged: CGSize = .zero
+
+    private let cardW: CGFloat = 170
+    private let cardH: CGFloat = 54
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.clear
+                canvasContent
+                    .scaleEffect(scale, anchor: .center)
+                    .offset(x: offset.width + dragged.width, y: offset.height + dragged.height)
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture()
+                    .onChanged { dragged = $0.translation }
+                    .onEnded { _ in offset.width += dragged.width; offset.height += dragged.height; dragged = .zero }
+            )
+            .gesture(MagnificationGesture().onChanged { scale = min(2, max(0.25, $0)) })
+            .overlay(alignment: .bottomTrailing) { zoomControls.padding(10) }
+            .onAppear { centre(in: geo.size) }
         }
-        guard s.count == 6, let v = Int(s, radix: 16) else { return nil }
-        self.init(
-            .sRGB,
-            red: Double((v >> 16) & 0xff) / 255,
-            green: Double((v >> 8) & 0xff) / 255,
-            blue: Double(v & 0xff) / 255,
-            opacity: alpha
+    }
+
+    private var canvasContent: some View {
+        ZStack(alignment: .topLeading) {
+            // Connections first, so cards sit above their own lines.
+            ForEach(Array(board.edges.enumerated()), id: \.offset) { _, edge in
+                if let a = placed.first(where: { $0.id == edge.from }),
+                   let b = placed.first(where: { $0.id == edge.to }) {
+                    Path { p in
+                        p.move(to: CGPoint(x: (a.x ?? 0) + cardW / 2, y: (a.y ?? 0) + cardH / 2))
+                        p.addLine(to: CGPoint(x: (b.x ?? 0) + cardW / 2, y: (b.y ?? 0) + cardH / 2))
+                    }
+                    .stroke(Theme.accent.opacity(0.45), lineWidth: 1.5)
+                }
+            }
+            ForEach(Array(board.notes.enumerated()), id: \.offset) { _, note in
+                Text(note.text)
+                    .font(Theme.body(10.5))
+                    .padding(7)
+                    .frame(width: 140, alignment: .topLeading)
+                    .background(RoundedRectangle(cornerRadius: 4)
+                        .fill(note.color.flatMap { Color(hex: $0) } ?? Theme.postit))
+                    .shadow(color: .black.opacity(0.12), radius: 2, x: 1, y: 1)
+                    .offset(x: note.x, y: note.y)
+            }
+            ForEach(placed) { card in
+                CardRow(card: card, model: model)
+                    .frame(width: cardW)
+                    .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(.background))
+                    .shadow(color: .black.opacity(0.10), radius: 3, x: 1, y: 2)
+                    .offset(x: card.x ?? 0, y: card.y ?? 0)
+            }
+        }
+    }
+
+    /// Only members that were actually placed; an unplaced one has no position
+    /// to draw it at and would pile up at the origin.
+    private var placed: [Daemon.Card] {
+        board.members.filter { $0.x != nil && $0.y != nil }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 4) {
+            Button { scale = max(0.25, scale - 0.15) } label: { Image(systemName: "minus.magnifyingglass") }
+            Button { scale = min(2, scale + 0.15) } label: { Image(systemName: "plus.magnifyingglass") }
+            Button { scale = 0.75; offset = .zero } label: { Image(systemName: "arrow.counterclockwise") }
+        }
+        .buttonStyle(.borderless)
+        .font(.system(size: 11))
+        .padding(5)
+        .background(Capsule().fill(.thinMaterial))
+    }
+
+    /// Start with the content in view rather than wherever the origin happens
+    /// to be — a canvas laid out around (2000, 1200) otherwise opens on nothing.
+    private func centre(in size: CGSize) {
+        let xs = placed.compactMap(\.x) + board.notes.map(\.x)
+        let ys = placed.compactMap(\.y) + board.notes.map(\.y)
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return }
+        offset = CGSize(
+            width: -((minX + maxX) / 2) * scale,
+            height: -((minY + maxY) / 2) * scale
         )
     }
 }

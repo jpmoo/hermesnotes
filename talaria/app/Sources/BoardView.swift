@@ -201,6 +201,36 @@ struct BoardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Buckets in first-seen order, so grouping rearranges nothing that was
+    /// already ordered. A block the grouping field says nothing about goes last
+    /// under its own heading rather than being dropped or silently first.
+    private func grouped<T>(_ items: [T], by key: (T) -> String?) -> [(String, [T])] {
+        var order: [String] = []
+        var buckets: [String: [T]] = [:]
+        for item in items {
+            let k = key(item) ?? "—"
+            if buckets[k] == nil { order.append(k); buckets[k] = [] }
+            buckets[k]?.append(item)
+        }
+        if let i = order.firstIndex(of: "—") {
+            order.remove(at: i)
+            order.append("—")
+        }
+        return order.map { ($0, buckets[$0] ?? []) }
+    }
+
+    private func groupHeading(_ label: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label == "—" ? "Ungrouped" : label)
+                .font(Theme.chrome(10, weight: .semibold))
+                .foregroundStyle(Theme.accentInk)
+                .padding(.horizontal, 7).padding(.vertical, 2)
+                .background(Capsule().fill(Theme.accent.opacity(0.18)))
+            Rectangle().fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
+        }
+        .padding(.top, 4)
+    }
+
     /// Everything that isn't a grid or a canvas: a list, in its own order.
     ///
     /// Deliberately one renderer rather than five near-misses. A table, a
@@ -209,8 +239,15 @@ struct BoardView: View {
     /// blocks, which is the useful part at this size.
     private func sequence(_ cards: [Daemon.Card]) -> some View {
         ScrollView {
-            VStack(spacing: 4) {
-                ForEach(cards) { card in CardRow(card: card, model: model) }
+            VStack(alignment: .leading, spacing: 4) {
+                if model.board?.groupBy != nil {
+                    ForEach(grouped(cards, by: { $0.group }), id: \.0) { label, items in
+                        groupHeading(label)
+                        ForEach(items) { card in CardRow(card: card, model: model) }
+                    }
+                } else {
+                    ForEach(cards) { card in CardRow(card: card, model: model) }
+                }
                 if cards.isEmpty {
                     Text("Nothing in this collection")
                         .font(Theme.body(11)).foregroundStyle(.tertiary)
@@ -226,8 +263,17 @@ struct BoardView: View {
     private func rollup(_ groups: [Daemon.Group]) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 8) {
-                ForEach(groups) { group in
-                    RollupNode(node: group, depth: 0, model: model)
+                if model.board?.groupBy != nil {
+                    ForEach(grouped(groups, by: { $0.group }), id: \.0) { label, buckets in
+                        groupHeading(label)
+                        ForEach(buckets) { group in
+                            RollupNode(node: group, depth: 0, model: model)
+                        }
+                    }
+                } else {
+                    ForEach(groups) { group in
+                        RollupNode(node: group, depth: 0, model: model)
+                    }
                 }
                 if groups.isEmpty {
                     Text("Nothing rolls up here")
@@ -309,7 +355,7 @@ struct BoardView: View {
                 // The region's colour as a bar rather than a wash: a card has to
                 // stay readable on top, and a full-strength tint behind small
                 // text is what made this look like a toy.
-                Capsule().fill(tint ?? Theme.accent.opacity(0.5)).frame(width: 3, height: 11)
+                Capsule().fill(tint ?? Theme.accent).frame(width: 3, height: 11)
                 Text(region.title).font(Theme.chrome(11, weight: .semibold))
                 Spacer()
                 Text("\(cards.count)")
@@ -333,11 +379,15 @@ struct BoardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: Theme.cardRadius)
-                .fill((tint ?? Color.secondary).opacity(0.07))
+                // Hermes stores these with alpha already — around 0.8 — so a
+                // further 0.07 on top left barely a tint at all. The cards
+                // sitting on it carry their own opaque background, so the
+                // region can be the colour it was chosen to be.
+                .fill((tint ?? Color.secondary).opacity(0.45))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardRadius)
-                .strokeBorder((tint ?? Color.secondary).opacity(0.25), lineWidth: 0.75)
+                .strokeBorder((tint ?? Color.secondary).opacity(0.9), lineWidth: 1)
         )
         .onDrop(of: [.text], isTargeted: nil) { providers in
             acceptDrop(providers, into: region.index, model: model)
@@ -389,7 +439,9 @@ private struct CardRow: View {
         .padding(.vertical, 5).padding(.horizontal, 7)
         .background(
             RoundedRectangle(cornerRadius: Theme.controlRadius)
-                .fill(hovering ? AnyShapeStyle(Theme.accent.opacity(0.10)) : AnyShapeStyle(.background.opacity(0.75)))
+                // Opaque, not translucent: a card has to stay readable on top of
+                // whatever colour its region turned out to be.
+                .fill(hovering ? AnyShapeStyle(Theme.accent.opacity(0.18)) : AnyShapeStyle(.background))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.controlRadius)
@@ -514,6 +566,82 @@ struct CanvasBoard: View {
         let rect: CGRect
     }
 
+    /// The area every node covers, with a margin so nothing sits on the edge.
+    private var contentBounds: CGRect {
+        let rects = nodes.map(\.rect)
+        guard let first = rects.first else { return .zero }
+        let union = rects.dropFirst().reduce(first) { $0.union($1) }
+        return union.insetBy(dx: -60, dy: -60)
+    }
+
+    private var edgeLayer: some View {
+        let bounds = contentBounds
+        let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.rect) })
+        return Canvas { ctx, _ in
+            for edge in board.edges {
+                guard let a = index[edge.from], let b = index[edge.to] else { continue }
+                // Local to the Canvas, which starts at the bounds origin.
+                let start = anchor(a, edge.fromSide).applying(.init(translationX: -bounds.minX, y: -bounds.minY))
+                let end = anchor(b, edge.toSide).applying(.init(translationX: -bounds.minX, y: -bounds.minY))
+                let tint = edge.color.flatMap { Color(hex: $0) } ?? Theme.accentInk.opacity(0.6)
+
+                var line = Path()
+                line.move(to: start)
+                line.addLine(to: end)
+                ctx.stroke(
+                    line,
+                    with: .color(tint),
+                    style: StrokeStyle(lineWidth: edge.width, lineCap: .round, dash: dashPattern(edge.dash))
+                )
+                if edge.arrow == "forward" || edge.arrow == "both" {
+                    ctx.fill(arrowHead(at: end, from: start), with: .color(tint))
+                }
+                if edge.arrow == "back" || edge.arrow == "both" {
+                    ctx.fill(arrowHead(at: start, from: end), with: .color(tint))
+                }
+                if let label = edge.label, !label.isEmpty {
+                    let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+                    ctx.draw(Text(label).font(Theme.chrome(9)), at: mid)
+                }
+            }
+        }
+        .frame(width: bounds.width, height: bounds.height)
+        .offset(x: bounds.minX, y: bounds.minY)
+        .allowsHitTesting(false)
+    }
+
+    private func dashPattern(_ dash: String) -> [CGFloat] {
+        switch dash {
+        case "dashed": return [6, 4]
+        case "dotted": return [1.5, 4]
+        default: return []
+        }
+    }
+
+    /// The middle of the named side, so a line leaves a box where it was drawn
+    /// to leave it rather than from its centre.
+    private func anchor(_ rect: CGRect, _ side: String) -> CGPoint {
+        switch side {
+        case "n": return CGPoint(x: rect.midX, y: rect.minY)
+        case "s": return CGPoint(x: rect.midX, y: rect.maxY)
+        case "w": return CGPoint(x: rect.minX, y: rect.midY)
+        case "e": return CGPoint(x: rect.maxX, y: rect.midY)
+        default: return CGPoint(x: rect.midX, y: rect.midY)
+        }
+    }
+
+    private func arrowHead(at tip: CGPoint, from origin: CGPoint) -> Path {
+        let angle = atan2(tip.y - origin.y, tip.x - origin.x)
+        let size: CGFloat = 8
+        let spread: CGFloat = .pi / 7
+        var p = Path()
+        p.move(to: tip)
+        p.addLine(to: CGPoint(x: tip.x - size * cos(angle - spread), y: tip.y - size * sin(angle - spread)))
+        p.addLine(to: CGPoint(x: tip.x - size * cos(angle + spread), y: tip.y - size * sin(angle + spread)))
+        p.closeSubpath()
+        return p
+    }
+
     /// Only members that were actually placed; an unplaced one has no position
     /// to draw it at and would pile up at the origin.
     private var placed: [Daemon.Card] {
@@ -532,12 +660,16 @@ struct CanvasBoard: View {
             // Resolved against notes as well as blocks: on a real canvas most
             // connections are between stickies, and matching only blocks drew
             // nothing at all while looking like it had tried.
-            let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.rect) })
-            ForEach(Array(board.edges.enumerated()), id: \.offset) { _, edge in
-                if let a = index[edge.from], let b = index[edge.to] {
-                    EdgeShape(edge: edge, from: a, to: b)
-                }
-            }
+            // Every edge in one Canvas, sized and placed to match the nodes.
+            //
+            // A Path carrying absolute coordinates does not stay where it was
+            // told: a ZStack takes the path's bounding box and places *that* at
+            // its own alignment point, so a line drawn from (500,300) is quietly
+            // translated somewhere else. Lines looked roughly right by accident;
+            // the arrowheads, which have to land exactly on a box's edge, ended
+            // up inside the boxes. A Canvas has one coordinate space and honours
+            // it, which is the only way this is reliable.
+            edgeLayer
 
             ForEach(board.notes) { note in
                 // Sized as drawn on the web, and scrolling: a sticky holds as
@@ -570,6 +702,11 @@ struct CanvasBoard: View {
         ScrollView {
             CardRow(card: card, model: model).padding(6)
         }
+        // The whole box opens the block, not only the line of text inside it —
+        // a card in a scroll view is mostly scroll view, and clicking the space
+        // around the title did nothing.
+        .contentShape(Rectangle())
+        .onTapGesture { if let u = URL(string: card.url) { NSWorkspace.shared.open(u) } }
         .frame(width: card.w ?? 220, height: card.h ?? 90)
         .background(RoundedRectangle(cornerRadius: Theme.cardRadius).fill(.background))
         .overlay(
@@ -701,7 +838,13 @@ private struct EdgeShape: View {
         let a = anchor(from, edge.fromSide)
         let b = anchor(to, edge.toSide)
         let tint = edge.color.flatMap { Color(hex: $0) } ?? Theme.accentInk.opacity(0.55)
-        ZStack(alignment: .topLeading) {
+        // A Group, not a ZStack. A ZStack takes a frame of its own and lays its
+        // children out inside it, so paths drawn in absolute canvas coordinates
+        // were being re-placed relative to that frame — the line survived
+        // because it defined the frame, and the arrowhead, sitting at one end
+        // of it, did not. A Group is layout-neutral, so both stay where the
+        // coordinates put them.
+        Group {
             Path { p in
                 p.move(to: a)
                 p.addLine(to: b)

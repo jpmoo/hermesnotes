@@ -105,6 +105,8 @@ enum Daemon {
         let due: String?
         let tags: [String]
         let url: String
+        /// The heading this belongs under, when the collection is grouped.
+        let group: String?
         /// Whether this block has a status at all — a note or a person has none,
         /// and a checkbox on one is an offer of nonsense.
         ///
@@ -159,6 +161,8 @@ enum Daemon {
         let completable: Bool?
         let due: String?
         let tags: [String]
+        /// The heading this belongs under, when the collection is grouped.
+        let group: String?
         let children: [Group]
 
         var canComplete: Bool { completable ?? false }
@@ -183,6 +187,8 @@ enum Daemon {
         let gridded: Bool
         /// The contents, when it isn't gridded.
         let members: [Card]
+        /// What the collection is grouped by, if anything.
+        let groupBy: String?
         /// A canvas draws its members at coordinates, with notes and links.
         let canvas: Bool
         let notes: [StickyNote]

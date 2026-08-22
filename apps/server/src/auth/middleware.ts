@@ -22,6 +22,33 @@ declare module "fastify" {
 }
 
 /**
+ * The owner a bearer access key belongs to, or null when it's unknown or
+ * revoked. Stamps `last_used_at` best-effort.
+ *
+ * Exported because the MCP endpoint needs to ask the same question before it
+ * accepts a connection, and two places deciding separately what a valid key is
+ * would eventually disagree. It covers OAuth-issued tokens too: `auth/oauth.ts`
+ * mints those into this same table, so one lookup answers for both.
+ */
+export async function ownerForBearer(token: string): Promise<string | null> {
+  if (!token) return null;
+  const [row] = await db
+    .select({ ownerId: apiTokens.ownerId, id: apiTokens.id })
+    .from(apiTokens)
+    .where(and(eq(apiTokens.tokenHash, sha256(token)), isNull(apiTokens.revokedAt)))
+    .limit(1);
+  if (!row) return null;
+  // best-effort last-used stamp; don't block the request on it
+  void db
+    .update(apiTokens)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(apiTokens.id, row.id))
+    .execute()
+    .catch(() => {});
+  return row.ownerId;
+}
+
+/**
  * Resolve the request to an owner. Accepts either a signed session cookie
  * (browser) or `Authorization: Bearer <token>` (programmatic). Attaches
  * `request.userId`. Throws 401 when neither is valid.
@@ -30,22 +57,10 @@ export async function authenticate(req: FastifyRequest, _reply: FastifyReply): P
   // Bearer token first.
   const auth = req.headers.authorization;
   if (auth?.startsWith("Bearer ")) {
-    const token = auth.slice(7).trim();
-    const [row] = await db
-      .select({ ownerId: apiTokens.ownerId, id: apiTokens.id })
-      .from(apiTokens)
-      .where(and(eq(apiTokens.tokenHash, sha256(token)), isNull(apiTokens.revokedAt)))
-      .limit(1);
-    if (row) {
-      req.userId = row.ownerId;
+    const ownerId = await ownerForBearer(auth.slice(7).trim());
+    if (ownerId) {
+      req.userId = ownerId;
       req.authKind = "bearer";
-      // best-effort last-used stamp; don't block the request on it
-      void db
-        .update(apiTokens)
-        .set({ lastUsedAt: new Date() })
-        .where(eq(apiTokens.id, row.id))
-        .execute()
-        .catch(() => {});
       return;
     }
   }

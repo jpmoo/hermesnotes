@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { FastifyInstance } from "fastify";
 import { env } from "../env.js";
+import { ownerForBearer } from "../auth/middleware.js";
 import { resourceMetadataUrl } from "../auth/oauth.js";
 import { Api } from "./api.js";
 import { buildTools } from "./toolkit.js";
@@ -17,13 +18,22 @@ export async function mcpRoutes(app: FastifyInstance): Promise<void> {
   app.post("/mcp", async (req, reply) => {
     const auth = req.headers.authorization ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-    if (!token) {
-      // The WWW-Authenticate header lets OAuth-only MCP clients (claude.ai
-      // connectors) discover our authorization server and start the flow.
-      return reply
+    // The WWW-Authenticate header lets OAuth-only MCP clients (claude.ai
+    // connectors) discover our authorization server and start the flow.
+    const challenge = (message: string) =>
+      reply
         .code(401)
         .header("WWW-Authenticate", `Bearer resource_metadata="${resourceMetadataUrl()}"`)
-        .send({ error: "Missing Authorization: Bearer <hermes access key>" });
+        .send({ error: message });
+    if (!token) return challenge("Missing Authorization: Bearer <hermes access key>");
+    // The key is checked here rather than left to the loopback call it's about
+    // to be forwarded on. Accepting any non-empty string meant a revoked or
+    // expired key still completed a handshake and still answered tools/list in
+    // full, then failed on the first tool call with a 401 from somewhere the
+    // client couldn't see — which reads as a broken client rather than a dead
+    // key, and never gave an OAuth client the challenge it needed to refresh.
+    if (!(await ownerForBearer(token))) {
+      return challenge("Invalid or revoked access key — mint a new one under Settings → Access keys.");
     }
     // The SDK 406s any POST whose Accept doesn't list BOTH application/json
     // and text/event-stream — but with enableJsonResponse we answer plain JSON

@@ -16,6 +16,12 @@
 
   LSUIElement keeps it out of the Dock and the app switcher. It is a daemon
   wearing a bundle, not an app.
+
+  LSBackgroundOnly used to sit alongside it, and that was wrong. It is the
+  stronger claim — that the process presents no interface at all — so macOS
+  creates the status item and then declines to draw it. The log saying the item
+  was installed while the menu bar never showed it is a maddening pair of facts
+  to hold at once, and this was why.
 -->
 <plist version="1.0">
 <dict>
@@ -117,7 +123,5 @@
       </array>
     </dict>
   </array>
-  <key>LSBackgroundOnly</key>
-  <true/>
 </dict>
 </plist>

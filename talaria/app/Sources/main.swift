@@ -218,7 +218,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // silently drops status items that don't fit, and on a Mac with a notch
         // and a busy menu bar ours is the newest and so the first to go. An
         // entrance that can vanish without saying anything is not an entrance.
-        let spec = Self.configuredHotkey() ?? "ctrl+opt+space"
+        // ctrl+opt+space is deliberately left free for the assistant panel.
+        let spec = Self.configuredHotkey() ?? "ctrl+opt+b"
         hotkey = Hotkey(spec: spec) { [weak self] in self?.toggleBoardWindow() }
     }
 

@@ -1,0 +1,4 @@
+# The signature is produced by install.sh on the machine that runs the app. A
+# committed one is stale the moment anything in the bundle changes, and would
+# make codesign's own output a source of diffs.
+Talaria.app/Contents/_CodeSignature/

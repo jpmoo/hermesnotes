@@ -12,6 +12,14 @@ DOMAIN="gui/$(id -u)"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
 echo "==> Signing the app bundle (ad-hoc; personal machine, no notarization)"
+# codesign refuses anything carrying extended attributes: "resource fork, Finder
+# information, or similar detritus not allowed". This repo lives under
+# ~/Documents, which is iCloud-managed, so the bundle collects com.apple.
+# FinderInfo and com.apple.fileprovider.* on its own — and collects them again
+# after every sync. Clearing them immediately before signing is the only thing
+# that stays true.
+xattr -cr "$ROOT/app/Talaria.app"
+rm -rf "$ROOT/app/Talaria.app/Contents/_CodeSignature"
 codesign --force --sign - --identifier dev.talaria.Talaria "$ROOT/app/Talaria.app"
 
 echo "==> Installing $PLIST"

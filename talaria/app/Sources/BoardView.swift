@@ -367,7 +367,7 @@ struct BoardView: View {
 
             ScrollView(showsIndicators: true) {
                 VStack(spacing: 3) {
-                    ForEach(cards) { card in CardRow(card: card, model: model) }
+                    ForEach(cards) { card in CardRow(card: card, model: model, tint: tint) }
                     if cards.isEmpty {
                         Text("Drop here").font(.caption2).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity).padding(.vertical, 8)
@@ -398,6 +398,11 @@ struct BoardView: View {
 private struct CardRow: View {
     let card: Daemon.Card
     @ObservedObject var model: BoardModel
+    /// The region's colour, when the card is sitting in one. A card takes a
+    /// shade of its region rather than being a white box on a coloured field —
+    /// which is what makes a card read as belonging to the quadrant it is in
+    /// rather than as something dropped on top of it.
+    var tint: Color? = nil
     @State private var hovering = false
 
     var body: some View {
@@ -438,14 +443,18 @@ private struct CardRow: View {
         }
         .padding(.vertical, 5).padding(.horizontal, 7)
         .background(
+            // Opaque underneath, so text stays readable whatever the region's
+            // colour is, with a wash of that colour over it.
             RoundedRectangle(cornerRadius: Theme.controlRadius)
-                // Opaque, not translucent: a card has to stay readable on top of
-                // whatever colour its region turned out to be.
-                .fill(hovering ? AnyShapeStyle(Theme.accent.opacity(0.18)) : AnyShapeStyle(.background))
+                .fill(.background)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.controlRadius)
+                        .fill((tint ?? Theme.accent).opacity(hovering ? 0.34 : 0.18))
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.controlRadius)
-                .strokeBorder(hovering ? Theme.accent.opacity(0.35) : Color.secondary.opacity(0.14), lineWidth: 0.5)
+                .strokeBorder((tint ?? Theme.accent).opacity(hovering ? 0.75 : 0.35), lineWidth: 0.5)
         )
         .onHover { hovering = $0 }
         .contentShape(Rectangle())

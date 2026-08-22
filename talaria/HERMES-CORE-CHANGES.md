@@ -3,7 +3,7 @@
 Kept separate from Talaria's own code on purpose (brief §3, §9). Nothing here is
 written yet — this is the proposal that `DESIGN.md` §6 refers to.
 
-**Status:** §1 implemented and verified 2026-08-22. §2 still deferred.
+**Status:** §1 and §2 implemented and verified 2026-08-22. §3 still deferred.
 
 ---
 
@@ -96,7 +96,48 @@ retention sweep — already exist and already run in production.
 
 ---
 
-## 2. Deferred: series identity on recurrence
+## 2. A client may name a new block's id ✅ landed
+
+### Why
+
+`POST /blocks` minted the id server-side, which is fine for a browser and not
+fine for anything that writes over a network it doesn't control. If the response
+is lost in flight, the client holds no fact that separates *it never landed* from
+*it landed and I didn't hear*. Retrying makes two blocks; not retrying loses one.
+There is no local information that resolves it.
+
+That put it straight against Phase 1's acceptance criterion — "reconnecting
+reconciles without duplicates" — for the single highest-value write in the whole
+project: adding a task while offline.
+
+### What
+
+`POST /blocks` takes an optional `id`. The insert is `onConflictDoNothing`; when
+nothing comes back, the block is returned if it belongs to the caller (the create
+they asked for has already happened) and refused as a taken id if it doesn't —
+without saying whose it is or what it holds.
+
+Conflict handling sits in the insert rather than in a check before it, so two
+copies of the same create arriving together resolve correctly instead of racing.
+
+A replay **never overwrites**: a create is a create, not an upsert. Sending the
+same id with different content returns what is already stored.
+
+### Verified
+
+Against a throwaway Postgres:
+
+| | |
+|---|---|
+| create with a client id | 201 |
+| exact replay | 200, same block |
+| replay with different content | 200, **original content unchanged** |
+| another user claiming that id | 409, nothing disclosed |
+| no id supplied (every existing caller) | 201, twice running, no false conflict |
+
+---
+
+## 3. Deferred: series identity on recurrence
 
 **Not proposed for now.** Recorded because `DESIGN.md` §3.2 depends on it and
 the deferral should be a decision rather than an omission.
@@ -116,7 +157,7 @@ Revisit before any write bridge to an Apple store.
 
 ---
 
-## 3. Already landed during Phase 0 recon
+## 4. Already landed during Phase 0 recon
 
 **`done_at` leaked across recurrence occurrences.** `spawnRecurrence` copied the
 completing task's properties wholesale after `stampDoneAt` had already written

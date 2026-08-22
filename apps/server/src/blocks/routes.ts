@@ -429,6 +429,18 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const body = z
       .object({
+        /**
+         * The block's id, when the caller has one to give.
+         *
+         * For a client that can be interrupted mid-request — anything writing
+         * over a network it doesn't control — a server-minted id is the one
+         * thing it can't recover from. If the response is lost in flight there
+         * is no local fact that separates "it never landed" from "it landed and
+         * I didn't hear": retrying makes two blocks, not retrying loses one.
+         * Naming the id up front settles it, because a repeat of the same
+         * create is then recognisably the same create.
+         */
+        id: z.string().uuid().optional(),
         blockTypeId: z.string().uuid().optional(),
         content: z.string().optional(),
         properties: z.record(z.unknown()).optional(),
@@ -457,6 +469,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const [row] = await db
       .insert(blocks)
       .values({
+        ...(body.id ? { id: body.id } : {}),
         ownerId: userId,
         blockTypeId: type.id,
         content,
@@ -465,9 +478,27 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         embedSourceHash: null,
         blockTypeSchemaVersion: type.schemaVersion,
       })
+      // Nothing to conflict with when the id is ours to mint. When it isn't,
+      // this is what makes a repeated create idempotent — and it settles the
+      // race between two of them arriving at once, which checking first and
+      // then inserting would not.
+      .onConflictDoNothing()
       .returning(blockView);
-    reply.code(201);
-    return row;
+    if (row) {
+      reply.code(201);
+      return row;
+    }
+    // The id was already taken. Answer with the block if it's this caller's —
+    // the create already happened, which is what they were asking for. If it
+    // isn't theirs, say the id is taken and nothing more: whose it is, and what
+    // it holds, is not theirs to learn.
+    const [existing] = await db
+      .select(blockView)
+      .from(blocks)
+      .where(and(eq(blocks.id, body.id!), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!existing) throw conflict("that id is already in use");
+    return existing;
   });
 
   /**

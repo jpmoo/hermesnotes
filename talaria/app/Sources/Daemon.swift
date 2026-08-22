@@ -136,7 +136,18 @@ enum Daemon {
         let h: Double
         let color: String?
     }
-    struct Edge: Decodable { let from: String; let to: String; let dashed: Bool }
+    struct Edge: Decodable {
+        let from: String
+        let to: String
+        /// Which edge of each box the line leaves and arrives at: n, s, e, w.
+        let fromSide: String
+        let toSide: String
+        let dash: String      // solid | dashed | dotted
+        let arrow: String     // none | forward | back | both
+        let width: Double
+        let color: String?
+        let label: String?
+    }
     /// A rollup node. Recursive, because a rollup is however many levels deep
     /// it was configured to be.
     struct Group: Decodable, Identifiable {
@@ -238,7 +249,11 @@ enum Daemon {
         let done: Bool
         let completable: Bool?
         let at: String?
-        let isEnd: Bool
+        /// What the type calls the far end of its span — "Due" on a task,
+        /// nothing on an event. Present only on the day that end falls.
+        let endLabel: String?
+        /// The calendar feed this block was converted from, if any.
+        let feedOrigin: String?
         let url: String
 
         var canComplete: Bool { completable ?? false }

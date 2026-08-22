@@ -420,27 +420,92 @@ struct CanvasBoard: View {
     let board: Daemon.Board
     @ObservedObject var model: BoardModel
     @State private var scale: CGFloat = 0.75
+    @State private var pinchStart: CGFloat = 0.75
     @State private var offset: CGSize = .zero
     @State private var dragged: CGSize = .zero
+    @State private var cursor: CGPoint?
+    @AppStorage("talaria.canvas.dots") private var showDots = true
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Color.clear
+                if showDots { dotGrid(in: geo.size) }
                 canvasContent
                     .scaleEffect(scale, anchor: .center)
                     .offset(x: offset.width + dragged.width, y: offset.height + dragged.height)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.clear)
+            // Without this the canvas draws over the header when panned: a
+            // ZStack doesn't bound its children, so content simply carries on
+            // upward past the bar that is supposed to be above it.
+            .clipped()
             .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                if case let .active(point) = phase { cursor = point }
+            }
             .gesture(
                 DragGesture()
                     .onChanged { dragged = $0.translation }
-                    .onEnded { _ in offset.width += dragged.width; offset.height += dragged.height; dragged = .zero }
+                    .onEnded { _ in
+                        offset.width += dragged.width
+                        offset.height += dragged.height
+                        dragged = .zero
+                    }
             )
-            .gesture(MagnificationGesture().onChanged { scale = min(2, max(0.25, $0)) })
-            .overlay(alignment: .bottomTrailing) { zoomControls.padding(10) }
+            .gesture(
+                MagnificationGesture()
+                    .onChanged { value in zoom(to: pinchStart * value, in: geo.size) }
+                    .onEnded { _ in pinchStart = scale }
+            )
+            .overlay(alignment: .bottomTrailing) { zoomControls(in: geo.size).padding(10) }
             .onAppear { centre(in: geo.size) }
         }
+    }
+
+    /// Zoom about the pointer rather than the middle of the window.
+    ///
+    /// Anchoring at the centre means the thing being looked at slides away as
+    /// it grows, and the way to inspect a corner becomes zoom, pan back, zoom,
+    /// pan back. Keeping the point under the cursor fixed is what makes a
+    /// canvas feel like a surface rather than a picture being resized.
+    private func zoom(to next: CGFloat, in size: CGSize) {
+        let clamped = min(2.5, max(0.2, next))
+        guard clamped != scale else { return }
+        // Where the cursor is, relative to the centre the scale is applied about.
+        let anchor = CGPoint(x: (cursor?.x ?? size.width / 2) - size.width / 2,
+                             y: (cursor?.y ?? size.height / 2) - size.height / 2)
+        // The content coordinate currently under it, which must not move.
+        let contentX = (anchor.x - offset.width) / scale
+        let contentY = (anchor.y - offset.height) / scale
+        offset = CGSize(width: anchor.x - contentX * clamped,
+                        height: anchor.y - contentY * clamped)
+        scale = clamped
+    }
+
+    /// The dot grid, drawn in view space so the dots stay a constant size while
+    /// their spacing tracks the zoom — which is what makes them read as a
+    /// surface the content sits on rather than as more content.
+    private func dotGrid(in size: CGSize) -> some View {
+        Canvas { context, _ in
+            let spacing = 24 * scale
+            guard spacing > 6 else { return }
+            let ox = (offset.width + dragged.width).truncatingRemainder(dividingBy: spacing)
+            let oy = (offset.height + dragged.height).truncatingRemainder(dividingBy: spacing)
+            var y = oy - spacing
+            while y < size.height + spacing {
+                var x = ox - spacing
+                while x < size.width + spacing {
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: x, y: y, width: 1.6, height: 1.6)),
+                        with: .color(.secondary.opacity(0.28))
+                    )
+                    x += spacing
+                }
+                y += spacing
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     /// Every drawable thing on the canvas, by the id an edge would name it by.
@@ -470,14 +535,7 @@ struct CanvasBoard: View {
             let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.rect) })
             ForEach(Array(board.edges.enumerated()), id: \.offset) { _, edge in
                 if let a = index[edge.from], let b = index[edge.to] {
-                    Path { p in
-                        p.move(to: CGPoint(x: a.midX, y: a.midY))
-                        p.addLine(to: CGPoint(x: b.midX, y: b.midY))
-                    }
-                    .stroke(
-                        Theme.accentInk.opacity(0.45),
-                        style: StrokeStyle(lineWidth: 1.4, dash: edge.dashed ? [4, 3] : [])
-                    )
+                    EdgeShape(edge: edge, from: a, to: b)
                 }
             }
 
@@ -522,11 +580,21 @@ struct CanvasBoard: View {
         .offset(x: card.x ?? 0, y: card.y ?? 0)
     }
 
-    private var zoomControls: some View {
+    private func zoomControls(in size: CGSize) -> some View {
         HStack(spacing: 4) {
-            Button { scale = max(0.25, scale - 0.15) } label: { Image(systemName: "minus.magnifyingglass") }
-            Button { scale = min(2, scale + 0.15) } label: { Image(systemName: "plus.magnifyingglass") }
-            Button { scale = 0.75; offset = .zero } label: { Image(systemName: "arrow.counterclockwise") }
+            Button { showDots.toggle() } label: {
+                Image(systemName: showDots ? "circle.grid.3x3.fill" : "circle.grid.3x3")
+            }
+            .help(showDots ? "Hide the grid" : "Show the grid")
+            Divider().frame(height: 11)
+            Button { zoom(to: scale - 0.15, in: size) } label: { Image(systemName: "minus.magnifyingglass") }
+            Button { zoom(to: scale + 0.15, in: size) } label: { Image(systemName: "plus.magnifyingglass") }
+            Button {
+                scale = 0.75
+                pinchStart = 0.75
+                centre(in: size)
+            } label: { Image(systemName: "arrow.counterclockwise") }
+            .help("Fit")
         }
         .buttonStyle(.borderless)
         .font(.system(size: 11))
@@ -615,5 +683,74 @@ private struct RollupNode: View {
                 }
             }
         }
+    }
+}
+
+/// One connection, drawn the way it was drawn.
+///
+/// A canvas's edges carry a side to leave from, a side to arrive at, a dash
+/// pattern, a width, a colour and which ends wear an arrow. Reduced to a plain
+/// line between two centres — which is what this was — a diagram someone
+/// arranged becomes a handful of anonymous strokes.
+private struct EdgeShape: View {
+    let edge: Daemon.Edge
+    let from: CGRect
+    let to: CGRect
+
+    var body: some View {
+        let a = anchor(from, edge.fromSide)
+        let b = anchor(to, edge.toSide)
+        let tint = edge.color.flatMap { Color(hex: $0) } ?? Theme.accentInk.opacity(0.55)
+        ZStack(alignment: .topLeading) {
+            Path { p in
+                p.move(to: a)
+                p.addLine(to: b)
+            }
+            .stroke(tint, style: StrokeStyle(lineWidth: edge.width, lineCap: .round, dash: dashPattern))
+
+            if edge.arrow == "forward" || edge.arrow == "both" { arrowHead(at: b, from: a, tint: tint) }
+            if edge.arrow == "back" || edge.arrow == "both" { arrowHead(at: a, from: b, tint: tint) }
+
+            if let label = edge.label, !label.isEmpty {
+                Text(label)
+                    .font(Theme.chrome(9))
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Capsule().fill(.background.opacity(0.85)))
+                    .position(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+            }
+        }
+    }
+
+    private var dashPattern: [CGFloat] {
+        switch edge.dash {
+        case "dashed": return [6, 4]
+        case "dotted": return [1.5, 4]
+        default: return []
+        }
+    }
+
+    /// The middle of the named side, so a line leaves a box where it was drawn
+    /// to leave it rather than from its centre.
+    private func anchor(_ rect: CGRect, _ side: String) -> CGPoint {
+        switch side {
+        case "n": return CGPoint(x: rect.midX, y: rect.minY)
+        case "s": return CGPoint(x: rect.midX, y: rect.maxY)
+        case "w": return CGPoint(x: rect.minX, y: rect.midY)
+        case "e": return CGPoint(x: rect.maxX, y: rect.midY)
+        default: return CGPoint(x: rect.midX, y: rect.midY)
+        }
+    }
+
+    private func arrowHead(at tip: CGPoint, from origin: CGPoint, tint: Color) -> some View {
+        let angle = atan2(tip.y - origin.y, tip.x - origin.x)
+        let size: CGFloat = 7
+        let spread: CGFloat = .pi / 7
+        return Path { p in
+            p.move(to: tip)
+            p.addLine(to: CGPoint(x: tip.x - size * cos(angle - spread), y: tip.y - size * sin(angle - spread)))
+            p.addLine(to: CGPoint(x: tip.x - size * cos(angle + spread), y: tip.y - size * sin(angle + spread)))
+            p.closeSubpath()
+        }
+        .fill(tint)
     }
 }

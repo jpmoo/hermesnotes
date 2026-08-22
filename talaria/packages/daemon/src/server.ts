@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { bodyFieldKey } from "@hermes/shared";
+import { bodyFieldKey, optionLabel } from "@hermes/shared";
 import { toCanonical, type HermesTypeRow } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
@@ -22,6 +22,22 @@ import type { Sync } from "./sync.js";
  *   curl --unix-socket ~/Library/Application\ Support/Talaria/talaria.sock \
  *        'http://x/blocks?q=roofer'
  */
+/**
+ * How a collection was told to group, if it was.
+ *
+ * The setting lives in a different place per kind — a rollup keeps its
+ * arrangement under `rollup_views.top`, everything else under `view_state` —
+ * and reads either "type" or "prop:<key>".
+ */
+function groupByOf(props: Record<string, unknown>, kind: string | null): string | null {
+  const src =
+    kind === "rollup"
+      ? ((props.rollup_views as Record<string, unknown> | undefined)?.top as Record<string, unknown> | undefined)
+      : (props.view_state as Record<string, unknown> | undefined);
+  const g = src?.groupBy;
+  return typeof g === "string" && g ? g : null;
+}
+
 /** A number, or null — canvas geometry arrives as numbers or not at all. */
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -225,6 +241,29 @@ export function buildServer(deps: {
    * silently dropped into the first cell.
    */
   app.get("/board/:id", async (req, reply) => {
+    /**
+     * The heading a block belongs under.
+     *
+     * Read off the raw properties rather than the canonical object: grouping
+     * can name any field on any type, and the canonical form deliberately keeps
+     * only the ones every surface needs. A select's stored value is not what a
+     * reader should see, so the field's own label for it is used — the same
+     * `optionLabel` rule the app follows.
+     */
+    const groupLabelFor = (rawJson: string, groupBy: string | null): string | null => {
+      if (!groupBy) return null;
+      const b = JSON.parse(rawJson) as { blockTypeId: string | null; properties: Record<string, unknown> };
+      const type = b.blockTypeId ? types().get(b.blockTypeId) : undefined;
+      if (groupBy === "type") return type?.name ?? "Untyped";
+      if (!groupBy.startsWith("prop:")) return null;
+      const key = groupBy.slice(5).split(".")[0]!;
+      const value = b.properties?.[key];
+      if (value === null || value === undefined || value === "") return null;
+      const field = (type?.propertySchema?.fields ?? []).find((f) => f.key === key);
+      if (field && typeof value === "string") return optionLabel(field, value);
+      return String(value);
+    };
+
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const raw = mirror.rawBlock(id);
     if (!raw) return reply.code(404).send({ error: "no such collection in the mirror" });
@@ -258,6 +297,7 @@ export function buildServer(deps: {
     // has been completed, a date that has fallen out of range — and offers the
     // matches nobody has placed yet as a drawer to drag from. Both come from
     // the cached answer to the collection's own query.
+    const grouping = groupByOf(props, row.collectionKind);
     const cachedQuery = mirror.get(`query.${id}`);
     const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;
     const isSmart = Boolean(props.filter_query) && matching !== null;
@@ -282,6 +322,7 @@ export function buildServer(deps: {
       const rv = ctx?.region;
       const region = rv === null || rv === undefined || rv === "" ? Number.NaN : Number(rv);
       const card = {
+        group: groupLabelFor(m.raw, grouping),
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
         // A checkbox only belongs on something that can be completed — which is
@@ -325,6 +366,7 @@ export function buildServer(deps: {
           done: c.completion?.done ?? false, completable: c.completable,
           due: c.schedule?.end?.value ?? null,
           tags: c.tags, url: c.url, x: null, y: null, w: null, h: null,
+          group: groupLabelFor(r, grouping),
         });
       }
     }
@@ -350,7 +392,17 @@ export function buildServer(deps: {
           .map((e) => ({
             from: String(e.from ?? ""),
             to: String(e.to ?? ""),
-            dashed: e.dash === "dotted" || e.dash === "dashed",
+            // Everything the drawing needs: which edge of each box it leaves
+            // and arrives at, how the line is styled, and which ends carry an
+            // arrow. Losing any of it turns a diagram someone drew into a
+            // handful of anonymous lines.
+            fromSide: typeof e.fromSide === "string" ? e.fromSide : "e",
+            toSide: typeof e.toSide === "string" ? e.toSide : "w",
+            dash: typeof e.dash === "string" ? e.dash : "solid",
+            arrow: typeof e.arrow === "string" ? e.arrow : "none",
+            width: num(e.width) ?? 1.5,
+            color: typeof e.color === "string" ? e.color : null,
+            label: typeof e.label === "string" ? e.label : null,
           }))
           .filter((e) => e.from && e.to)
       : [];
@@ -419,6 +471,9 @@ export function buildServer(deps: {
           completable: block.completable,
           due: block.schedule?.end?.value ?? null,
           tags: block.tags,
+          // Only the top tier is grouped, which is what the setting means:
+          // it arranges the headings, not what hangs beneath each one.
+          group: depth === 0 ? groupLabelFor(mirror.rawBlock(block.id) ?? "{}", grouping) : null,
           children,
         };
       };
@@ -460,6 +515,9 @@ export function buildServer(deps: {
       canvas: isCanvas,
       rollup: isRollup,
       groups,
+      // What the grouping is called, so a view can say what it is grouping by
+      // rather than presenting unexplained headings.
+      groupBy: grouping,
       notes,
       edges,
       smart: isSmart,
@@ -556,6 +614,15 @@ export function buildServer(deps: {
     const typeNames = new Set<string>();
     const feedsSeen = new Map<string, { id: string; name: string; color: string }>();
 
+    /** The feed a block was converted from, if it was. */
+    const feedOriginOf = (blockId: string): string | null => {
+      const raw = mirror.rawBlock(blockId);
+      if (!raw) return null;
+      const props = (JSON.parse(raw) as { properties?: Record<string, unknown> }).properties ?? {};
+      const origin = props.feed_origin;
+      return typeof origin === "string" && origin ? origin : null;
+    };
+
     const dayOf = (v: string | null | undefined) => (v ? v.split("T")[0] ?? null : null);
     const buckets = new Map<string, { items: unknown[]; events: unknown[] }>();
     for (let i = 0; i < span; i++) {
@@ -579,7 +646,15 @@ export function buildServer(deps: {
           done: b.completion?.done ?? false,
           completable: b.completable,
           at: b.schedule?.start?.allDay === false ? b.schedule?.start?.value ?? null : null,
-          isEnd: e === date, url: b.url, tags: b.tags,
+          // The field's own name for its far end, not the word "due". A task's
+          // datespan ends on a due date; an event's simply stops, and calling
+          // that "due" says something about it that isn't true.
+          endLabel: e === date ? b.schedule?.endLabel ?? null : null,
+          // A block converted from a calendar feed remembers which one, so it
+          // can wear that calendar's colour — and go quiet when that feed is
+          // switched off, the same as the events still living in it.
+          feedOrigin: feedOriginOf(b.id),
+          url: b.url, tags: b.tags,
         });
       }
     }

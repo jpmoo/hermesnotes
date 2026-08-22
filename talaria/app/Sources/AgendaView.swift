@@ -148,7 +148,12 @@ struct AgendaView: View {
     /// Completed things sink, muted — the same treatment the web calendar gives
     /// them, so a finished task doesn't sit at the top of a day still to come.
     private func sorted(_ items: [Daemon.AgendaItem]) -> [Daemon.AgendaItem] {
-        items.filter { !model.hidden.contains($0.typeName) }
+        items
+            .filter { !model.hidden.contains($0.typeName) }
+            .filter { item in
+                guard let origin = item.feedOrigin else { return true }
+                return !model.hiddenFeeds.contains(origin)
+            }
             .sorted { a, b in a.done == b.done ? (a.at ?? "") < (b.at ?? "") : (!a.done && b.done) }
     }
 
@@ -230,8 +235,22 @@ struct AgendaView: View {
         .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(Color.secondary.opacity(0.07)))
     }
 
+    /// The feed a converted block came from, if that feed is still around.
+    private func feed(of item: Daemon.AgendaItem) -> Daemon.Feed? {
+        guard let origin = item.feedOrigin else { return nil }
+        return model.feeds.first { $0.id == origin }
+    }
+
     private func itemRow(_ item: Daemon.AgendaItem) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        let source = feed(of: item)
+        return HStack(alignment: .top, spacing: 8) {
+            if let source {
+                // Converted from a calendar: it still says which one at a
+                // glance, the same bar the feed's own events wear.
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color(hex: source.color) ?? Theme.accent)
+                    .frame(width: 3)
+            }
             if item.canComplete {
                 Button { model.complete(item) } label: {
                     Image(systemName: item.done ? "checkmark.square.fill" : "square")
@@ -254,8 +273,12 @@ struct AgendaView: View {
                     .foregroundStyle(item.done ? .secondary : .primary)
                     .lineLimit(2)
                 HStack(spacing: 6) {
-                    Text(item.typeName).font(Theme.chrome(9.5)).foregroundStyle(Theme.accent)
-                    if item.isEnd { Text("due").font(Theme.chrome(9.5)).foregroundStyle(.orange) }
+                    Text(source?.name ?? item.typeName)
+                        .font(Theme.chrome(9.5))
+                        .foregroundStyle(source.flatMap { Color(hex: $0.color) } ?? Theme.accent)
+                    if let end = item.endLabel {
+                        Text(end.lowercased()).font(Theme.chrome(9.5)).foregroundStyle(.orange)
+                    }
                     if let at = item.at { Text(time(at)).font(Theme.chrome(9.5)).foregroundStyle(.secondary) }
                 }
             }

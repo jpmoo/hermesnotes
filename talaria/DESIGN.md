@@ -693,7 +693,12 @@ Calendar/Reminders/Contacts.
    Six kinds resolved by role, plus a generic entity for user-defined types.
 3. **Daily notes are in scope** where §5.7 offered "no, and here's why" as an
    acceptable answer. They are the highest-value thing in the index.
-4. **`seriesId` enters the canonical object at v0** despite Hermes having no such
+4. **The CLI is `talaria`, not `hermes`** (brief §4). `hermes` is already a
+   command on this machine — Hermes Agent, by Nous Research, entirely unrelated
+   — and shadowing a tool the user installed is not something to do quietly. The
+   brief also called the health check `talaria doctor`, so one name for one
+   binary is what it wanted anyway.
+5. **`seriesId` enters the canonical object at v0** despite Hermes having no such
    concept (§3.2). This is the one place I am adding a field to a
    near-identity-function mapper, and §3.2 argues why the alternative is a
    Phase 4 rewrite.

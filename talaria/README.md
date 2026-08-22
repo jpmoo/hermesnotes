@@ -42,17 +42,22 @@ The first run walks the whole account; after that it follows the change log.
 
 ## Using it
 
-```bash
-alias hermes='npx tsx ~/…/hermesnotes/talaria/packages/cli/src/index.ts'
+The command is `talaria`, not `hermes` — that name already belongs to Hermes
+Agent (Nous Research) on this machine. It's a script rather than a shell alias so
+Shortcuts, Raycast and launchd can all reach it; none of those read your
+`.zshrc`.
 
-hermes find roofer              # search the mirror
-hermes find --kind task         # by kind
-hermes show <id>                # one block in full
-hermes add "Ring the plumber"   # create a task
-hermes done <id>                # complete one
-hermes note "thought for today" # append to today's daily note
-hermes queue                    # writes waiting on the network
-hermes doctor                   # everything that fails quietly, asked out loud
+```bash
+ln -s "$PWD/talaria/bin/talaria" ~/.local/bin/talaria   # ~/.local/bin is already on PATH
+
+talaria find roofer              # search the mirror
+talaria find --kind task         # by kind
+talaria show <id>                # one block in full
+talaria add "Ring the plumber"   # create a task
+talaria done <id>                # complete one
+talaria note "thought for today" # append to today's daily note
+talaria queue                    # writes waiting on the network
+talaria doctor                   # everything that fails quietly, asked out loud
 ```
 
 **Reads never touch the network.** They are answered from `mirror.sqlite`, so

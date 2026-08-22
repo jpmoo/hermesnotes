@@ -4,7 +4,7 @@ import { call, DaemonDown, SOCKET } from "./client.js";
 import { dim, warn } from "./format.js";
 
 /**
- * `hermes` — the command-line face of the mirror.
+ * `talaria` — the command-line face of the mirror.
  *
  * Every read is answered from local SQLite by the daemon, so all of this works
  * with the machine entirely off the network. What changes offline is that
@@ -64,18 +64,18 @@ function parse(args: string[]): { words: string[]; flags: Map<string, string | t
 }
 
 function usage(): void {
-  console.log(`hermes — Hermes Notes from the command line (served from the local mirror)
+  console.log(`talaria — Hermes Notes from the command line (served from the local mirror)
 
-  hermes find [text] [--kind task|note|event|person|project|organization]
+  talaria find [text] [--kind task|note|event|person|project|organization]
                      [--archived] [--limit N]
-  hermes show <id>
-  hermes add <title...> [--type <uuid>] [--note]   create a task (or a note with --note)
-  hermes done <id>                                  mark a task complete
-  hermes note <text...> [--date YYYY-MM-DD]         append to a daily note
-  hermes queue [--retry <id>] [--drop <id>]         writes waiting on the network
-  hermes sync                                       ask for a sync right now
-  hermes status                                     what the daemon knows
-  hermes doctor                                     check everything that fails quietly
+  talaria show <id>
+  talaria add <title...> [--type <uuid>] [--note]   create a task (or a note with --note)
+  talaria done <id>                                  mark a task complete
+  talaria note <text...> [--date YYYY-MM-DD]         append to a daily note
+  talaria queue [--retry <id>] [--drop <id>]         writes waiting on the network
+  talaria sync                                       ask for a sync right now
+  talaria status                                     what the daemon knows
+  talaria doctor                                     check everything that fails quietly
 
 Reads never touch the network. Writes go out when they can and queue when they can't.
 Socket: ${SOCKET}`);
@@ -221,7 +221,7 @@ async function main(argv: string[]): Promise<number> {
         console.log(`${r.id}. ${what}  ${dim(`(${new Date(r.createdAt).toLocaleString()})`)}`);
         if (r.parkedReason)
           console.log(
-            `   ${warn(`stopped: ${r.parkedReason}`)} — hermes queue --retry ${r.id}, or --drop ${r.id}`,
+            `   ${warn(`stopped: ${r.parkedReason}`)} — talaria queue --retry ${r.id}, or --drop ${r.id}`,
           );
       }
       return 0;
@@ -269,6 +269,6 @@ try {
     console.error(err.message);
     process.exit(69); // EX_UNAVAILABLE
   }
-  console.error(`hermes: ${(err as Error).message}`);
+  console.error(`talaria: ${(err as Error).message}`);
   process.exit(1);
 }

@@ -238,8 +238,12 @@ async function spawnRecurrence(
   const currentN = rec.n ?? 1;
   if (!recurrenceContinues(rec, currentN, next.end)) return false;
 
+  // `nextProps` has already been through `stampDoneAt`, so it carries the moment
+  // the *previous* occurrence was finished. That belongs to the task being
+  // completed, not to the fresh one, which has never been done.
+  const { done_at: _prevDone, ...carried } = nextProps;
   const copyProps: Record<string, unknown> = {
-    ...nextProps,
+    ...carried,
     [schema.status_field]: schema.default_value ?? null,
     [spanField.key]: next,
     [recField.key]: { ...rec, n: currentN + 1 },

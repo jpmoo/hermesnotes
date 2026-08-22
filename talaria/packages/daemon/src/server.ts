@@ -504,6 +504,9 @@ export function buildServer(deps: {
     return envelope({
       id,
       title: me.title,
+      // The collection's own address in the web app, so a panel can hand off to
+      // the full thing rather than being a dead end when it can't do something.
+      url: me.url,
       kind: row.collectionKind,
       gridded,
       cols,

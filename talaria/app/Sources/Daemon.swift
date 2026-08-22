@@ -170,6 +170,8 @@ enum Daemon {
     struct Board: Decodable {
         let id: String
         let title: String
+        /// Where this collection lives in the web app.
+        let url: String?
         let cols: Int
         let rows: Int
         let regions: [Region]

@@ -185,6 +185,16 @@ struct BoardView: View {
             .disabled(model.boards.count < 2)
             Spacer()
             if model.busy { ProgressView().controlSize(.small) }
+            // A panel shows what it can show. Everything else this collection
+            // is — editing, the views it has that this doesn't — is one click
+            // away rather than absent.
+            if let url = model.board?.url, let target = URL(string: url) {
+                Button { NSWorkspace.shared.open(target) } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help("Open this collection in Hermes")
+            }
             Button { model.load() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
                 .help("Refresh from the mirror")
@@ -588,28 +598,52 @@ struct CanvasBoard: View {
         let index = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0.rect) })
         return Canvas { ctx, _ in
             for edge in board.edges {
-                guard let a = index[edge.from], let b = index[edge.to] else { continue }
-                // Local to the Canvas, which starts at the bounds origin.
-                let start = anchor(a, edge.fromSide).applying(.init(translationX: -bounds.minX, y: -bounds.minY))
-                let end = anchor(b, edge.toSide).applying(.init(translationX: -bounds.minX, y: -bounds.minY))
-                let tint = edge.color.flatMap { Color(hex: $0) } ?? Theme.accentInk.opacity(0.6)
+                guard let fr = index[edge.from], let to = index[edge.to] else { continue }
+                let shift = CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)
 
+                // Which sides the line uses is a fact about where the two boxes
+                // are now, not about where they were when it was drawn. The
+                // stored pair is a record of how it started; using it meant a
+                // line leaving the far side of a box and looping round, with
+                // the arrowhead landing inside the node it was pointing at.
+                let fromSide = Self.facingSide(fr, to)
+                let toSide = Self.facingSide(to, fr)
+                let a = Self.anchor(fr, fromSide).applying(shift)
+                let b = Self.anchor(to, toSide).applying(shift)
+
+                // A cubic, with each control point pushed out along the side it
+                // leaves — the same 46 the web app uses, so a connection curves
+                // away from its box rather than cutting the corner.
+                let ext: CGFloat = 46
+                let o1 = Self.outward(fromSide), o2 = Self.outward(toSide)
+                let c1 = CGPoint(x: a.x + o1.dx * ext, y: a.y + o1.dy * ext)
+                let c2 = CGPoint(x: b.x + o2.dx * ext, y: b.y + o2.dy * ext)
+
+                let tint = edge.color.flatMap { Color(hex: $0) } ?? Theme.accentInk.opacity(0.6)
                 var line = Path()
-                line.move(to: start)
-                line.addLine(to: end)
+                line.move(to: a)
+                line.addCurve(to: b, control1: c1, control2: c2)
                 ctx.stroke(
                     line,
                     with: .color(tint),
                     style: StrokeStyle(lineWidth: edge.width, lineCap: .round, dash: dashPattern(edge.dash))
                 )
+
+                // Aimed along the curve's tangent where it arrives, not along
+                // the straight line between the ends — on a curve those differ
+                // enough to make an arrowhead sit askew.
                 if edge.arrow == "forward" || edge.arrow == "both" {
-                    ctx.fill(arrowHead(at: end, from: start), with: .color(tint))
+                    ctx.fill(Self.arrowHead(at: b, along: CGVector(dx: b.x - c2.x, dy: b.y - c2.y)), with: .color(tint))
                 }
                 if edge.arrow == "back" || edge.arrow == "both" {
-                    ctx.fill(arrowHead(at: start, from: end), with: .color(tint))
+                    ctx.fill(Self.arrowHead(at: a, along: CGVector(dx: a.x - c1.x, dy: a.y - c1.y)), with: .color(tint))
                 }
+
                 if let label = edge.label, !label.isEmpty {
-                    let mid = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+                    let mid = CGPoint(
+                        x: (a.x + b.x) / 2 + (c1.x + c2.x - a.x - b.x) * 0.19,
+                        y: (a.y + b.y) / 2 + (c1.y + c2.y - a.y - b.y) * 0.19
+                    )
                     ctx.draw(Text(label).font(Theme.chrome(9)), at: mid)
                 }
             }
@@ -621,27 +655,42 @@ struct CanvasBoard: View {
 
     private func dashPattern(_ dash: String) -> [CGFloat] {
         switch dash {
-        case "dashed": return [6, 4]
-        case "dotted": return [1.5, 4]
+        case "dashed": return [9, 6]
+        case "dotted": return [2, 6]
         default: return []
         }
     }
 
-    /// The middle of the named side, so a line leaves a box where it was drawn
-    /// to leave it rather than from its centre.
-    private func anchor(_ rect: CGRect, _ side: String) -> CGPoint {
+    /// The side of `a` that faces `b` — measured against each box's own
+    /// proportions, so a wide, short node doesn't always answer "east".
+    private static func facingSide(_ a: CGRect, _ b: CGRect) -> String {
+        let dx = b.midX - a.midX
+        let dy = b.midY - a.midY
+        if abs(dx) / max(a.width, 1) > abs(dy) / max(a.height, 1) { return dx > 0 ? "e" : "w" }
+        return dy > 0 ? "s" : "n"
+    }
+
+    private static func outward(_ side: String) -> CGVector {
+        switch side {
+        case "n": return CGVector(dx: 0, dy: -1)
+        case "s": return CGVector(dx: 0, dy: 1)
+        case "w": return CGVector(dx: -1, dy: 0)
+        default: return CGVector(dx: 1, dy: 0)
+        }
+    }
+
+    private static func anchor(_ rect: CGRect, _ side: String) -> CGPoint {
         switch side {
         case "n": return CGPoint(x: rect.midX, y: rect.minY)
         case "s": return CGPoint(x: rect.midX, y: rect.maxY)
         case "w": return CGPoint(x: rect.minX, y: rect.midY)
-        case "e": return CGPoint(x: rect.maxX, y: rect.midY)
-        default: return CGPoint(x: rect.midX, y: rect.midY)
+        default: return CGPoint(x: rect.maxX, y: rect.midY)
         }
     }
 
-    private func arrowHead(at tip: CGPoint, from origin: CGPoint) -> Path {
-        let angle = atan2(tip.y - origin.y, tip.x - origin.x)
-        let size: CGFloat = 8
+    private static func arrowHead(at tip: CGPoint, along v: CGVector) -> Path {
+        let angle = atan2(v.dy, v.dx)
+        let size: CGFloat = 9
         let spread: CGFloat = .pi / 7
         var p = Path()
         p.move(to: tip)
@@ -651,6 +700,7 @@ struct CanvasBoard: View {
         return p
     }
 
+    /// Only members that were actually placed;
     /// Only members that were actually placed; an unplaced one has no position
     /// to draw it at and would pile up at the origin.
     private var placed: [Daemon.Card] {

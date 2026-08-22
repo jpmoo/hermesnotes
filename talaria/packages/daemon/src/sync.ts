@@ -33,6 +33,9 @@ const BATCH = 500;
 const SEAM_VERSION = "4";
 const SEAM = "seam.version";
 
+/** The server's payload shape, as last seen. */
+const PAYLOAD = "sync.payloadVersion";
+
 const CURSOR = "sync.cursor";
 const LAST_OK = "sync.lastSuccessAt";
 const FIRST_DONE = "sync.baselineDoneAt";
@@ -119,9 +122,11 @@ export class Sync {
       let after: string | undefined;
       let firstSeq: number | null = null;
       let total = 0;
+      let payload: number | undefined;
       for (;;) {
         const page = await this.hermes.blocksPage(after);
         if (firstSeq === null) firstSeq = page.seq;
+        payload = page.payloadVersion ?? payload;
         this.store(page.blocks);
         for (const b of page.blocks) seen.add(b.id);
         total += page.blocks.length;
@@ -136,9 +141,11 @@ export class Sync {
       const vanished = this.mirror.idsNotIn(seen);
       this.mirror.deleteBlocks(vanished);
 
+      await this.refreshQueries();
       const now = new Date().toISOString();
       this.mirror.set(CURSOR, String(firstSeq ?? 0));
       this.mirror.set(SEAM, SEAM_VERSION);
+      if (payload !== undefined) this.mirror.set(PAYLOAD, String(payload));
       this.mirror.set(LAST_OK, now);
       if (!this.mirror.get(FIRST_DONE)) this.mirror.set(FIRST_DONE, now);
       return { state: "ok", changed: total + vanished.length, walked: true };
@@ -164,6 +171,42 @@ export class Sync {
     this.mirror.deleteBlocks(ids.filter((id) => !returned.has(id)));
   }
 
+  /**
+   * Refresh the cached match set for every smart collection.
+   *
+   * A matrix's members are explicit memberships, but a smart one also carries a
+   * query, and the app uses it twice: to drop members that no longer match — a
+   * task completed, a date now out of range — and to fill the drawer with
+   * matches that have not been placed yet. Both need the query's answer, and
+   * the answer only comes from the server.
+   */
+  async refreshQueries(): Promise<void> {
+    for (const raw of this.mirror.search({ limit: 500 })) {
+      const row = JSON.parse(raw) as {
+        id: string;
+        collectionKind: string | null;
+        properties: Record<string, unknown>;
+      };
+      if (row.collectionKind !== "matrix") continue;
+      const q = row.properties?.filter_query;
+      if (!q) continue;
+      try {
+        const matched = await this.hermes.queryMatches(q);
+        this.mirror.set(`query.${row.id}`, JSON.stringify(matched.map((b) => b.id)));
+      } catch {
+        // Keep the last answer. A stale match set is a far better board than no
+        // board, and the freshness stamp already says how old everything is.
+      }
+    }
+  }
+
+  /** Throw away what we know and walk it all again. */
+  async full(): Promise<SyncOutcome> {
+    this.mirror.set(SEAM, null);
+    this.mirror.set(PAYLOAD, null);
+    return this.baseline();
+  }
+
   /** Apply everything the change log has for us since the cursor. */
   async catchUp(): Promise<SyncOutcome> {
     if (!this.everSynced) return this.baseline();
@@ -171,6 +214,16 @@ export class Sync {
     // would only refresh blocks that happen to move from here on, leaving the
     // rest wrong for as long as nobody touches them.
     if (this.seamStale) return this.baseline();
+    // The server may have started sending a field the mirror has never stored.
+    // Ask cheaply — one page of one block — and re-walk if the shape moved.
+    try {
+      const probe = await this.hermes.blocksPage(undefined, 1);
+      const seen = probe.payloadVersion;
+      if (seen !== undefined && this.mirror.get(PAYLOAD) !== String(seen)) return this.baseline();
+    } catch {
+      // Not reachable, or an older server with nothing to say about it. Neither
+      // is a reason to stop; the ordinary path below reports properly.
+    }
     try {
       let since = this.cursor;
       const touched = new Set<string>();
@@ -216,6 +269,8 @@ export class Sync {
         for (const id of ids.slice(i, i + BATCH)) if (!returned.has(id)) gone.add(id);
       }
       this.mirror.deleteBlocks([...gone]);
+      // Something moved, so a query's answer may have moved with it.
+      await this.refreshQueries();
 
       this.mirror.set(CURSOR, String(since));
       this.mirror.set(LAST_OK, new Date().toISOString());

@@ -236,7 +236,16 @@ export function buildServer(deps: {
       color: (defs[i]?.color as string | null) ?? null,
     }));
 
+    // A smart matrix drops members its query no longer matches — a task that
+    // has been completed, a date that has fallen out of range — and offers the
+    // matches nobody has placed yet as a drawer to drag from. Both come from
+    // the cached answer to the collection's own query.
+    const cachedQuery = mirror.get(`query.${id}`);
+    const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;
+    const isSmart = Boolean(props.filter_query) && matching !== null;
+
     const idx = types();
+    const placed = new Set<string>();
     const cells: Record<string, unknown[]> = { unplaced: [] };
     for (const r of regions) cells[String(r.index)] = [];
     for (const m of mirror.membersOf(id)) {
@@ -245,6 +254,8 @@ export function buildServer(deps: {
         appOrigin: config.origin,
       });
       if (c.archivedAt) continue;
+      if (isSmart && !matching!.has(c.id)) continue;
+      placed.add(c.id);
       const ctx = JSON.parse(m.context) as { region?: unknown };
       const region = Number(ctx?.region);
       const key = Number.isInteger(region) && region >= 0 && region < regions.length ? String(region) : "unplaced";
@@ -255,14 +266,35 @@ export function buildServer(deps: {
       });
     }
 
+    // The drawer: matched by the query, not yet put anywhere.
+    const drawer: unknown[] = [];
+    if (matching) {
+      for (const mid of matching) {
+        if (placed.has(mid)) continue;
+        const r = mirror.rawBlock(mid);
+        if (!r) continue;
+        const b = JSON.parse(r);
+        const c = toCanonical(b, b.blockTypeId ? idx.get(b.blockTypeId) : undefined, {
+          appOrigin: config.origin,
+        });
+        if (c.archivedAt) continue;
+        drawer.push({
+          id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
+          done: c.completion?.done ?? false, due: c.schedule?.end?.value ?? null,
+          tags: c.tags, url: c.url,
+        });
+      }
+    }
+
     const me = canon([raw])[0]!;
-    return envelope({ id, title: me.title, cols, rows, regions, cells });
+    return envelope({ id, title: me.title, cols, rows, regions, cells, drawer, smart: isSmart });
   });
 
   app.get("/types", async () => envelope([...types().values()].map((t) => ({ id: t.id, name: t.name }))));
 
-  app.post("/sync", async () => {
-    const r = await sync.catchUp();
+  app.post("/sync", async (req) => {
+    const { full } = z.object({ full: z.coerce.boolean().optional() }).parse(req.query);
+    const r = full ? await sync.full() : await sync.catchUp();
     const drained = r.state === "ok" ? await queue.drain() : [];
     return { sync: r, queue: drained };
   });

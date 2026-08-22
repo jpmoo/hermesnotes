@@ -66,8 +66,6 @@ rm -rf "$APP/Contents/Resources/Talaria.xcassets" "$APP/Contents/Resources/.acto
 plutil -replace CFBundleIconName -string "$ICON_NAME" "$APP/Contents/Info.plist"
 plutil -replace CFBundleIconFile -string "$ICON_NAME" "$APP/Contents/Info.plist"
 
-cp "$HERE/MenuBar.png" "$HERE/MenuBar@2x.png" "$APP/Contents/Resources/" 2>/dev/null || true
-
 echo "==> Compiling"
 xcrun swiftc \
   -O \

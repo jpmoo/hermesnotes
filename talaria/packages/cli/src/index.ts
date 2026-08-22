@@ -73,7 +73,7 @@ function usage(): void {
   talaria done <id>                                  mark a task complete
   talaria note <text...> [--date YYYY-MM-DD]         append to a daily note
   talaria queue [--retry <id>] [--drop <id>]         writes waiting on the network
-  talaria sync                                       ask for a sync right now
+  talaria sync [--full]                              sync now; --full re-walks everything
   talaria status                                     what the daemon knows
   talaria doctor                                     check everything that fails quietly
   talaria alfred <text>                              Alfred Script Filter JSON
@@ -231,7 +231,10 @@ async function main(argv: string[]): Promise<number> {
     }
 
     case "sync": {
-      const r = await call<{ sync: { state: string; changed?: number; detail?: string } }>("POST", "/sync");
+      const r = await call<{ sync: { state: string; changed?: number; detail?: string } }>(
+        "POST",
+        flags.has("full") ? "/sync?full=true" : "/sync",
+      );
       console.log(
         r.sync.state === "ok"
           ? `synced — ${r.sync.changed ?? 0} block(s) changed`

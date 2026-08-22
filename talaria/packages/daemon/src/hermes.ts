@@ -89,7 +89,7 @@ export class Hermes {
   blocksPage(after?: string, limit = 1000) {
     const q = new URLSearchParams({ limit: String(limit) });
     if (after) q.set("after", after);
-    return this.req<{ blocks: SyncBlockRow[]; seq: number; next: string | null }>(
+    return this.req<{ blocks: SyncBlockRow[]; seq: number; next: string | null; payloadVersion?: number }>(
       "GET",
       `/sync/blocks?${q}`,
     );
@@ -109,6 +109,20 @@ export class Hermes {
       "GET",
       `/sync/changes?since=${since}&limit=${limit}`,
     );
+  }
+
+  /**
+   * Which blocks a filter query matches, asked of Hermes rather than worked out
+   * here.
+   *
+   * The filter language is Hermes' — types, tags, properties, relative dates,
+   * nested groups — and re-implementing its evaluator would be a second
+   * source of truth for what a query means, which is the thing this project is
+   * built not to have. So the server answers, and the answer is cached for
+   * when it can't be asked.
+   */
+  queryMatches(filterQuery: unknown) {
+    return this.req<{ id: string }[]>("POST", "/blocks/query", { filterQuery });
   }
 
   blockTypes() {

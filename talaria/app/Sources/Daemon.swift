@@ -113,6 +113,10 @@ enum Daemon {
         let rows: Int
         let regions: [Region]
         let cells: [String: [Card]]
+        /// Matched by the collection's query but not placed in a region yet.
+        let drawer: [Card]
+        /// Whether a query governs membership at all.
+        let smart: Bool
     }
     private struct Envelope<T: Decodable>: Decodable {
         let data: T

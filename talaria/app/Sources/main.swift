@@ -213,6 +213,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         statusItem = item
+        // Ask macOS whether it is actually drawing the thing, rather than
+        // inferring it from the fact that we made one. isVisible is false when
+        // the menu bar has no room — which on a notched Mac is common and
+        // otherwise entirely silent.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            MainActor.assumeIsolated {
+                NSLog("talaria: status item visible=\(item.isVisible) hasWindow=\(item.button?.window != nil) length=\(item.length)")
+            }
+        }
 
         // A hotkey as well as the menu bar, and not as a convenience: macOS
         // silently drops status items that don't fit, and on a Mac with a notch
@@ -241,8 +250,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func boardPanel() -> NSPanel {
         if let w = boardWindow { return w }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
-            styleMask: [.titled, .closable, .utilityWindow, .fullSizeContentView],
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
+            styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -253,6 +262,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.contentViewController = NSHostingController(rootView: BoardView(model: boardModel))
+        // Big enough that the whole grid is on screen at once, which is the
+        // point of a matrix — and resizable, since how much fits depends on how
+        // many regions there are and how full they get.
+        panel.setContentSize(NSSize(width: 900, height: 620))
+        panel.minSize = NSSize(width: 520, height: 380)
+        panel.setFrameAutosaveName("talaria.board")
         panel.center()
         boardWindow = panel
         return panel

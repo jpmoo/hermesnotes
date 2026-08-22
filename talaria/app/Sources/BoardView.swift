@@ -54,6 +54,12 @@ final class BoardModel: ObservableObject {
         }
     }
 
+    /// Everywhere a card can be dragged from.
+    var allCards: [Daemon.Card] {
+        guard let b = board else { return [] }
+        return b.cells.values.flatMap { $0 } + b.drawer
+    }
+
     func choose(_ id: String) {
         selected = id
         UserDefaults.standard.set(id, forKey: lastBoardKey)
@@ -96,6 +102,10 @@ struct BoardView: View {
             Divider()
             if let board = model.board {
                 grid(board)
+                if !board.drawer.isEmpty {
+                    Divider()
+                    drawer(board.drawer).frame(height: 84)
+                }
             } else if let error = model.error {
                 message(error, systemImage: "exclamationmark.triangle")
             } else {
@@ -110,23 +120,21 @@ struct BoardView: View {
                     .padding(.horizontal, 12).padding(.vertical, 6)
             }
         }
-        .frame(width: 560, height: 460)
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            if model.boards.count > 1 {
-                Picker("", selection: Binding(
-                    get: { model.selected ?? "" },
-                    set: { model.choose($0) }
-                )) {
-                    ForEach(model.boards, id: \.id) { b in Text(b.title).tag(b.id) }
-                }
-                .labelsHidden()
-                .frame(maxWidth: 240)
-            } else {
-                Text(model.board?.title ?? "Talaria").font(.headline)
+            // Always a picker, even with one board: which collection this is
+            // showing is a thing to be able to see, not only to change.
+            Picker("", selection: Binding(
+                get: { model.selected ?? "" },
+                set: { model.choose($0) }
+            )) {
+                ForEach(model.boards, id: \.id) { b in Text(b.title).tag(b.id) }
             }
+            .labelsHidden()
+            .frame(maxWidth: 260)
+            .disabled(model.boards.count < 2)
             Spacer()
             if model.busy { ProgressView().controlSize(.small) }
             Button { model.load() } label: { Image(systemName: "arrow.clockwise") }
@@ -146,47 +154,85 @@ struct BoardView: View {
     }
 
     private func grid(_ board: Daemon.Board) -> some View {
-        ScrollView {
-            let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: board.cols)
-            LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(board.regions, id: \.index) { region in
-                    cell(region, cards: board.cells[String(region.index)] ?? [])
+        GeometryReader { geo in
+            // Every region the same size, as on the web. Letting a cell grow
+            // with its contents makes the quadrant with the most work in it the
+            // biggest, which is backwards: the grid is supposed to say where
+            // things are, and it can only do that if the cells stay put.
+            let gap: CGFloat = 8
+            let cellW = (geo.size.width - gap * CGFloat(board.cols + 1)) / CGFloat(board.cols)
+            let cellH = (geo.size.height - gap * CGFloat(board.rows + 1)) / CGFloat(board.rows)
+            VStack(spacing: gap) {
+                ForEach(0..<board.rows, id: \.self) { r in
+                    HStack(spacing: gap) {
+                        ForEach(0..<board.cols, id: \.self) { c in
+                            let i = r * board.cols + c
+                            if let region = board.regions.first(where: { $0.index == i }) {
+                                cell(region, cards: board.cells[String(i)] ?? [])
+                                    .frame(width: cellW, height: cellH)
+                            }
+                        }
+                    }
                 }
             }
-            .padding(8)
-            let unplaced = board.cells["unplaced"] ?? []
-            if !unplaced.isEmpty {
-                // Added to the collection but never placed. A real state, so it
-                // gets shown rather than quietly filed into the first cell.
-                cell(Daemon.Region(index: -1, title: "Unplaced", color: nil), cards: unplaced)
-                    .padding(.horizontal, 8).padding(.bottom, 8)
-            }
+            .padding(gap)
         }
     }
 
-    private func cell(_ region: Daemon.Region, cards: [Daemon.Card]) -> some View {
+    /// Matched by the query, not yet placed. Drag from here into a region.
+    private func drawer(_ cards: [Daemon.Card]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                if let hex = region.color, let c = Color(hex: hex) {
-                    Circle().fill(c).frame(width: 7, height: 7)
+            Text("Unplaced — \(cards.count)")
+                .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(cards) { card in
+                        CardRow(card: card, model: model)
+                            .frame(width: 190)
+                            .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.4)))
+                    }
                 }
-                Text(region.title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Spacer()
-                Text("\(cards.count)").font(.caption2).foregroundStyle(.tertiary)
-            }
-            ForEach(cards) { card in CardRow(card: card, model: model) }
-            if cards.isEmpty {
-                Text("—").font(.caption2).foregroundStyle(.quaternary).padding(.vertical, 2)
+                .padding(.horizontal, 10)
             }
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.35)))
-        // Only a placed region can be dropped into; "Unplaced" is where things
-        // arrive from, not somewhere to put them.
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.2))
+    }
+
+    private func cell(_ region: Daemon.Region, cards: [Daemon.Card]) -> some View {
+        let tint = region.color.flatMap { Color(hex: $0) }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(region.title).font(.caption.weight(.semibold))
+                Spacer()
+                Text("\(cards.count)").font(.caption2).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8).padding(.top, 6)
+
+            ScrollView(showsIndicators: true) {
+                VStack(spacing: 3) {
+                    ForEach(cards) { card in CardRow(card: card, model: model) }
+                    if cards.isEmpty {
+                        Text("Drop here").font(.caption2).foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal, 6).padding(.bottom, 6)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                // The region's own colour, at a weight that a card can still be
+                // read on top of. Hermes stores it with alpha already.
+                .fill(tint ?? Color.secondary.opacity(0.12))
+        )
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary, lineWidth: 0.5))
         .dropDestination(for: String.self) { ids, _ in
-            guard region.index >= 0, let id = ids.first,
-                  let card = model.board?.cells.values.flatMap({ $0 }).first(where: { $0.id == id })
+            guard let id = ids.first,
+                  let card = model.allCards.first(where: { $0.id == id })
             else { return false }
             model.move(card, to: region.index)
             return true
@@ -234,16 +280,23 @@ private struct CardRow: View {
 }
 
 extension Color {
-    /// Region colours come from Hermes as hex, or as something we don't know.
+    /// Region colours arrive as hex, and Hermes writes eight digits — the last
+    /// two being alpha, which a six-digit parser silently reads as blue.
     init?(hex: String) {
         var s = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")).lowercased()
         if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
+        var alpha = 1.0
+        if s.count == 8 {
+            alpha = Double(Int(s.suffix(2), radix: 16) ?? 255) / 255
+            s = String(s.prefix(6))
+        }
         guard s.count == 6, let v = Int(s, radix: 16) else { return nil }
         self.init(
             .sRGB,
             red: Double((v >> 16) & 0xff) / 255,
             green: Double((v >> 8) & 0xff) / 255,
-            blue: Double(v & 0xff) / 255
+            blue: Double(v & 0xff) / 255,
+            opacity: alpha
         )
     }
 }

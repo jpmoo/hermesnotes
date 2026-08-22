@@ -23,6 +23,18 @@ import { authenticate, requireUser } from "../auth/middleware.js";
 /** The settle delay `events/watcher.ts` applies, and for the same reason. */
 const SETTLE_MS = 200;
 
+/**
+ * The shape of a block row here. Bumped whenever a field is added or changes
+ * meaning.
+ *
+ * A mirror can tell when *its own* mapping has changed and re-derive. It cannot
+ * tell that the server started sending something new — a cursor only refreshes
+ * blocks that happen to move, so everything untouched keeps the old, thinner
+ * row indefinitely, and nothing anywhere reports it. Saying the version out loud
+ * is what lets a client notice.
+ */
+const PAYLOAD_VERSION = 2;
+
 /** A block as a mirror needs it. */
 const mirrorView = {
   id: blocks.id,
@@ -136,6 +148,7 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
       .limit(ids ? ids.length : limit);
 
     return {
+      payloadVersion: PAYLOAD_VERSION,
       blocks: rows,
       /**
        * Where to resume incremental reads — but only the FIRST page's value is

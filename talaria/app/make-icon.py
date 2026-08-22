@@ -11,7 +11,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageFilter
 
 src = Path(sys.argv[1])
 out = Path(sys.argv[2])
@@ -126,5 +126,29 @@ for base in SIZES:
 (out / "Talaria.xcassets" / "Contents.json").write_text(
     json.dumps({"info": {"version": 1, "author": "talaria"}}, indent=2)
 )
+
+# The menu bar wants a different drawing of the same mark.
+#
+# It is drawn at 18 points, and at that size the logo's line work all but
+# vanishes: undilated, eleven pixels of a possible 324 carry any real alpha, so
+# macOS faithfully draws almost nothing and the item looks missing while the
+# system insists it is visible. Thickening the strokes first is what makes it
+# survive the reduction — enough to read, not so much that the bubbles fill in.
+#
+# Black plus alpha, because a template image is recoloured by macOS to suit a
+# light or dark menu bar, and a teal one would not survive that either.
+flat = Image.merge("RGBA", (Image.new("L", mark.size, 0),) * 3 + (mark.split()[3],))
+radius = max(1, round(flat.height * 0.022))
+bold = flat.split()[3].filter(ImageFilter.MaxFilter(radius * 2 + 1))
+bold_rgba = Image.merge("RGBA", (Image.new("L", flat.size, 0),) * 3 + (bold,))
+for scale, name in ((1, "MenuBar.png"), (2, "MenuBar@2x.png")):
+    side = 18 * scale
+    canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    ratio = min(side / bold_rgba.width, side / bold_rgba.height)
+    small = bold_rgba.resize(
+        (max(1, round(bold_rgba.width * ratio)), max(1, round(bold_rgba.height * ratio))), Image.LANCZOS
+    )
+    canvas.paste(small, ((side - small.width) // 2, (side - small.height) // 2), small)
+    canvas.save(out / name)
 
 print(f"icon: {out / 'Talaria.icns'} and {appiconset}")

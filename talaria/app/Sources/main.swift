@@ -480,8 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSLog("talaria: no web address for \(id)")
                     return
                 }
-                let opened = await MainActor.run { NSWorkspace.shared.open(web) }
-                if !opened { NSLog("talaria: nothing would open \(web)") }
+                await MainActor.run { Opener.open(web) }
             } catch {
                 NSLog("talaria: could not resolve \(id) — \(error)")
             }

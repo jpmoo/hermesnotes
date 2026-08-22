@@ -648,11 +648,18 @@ export function buildServer(deps: {
           id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
           done: b.completion?.done ?? false,
           completable: b.completable,
-          at: b.schedule?.start?.allDay === false ? b.schedule?.start?.value ?? null : null,
+          // Both ends, always. A thing that runs from nine to half past has two
+          // times, and showing one of them next to a label describing the other
+          // is how an eight o'clock start came to be captioned "end".
+          start: b.schedule?.start?.allDay === false ? b.schedule?.start?.value ?? null : null,
+          end: b.schedule?.end?.allDay === false ? b.schedule?.end?.value ?? null : null,
+          startsToday: s === date,
+          endsToday: e === date,
           // The field's own name for its far end, not the word "due". A task's
-          // datespan ends on a due date; an event's simply stops, and calling
-          // that "due" says something about it that isn't true.
-          endLabel: e === date ? b.schedule?.endLabel ?? null : null,
+          // datespan ends on a due date; an event's simply stops. Only worth
+          // saying on a span that reaches past today — on a single day the two
+          // times say it themselves.
+          endLabel: e === date && s !== e ? b.schedule?.endLabel ?? null : null,
           // A block converted from a calendar feed remembers which one, so it
           // can wear that calendar's colour — and go quiet when that feed is
           // switched off, the same as the events still living in it.
@@ -675,6 +682,9 @@ export function buildServer(deps: {
         summary: String(raw.summary ?? ""),
         location: String(raw.location ?? ""),
         start: String(raw.start ?? ""),
+        // Feed events have always carried an end; dropping it here is why a
+        // meeting showed the hour it began and nothing about when it stopped.
+        end: raw.end === null || raw.end === undefined ? null : String(raw.end),
         allDay: Boolean(raw.allDay),
         feedId,
         feedName,

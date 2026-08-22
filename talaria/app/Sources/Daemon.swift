@@ -243,6 +243,7 @@ enum Daemon {
         let summary: String
         let location: String
         let start: String
+        let end: String?
         let allDay: Bool
         let feedId: String
         let feedName: String
@@ -256,7 +257,10 @@ enum Daemon {
         let typeName: String
         let done: Bool
         let completable: Bool?
-        let at: String?
+        let start: String?
+        let end: String?
+        let startsToday: Bool
+        let endsToday: Bool
         /// What the type calls the far end of its span — "Due" on a task,
         /// nothing on an event. Present only on the day that end falls.
         let endLabel: String?

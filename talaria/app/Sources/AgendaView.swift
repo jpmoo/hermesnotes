@@ -154,7 +154,11 @@ struct AgendaView: View {
                 guard let origin = item.feedOrigin else { return true }
                 return !model.hiddenFeeds.contains(origin)
             }
-            .sorted { a, b in a.done == b.done ? (a.at ?? "") < (b.at ?? "") : (!a.done && b.done) }
+            .sorted { a, b in
+                // Unfinished first, then by when they begin.
+                if a.done != b.done { return !a.done }
+                return (a.start ?? "") < (b.start ?? "")
+            }
     }
 
     private func pill(_ label: String, on: Bool, tint: Color, action: @escaping () -> Void) -> some View {
@@ -220,7 +224,10 @@ struct AgendaView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.summary).font(Theme.body(11.5)).lineLimit(2)
                 HStack(spacing: 6) {
-                    if !event.allDay { Text(time(event.start)).font(Theme.chrome(9.5)).foregroundStyle(.secondary) }
+                    if !event.allDay {
+                        Text(times(start: event.start, end: event.end, startsToday: true, endsToday: true))
+                            .font(Theme.chrome(9.5)).foregroundStyle(.secondary)
+                    }
                     if !event.location.isEmpty {
                         Label(event.location, systemImage: "mappin.and.ellipse")
                             .font(Theme.chrome(9.5)).foregroundStyle(.tertiary).lineLimit(1)
@@ -233,6 +240,25 @@ struct AgendaView: View {
         .padding(.vertical, 5).padding(.horizontal, 7)
         .frame(minHeight: 30)
         .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(Color.secondary.opacity(0.07)))
+    }
+
+    /// The line under an item's title. Split out because the whole row as one
+    /// expression was more than the type checker would take.
+    private func itemMeta(_ item: Daemon.AgendaItem, source: Daemon.Feed?) -> some View {
+        let tint: Color = source.flatMap { Color(hex: $0.color) } ?? Theme.accent
+        let when = times(start: item.start, end: item.end,
+                         startsToday: item.startsToday, endsToday: item.endsToday)
+        return HStack(spacing: 6) {
+            Text(source?.name ?? item.typeName)
+                .font(Theme.chrome(9.5))
+                .foregroundStyle(tint)
+            if let end = item.endLabel {
+                Text(end.lowercased()).font(Theme.chrome(9.5)).foregroundStyle(.orange)
+            }
+            if !when.isEmpty {
+                Text(when).font(Theme.chrome(9.5)).foregroundStyle(.secondary)
+            }
+        }
     }
 
     /// The feed a converted block came from, if that feed is still around.
@@ -272,22 +298,14 @@ struct AgendaView: View {
                     .strikethrough(item.done)
                     .foregroundStyle(item.done ? .secondary : .primary)
                     .lineLimit(2)
-                HStack(spacing: 6) {
-                    Text(source?.name ?? item.typeName)
-                        .font(Theme.chrome(9.5))
-                        .foregroundStyle(source.flatMap { Color(hex: $0.color) } ?? Theme.accent)
-                    if let end = item.endLabel {
-                        Text(end.lowercased()).font(Theme.chrome(9.5)).foregroundStyle(.orange)
-                    }
-                    if let at = item.at { Text(time(at)).font(Theme.chrome(9.5)).foregroundStyle(.secondary) }
-                }
+                itemMeta(item, source: source)
             }
             Spacer(minLength: 0)
         }
         .opacity(item.done ? 0.55 : 1)
         .padding(.vertical, 5).padding(.horizontal, 7)
         .contentShape(Rectangle())
-        .onTapGesture { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } }
+        .onTapGesture { if let u = URL(string: item.url) { Opener.open(u) } }
     }
 
     private func pretty(_ date: String) -> String {
@@ -297,13 +315,38 @@ struct AgendaView: View {
         return out.string(from: d)
     }
 
+    /// Both ends when both are known, and which end it is when only one falls
+    /// on this day — "from 9:00" reads as a thing still running, which is what
+    /// a span reaching past today actually means.
+    private func times(start: String?, end: String?, startsToday: Bool, endsToday: Bool) -> String {
+        let s = start.map(time) ?? ""
+        let e = end.map(time) ?? ""
+        if startsToday && endsToday && !s.isEmpty && !e.isEmpty { return "\(s) – \(e)" }
+        if startsToday && !s.isEmpty { return endsToday ? s : "from \(s)" }
+        if endsToday && !e.isEmpty { return "until \(e)" }
+        return s.isEmpty ? e : s
+    }
+
+    /// Twelve-hour, always.
+    ///
+    /// `timeStyle: .short` follows whatever the system's region is set to, so a
+    /// 24-hour setting quietly turned every time in the agenda into one. A fixed
+    /// format with a POSIX locale is the way to mean 12-hour and get it.
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "h:mm a"
+        return f
+    }()
+
     private func time(_ iso: String) -> String {
         guard iso.contains("T") else { return "" }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd'T'HH:mm"
-        let alt = ISO8601DateFormatter()
-        let d = f.date(from: String(iso.prefix(16))) ?? alt.date(from: iso)
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        let d = f.date(from: String(iso.prefix(16))) ?? ISO8601DateFormatter().date(from: iso)
         guard let d else { return "" }
-        let out = DateFormatter(); out.timeStyle = .short; out.dateStyle = .none
-        return out.string(from: d)
+        // "8:00 AM" rather than "8:00 am": the rest of the row is chrome, and
+        // this is the part someone reads at a glance.
+        return Self.clock.string(from: d)
     }
 }

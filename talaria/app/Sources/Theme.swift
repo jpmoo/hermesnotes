@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Hermes' own palette and shapes.
@@ -72,6 +73,39 @@ enum Theme {
     static func isWeighty(_ tool: String) -> Bool {
         let t = tool.lowercased()
         return t.contains("delete") || t.contains("archive") || t.contains("remove")
+    }
+}
+
+/// Opening a Hermes address.
+///
+/// Everything in Talaria resolves to an `https://` URL and hands it to whatever
+/// opens those — normally a browser. `openWith` in config.json names an
+/// application to hand them to instead, so a wrapped copy of Hermes can take
+/// them rather than a browser tab.
+enum Opener {
+    private static var preferred: URL? {
+        let path = NSHomeDirectory() + "/Library/Application Support/Talaria/config.json"
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let name = obj["openWith"] as? String, !name.isEmpty
+        else { return nil }
+        if name.hasPrefix("/") { return URL(fileURLWithPath: name) }
+        // A bundle id, or a bare application name.
+        if let byId = NSWorkspace.shared.urlForApplication(withBundleIdentifier: name) { return byId }
+        return URL(fileURLWithPath: "/Applications/\(name).app")
+    }
+
+    static func open(_ url: URL) {
+        guard let app = preferred, FileManager.default.fileExists(atPath: app.path) else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, err in
+            if let err {
+                NSLog("talaria: couldn't open in \(app.lastPathComponent) — \(err); falling back")
+                DispatchQueue.main.async { NSWorkspace.shared.open(url) }
+            }
+        }
     }
 }
 

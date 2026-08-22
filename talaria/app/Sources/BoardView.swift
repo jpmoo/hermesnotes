@@ -189,7 +189,7 @@ struct BoardView: View {
             // is — editing, the views it has that this doesn't — is one click
             // away rather than absent.
             if let url = model.board?.url, let target = URL(string: url) {
-                Button { NSWorkspace.shared.open(target) } label: {
+                Button { Opener.open(target) } label: {
                     Image(systemName: "arrow.up.forward.app")
                 }
                 .buttonStyle(.borderless)
@@ -476,7 +476,7 @@ private struct CardRow: View {
             Text(card.title).font(.caption).lineLimit(1).padding(6)
                 .background(RoundedRectangle(cornerRadius: 5).fill(.thinMaterial))
         }
-        .onTapGesture { if let u = URL(string: card.url) { NSWorkspace.shared.open(u) } }
+        .onTapGesture { if let u = URL(string: card.url) { Opener.open(u) } }
     }
 }
 
@@ -765,7 +765,7 @@ struct CanvasBoard: View {
         // a card in a scroll view is mostly scroll view, and clicking the space
         // around the title did nothing.
         .contentShape(Rectangle())
-        .onTapGesture { if let u = URL(string: card.url) { NSWorkspace.shared.open(u) } }
+        .onTapGesture { if let u = URL(string: card.url) { Opener.open(u) } }
         .frame(width: card.w ?? 220, height: card.h ?? 90)
         .background(RoundedRectangle(cornerRadius: Theme.cardRadius).fill(.background))
         .overlay(
@@ -868,7 +868,7 @@ private struct RollupNode: View {
             )
             .onHover { hovering = $0 }
             .contentShape(Rectangle())
-            .onTapGesture { if let u = URL(string: node.url) { NSWorkspace.shared.open(u) } }
+            .onTapGesture { if let u = URL(string: node.url) { Opener.open(u) } }
 
             if open {
                 ForEach(node.children) { child in

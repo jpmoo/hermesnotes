@@ -30,7 +30,7 @@ const BATCH = 500;
  * for blocks that hadn't happened to change since. So the version travels with
  * the mirror, and disagreeing with it forces a full re-walk.
  */
-const SEAM_VERSION = "3";
+const SEAM_VERSION = "4";
 const SEAM = "seam.version";
 
 const CURSOR = "sync.cursor";
@@ -95,6 +95,7 @@ export class Sync {
           kind: c.kind,
           typeId: row.blockTypeId,
           noteDate: c.noteDate,
+          memberships: row.memberships ?? [],
         };
       }),
     );

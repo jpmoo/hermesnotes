@@ -199,6 +199,66 @@ export function buildServer(deps: {
     return { epoch: sync.cursor, count: items.length, items };
   });
 
+  /** The matrix collections in the mirror, for a picker. */
+  app.get("/boards", async () =>
+    envelope(
+      canon(mirror.search({ limit: 500 }))
+        .filter((b) => b.collectionKind === "matrix")
+        .map((b) => ({ id: b.id, title: b.title })),
+    ),
+  );
+
+  /**
+   * A matrix collection, laid out.
+   *
+   * Flattened here rather than in Swift, for the reason everything else is:
+   * the placement rules are Hermes' and they live on this side. A region is a
+   * numeric index into a cols x rows grid, and a member's `context.region`
+   * says which cell it is in — a member with no region has been added but not
+   * yet placed, which is a real state and gets its own bucket rather than being
+   * silently dropped into the first cell.
+   */
+  app.get("/board/:id", async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const raw = mirror.rawBlock(id);
+    if (!raw) return reply.code(404).send({ error: "no such collection in the mirror" });
+    const row = JSON.parse(raw) as { properties: Record<string, unknown>; collectionKind: string | null };
+    if (row.collectionKind !== "matrix") {
+      return reply.code(400).send({ error: `that is a ${row.collectionKind ?? "block"}, not a matrix` });
+    }
+    const props = row.properties ?? {};
+    const cols = Math.min(6, Math.max(1, Number(props.matrix_cols) || 2));
+    const rows = Math.min(6, Math.max(1, Number(props.matrix_rows) || 2));
+    const defs = Array.isArray(props.matrix_regions) ? (props.matrix_regions as Record<string, unknown>[]) : [];
+    const regions = Array.from({ length: cols * rows }, (_, i) => ({
+      index: i,
+      title: String(defs[i]?.title ?? "") || `Region ${i + 1}`,
+      color: (defs[i]?.color as string | null) ?? null,
+    }));
+
+    const idx = types();
+    const cells: Record<string, unknown[]> = { unplaced: [] };
+    for (const r of regions) cells[String(r.index)] = [];
+    for (const m of mirror.membersOf(id)) {
+      const block = JSON.parse(m.raw);
+      const c = toCanonical(block, block.blockTypeId ? idx.get(block.blockTypeId) : undefined, {
+        appOrigin: config.origin,
+      });
+      if (c.archivedAt) continue;
+      const ctx = JSON.parse(m.context) as { region?: unknown };
+      const region = Number(ctx?.region);
+      const key = Number.isInteger(region) && region >= 0 && region < regions.length ? String(region) : "unplaced";
+      cells[key]!.push({
+        id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
+        done: c.completion?.done ?? false, status: c.completion?.status ?? null,
+        due: c.schedule?.end?.value ?? null, tags: c.tags, url: c.url,
+      });
+    }
+
+    const me = canon([raw])[0]!;
+    return envelope({ id, title: me.title, cols, rows, regions, cells });
+  });
+
   app.get("/types", async () => envelope([...types().values()].map((t) => ({ id: t.id, name: t.name }))));
 
   app.post("/sync", async () => {

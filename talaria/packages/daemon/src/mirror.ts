@@ -58,6 +58,21 @@ CREATE TABLE IF NOT EXISTS blocks (
 CREATE INDEX IF NOT EXISTS blocks_kind ON blocks (kind);
 CREATE INDEX IF NOT EXISTS blocks_note_date ON blocks (note_date);
 
+-- Where each block sits in each collection it belongs to. Its own table rather
+-- than a field on the block, because every question worth asking of it goes the
+-- other way round: not "which collections is this in" but "what is in this
+-- collection, and where".
+CREATE TABLE IF NOT EXISTS memberships (
+  collection_id TEXT NOT NULL,
+  block_id      TEXT NOT NULL,
+  position      TEXT,
+  region        TEXT,
+  context       TEXT NOT NULL DEFAULT '{}',
+  hidden        INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (collection_id, block_id)
+);
+CREATE INDEX IF NOT EXISTS memberships_collection ON memberships (collection_id);
+
 CREATE TABLE IF NOT EXISTS block_types (
   id   TEXT PRIMARY KEY,
   raw  TEXT NOT NULL
@@ -114,7 +129,13 @@ export class Mirror {
   // ── blocks ───────────────────────────────────────────────────────────────
 
   /** Insert or replace, in one transaction. Used by both baseline and catch-up. */
-  putBlocks(rows: { id: string; raw: string; updatedAt: string; archived: boolean; title: string; body: string; kind: string; typeId: string | null; noteDate: string | null }[]): void {
+  putBlocks(
+    rows: {
+      id: string; raw: string; updatedAt: string; archived: boolean; title: string; body: string;
+      kind: string; typeId: string | null; noteDate: string | null;
+      memberships?: { collectionId: string; position: string | null; region: string | null; context: unknown; hidden: boolean }[];
+    }[],
+  ): void {
     if (!rows.length) return;
     const stmt = this.db.prepare(
       `INSERT INTO blocks (id, raw, updated_at, archived, title, body, kind, type_id, note_date)
@@ -124,10 +145,27 @@ export class Mirror {
          title = excluded.title, body = excluded.body, kind = excluded.kind,
          type_id = excluded.type_id, note_date = excluded.note_date`,
     );
+    // A block's memberships are replaced wholesale, never merged: the payload is
+    // the complete set, so anything not in it has been removed, and merging
+    // would leave a card sitting in a collection it was taken out of.
+    const dropMem = this.db.prepare("DELETE FROM memberships WHERE block_id = ?");
+    const addMem = this.db.prepare(
+      `INSERT INTO memberships (collection_id, block_id, position, region, context, hidden)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(collection_id, block_id) DO UPDATE SET
+         position = excluded.position, region = excluded.region,
+         context = excluded.context, hidden = excluded.hidden`,
+    );
     this.db.exec("BEGIN");
     try {
       for (const r of rows) {
         stmt.run(r.id, r.raw, r.updatedAt, r.archived ? 1 : 0, r.title, r.body, r.kind, r.typeId, r.noteDate);
+        if (r.memberships) {
+          dropMem.run(r.id);
+          for (const m of r.memberships) {
+            addMem.run(m.collectionId, r.id, m.position, m.region, JSON.stringify(m.context ?? {}), m.hidden ? 1 : 0);
+          }
+        }
       }
       this.db.exec("COMMIT");
     } catch (err) {
@@ -138,10 +176,14 @@ export class Mirror {
 
   deleteBlocks(ids: string[]): void {
     if (!ids.length) return;
+    const dropMem = this.db.prepare("DELETE FROM memberships WHERE block_id = ?");
     const stmt = this.db.prepare("DELETE FROM blocks WHERE id = ?");
     this.db.exec("BEGIN");
     try {
-      for (const id of ids) stmt.run(id);
+      for (const id of ids) {
+        dropMem.run(id);
+        stmt.run(id);
+      }
       this.db.exec("COMMIT");
     } catch (err) {
       this.db.exec("ROLLBACK");
@@ -191,6 +233,18 @@ export class Mirror {
       )
       .all(...params) as { raw: string }[];
     return rows.map((r) => r.raw);
+  }
+
+  /** What's in a collection, in position order, with where each sits. */
+  membersOf(collectionId: string): { raw: string; region: string | null; position: string | null; context: string }[] {
+    return this.db
+      .prepare(
+        `SELECT b.raw AS raw, m.region AS region, m.position AS position, m.context AS context
+         FROM memberships m JOIN blocks b ON b.id = m.block_id
+         WHERE m.collection_id = ? AND m.hidden = 0
+         ORDER BY m.position`,
+      )
+      .all(collectionId) as { raw: string; region: string | null; position: string | null; context: string }[];
   }
 
   // ── types ────────────────────────────────────────────────────────────────

@@ -24,6 +24,15 @@ export interface SyncBlockRow {
   createdAt: string;
   updatedAt: string;
   tags: string[];
+  memberships: MembershipRow[];
+}
+
+export interface MembershipRow {
+  collectionId: string;
+  position: string | null;
+  region: string | null;
+  context: Record<string, unknown>;
+  hidden: boolean;
 }
 
 export interface ChangeRow {

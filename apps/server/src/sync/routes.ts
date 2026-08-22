@@ -43,6 +43,29 @@ const mirrorView = {
   // inside a raw fragment as a bare name, and a bare `id` in here binds to
   // `tags t` — which has one — instead of the block outside. It correlates
   // against the wrong table and returns nothing, with no error to say so.
+  /**
+   * The collections this block sits in, and where in each.
+   *
+   * Carried on the block for the same reason tags are: a membership change is
+   * logged against the block, so incremental sync already treats the two as one
+   * thing. It is also the shape a reader wants — a board asks "what is in this
+   * collection", and that is one indexed scan over this rather than a request
+   * per member.
+   *
+   * Bounded by how many collections one block belongs to, which is a handful.
+   */
+  memberships: sql<
+    { collectionId: string; position: string | null; region: string | null; context: Record<string, unknown>; hidden: boolean }[]
+  >`COALESCE((
+    SELECT jsonb_agg(jsonb_build_object(
+      'collectionId', m.collection_id,
+      'position', m.position,
+      'region', m.region,
+      'context', m.context,
+      'hidden', m.hidden
+    ) ORDER BY m.position)
+    FROM memberships m WHERE m.block_id = blocks.id
+  ), '[]'::jsonb)`,
   tags: sql<string[]>`COALESCE((
     SELECT array_agg(t.name ORDER BY t.name)
     FROM block_tags bt JOIN tags t ON t.id = bt.tag_id

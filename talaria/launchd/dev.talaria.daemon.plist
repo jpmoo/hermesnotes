@@ -11,14 +11,18 @@
     node installs on this Mac and PATH decides between them, so leaving the
     choice to PATH means leaving it to whatever launchd happens to hand over.
     /opt/homebrew/bin/node is v26.5.0 and the acceptance suite passes on it.
-  - KeepAlive is conditional on a clean exit rather than unconditional. The
-    daemon exits 78 (EX_CONFIG) when its config is missing or wrong, and
-    restarting that forever would turn one clear error into a log full of them.
-    launchd can only tell zero from non-zero, so this has a cost worth knowing:
-    a daemon stopped by SIGTERM exits 0 and stays stopped until the next login.
-    That is the right answer when you meant to stop it and the wrong one when
-    something else stopped it for you — `talaria doctor` is what tells the
-    difference, so it is worth running when the mirror looks frozen.
+  - KeepAlive is unconditional: whatever stops the daemon, it comes back. A
+    mirror that is quietly not running is the failure this whole layer exists to
+    avoid, and launchd cannot tell "someone stopped it on purpose" from "it was
+    stopped for you" — it only sees zero or non-zero.
+
+    The cost is that a genuinely bad config respawns forever. ThrottleInterval
+    holds that to once a minute rather than once every ten seconds, so the log
+    stays readable and the message stays findable. Recovery after a fix is a
+    minute at most.
+
+    Because this restarts on a clean exit too, `kill` won't stop it. To actually
+    stop it: launchctl bootout gui/$(id -u)/dev.talaria.daemon
 
   Restart it after a code change with:
     launchctl kickstart -k gui/$(id -u)/dev.talaria.daemon
@@ -39,10 +43,12 @@
   <true/>
 
   <key>KeepAlive</key>
-  <dict>
-    <key>SuccessfulExit</key>
-    <false/>
-  </dict>
+  <true/>
+
+  <!-- Seconds between respawns. The default of 10 turns a bad config into six
+       copies of the same error a minute; this makes it one. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
 
   <key>ProcessType</key>
   <string>Background</string>

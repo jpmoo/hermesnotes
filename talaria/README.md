@@ -97,10 +97,15 @@ Restart it after pulling changes:
 launchctl kickstart -k gui/$(id -u)/dev.talaria.daemon
 ```
 
-Logs go to `~/Library/Logs/talaria.log`. A daemon stopped by SIGTERM exits
-cleanly and so is **not** restarted by launchd until the next login — deliberate,
-so a bad config doesn't become a restart loop, but it means `talaria doctor` is
-the thing to run when the mirror looks frozen.
+Logs go to `~/Library/Logs/talaria.log`. It restarts whatever stops it, so
+`kill` won't hold — to actually stop it:
+
+```bash
+launchctl bootout gui/$(id -u)/dev.talaria.daemon
+```
+
+A bad config therefore respawns rather than staying down; `ThrottleInterval`
+holds that to one attempt a minute so the error stays readable in the log.
 
 ## Running the acceptance scenario
 

@@ -221,10 +221,20 @@ This is one endpoint pair and no new storage. Details in
 `HERMES-CORE-CHANGES.md`.
 
 **On full-poll for v0:** the brief says it is acceptable if the graph is small,
-and to measure rather than assume. **I could not measure** — the Hermes MCP
-connector in this session returns `401 unauthorized`, so I have no authenticated
-read against the live instance. Rather than guess, here is the measurement and
-the decision rule:
+and to measure rather than assume. A total block count is **not obtainable over
+MCP** — no tool exposes one. Every listing tool is either type-scoped
+(`task_find`, `project_list`) or capped with no total (`search` reads every
+block but returns 25 hits and no count). What MCP does give, measured
+2026-08-22:
+
+| | |
+|---|---|
+| Tasks (all statuses) | **53** |
+| Active projects | **17** |
+| Collections | **8** |
+
+Not counted: text blocks, daily notes, events, persons, organizations — plausibly
+the bulk of the graph. The exact total is one authenticated call away:
 
 ```bash
 curl -s -H "Authorization: Bearer $HERMES_TOKEN" \
@@ -233,19 +243,24 @@ curl -s -H "Authorization: Bearer $HERMES_TOKEN" \
   -d '{"withCount":true}' | jq '{total, limit}'
 ```
 
-- **total < 500** — full-poll is viable today with zero core changes, and Phase 1
-  could ship on it. But it stops working the moment the graph crosses the limit,
-  and it crosses silently: `/blocks/query` returns 500 rows and the mirror simply
-  stops learning about the rest. If we take this path it must be with a loud
-  assertion on `total > limit`, not as a quiet default.
-- **total ≥ 500** — the endpoint in §6 is required before Phase 1 can meet its
-  own acceptance criterion.
+**But the number no longer decides anything, and that is the finding.** Full-poll
+against `QUERY_LIMIT = 500` is not a property of the graph, it is a date. Daily
+notes are one block per day, created by opening a day and never removed — roughly
+365 a year, monotonically, forever. A graph at 300 blocks today crosses 500 by
+daily notes alone inside two years, on its own, with no change in how the user
+works.
 
-My recommendation regardless of the number: **build the endpoint.** It is small,
-it is needed eventually, and a mirror that is quietly incomplete is exactly the
-failure the brief's own rationale for local-first is trying to avoid — trust
-collapses permanently after two or three failures, and "the thing I searched for
-was block 501" is unattributable.
+And it crosses **silently**: `/blocks/query` keeps returning 500 rows and the
+mirror simply stops learning about the rest. There is no error, no gap in the
+change feed, nothing for `talaria doctor` to catch — the mirror is confidently
+wrong about a growing tail of the graph. Given the brief's own rationale for
+local-first (trust collapses permanently after two or three failures, and "the
+thing I searched for was block 501" is unattributable), shipping on a mechanism
+with a known silent expiry is the wrong trade at any current block count.
+
+**Recommendation: build the endpoint.** Not because the graph is large — it
+plainly isn't — but because full-poll's ceiling is reached by the calendar rather
+than by usage, and reached without saying so.
 
 ### 1.4 Staleness → **three states, one of them loud**
 
@@ -609,8 +624,11 @@ Calendar/Reminders/Contacts.
 
 ## 9. Before Phase 1 starts, I need
 
-1. **The block count** (§1.3) — one `curl`, decides whether the sync endpoint is
-   required or merely correct.
+1. ~~**The block count**~~ — measured as far as MCP allows (§1.3): 53 tasks, 17
+   projects, 8 collections, with text blocks and daily notes uncounted. It no
+   longer decides anything: daily notes push the graph past the 500 ceiling on a
+   timetable regardless of the current total, and silently. The recommendation is
+   the endpoint either way.
 2. ~~**A decision on Xcode**~~ — resolved (F5). Xcode-beta 27.0 is installed
    and complete; only `sudo xcode-select -s` remains, and that is a password
    step rather than a decision.

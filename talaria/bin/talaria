@@ -13,5 +13,18 @@
 # wrapper is a shell script, and handing it to node produces a syntax error
 # rather than anything that looks like a missing runtime.
 NODE="/opt/homebrew/bin/node"
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Follow symlinks to find where this script actually lives. The intended install
+# is a symlink from somewhere on PATH, so $0 is usually the link and not the
+# file — taking dirname of it would look for the repo next to the link.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  LINK="$(readlink "$SELF")"
+  case "$LINK" in
+    /*) SELF="$LINK" ;;
+    *) SELF="$(dirname "$SELF")/$LINK" ;;
+  esac
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
 exec "$NODE" "$ROOT/packages/cli/node_modules/tsx/dist/cli.mjs" "$ROOT/packages/cli/src/index.ts" "$@"

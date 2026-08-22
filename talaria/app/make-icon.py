@@ -25,12 +25,27 @@ art = Image.open(src).convert("RGBA")
 # tile, and at the ~32px Spotlight actually draws it that band is an illegible
 # smudge. So take the glyph and leave the words behind — the words are
 # unreadable at this size anyway, which is what a mark is for.
-bbox = art.getbbox()
-art = art.crop(bbox)
-# The glyph is roughly as tall as it is wide and sits at the left, so a square
-# taken off the left edge is it.
-mark = art.crop((0, 0, min(art.height, art.width), art.height))
-mark = mark.crop(mark.getbbox())
+# The mark and the words touch — the wing sweeps up and to the right, over
+# where "Hermes" begins — so there is no gap to cut at, and a square taken off
+# the left clips the wing tip. They do differ in colour, though: the mark is
+# teal and the lettering is neutral grey. So separate them that way, and keep
+# only the teal, which also drops the sliver of the "H" the wing passes over.
+def is_mark(px):
+    r, g, b, a = px
+    return a > 32 and (b - r) > 25 and (g - r) > 10
+
+
+glyph_only = Image.new("RGBA", art.size, (0, 0, 0, 0))
+src, dst = art.load(), glyph_only.load()
+for y in range(art.height):
+    for x in range(art.width):
+        if is_mark(src[x, y]):
+            dst[x, y] = src[x, y]
+
+box = glyph_only.getbbox()
+if box is None:
+    raise SystemExit("no mark found in the artwork — has the logo changed?")
+mark = glyph_only.crop(box)
 
 
 def tile(size: int, bleed: bool) -> Image.Image:

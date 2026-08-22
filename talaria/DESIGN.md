@@ -282,6 +282,80 @@ that the block moved underneath it and surface a conflict rather than clobber.
 `version` is already on every block and already used for optimistic concurrency
 by `PATCH /blocks/:id`; we get this for free by not throwing it away.
 
+### 1.4a Writes, and what happens when two of them disagree
+
+Talaria's entire write surface is three things: create a task, complete a task,
+append to the daily note. There is no "replace this document" write, because
+there is no window to type one in (brief §2). That boundary is what keeps this
+tractable, and it is worth stating so it isn't crossed casually: **the moment
+Talaria gains a write that replaces a document wholesale, this design stops being
+sufficient** and the answer becomes real merge.
+
+**Safety is already handled and must not be routed around.** `PATCH /blocks/:id`
+is optimistic on `version` and rejects a stale write outright. Talaria inherits
+that — no force flag, no refetch-and-resend loop that quietly wins races.
+
+**What's left is usability**, and it is not a small thing. A queued write that
+merely gets rejected on reconnect is safe and useless: "I marked it done on the
+plane and it didn't take" is the same collapse of trust as a stale read, arriving
+by a different door.
+
+#### Queue intents, not payloads
+
+The queue records what the user *meant*, never the document that would result.
+
+| Not this | This |
+|---|---|
+| `properties = {…the whole object mirrored three hours ago…}` | `set status → done` |
+| `content = "…the entire note with my line appended…"` | `append "call the roofer" to 2026-08-22` |
+
+On reconnect each intent is re-applied against **current** state and sent with the
+**current** version. Most apparent conflicts evaporate, because they were never
+conflicts — two writes touching different fields of the same block.
+
+This matters more than it looks: `PATCH /blocks/:id` takes `properties`
+wholesale (`body.properties ?? current.properties`), so a replayed payload is a
+whole-object replacement. Version checking keeps that *safe*; intent replay is
+what makes it *succeed*.
+
+Per intent, on replay:
+
+- **Complete a task.** Already complete → no-op, silently (the common case when
+  it was also ticked in the web app). Archived or deleted meanwhile → park and
+  report; never resurrect something the user filed away. Otherwise apply against
+  the fresh version.
+- **Append to the daily note.** Fetch, append to the note's *current* end, send
+  its *current* version. Appends are near-commutative — ordering between two of
+  them yields a different document, not a wrong one. Two edges: a day **reset**
+  in the meantime means the append lands on the reset note (judged correct — it
+  is an append to that day, and that day still exists), and a **lost response**
+  has no id to dedupe on, so replay checks whether the exact text already sits at
+  the end and treats that as applied. A heuristic, and one that fails toward not
+  duplicating.
+- **Create.** Idempotent by client-supplied id — `HERMES-CORE-CHANGES.md` §2.
+
+#### Conflicts are surfaced, never resolved destructively
+
+A parked intent stays parked until the user disposes of it: `hermes queue` lists
+what each one meant and why it stopped, `--retry` and `--drop` clear them, and
+`talaria doctor` counts them. A queue that silently discards, or silently grows
+for a fortnight, is its own failure.
+
+#### Known drift: offline completion of completion-anchored recurrence
+
+`spawnRecurrence` takes the completion date from the **server's** clock at write
+time (`const now = new Date()`), and no client can say "this was completed at T".
+Complete a `completeFrom: "completion"` task on Monday offline, replay on
+Wednesday, and the next occurrence anchors to Wednesday — wrong by however long
+the machine was away, silently.
+
+Schedule-anchored recurrence is unaffected; it never consults the completion date.
+
+**Not fixed, deliberately.** The drift is bounded by the offline interval, it
+touches one of two recurrence modes, and it lands in the same territory as the
+series-identity question Phase 4 forces anyway (§3.2). Recorded so it is a known
+cost rather than a surprise.
+
 ### 1.5 Identity and lifecycle → **UUID is the key; archived leaves the index**
 
 Block UUIDs are stable, server-minted, and already the deep-link key
@@ -544,7 +618,7 @@ deliberately outside the pnpm graph.
 | `fastify` | UDS server; same idiom as the main server |
 | `zod` | request/response validation, same idiom |
 | `@hermes/shared` | workspace — the whole argument of §1.1 |
-| `better-sqlite3` | **new.** Synchronous, single-file, no server. The mirror is one process with one writer; async SQLite buys nothing here. |
+| `node:sqlite` | **built in.** Unflagged on Node 22.22 (verified — an experimental warning, not a flag), so the daemon has *no* native dependency and nothing to compile. Every call to it is isolated in `mirror.ts`, so if the experimental API moves, swapping in `better-sqlite3` is one file. |
 | `commander` | **new.** CLI arg parsing. Small and boring. |
 | `undici` | Node 22 built-in `fetch` is fine; named only if we need connection-pool control against Tailscale flapping. |
 

@@ -47,6 +47,7 @@ async function main(): Promise<void> {
   await listen(app, SOCKET_PATH);
   log(`listening on ${SOCKET_PATH} — ${mirror.count()} blocks mirrored`);
   if (!sync.everSynced) log("no baseline yet: reads will be empty until Hermes can be reached");
+  else if (sync.seamStale) log("mirror was built by an older mapper — re-walking to re-derive it");
 
   let stopping = false;
   let failures = 0;

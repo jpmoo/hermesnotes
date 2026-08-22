@@ -61,6 +61,27 @@ for (const [label, row, typeId] of rows) {
   }, null, 1));
 }
 console.log("\n── kind fallbacks");
+// The real case this got wrong: Hermes' seeding migrations skip any user who
+// already made a type of that name, so a hand-made Project is user data with
+// builtin=false and a shape that says nothing in particular.
+const userProject = { fields: [
+  { key: "title", type: "text", order: 0, includeEmbed: true },
+  { key: "description", type: "longtext", order: 1, includeEmbed: true },
+  { key: "phase", type: "select", order: 2, includeEmbed: false, options: ["active", "done"] },
+] } as never;
+console.log("user-made Project ->", kindOf("Project", userProject, { builtin: false }));
+// ...but structure still outranks the name where it is decisive.
+const projectShapedTask = { fields: [
+  { key: "title", type: "text", order: 0, includeEmbed: true },
+  { key: "status", type: "status", order: 1, includeEmbed: false, options: ["open", "shipped"] },
+], status_field: "status", complete_values: ["shipped"] } as never;
+console.log("a 'Project' that completes ->", kindOf("Project", projectShapedTask, { builtin: false }));
+// A project with dates must not read as an event.
+const datedProject = { fields: [
+  { key: "title", type: "text", order: 0, includeEmbed: true },
+  { key: "run", type: "datespan", order: 1, includeEmbed: false },
+] } as never;
+console.log("a Project with a datespan ->", kindOf("Project", datedProject, { builtin: false }));
 console.log("collection      →", kindOf("list", null, { collectionKind: "list" }));
 console.log("unknown shape   →", kindOf("Bookmark", { fields: [{ key: "title", type: "text", order: 0, includeEmbed: true }] } as never, {}));
 console.log("event-shaped    →", kindOf("Gig", { fields: [{ key: "when", type: "datespan", order: 0, includeEmbed: false }] } as never, {}));

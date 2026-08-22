@@ -23,37 +23,44 @@ export function kindOf(
   opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
 ): CanonicalKind {
   if (opts.collectionKind) return "other";
-
-  const named = typeName?.trim().toLowerCase();
-  if (opts.builtin && named) {
-    const seeded: Record<string, CanonicalKind> = {
-      task: "task",
-      event: "event",
-      text: "note",
-      note: "note",
-      person: "person",
-      project: "project",
-      organization: "organization",
-    };
-    const hit = seeded[named];
-    if (hit) return hit;
-  }
-
   if (opts.isText) return "note";
 
   const fields = schema?.fields ?? [];
   const has = (t: string) => fields.some((f) => f.type === t);
   const completes = Boolean(schema?.status_field && schema.complete_values?.length);
 
-  // A thing that can be finished and can be scheduled is a task, whatever it is
-  // called. The status field is what distinguishes it from an event: an event
-  // happens whether or not you do anything about it.
-  if (completes && (has("datespan") || has("datetime") || has("date"))) return "task";
+  // Strongest signal first, and it doesn't care what the type is called: a thing
+  // that can be finished is a task. This is what keeps a renamed Task working.
   if (completes) return "task";
+
+  // Then the name, against the kinds Hermes seeds. Deliberately NOT limited to
+  // `builtin` types: the seeding migrations skip any user who already made a
+  // type of that name, so someone who built their own Project before the
+  // built-in arrived has a Project that is user data — the common case, not the
+  // odd one. The name is their own vocabulary and it is the best evidence
+  // available when the shape says nothing.
+  const named = typeName?.trim().toLowerCase();
+  const seeded: Record<string, CanonicalKind> = {
+    task: "task",
+    event: "event",
+    text: "note",
+    note: "note",
+    person: "person",
+    contact: "person",
+    project: "project",
+    organization: "organization",
+    organisation: "organization",
+    company: "organization",
+  };
+  if (named && seeded[named]) return seeded[named]!;
+
+  // Weaker structural signals, below the name on purpose. Plenty of things carry
+  // dates without being events — a project with a start and an end most
+  // obviously — so this must not outrank a type whose name says what it is.
   if (has("datespan") || has("datetime")) return "event";
 
   // A person is the one shape that reliably points at an organization. Checked
-  // before the org itself, since an organization can also carry a reference (to
+  // before the org itself, since an organization can carry a reference too (to
   // its parent) and would otherwise swallow it.
   if (fields.some((f) => f.type === "reference" && /organi[sz]ation|company|employer/i.test(f.key)))
     return "person";

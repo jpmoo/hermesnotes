@@ -20,6 +20,19 @@ const REWALK_THRESHOLD = 400;
 /** Ids per batched refetch — the endpoint's own ceiling. */
 const BATCH = 500;
 
+/**
+ * Bumped whenever the seam changes how it derives what the mirror stores.
+ *
+ * `kind`, `title` and `body` are extracted from each block at store time so a
+ * search needn't parse every row — which means they are *derived*, and a change
+ * to the mapper leaves every existing row holding an answer from the old rules.
+ * Nothing would report that: search would just quietly return the wrong things
+ * for blocks that hadn't happened to change since. So the version travels with
+ * the mirror, and disagreeing with it forces a full re-walk.
+ */
+const SEAM_VERSION = "2";
+const SEAM = "seam.version";
+
 const CURSOR = "sync.cursor";
 const LAST_OK = "sync.lastSuccessAt";
 const FIRST_DONE = "sync.baselineDoneAt";
@@ -39,6 +52,11 @@ export class Sync {
   /** Whether the mirror has ever been filled. Distinct from "stale". */
   get everSynced(): boolean {
     return this.mirror.get(FIRST_DONE) !== null;
+  }
+
+  /** True when what's stored was derived by an older version of the seam. */
+  get seamStale(): boolean {
+    return this.everSynced && this.mirror.get(SEAM) !== SEAM_VERSION;
   }
 
   get lastSuccessAt(): string | null {
@@ -119,6 +137,7 @@ export class Sync {
 
       const now = new Date().toISOString();
       this.mirror.set(CURSOR, String(firstSeq ?? 0));
+      this.mirror.set(SEAM, SEAM_VERSION);
       this.mirror.set(LAST_OK, now);
       if (!this.mirror.get(FIRST_DONE)) this.mirror.set(FIRST_DONE, now);
       return { state: "ok", changed: total + vanished.length, walked: true };
@@ -147,6 +166,10 @@ export class Sync {
   /** Apply everything the change log has for us since the cursor. */
   async catchUp(): Promise<SyncOutcome> {
     if (!this.everSynced) return this.baseline();
+    // Everything stored was derived by rules that have since changed. A cursor
+    // would only refresh blocks that happen to move from here on, leaving the
+    // rest wrong for as long as nobody touches them.
+    if (this.seamStale) return this.baseline();
     try {
       let since = this.cursor;
       const touched = new Set<string>();

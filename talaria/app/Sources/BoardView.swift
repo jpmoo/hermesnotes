@@ -124,10 +124,12 @@ struct BoardView: View {
             Divider()
             if let board = model.board {
                 grid(board)
-                if !board.drawer.isEmpty {
-                    Divider()
-                    drawer(board.drawer).frame(height: 84)
-                }
+                // Always drawn, even with nothing in it. Hiding it when empty
+                // took the drop target away at exactly the moment it was needed
+                // — there was nowhere to put the first card you wanted out of
+                // the grid.
+                Divider()
+                drawer(board.drawer).frame(height: board.drawer.isEmpty ? 52 : 88)
             } else if let error = model.error {
                 message(error, systemImage: "exclamationmark.triangle")
             } else {
@@ -204,23 +206,33 @@ struct BoardView: View {
     /// Matched by the query, not yet placed. Drag from here into a region.
     private func drawer(_ cards: [Daemon.Card]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Unplaced — \(cards.count)")
+            Text(cards.isEmpty ? "Unplaced" : "Unplaced — \(cards.count)")
                 .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(cards) { card in
-                        CardRow(card: card, model: model)
-                            .frame(width: 190)
-                            .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.4)))
+            if cards.isEmpty {
+                Text("Drag a card here to take it off the board")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(cards) { card in
+                            CardRow(card: card, model: model)
+                                .frame(width: 190)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(.quaternary.opacity(0.4)))
+                        }
                     }
+                    .padding(.horizontal, 10)
                 }
-                .padding(.horizontal, 10)
             }
         }
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.quaternary.opacity(0.2))
+        // Without this an empty strip is mostly transparent space, and a drop
+        // lands on whatever is behind it rather than on the drawer.
+        .contentShape(Rectangle())
         // Dropping here takes a card out of the grid without taking it out of
         // the collection — the way back from a region, which otherwise had none.
         .onDrop(of: [.text], isTargeted: nil) { providers in

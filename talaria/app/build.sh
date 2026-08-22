@@ -26,22 +26,45 @@ grep -q "__REPO_ROOT__" "$APP/Contents/Info.plist" && { echo "!! repo root not s
 [ -f "$REPO_ROOT/packages/daemon/src/index.ts" ] || { echo "!! no daemon at $REPO_ROOT"; exit 1; }
 
 echo "==> Icon"
-# Needs Pillow. It is a build-time dependency on this machine only — nothing
-# the daemon or the app depends on at runtime.
+# Needs Pillow. A build-time dependency on this machine only — nothing the
+# daemon or the app depends on at runtime.
 mkdir -p "$APP/Contents/Resources"
 python3 "$HERE/make-icon.py" "$REPO_ROOT/../assets/HermesLogo.png" "$APP/Contents/Resources"
 rm -rf "$APP/Contents/Resources/Talaria.iconset"
 
-# Compile the asset catalog. A bare .icns is the legacy path, and macOS shapes
-# what it considers a non-conforming icon by insetting it inside a frame.
-xcrun actool "$APP/Contents/Resources/Talaria.xcassets" \
-  --compile "$APP/Contents/Resources" \
-  --platform macosx \
-  --minimum-deployment-target 13.0 \
-  --app-icon AppIcon \
-  --output-partial-info-plist "$APP/Contents/Resources/.actool.plist" \
-  >/dev/null
+if [ -d "$HERE/Talaria.icon" ]; then
+  # The modern path. macOS 26 treats a bare .icns or a hand-built asset catalog
+  # as legacy and wraps it — shrinking the artwork and drawing it inside a
+  # container of its own, which is the frame that then badges every Spotlight
+  # result. An Icon Composer document is what it renders natively.
+  #
+  # Note the .icon goes to actool DIRECTLY. Putting it inside an .xcassets, the
+  # way an image set would go, compiles silently to nothing at all.
+  echo "    (Icon Composer document)"
+  rm -rf "$APP/Contents/Resources/Talaria.xcassets"
+  xcrun actool "$HERE/Talaria.icon" \
+    --compile "$APP/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target 26.0 \
+    --app-icon Talaria \
+    --output-partial-info-plist "$APP/Contents/Resources/.actool.plist" >/dev/null
+  ICON_NAME="Talaria"
+else
+  # Fallback for a checkout without the .icon document: the generated asset
+  # catalog. Correct, and still wrapped by macOS 26.
+  echo "    (generated asset catalog — no Talaria.icon present)"
+  xcrun actool "$APP/Contents/Resources/Talaria.xcassets" \
+    --compile "$APP/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target 13.0 \
+    --app-icon AppIcon \
+    --output-partial-info-plist "$APP/Contents/Resources/.actool.plist" >/dev/null
+  ICON_NAME="AppIcon"
+fi
 rm -rf "$APP/Contents/Resources/Talaria.xcassets" "$APP/Contents/Resources/.actool.plist"
+# Whichever path ran, the plist has to name what it produced.
+plutil -replace CFBundleIconName -string "$ICON_NAME" "$APP/Contents/Info.plist"
+plutil -replace CFBundleIconFile -string "$ICON_NAME" "$APP/Contents/Info.plist"
 
 echo "==> Compiling"
 xcrun swiftc \

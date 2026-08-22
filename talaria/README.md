@@ -111,6 +111,22 @@ launchctl bootout gui/$(id -u)/dev.talaria.daemon
 A bad config therefore respawns rather than staying down; `ThrottleInterval`
 holds that to one attempt a minute so the error stays readable in the log.
 
+## The icon
+
+`app/Talaria.icon` is an Icon Composer document, and it is what the build
+prefers. macOS 26 treats a bare `.icns` — or a hand-built asset catalog — as a
+legacy icon and wraps it: the artwork is shrunk and drawn inside a container of
+its own, which is the frame that then badges every Spotlight result. An Icon
+Composer document is rendered natively, full bleed, with the system deriving the
+light, dark and tinted variants.
+
+One trap worth writing down: the `.icon` goes to `actool` **directly**. Put it
+inside an `.xcassets` the way an image set would go and it compiles silently to
+nothing at all — no error, no output, no icon.
+
+To change the artwork, open `Talaria.icon` in Icon Composer (inside Xcode) and
+rebuild. `app/glyph-1024.png` is the mark on its own, if you need to start over.
+
 ## Capturing from any app
 
 Select text anywhere, right-click, and under **Services**:

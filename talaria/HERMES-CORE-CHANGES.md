@@ -3,11 +3,11 @@
 Kept separate from Talaria's own code on purpose (brief §3, §9). Nothing here is
 written yet — this is the proposal that `DESIGN.md` §6 refers to.
 
-**Status:** proposed, not implemented, awaiting sign-off.
+**Status:** §1 implemented and verified 2026-08-22. §2 still deferred.
 
 ---
 
-## 1. A sync surface — `GET /sync/blocks`, `GET /sync/changes`
+## 1. A sync surface — `GET /sync/blocks`, `GET /sync/changes` ✅ landed
 
 ### Why
 
@@ -53,6 +53,29 @@ This is not a new invariant; it is the existing one, exposed.
 `pruned: true` when `since` predates the oldest retained row (retention is
 `KEEP_DAYS = 7`), telling the client to discard its cursor and re-run the
 baseline.
+
+### Verified
+
+Exercised end-to-end against a throwaway Postgres carrying the real
+`0027_change_log.sql` trigger, then torn down. What the run established:
+
+| | |
+|---|---|
+| Owner scoping | another user's blocks and change rows absent from both routes |
+| Archived blocks | present in the walk, flagged, not hidden |
+| Tags | returned as a real array, sorted (`["alpha","zeta"]`) |
+| Keyset paging | one row at a time walks the account and terminates on `next: null` |
+| `op` on a delete | `"delete"` with a null version |
+| Settle window | a write read immediately returns 0 rows; the same read 400 ms later returns 1 |
+| `pruned` | false when the cursor reaches the oldest retained row; true when the log has been emptied behind a cursor that is behind the head |
+| Bad key | 401 |
+
+One bug was caught this way and would not have been caught otherwise: drizzle
+renders an interpolated column reference inside a raw SQL fragment as a bare
+name, so `${blocks.id}` in the tag subquery became `"id"` — which binds to
+`tags t`, a table that also has an `id`. It would have correlated against the
+wrong table and returned no tags for anything, silently, with no error. The
+subquery now names `blocks.id` explicitly.
 
 ### Size
 

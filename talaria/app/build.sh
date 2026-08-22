@@ -25,6 +25,25 @@ sed "s|__REPO_ROOT__|$REPO_ROOT|" "$HERE/Info.plist" > "$APP/Contents/Info.plist
 grep -q "__REPO_ROOT__" "$APP/Contents/Info.plist" && { echo "!! repo root not substituted"; exit 1; }
 [ -f "$REPO_ROOT/packages/daemon/src/index.ts" ] || { echo "!! no daemon at $REPO_ROOT"; exit 1; }
 
+echo "==> Bundling the daemon"
+# Into Application Support, next to the app — deliberately not left in the repo.
+#
+# A LaunchAgent cannot read ~/Documents: it is TCC-protected, and a background
+# job has no way to ask for the permission and no window to ask in. It can stat
+# the path and gets "Operation not permitted" on everything inside, so an app
+# launched by launchd could not read the daemon it was supposed to run, and did
+# not survive finding that out. Bundling removes the question: one file, no
+# node_modules, nothing under ~/Documents touched after install.
+#
+# ESM with a require shim: the tree still contains a dependency that calls
+# require, and CJS can't take the daemon's top-level await.
+ESBUILD="$(find "$REPO_ROOT/../node_modules/.pnpm" -maxdepth 6 -path '*esbuild@*/bin/esbuild' -type f 2>/dev/null | sort | tail -1)"
+[ -x "$ESBUILD" ] || { echo "!! no esbuild found under node_modules/.pnpm"; exit 1; }
+"$ESBUILD" "$HERE/../packages/daemon/src/index.ts" \
+  --bundle --platform=node --format=esm --target=node22 --log-level=warning \
+  --banner:js="import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);" \
+  --outfile="$(dirname "$APP")/daemon.mjs"
+
 echo "==> Icon"
 # Needs Pillow. A build-time dependency on this machine only — nothing the
 # daemon or the app depends on at runtime.
@@ -56,7 +75,7 @@ else
   xcrun actool "$APP/Contents/Resources/Talaria.xcassets" \
     --compile "$APP/Contents/Resources" \
     --platform macosx \
-    --minimum-deployment-target 13.0 \
+    --minimum-deployment-target 14.0 \
     --app-icon AppIcon \
     --output-partial-info-plist "$APP/Contents/Resources/.actool.plist" >/dev/null
   ICON_NAME="AppIcon"
@@ -69,10 +88,10 @@ plutil -replace CFBundleIconFile -string "$ICON_NAME" "$APP/Contents/Info.plist"
 echo "==> Compiling"
 xcrun swiftc \
   -O \
-  -target arm64-apple-macos13.0 \
+  -target arm64-apple-macos14.0 \
   -framework AppKit -framework CoreSpotlight -framework UniformTypeIdentifiers \
   -o "$APP/Contents/MacOS/Talaria" \
-  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/main.swift"
+  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/main.swift"
 
 echo "==> Signing (ad-hoc; personal machine, no notarization)"
 codesign --force --sign - --identifier dev.talaria.Talaria "$APP"

@@ -302,6 +302,44 @@ export function buildServer(deps: {
     return envelope({ id, title: me.title, cols, rows, regions, cells, drawer, smart: isSmart });
   });
 
+  /**
+   * A turn with the assistant.
+   *
+   * The one thing here that cannot be answered from the mirror: the model lives
+   * on the server. So this says so plainly when it can't be reached, rather
+   * than spinning — every other surface in this app works offline and this one
+   * doesn't, which is worth being loud about rather than quietly inconsistent.
+   */
+  app.post("/assistant", async (req, reply) => {
+    const { message } = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
+    try {
+      const turn = await hermes.assistant(message);
+      return { ok: true, ...turn };
+    } catch (err) {
+      if (err instanceof OfflineError) {
+        return reply.code(503).send({
+          ok: false,
+          error: "Hermes isn't reachable, and the assistant runs there — this is the one thing that needs the network.",
+        });
+      }
+      return reply.code(502).send({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  app.post("/assistant/confirm", async (req, reply) => {
+    const { calls } = z
+      .object({ calls: z.array(z.object({ tool: z.string(), args: z.unknown() })).min(1).max(25) })
+      .parse(req.body);
+    try {
+      const done = await hermes.assistantConfirm(calls);
+      // What it just did may well have changed the mirror.
+      void sync.catchUp();
+      return { ok: true, ...done };
+    } catch (err) {
+      return reply.code(502).send({ ok: false, error: (err as Error).message });
+    }
+  });
+
   app.get("/types", async () => envelope([...types().values()].map((t) => ({ id: t.id, name: t.name }))));
 
   app.post("/sync", async (req) => {

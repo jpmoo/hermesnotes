@@ -158,6 +158,57 @@ enum Daemon {
         }
     }
 
+    // MARK: The assistant
+
+    struct PendingCall: Decodable, Encodable { let tool: String }
+    private struct Turn: Decodable {
+        let ok: Bool?
+        let reply: String?
+        let pending: [PendingCall]?
+        let error: String?
+    }
+    struct AssistantTurn { let reply: String; let pending: [PendingCall] }
+
+    static func assistant(_ message: String) throws -> AssistantTurn {
+        let data = try post("/assistant", ["message": message])
+        let t = try JSONDecoder().decode(Turn.self, from: data)
+        if let err = t.error { throw Failure(description: err) }
+        return AssistantTurn(reply: t.reply ?? "", pending: t.pending ?? [])
+    }
+
+    static func assistantConfirm(_ calls: [PendingCall]) throws {
+        let payload = calls.map { ["tool": $0.tool] }
+        let data = try post("/assistant/confirm", ["calls": payload])
+        let t = try JSONDecoder().decode(Turn.self, from: data)
+        if let err = t.error { throw Failure(description: err) }
+    }
+
+    /// POST JSON, and give back the body whatever the status — the daemon puts
+    /// its explanation in there, and losing it to a bare status code is how a
+    /// clear message becomes "something went wrong".
+    private static func post(_ path: String, _ body: [String: Any]) throws -> Data {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = [
+            "-s", "--unix-socket", socketPath,
+            "-H", "content-type: application/json", "--data-binary", "@-",
+            "http://talaria" + path,
+        ]
+        let stdin = Pipe(), out = Pipe()
+        task.standardInput = stdin
+        task.standardOutput = out
+        task.standardError = Pipe()
+        try task.run()
+        stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: body))
+        stdin.fileHandleForWriting.closeFile()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else {
+            throw Failure(description: "the daemon isn't answering (curl exit \(task.terminationStatus))")
+        }
+        return data
+    }
+
     static func health() throws -> Health {
         try JSONDecoder().decode(Health.self, from: get("/health"))
     }

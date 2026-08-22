@@ -45,8 +45,13 @@
   <string>0.1.0</string>
   <key>CFBundleVersion</key>
   <string>1</string>
+  <!--
+    14.0, not 13. Nothing here needs to run on an older Mac than the one it was
+    written on, and the floor was costing modern SwiftUI — and would cost
+    Button(intent:), which is how a widget gets to be interactive at all.
+  -->
   <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
+  <string>14.0</string>
   <!-- Where the daemon's code lives; stamped in by build.sh, since the bundle
        is assembled outside the repo and cannot find it by looking around. -->
   <key>TalariaRepoRoot</key>

@@ -47,10 +47,14 @@
   <key>KeepAlive</key>
   <true/>
 
-  <!-- Seconds between respawns. The default of 10 turns a bad config into six
-       copies of the same error a minute; this makes it one. -->
+  <!--
+    Seconds between respawns. The default of 10 turns a bad config into six
+    copies of the same error a minute; 60 made every restart during development
+    a minute's wait, and a `kickstart` inside the window looks exactly like the
+    app failing to start. Twenty is enough to keep a loop readable without that.
+  -->
   <key>ThrottleInterval</key>
-  <integer>60</integer>
+  <integer>20</integer>
 
   <!--
     Standard, not Background. Background is a claim about a job that never
@@ -67,7 +71,12 @@
   <key>StandardErrorPath</key>
   <string>/Users/jpmoore/Library/Logs/talaria.log</string>
 
-  <key>WorkingDirectory</key>
-  <string>/Users/jpmoore/Documents/Misc/Scripts/hermesnotes</string>
+  <!--
+    No WorkingDirectory on purpose. It used to point into ~/Documents, which is
+    TCC-protected: a LaunchAgent has no way to ask for that permission and no
+    window to ask in, so launchd chdir-ing there before exec can stall the job
+    before it runs a line of its own code. The app resolves every path it needs
+    absolutely and sets its own working directory for the daemon it spawns.
+  -->
 </dict>
 </plist>

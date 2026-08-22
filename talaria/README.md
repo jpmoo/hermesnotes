@@ -151,6 +151,17 @@ pbpaste | talaria capture          # as a task
 pbpaste | talaria capture --note   # as a note
 ```
 
+## Ask Hermes
+
+**⌃⌥Space** opens a prompt anywhere. It talks to the Hermes assistant, which
+runs on your server against your own Ollama model, so this is **the one thing
+here that needs the network** — everything else answers from the mirror. When it
+can't be reached it says so rather than spinning.
+
+Anything destructive comes back for approval before it runs: the panel lists
+what it wants to do and does nothing until you say. `"assistantHotkey"` in
+`config.json` rebinds it.
+
 ## The board
 
 A matrix collection in a floating window: cards drag between quadrants, the

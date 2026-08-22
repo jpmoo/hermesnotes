@@ -35,6 +35,19 @@ export interface MembershipRow {
   hidden: boolean;
 }
 
+export interface PendingCall {
+  tool: string;
+  /** Whatever the tool takes; shapes differ per tool and none of it is ours. */
+  args?: unknown;
+}
+
+export interface AssistantTurn {
+  reply: string;
+  steps: unknown[];
+  pending: PendingCall[];
+  stopped?: boolean;
+}
+
 export interface ChangeRow {
   seq: number;
   blockId: string;
@@ -167,6 +180,78 @@ export class Hermes {
 
   dailyNote(date: string) {
     return this.req<{ id: string; content: string | null; version: number }>("GET", `/today/${date}/note`);
+  }
+
+  /**
+   * One turn with the Hermes assistant.
+   *
+   * The endpoint streams Server-Sent Events over the POST — tokens as the model
+   * writes them, a line per tool call, then a final `done`. This consumes the
+   * stream and hands back the finished turn: the model runs on the user's own
+   * server against their own Ollama, so the interesting latency is the model
+   * thinking, not the transport, and a panel that says so plainly is honest
+   * enough without threading tokens all the way into Swift.
+   *
+   * `pending` is the part that matters. Anything destructive is not executed —
+   * it comes back for a person to approve, and nothing happens until it does.
+   */
+  async assistant(message: string, signal?: AbortSignal): Promise<AssistantTurn> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.config.origin.replace(/\/$/, "")}/api/assistant/chat`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.config.accessKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({ message }),
+        signal,
+      });
+    } catch (err) {
+      throw new OfflineError((err as Error).message);
+    }
+    if (!res.ok) throw new HermesError(res.status, await res.text());
+    if (!res.body) throw new HermesError(502, "the assistant sent no stream");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let out: AssistantTurn = { reply: "", steps: [], pending: [] };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE frames are separated by a blank line; a partial one waits.
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        const line = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        let ev: Record<string, unknown>;
+        try {
+          ev = JSON.parse(line.slice(5).trim());
+        } catch {
+          continue;
+        }
+        if (ev.type === "done") {
+          out = {
+            reply: String(ev.reply ?? ""),
+            steps: Array.isArray(ev.steps) ? (ev.steps as unknown[]) : [],
+            pending: Array.isArray(ev.pending) ? (ev.pending as PendingCall[]) : [],
+            stopped: Boolean(ev.stopped),
+          };
+        } else if (ev.type === "error") {
+          throw new HermesError(500, String(ev.error ?? "the assistant failed"));
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Run the calls the assistant asked permission for. */
+  assistantConfirm(calls: PendingCall[]) {
+    return this.req<{ steps: unknown[] }>("POST", "/assistant/confirm", { calls });
   }
 
   /** Cheapest possible "is it there and does it know me". */

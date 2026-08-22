@@ -11,13 +11,14 @@ LABEL="dev.talaria.daemon"
 DOMAIN="gui/$(id -u)"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 
-echo "==> Building, signing and registering the app"
-"$ROOT/app/build.sh"
-
 echo "==> Installing $PLIST"
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 cp "$ROOT/launchd/$LABEL.plist" "$PLIST"
 
+# Stopped before building, not after. build.sh replaces the bundle's
+# executable, and doing that to a running app that launchd is holding alive
+# leaves a process running a binary that no longer exists — it comes up, opens
+# its log, and then does nothing at all, which is indistinguishable from a hang.
 if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
   echo "==> Stopping the running agent"
   launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
@@ -26,6 +27,9 @@ if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
     sleep 0.2
   done
 fi
+
+echo "==> Building, signing and registering the app"
+"$ROOT/app/build.sh"
 
 echo "==> Starting"
 launchctl bootstrap "$DOMAIN" "$PLIST"

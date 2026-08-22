@@ -658,6 +658,15 @@ deliberately outside the pnpm graph.
 **Swift:** no third-party packages. `AppIntents`, `CoreSpotlight`,
 `UniformTypeIdentifiers`, `Network` — all system frameworks.
 
+**Runtime layout:** nothing the daemon needs may live under `~/Documents`. It is
+TCC-protected, a LaunchAgent cannot read it and cannot ask to — it can `stat` a
+path there and gets "Operation not permitted" on everything inside — and the
+failure is silent enough to look like the app hanging. The daemon is therefore
+bundled by esbuild into `~/Library/Application Support/Talaria/daemon.mjs` at
+install time: one file, no `node_modules`, nothing under `~/Documents` touched
+after install. The app bundle lives there too, for the unrelated reason that
+iCloud attaches extended attributes that `codesign` refuses.
+
 **Toolchain:** Xcode-beta 27.0 with the macOS 27.0 SDK, carrying
 `appintentsmetadataprocessor` and both frameworks (F5). Active developer
 directory still needs switching to it.

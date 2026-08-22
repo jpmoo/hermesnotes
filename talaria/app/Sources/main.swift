@@ -37,24 +37,21 @@ final class DaemonProcess {
     func start() {
         guard !stopping else { return }
         let node = URL(fileURLWithPath: "/opt/homebrew/bin/node")
-        let pkg = root.appendingPathComponent("packages/daemon")
-        let entry = pkg.appendingPathComponent("src/index.ts")
-        guard FileManager.default.fileExists(atPath: node.path),
-              FileManager.default.fileExists(atPath: entry.path) else {
-            NSLog("talaria: cannot find node or the daemon — expected \(node.path) and \(entry.path)")
+        // Bundled next to the app in Application Support, never run from the
+        // repo: ~/Documents is TCC-protected and a LaunchAgent cannot read it.
+        let entry = root.appendingPathComponent("daemon.mjs")
+        guard FileManager.default.fileExists(atPath: node.path) else {
+            NSLog("talaria: no node at \(node.path)")
+            return
+        }
+        guard FileManager.default.isReadableFile(atPath: entry.path) else {
+            NSLog("talaria: can't read the daemon at \(entry.path) — run talaria/install.sh")
             return
         }
         let p = Process()
         p.executableURL = node
-        // `--import tsx` rather than running tsx's CLI, which forks a second
-        // process to do the actual work. That fork is what made the orphan
-        // guard useless: killing this app reparented the *wrapper*, while the
-        // process holding the mirror open went on believing its parent was
-        // fine. One process, one parent, one thing to notice going away.
-        p.arguments = ["--import", "tsx", entry.path]
-        // tsx is resolved as a module specifier, so this has to be the package
-        // that has it installed.
-        p.currentDirectoryURL = pkg
+        p.arguments = [entry.path]
+        p.currentDirectoryURL = root
         var env = ProcessInfo.processInfo.environment
         env["TALARIA_SUPERVISED"] = "1"
         p.environment = env
@@ -88,25 +85,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [DispatchSourceSignal] = []
     private var statusItem: NSStatusItem?
     private var boardWindow: NSPanel?
+    private var assistantWindow: NSPanel?
     private var hotkey: Hotkey?
+    private var assistantHotkey: Hotkey?
     private let boardModel = BoardModel()
+    private let assistantModel = AssistantModel()
 
-    /// Where the daemon's code lives.
+    /// Where Talaria keeps its things — and where the bundled daemon lives.
     ///
-    /// Read from the bundle rather than walked to from it: the app is assembled
-    /// outside the repo (iCloud puts attributes on anything under ~/Documents
-    /// that codesign then refuses), so its own location says nothing about where
-    /// the source is. build.sh stamps the path in at assembly time.
-    private var repoRoot: URL {
-        if let s = Bundle.main.object(forInfoDictionaryKey: "TalariaRepoRoot") as? String, !s.isEmpty {
-            return URL(fileURLWithPath: s)
-        }
-        NSLog("talaria: no TalariaRepoRoot in Info.plist — rebuild with build.sh")
-        return URL(fileURLWithPath: NSHomeDirectory())
+    /// Application Support, not the repo. The repo is under ~/Documents, which
+    /// a LaunchAgent is not permitted to read, and nothing at runtime should
+    /// depend on a directory the process may not be allowed to open.
+    private var supportRoot: URL {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Application Support/Talaria")
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let d = DaemonProcess(root: repoRoot)
+        let d = DaemonProcess(root: supportRoot)
         daemon = d
         installSignalHandlers()
         d.start()
@@ -237,6 +233,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ctrl+opt+space is deliberately left free for the assistant panel.
         let spec = Self.configured("boardHotkey") ?? "ctrl+opt+b"
         hotkey = Hotkey(spec: spec) { [weak self] in self?.toggleBoardWindow() }
+
+        let askSpec = Self.configured("assistantHotkey") ?? "ctrl+opt+space"
+        assistantHotkey = Hotkey(spec: askSpec) { [weak self] in self?.toggleAssistantWindow() }
+    }
+
+    /// The assistant panel.
+    ///
+    /// Non-activating would be wrong here: it exists to be typed into, so it
+    /// takes focus and gives it back on Escape.
+    private func assistantPanel() -> NSPanel {
+        if let w = assistantWindow { return w }
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            styleMask: [.titled, .closable, .utilityWindow, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Ask Hermes"
+        panel.titlebarAppearsTransparent = true
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.contentViewController = NSHostingController(rootView: AssistantView(model: assistantModel))
+        panel.setFrameAutosaveName("talaria.assistant")
+        panel.center()
+        assistantWindow = panel
+        return panel
+    }
+
+    private func toggleAssistantWindow() {
+        let panel = assistantPanel()
+        if panel.isVisible {
+            panel.orderOut(nil)
+            return
+        }
+        // Near the top of whichever screen the pointer is on — where a prompt
+        // belongs, rather than dead centre over whatever is being read.
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
+            let f = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: screen.visibleFrame.midX - f.width / 2,
+                y: screen.visibleFrame.maxY - f.height - 120
+            ))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     /// A string setting from config.json, if it names one.
@@ -304,6 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Right-click is the way out of an app with no menu bar.
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
+            menu.addItem(withTitle: "Ask Hermes…", action: #selector(showAssistant), keyEquivalent: "").target = self
             menu.addItem(withTitle: "Refresh", action: #selector(refreshBoard), keyEquivalent: "r").target = self
             menu.addItem(.separator())
             menu.addItem(withTitle: "Quit Talaria", action: #selector(quit), keyEquivalent: "q").target = self
@@ -316,6 +360,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func refreshBoard() { boardModel.load() }
+
+    @objc private func showAssistant() { toggleAssistantWindow() }
 
     @objc private func quit() {
         daemon?.stop()

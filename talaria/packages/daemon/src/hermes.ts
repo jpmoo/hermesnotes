@@ -144,22 +144,25 @@ export class Hermes {
   }
 
   /**
-   * Where a block sits inside a collection, adding it if it isn't in one yet.
+   * Where a block sits inside a collection, joining it if it isn't a member yet.
    *
-   * A card dragged out of a smart matrix's drawer has never been a member — the
-   * drawer is what the query matched, not what has been placed — so patching
-   * its membership finds nothing to patch. Placing and joining are the same
-   * gesture from the user's end, so they are one call from here.
+   * Which of the two it is has to be decided by the caller, not discovered from
+   * the response: patching a membership that doesn't exist updates no rows and
+   * still answers `{ ok: true }`, so a create dressed as an edit reports success
+   * and does nothing at all. A card dragged out of a smart matrix's drawer is
+   * exactly that case — the drawer holds what the query matched, not what has
+   * been placed.
    */
-  async placeMember(collectionId: string, blockId: string, context: Record<string, unknown>) {
-    try {
-      return await this.req<unknown>("PATCH", `/collections/${collectionId}/members/${blockId}`, { context });
-    } catch (err) {
-      if (err instanceof HermesError && err.status === 404) {
-        return await this.req<unknown>("POST", `/collections/${collectionId}/members`, { blockId, context });
-      }
-      throw err;
+  async placeMember(
+    collectionId: string,
+    blockId: string,
+    context: Record<string, unknown>,
+    join: boolean,
+  ) {
+    if (join) {
+      return await this.req<unknown>("POST", `/collections/${collectionId}/members`, { blockId, context });
     }
+    return await this.req<unknown>("PATCH", `/collections/${collectionId}/members/${blockId}`, { context });
   }
 
   dailyNote(date: string) {

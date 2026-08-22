@@ -246,7 +246,8 @@ export function buildServer(deps: {
 
     const idx = types();
     const placed = new Set<string>();
-    const cells: Record<string, unknown[]> = { unplaced: [] };
+    const unplaced: unknown[] = [];
+    const cells: Record<string, unknown[]> = {};
     for (const r of regions) cells[String(r.index)] = [];
     for (const m of mirror.membersOf(id)) {
       const block = JSON.parse(m.raw);
@@ -257,17 +258,28 @@ export function buildServer(deps: {
       if (isSmart && !matching!.has(c.id)) continue;
       placed.add(c.id);
       const ctx = JSON.parse(m.context) as { region?: unknown };
-      const region = Number(ctx?.region);
-      const key = Number.isInteger(region) && region >= 0 && region < regions.length ? String(region) : "unplaced";
-      cells[key]!.push({
+      // Explicitly, because Number(null) is 0 — so a card put back in the
+      // drawer would silently reappear in the first region, which is exactly
+      // what it did.
+      const rv = ctx?.region;
+      const region = rv === null || rv === undefined || rv === "" ? Number.NaN : Number(rv);
+      const card = {
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
         due: c.schedule?.end?.value ?? null, tags: c.tags, url: c.url,
-      });
+      };
+      // A member with no region and a query match nobody has placed are the
+      // same thing to look at — in this collection, not on the board — so they
+      // share one list rather than being two states with one of them invisible.
+      if (Number.isInteger(region) && region >= 0 && region < regions.length) {
+        cells[String(region)]!.push(card);
+      } else {
+        unplaced.push(card);
+      }
     }
 
-    // The drawer: matched by the query, not yet put anywhere.
-    const drawer: unknown[] = [];
+    // The drawer: members sitting outside the grid, plus matches never placed.
+    const drawer: unknown[] = [...unplaced];
     if (matching) {
       for (const mid of matching) {
         if (placed.has(mid)) continue;
@@ -447,7 +459,16 @@ export function buildServer(deps: {
       baseVersion = row.version;
       intent = { kind: "complete", blockId: body.blockId, status };
     } else if (body.kind === "move") {
-      intent = { kind: "move", collectionId: body.collectionId, blockId: body.blockId, region: body.region };
+      // Asked before the local placement below, which would otherwise make
+      // every card look like an existing member.
+      const join = !mirror.isMember(body.collectionId, body.blockId);
+      intent = {
+        kind: "move",
+        collectionId: body.collectionId,
+        blockId: body.blockId,
+        region: body.region,
+        join,
+      };
       // Show the card in its new cell straight away. The sync loop will confirm
       // it, and a drag that snapped back while the request was in flight would
       // read as the drag having failed.
@@ -491,7 +512,14 @@ export function buildServer(deps: {
       return { id: row.id };
     }
     if (intent.kind === "move") {
-      await hermes.placeMember(intent.collectionId, intent.blockId, { region: intent.region });
+      // An explicit null, not an empty object: Hermes merges context rather
+      // than replacing it, so `{}` leaves the old region where it was.
+      await hermes.placeMember(
+        intent.collectionId,
+        intent.blockId,
+        { region: intent.region },
+        intent.join,
+      );
       return { id: intent.blockId };
     }
     if (intent.kind === "complete") {

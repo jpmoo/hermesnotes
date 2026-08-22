@@ -252,6 +252,14 @@ export class Mirror {
       .run(collectionId, blockId, ctx);
   }
 
+  /** Whether this block is already a member of that collection. */
+  isMember(collectionId: string, blockId: string): boolean {
+    const row = this.db
+      .prepare("SELECT 1 AS hit FROM memberships WHERE collection_id = ? AND block_id = ?")
+      .get(collectionId, blockId);
+    return row !== undefined;
+  }
+
   /** What's in a collection, in position order, with where each sits. */
   membersOf(collectionId: string): { raw: string; region: string | null; position: string | null; context: string }[] {
     return this.db

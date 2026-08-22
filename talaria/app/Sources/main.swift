@@ -469,12 +469,23 @@ if args.first == "--index" || args.first == "--clear" {
 
 // Top-level code is not main-actor isolated on its own, and everything below
 // touches AppKit — which only ever runs here.
+/// The delegate, held here for the life of the process.
+///
+/// NSApplication keeps its delegate *weakly*. Held in a local — even one whose
+/// scope wraps `run()` — it was being released, and a released delegate is
+/// simply never called: AppKit came up with its event thread and its main loop,
+/// applicationDidFinishLaunching never fired, and the log stayed empty while
+/// the process sat there looking perfectly healthy. The earlier attempt to pin
+/// it with an associated object used a Swift string literal as the key, which
+/// is a temporary pointer, so it pinned nothing reliably — which is why this
+/// failed under launchd and not from a shell.
+private var appDelegate: AppDelegate?
+
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     let delegate = AppDelegate()
+    appDelegate = delegate
     app.delegate = delegate
-    // Keep the delegate alive: NSApplication holds it weakly.
-    objc_setAssociatedObject(app, "talaria.delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
     app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
     app.run()
 }

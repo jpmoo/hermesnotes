@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A matrix collection, in a popover.
 ///
@@ -95,6 +96,23 @@ final class BoardModel: ObservableObject {
             await MainActor.run { self.load() }
         }
     }
+}
+
+/// Accepting a dropped card.
+///
+/// `onDrop`/`onDrag` rather than `dropDestination`/`draggable`: the newer pair
+/// competes with the tap gesture on a card for the same press, and on macOS the
+/// tap wins — so the drag never began and nothing anywhere said why.
+private func acceptDrop(_ providers: [NSItemProvider], into region: Int?, model: BoardModel) -> Bool {
+    guard let provider = providers.first else { return false }
+    provider.loadObject(ofClass: NSString.self) { object, _ in
+        guard let id = object as? String else { return }
+        Task { @MainActor in
+            guard let card = model.allCards.first(where: { $0.id == id }) else { return }
+            model.move(card, to: region)
+        }
+    }
+    return true
 }
 
 struct BoardView: View {
@@ -205,11 +223,8 @@ struct BoardView: View {
         .background(.quaternary.opacity(0.2))
         // Dropping here takes a card out of the grid without taking it out of
         // the collection — the way back from a region, which otherwise had none.
-        .dropDestination(for: String.self) { ids, _ in
-            guard let id = ids.first, let card = model.allCards.first(where: { $0.id == id })
-            else { return false }
-            model.move(card, to: nil)
-            return true
+        .onDrop(of: [.text], isTargeted: nil) { providers in
+            acceptDrop(providers, into: nil, model: model)
         }
     }
 
@@ -242,12 +257,8 @@ struct BoardView: View {
                 .fill(tint ?? Color.secondary.opacity(0.12))
         )
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary, lineWidth: 0.5))
-        .dropDestination(for: String.self) { ids, _ in
-            guard let id = ids.first,
-                  let card = model.allCards.first(where: { $0.id == id })
-            else { return false }
-            model.move(card, to: region.index)
-            return true
+        .onDrop(of: [.text], isTargeted: nil) { providers in
+            acceptDrop(providers, into: region.index, model: model)
         }
     }
 }
@@ -283,11 +294,15 @@ private struct CardRow: View {
         .background(RoundedRectangle(cornerRadius: 5).fill(hovering ? AnyShapeStyle(.selection) : AnyShapeStyle(.background.opacity(0.6))))
         .onHover { hovering = $0 }
         .contentShape(Rectangle())
-        .onTapGesture { if let u = URL(string: card.url) { NSWorkspace.shared.open(u) } }
-        .draggable(card.id) {
-            Text(card.title).font(.caption).padding(4)
-                .background(RoundedRectangle(cornerRadius: 4).fill(.thinMaterial))
+        // onDrag before the tap, so a press that turns into a drag is a drag.
+        // The other order gives the tap first refusal and it takes it.
+        .onDrag {
+            NSItemProvider(object: card.id as NSString)
+        } preview: {
+            Text(card.title).font(.caption).lineLimit(1).padding(6)
+                .background(RoundedRectangle(cornerRadius: 5).fill(.thinMaterial))
         }
+        .onTapGesture { if let u = URL(string: card.url) { NSWorkspace.shared.open(u) } }
     }
 }
 

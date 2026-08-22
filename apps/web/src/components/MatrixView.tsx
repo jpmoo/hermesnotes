@@ -1487,7 +1487,9 @@ export function MatrixView({
           className="drawer-handle"
           disabled={!canExpand}
           onClick={() => {
-            selectCollection();
+            // Opening the drawer is a thing done to this view, not a way of
+            // saying "show me this collection" — so it doesn't select, and the
+            // right panel stays as it was.
             if (canExpand) setDrawerOpen((o) => !o);
           }}
         >

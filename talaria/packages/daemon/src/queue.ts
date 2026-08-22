@@ -44,6 +44,8 @@ export interface MoveIntent {
   blockId: string;
   /** The cell it was dragged into, or null for back into the drawer. */
   region: number | null;
+  /** Whether this also joins the collection — see Hermes.placeMember. */
+  join: boolean;
 }
 export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent;
 
@@ -182,7 +184,15 @@ export class Queue {
    */
   private async replayMove(row: QueuedIntent, intent: MoveIntent): Promise<ReplayResult> {
     try {
-      await this.hermes.placeMember(intent.collectionId, intent.blockId, { region: intent.region });
+      // An explicit null, not an empty object: Hermes merges context rather
+      // than replacing it, so `{}` leaves the old region exactly where it was.
+      // Null overwrites, and the board reads null as unplaced.
+      await this.hermes.placeMember(
+        intent.collectionId,
+        intent.blockId,
+        { region: intent.region },
+        intent.join,
+      );
       return { id: row.id, outcome: "applied" };
     } catch (err) {
       if (err instanceof HermesError && (err.status === 404 || err.status === 400)) {

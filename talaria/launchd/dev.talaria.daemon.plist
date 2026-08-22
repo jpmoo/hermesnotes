@@ -52,8 +52,15 @@
   <key>ThrottleInterval</key>
   <integer>60</integer>
 
+  <!--
+    Standard, not Background. Background is a claim about a job that never
+    touches the interface, and this one owns a menu bar item and a window — a
+    job declaring otherwise can be started and then left sleeping before AppKit
+    ever hands it applicationDidFinishLaunching, which looks exactly like a hang
+    with an empty log.
+  -->
   <key>ProcessType</key>
-  <string>Background</string>
+  <string>Standard</string>
 
   <key>StandardOutPath</key>
   <string>/Users/jpmoore/Library/Logs/talaria.log</string>

@@ -87,15 +87,18 @@ findable and linkable before it has ever reached a server.
 ## Running it as a background service
 
 ```bash
-cp talaria/launchd/dev.talaria.daemon.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.talaria.daemon.plist
+./talaria/install.sh
 ```
 
-Restart it after pulling changes:
+Signs the bundle, installs the plist, restarts cleanly if it's already running,
+waits for the socket and then runs `talaria doctor`. Re-run it after pulling
+changes — it is the restart.
 
-```bash
-launchctl kickstart -k gui/$(id -u)/dev.talaria.daemon
-```
+The daemon runs from `app/Talaria.app` rather than straight from node, so that
+System Settings › Login Items calls it **Talaria** instead of **Node**: macOS
+names a background item after the app responsible for it, and a bare executable
+has no app to be responsible. The same bundle is what CoreSpotlight will need in
+Phase 2.
 
 Logs go to `~/Library/Logs/talaria.log`. It restarts whatever stops it, so
 `kill` won't hold — to actually stop it:

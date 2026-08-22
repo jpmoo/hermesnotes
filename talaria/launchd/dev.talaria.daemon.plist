@@ -5,12 +5,16 @@
 
   Two things launchd is fussy about, both deliberate here:
 
-  - ProgramArguments uses ABSOLUTE paths, and names tsx's JavaScript entry point rather
-    than the `.bin/tsx` shell wrapper, which node cannot execute. A
-    LaunchAgent gets almost none of a login shell's environment: there are three
-    node installs on this Mac and PATH decides between them, so leaving the
-    choice to PATH means leaving it to whatever launchd happens to hand over.
-    /opt/homebrew/bin/node is v26.5.0 and the acceptance suite passes on it.
+  - ProgramArguments points at an app bundle's executable rather than straight
+    at node. System Settings › Login Items names a background item after the app
+    responsible for it, resolved through the code signature — with no bundle to
+    be responsible, the item is listed as "Node", which is accurate and useless.
+    The bundle also gives CoreSpotlight (Phase 2) a bundle id it can resolve;
+    without one it refuses to index, at index time rather than at call time.
+
+    The bundle's executable picks the absolute node itself. There are three node
+    installs on this Mac and PATH decides between them, and PATH is exactly what
+    a LaunchAgent does not reliably get.
   - KeepAlive is unconditional: whatever stops the daemon, it comes back. A
     mirror that is quietly not running is the failure this whole layer exists to
     avoid, and launchd cannot tell "someone stopped it on purpose" from "it was
@@ -34,9 +38,7 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/node</string>
-    <string>/Users/jpmoore/Documents/Misc/Scripts/hermesnotes/talaria/packages/daemon/node_modules/tsx/dist/cli.mjs</string>
-    <string>/Users/jpmoore/Documents/Misc/Scripts/hermesnotes/talaria/packages/daemon/src/index.ts</string>
+    <string>/Users/jpmoore/Documents/Misc/Scripts/hermesnotes/talaria/app/Talaria.app/Contents/MacOS/Talaria</string>
   </array>
 
   <key>RunAtLoad</key>

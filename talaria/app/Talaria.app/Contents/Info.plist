@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A bundle for a thing with no windows.
+
+  Two separate reasons it has to exist, and they arrive at the same answer:
+
+  - System Settings › Login Items names a background item after the *app
+    responsible for it*, resolved through the code signature. A LaunchAgent
+    pointing straight at /opt/homebrew/bin/node has no bundle to be responsible
+    for it, so it is listed as "Node" — accurate and useless.
+
+  - CoreSpotlight (Phase 2) refuses to index from an executable whose bundle id
+    it can't resolve: it fails with -1003 and `corespotlightd` logging "Could not
+    resolve bundle id", at index time rather than at call time, so the code looks
+    like it worked.
+
+  LSUIElement keeps it out of the Dock and the app switcher. It is a daemon
+  wearing a bundle, not an app.
+-->
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Talaria</string>
+  <key>CFBundleDisplayName</key>
+  <string>Talaria</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.talaria.Talaria</string>
+  <key>CFBundleExecutable</key>
+  <string>Talaria</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>LSUIElement</key>
+  <true/>
+  <key>LSBackgroundOnly</key>
+  <true/>
+</dict>
+</plist>

@@ -431,6 +431,36 @@ If canvas notes become worth finding, the right fix is upstream — give them
 stable ids and a deep link — not a Talaria workaround. Recorded here so the
 decision is revisitable rather than forgotten.
 
+### 1.7a Launchers that aren't Spotlight
+
+Alfred, Raycast's file search, LaunchBar and anything else built on the macOS
+metadata index **cannot see CoreSpotlight items**. The two are separate stores:
+`mdfind` returns nothing for a block that ⌘Space finds instantly. Alfred's
+Default Results pane configures exactly three things — documents, folders, text
+files — and there is no plugin point.
+
+So they are fed directly rather than through the system index. `talaria alfred`
+emits Script Filter JSON and the workflow is a few lines of plist around that
+one call; any launcher that can run a command and read JSON uses the same entry
+point. One integration, several launchers — the same shape as the App Intents
+bet in Phase 3.
+
+Two rungs are available, and a third is not built:
+
+1. **Keyword** (`hn something`) — works now.
+2. **Fallback Search** — one row, shown when nothing on the Mac matched.
+   Shipped in the workflow; the user adds it in Alfred's preferences.
+3. **Blocks as files** — the only way into Alfred's *default* results, because
+   that list is files. Writing each block to an indexed folder as a `.webloc`
+   would put them there, ranked inline with everything else and needing no
+   keyword.
+
+   **Not built, and not obviously right.** It means several hundred files kept
+   in sync as blocks come and go, every block appearing in Spotlight twice
+   (once as our indexed item, once as a file), and filenames that have to
+   survive titles containing slashes. It is also most of what Phase 4's File
+   Provider is for, and the brief says not to start that without a conversation.
+
 ---
 
 ## 2. The seam (brief §6)

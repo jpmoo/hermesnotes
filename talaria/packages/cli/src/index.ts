@@ -77,6 +77,7 @@ function usage(): void {
   talaria status                                     what the daemon knows
   talaria doctor                                     check everything that fails quietly
   talaria alfred <text>                              Alfred Script Filter JSON
+  talaria open <text>                                open the best match in the browser
 
 Reads never touch the network. Writes go out when they can and queue when they can't.
 Socket: ${SOCKET}`);
@@ -286,6 +287,31 @@ async function main(argv: string[]): Promise<number> {
           }),
         );
       }
+      return 0;
+    }
+
+    /**
+     * Find the best match and open it.
+     *
+     * Backs Alfred's fallback row, which is a single result rather than a list:
+     * you typed something, nothing on the machine matched, and this is the one
+     * block most likely to be what you meant.
+     */
+    case "open": {
+      const text = words.join(" ").trim();
+      if (!text) {
+        console.error("open what?");
+        return 2;
+      }
+      const env = await call<Envelope<CanonicalBlock[]>>("GET", `/blocks?q=${encodeURIComponent(text)}&limit=1`);
+      const hit = env.data[0];
+      if (!hit) {
+        console.error(`nothing in Hermes matches "${text}"`);
+        return 1;
+      }
+      const { spawn } = await import("node:child_process");
+      spawn("/usr/bin/open", [hit.url], { detached: true, stdio: "ignore" }).unref();
+      console.log(hit.title);
       return 0;
     }
 

@@ -155,6 +155,20 @@ So Alfred is fed directly rather than through the system index:
 Then `hn <anything>` in Alfred. Return opens the block in the web app;
 Cmd-Return opens it via `talaria://`.
 
+**Alfred's own search will not find these, and cannot be made to.** Its default
+results are files, apps and contacts drawn from the macOS metadata index; app
+content indexed through CoreSpotlight is a separate store with no injection
+point (`showDocuments` / `showFolders` / `showTextFiles` is the whole of what
+that pane configures). So a keyword is not a shortcut here — it is the mechanism.
+
+The workflow also ships a **Fallback Search**, which is as close as Alfred gets
+to inline: add it under *Preferences → Features → Default Results → Setup
+fallback results*, and "Search Hermes for …" appears whenever nothing on the Mac
+matches what you typed. Actioning it opens the best match.
+
+The only way to reach Alfred's *default* results would be to write each block to
+disk as a real file, in a folder the metadata index covers — see DESIGN.md §1.7a.
+
 The workflow calls `talaria alfred "$1"`, which emits Script Filter JSON. Any
 launcher that can run a command and read JSON can use the same call — the
 integration is one command, not one plugin per launcher.

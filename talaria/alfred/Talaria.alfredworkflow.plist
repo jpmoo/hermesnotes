@@ -19,6 +19,19 @@
 				<false/>
 			</dict>
 		</array>
+		<key>BF0ECAE2-FBA4-5511-AE3D-5D01FFF605BD</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>807B7991-CD0A-522B-B85F-9B494AD8BD13</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
 	</dict>
 	<key>createdby</key>
 	<string>Talaria</string>
@@ -102,15 +115,53 @@
 			<key>version</key>
 			<integer>1</integer>
 		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>text</key>
+				<string>Search Hermes for '{query}'</string>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.trigger.fallback</string>
+			<key>uid</key>
+			<string>BF0ECAE2-FBA4-5511-AE3D-5D01FFF605BD</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>script</key>
+				<string>"$HOME/.local/bin/talaria" open "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>807B7991-CD0A-522B-B85F-9B494AD8BD13</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type `hn` followed by anything to search your Hermes blocks.
+	<string>Type `hn` followed by anything to search your Hermes blocks. Results come from Talaria's local mirror, so this works with no network at all.
 
-Results come from Talaria's local mirror, so this works with no network at all. Alfred cannot see these through the system index — CoreSpotlight items and file metadata are separate stores — so the workflow asks the daemon directly.
+Alfred cannot see these through its own search: its default results are files, apps and contacts from the macOS metadata index, and CoreSpotlight app content is a separate store that nothing can inject into. So this workflow asks the daemon directly.
 
 Return opens the block in the web app. Cmd-Return opens it via talaria://, which resolves the host at click time.
 
-Requires the talaria daemon to be running: `talaria doctor` will say.</string>
+A Fallback Search is included: add it under Alfred Preferences &gt; Features &gt; Default Results &gt; Setup fallback results, and 'Search Hermes for ...' will appear whenever nothing on the Mac matches what you typed.
+
+Needs the talaria daemon running: `talaria doctor` will say.</string>
 	<key>uidata</key>
 	<dict>
 		<key>62125088-BABA-52CC-8E49-E4BEBB05E7E9</key>
@@ -120,18 +171,32 @@ Requires the talaria daemon to be running: `talaria doctor` will say.</string>
 			<key>ypos</key>
 			<integer>40</integer>
 		</dict>
+		<key>807B7991-CD0A-522B-B85F-9B494AD8BD13</key>
+		<dict>
+			<key>xpos</key>
+			<integer>320</integer>
+			<key>ypos</key>
+			<integer>180</integer>
+		</dict>
 		<key>9A9C381E-A53C-5B86-8984-E89D47A98C1C</key>
 		<dict>
 			<key>xpos</key>
-			<integer>300</integer>
+			<integer>320</integer>
 			<key>ypos</key>
 			<integer>40</integer>
+		</dict>
+		<key>BF0ECAE2-FBA4-5511-AE3D-5D01FFF605BD</key>
+		<dict>
+			<key>xpos</key>
+			<integer>40</integer>
+			<key>ypos</key>
+			<integer>180</integer>
 		</dict>
 	</dict>
 	<key>variablesdontexport</key>
 	<array/>
 	<key>version</key>
-	<string>0.1.0</string>
+	<string>0.2.0</string>
 	<key>webaddress</key>
 	<string></string>
 </dict>

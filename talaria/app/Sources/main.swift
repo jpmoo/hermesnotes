@@ -87,7 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastIndexedEpoch = -1
     private var signalSources: [DispatchSourceSignal] = []
     private var statusItem: NSStatusItem?
-    private var popover: NSPopover?
+    private var boardWindow: NSPanel?
+    private var hotkey: Hotkey?
     private let boardModel = BoardModel()
 
     /// Where the daemon's code lives.
@@ -192,12 +193,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let button = item.button {
             // The template flag lets macOS invert it for light and dark menu
             // bars, which a coloured icon would not survive.
-            if let icon = Bundle.main.image(forResource: "MenuBar") {
+            //
+            // Loaded by path rather than by name: the bundle also carries a
+            // compiled asset catalog, and `image(forResource:)` searching that
+            // first is a good way to miss a loose file sitting next to it.
+            let path = Bundle.main.bundlePath + "/Contents/Resources/MenuBar.png"
+            let icon = NSImage(contentsOfFile: path) ?? Bundle.main.image(forResource: "MenuBar")
+            if let icon {
                 icon.isTemplate = true
                 icon.size = NSSize(width: 18, height: 18)
                 button.image = icon
+                NSLog("talaria: status item installed with icon from \(path)")
             } else {
-                button.title = "H"
+                button.title = "Hermes"
+                NSLog("talaria: status item installed WITHOUT an icon — no MenuBar.png at \(path)")
             }
             button.action = #selector(toggleBoard(_:))
             button.target = self
@@ -205,11 +214,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         statusItem = item
 
-        let pop = NSPopover()
-        pop.behavior = .transient
-        pop.contentSize = NSSize(width: 560, height: 460)
-        pop.contentViewController = NSHostingController(rootView: BoardView(model: boardModel))
-        popover = pop
+        // A hotkey as well as the menu bar, and not as a convenience: macOS
+        // silently drops status items that don't fit, and on a Mac with a notch
+        // and a busy menu bar ours is the newest and so the first to go. An
+        // entrance that can vanish without saying anything is not an entrance.
+        let spec = Self.configuredHotkey() ?? "ctrl+opt+space"
+        hotkey = Hotkey(spec: spec) { [weak self] in self?.toggleBoardWindow() }
+    }
+
+    /// The hotkey from config.json, if it names one.
+    private static func configuredHotkey() -> String? {
+        let path = NSHomeDirectory() + "/Library/Application Support/Talaria/config.json"
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let spec = obj["boardHotkey"] as? String, !spec.isEmpty
+        else { return nil }
+        return spec
+    }
+
+    /// A window rather than a popover.
+    ///
+    /// A popover anchors to the status item, which is exactly the thing that may
+    /// not be on screen. A panel opens wherever it likes, takes focus properly
+    /// so dragging works, and closes on Escape.
+    private func boardPanel() -> NSPanel {
+        if let w = boardWindow { return w }
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 460),
+            styleMask: [.titled, .closable, .utilityWindow, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Hermes"
+        panel.titlebarAppearsTransparent = true
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.contentViewController = NSHostingController(rootView: BoardView(model: boardModel))
+        panel.center()
+        boardWindow = panel
+        return panel
+    }
+
+    private func toggleBoardWindow() {
+        let panel = boardPanel()
+        if panel.isVisible {
+            panel.orderOut(nil)
+            return
+        }
+        boardModel.load()
+        // Where the pointer is, so it opens on the screen being used rather
+        // than on whichever one macOS thinks is main.
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
+            let f = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: screen.visibleFrame.midX - f.width / 2,
+                y: screen.visibleFrame.midY - f.height / 2
+            ))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     @objc private func toggleBoard(_ sender: NSStatusBarButton) {
@@ -224,16 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem?.menu = nil
             return
         }
-        guard let pop = popover else { return }
-        if pop.isShown {
-            pop.performClose(sender)
-        } else {
-            boardModel.load()
-            pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-            // A popover from a status item does not take focus on its own, and
-            // without it the drag never starts.
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        toggleBoardWindow()
     }
 
     @objc private func refreshBoard() { boardModel.load() }

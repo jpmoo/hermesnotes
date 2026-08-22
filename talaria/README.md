@@ -151,6 +151,23 @@ pbpaste | talaria capture          # as a task
 pbpaste | talaria capture --note   # as a note
 ```
 
+## The board
+
+A matrix collection in a floating window: cards drag between quadrants, the
+checkbox completes, clicking one opens it in the web app.
+
+Two ways in, and the second is not a convenience. **⌃⌥Space** opens it from
+anywhere; the menu bar item does the same. macOS silently drops status items
+that don't fit, and on a Mac with a notch and a busy menu bar ours is the newest
+and so the first to go — an entrance that can disappear without saying anything
+is not an entrance. Set `"boardHotkey"` in `config.json` to change it (e.g.
+`"cmd+shift+h"`); it takes effect on the next app restart.
+
+Why a window and not a widget: a widget renders snapshots and accepts taps, with
+no drag, no drop and no scroll — and dragging between quadrants is most of what
+a matrix is for. A window also reaches the daemon socket directly, with no
+sandbox, App Group or entitlement in the way, and needs no App Intents.
+
 ## Spotlight and links
 
 The app indexes the mirror into CoreSpotlight, so ⌘Space finds your blocks and

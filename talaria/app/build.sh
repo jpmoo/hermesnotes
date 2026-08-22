@@ -74,7 +74,7 @@ xcrun swiftc \
   -target arm64-apple-macos13.0 \
   -framework AppKit -framework CoreSpotlight -framework UniformTypeIdentifiers \
   -o "$APP/Contents/MacOS/Talaria" \
-  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/main.swift"
+  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/main.swift"
 
 echo "==> Signing (ad-hoc; personal machine, no notarization)"
 codesign --force --sign - --identifier dev.talaria.Talaria "$APP"

@@ -1,0 +1,108 @@
+# Changes asked of Hermes core
+
+Kept separate from Talaria's own code on purpose (brief §3, §9). Nothing here is
+written yet — this is the proposal that `DESIGN.md` §6 refers to.
+
+**Status:** proposed, not implemented, awaiting sign-off.
+
+---
+
+## 1. A sync surface — `GET /sync/blocks`, `GET /sync/changes`
+
+### Why
+
+Two gaps, one of which is not obvious from outside:
+
+- **No paginated read exists.** Every list endpoint is a bounded top-N with no
+  offset and no cursor (`QUERY_LIMIT = 500`, `/blocks/of-type` 200, search 25).
+  A mirror cannot be complete without one, and — worse — it becomes incomplete
+  *silently* as the graph grows past the limit.
+- **The change log has no HTTP door.** `changes` (migration 0027) records
+  everything we need, but the only consumer is the in-process watcher feeding
+  SSE, and that stream is deliberately cursorless: it resumes from the head when
+  the last listener drops, so it can nudge a client to re-read but cannot tell
+  one what it missed.
+
+### What
+
+Two read-only, bearer-authenticated routes. New file, new prefix, no existing
+route touched.
+
+```
+GET /sync/blocks?after=<uuid>&limit=1000
+  → { blocks: [...blockView, archivedAt, ownerScoped], seq: <changes head>, next: <uuid|null> }
+```
+
+Keyset pagination ordered by `blocks.id`. Includes archived blocks (the mirror
+needs `archived_at` to decide indexing — `DESIGN.md` §1.5) and excludes nothing
+else, including daily notes, which ordinary listings hold out. `seq` is the
+change-log head captured at the start of the walk, so a client that finishes the
+baseline can begin incremental reads from a point it knows it has covered.
+
+```
+GET /sync/changes?since=<seq>&limit=1000
+  → { changes: [{ seq, blockId, op, version, at }], nextSeq: <seq>, pruned: <bool> }
+```
+
+Rows above `since`, **filtered to those older than the existing 200 ms settle
+watermark** — the same guard `events/watcher.ts` already applies, and for the
+same reason: a `bigserial` is assigned at write time, not commit time, so seq
+100 can commit after seq 101 and a naive `seq > cursor` reader steps over it.
+This is not a new invariant; it is the existing one, exposed.
+
+`pruned: true` when `since` predates the oldest retained row (retention is
+`KEEP_DAYS = 7`), telling the client to discard its cursor and re-run the
+baseline.
+
+### Size
+
+Roughly one route file plus a registration line. No migration. No schema change.
+No new background work. The hard parts — the trigger, the settle discipline, the
+retention sweep — already exist and already run in production.
+
+### What it deliberately does not do
+
+- **No write path.** Talaria writes through the existing `PATCH /blocks/:id`,
+  `POST /blocks`, and the today routes, with their existing `version` optimistic
+  concurrency.
+- **No new auth.** Bearer tokens from `/auth/tokens`, and hard delete stays
+  cookie-only — a bearer client can archive but never destroy
+  (`blocks/routes.ts`). Talaria inherits that limit rather than routing around
+  it.
+- **No payload changes** to any existing endpoint.
+
+---
+
+## 2. Deferred: series identity on recurrence
+
+**Not proposed for now.** Recorded because `DESIGN.md` §3.2 depends on it and
+the deferral should be a decision rather than an omission.
+
+Recurring occurrences are separate blocks linked by nothing; `n` is a counter
+standing in for an absent relationship. EventKit models recurrence as a master
+with occurrences beneath it, so a Phase 4 Calendar/Reminders bridge needs a
+stable series identity that Hermes does not have.
+
+The eventual core change is small: when `spawnRecurrence` creates the next
+occurrence, stamp the parent's series id (the first occurrence's UUID) onto the
+child. Until then, Talaria synthesizes `seriesId` inside the canonical layer —
+stable for unedited series, wrong when a title changes, and acceptable only
+because the PoC is read-only.
+
+Revisit before any write bridge to an Apple store.
+
+---
+
+## 3. Already landed during Phase 0 recon
+
+**`done_at` leaked across recurrence occurrences.** `spawnRecurrence` copied the
+completing task's properties wholesale after `stampDoneAt` had already written
+`done_at`, so each freshly spawned occurrence was born `status: not done` while
+carrying the previous occurrence's completion timestamp. Auto-archive was spared
+only by its second filter (it re-checks `isComplete` in JS after the SQL
+`done_at` cutoff), and the stale value cleared itself on the block's first
+ordinary edit — but until then it was simply wrong, and it would have reached
+Talaria's canonical object as a completion date on an incomplete task.
+
+Fixed in Hermes core, commit `0f3e7d2`. Called out here per brief §9 because it
+is a core change made in service of this project.

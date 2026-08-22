@@ -419,10 +419,17 @@ export function buildServer(deps: {
    * yesterday's copy of the calendar beats an empty one.
    */
   app.get("/agenda", async (req) => {
-    const { days } = z.object({ days: z.coerce.number().int().min(1).max(60).optional() }).parse(req.query);
+    const { days, date } = z
+      .object({
+        days: z.coerce.number().int().min(1).max(60).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      })
+      .parse(req.query);
     const span = days ?? 14;
-    const today = new Date();
     const iso = (d: Date) => d.toISOString().slice(0, 10);
+    // Parsed as noon so a timezone offset can't tip the date to its neighbour,
+    // which is the classic way a day view ends up showing yesterday.
+    const today = date ? new Date(`${date}T12:00:00`) : new Date();
     const start = iso(today);
     const endDate = new Date(today);
     endDate.setDate(endDate.getDate() + span - 1);

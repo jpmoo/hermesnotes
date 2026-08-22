@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// What's coming up.
+/// From today, forwards.
 ///
-/// An agenda rather than a month grid. The web app's calendar carries four
-/// range modes, an all-day band, multi-day lanes and drag — most of which exists
-/// because it has a screen to spend. In a panel the useful question is "what is
-/// coming", and the two things that change the answer are kept: which feed an
-/// event came from, and which types are shown.
+/// An agenda rather than a month grid: the web app's calendar has four range
+/// modes and an all-day band because it has a screen to spend, and a panel that
+/// opens on a keystroke is answering a narrower question. You scroll forward
+/// through the days instead of paging between them — there is nothing to click
+/// to see next week, it is just further down.
+///
+/// What carries over is the part that changes the answer: which feed an event
+/// came from, and which types are shown.
 @MainActor
 final class AgendaModel: ObservableObject {
     @Published var days: [Daemon.AgendaDay] = []
@@ -15,6 +18,18 @@ final class AgendaModel: ObservableObject {
     @Published var feedStale = false
     @Published var error: String?
     @Published var busy = false
+
+    /// The day being looked at. Always a date, never an offset, so the view
+    /// doesn't quietly drift if the panel is left open past midnight.
+    @Published var date: String = AgendaModel.todayISO()
+
+    static func todayISO() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
+    }
+
+    var isToday: Bool { date == AgendaModel.todayISO() }
 
     private let hiddenKey = "talaria.agenda.hiddenTypes"
 
@@ -31,7 +46,7 @@ final class AgendaModel: ObservableObject {
         busy = true
         Task.detached(priority: .userInitiated) { [self] in
             do {
-                let a = try Daemon.agenda(days: 14)
+                let a = try Daemon.agenda(days: 45)
                 await MainActor.run {
                     self.days = a.days
                     self.types = a.types
@@ -58,22 +73,21 @@ struct AgendaView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
+                    LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
                         ForEach(visibleDays, id: \.date) { day in
                             Section {
-                                ForEach(day.events, id: \.uid) { event in feedRow(event) }
-                                ForEach(sorted(day.items), id: \.id) { item in itemRow(item) }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(day.events, id: \.uid) { event in feedRow(event) }
+                                    ForEach(sorted(day.items), id: \.id) { item in itemRow(item) }
+                                }
                             } header: {
-                                dayHeader(day.date)
+                                header(day.date)
                             }
                         }
-                        if visibleDays.isEmpty {
-                            Text("Nothing scheduled in the next fortnight")
-                                .font(Theme.body(11.5)).foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity).padding(.vertical, 24)
-                        }
+                        if visibleDays.isEmpty && !model.busy { empty }
                     }
                     .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -106,12 +120,6 @@ struct AgendaView: View {
         .padding(.horizontal, 12).padding(.vertical, 8)
     }
 
-    private var visibleDays: [Daemon.AgendaDay] {
-        model.days.filter { day in
-            !day.events.isEmpty || day.items.contains { !model.hidden.contains($0.typeName) }
-        }
-    }
-
     /// Completed things sink, muted — the same treatment the web calendar gives
     /// them, so a finished task doesn't sit at the top of a day still to come.
     private func sorted(_ items: [Daemon.AgendaItem]) -> [Daemon.AgendaItem] {
@@ -119,10 +127,21 @@ struct AgendaView: View {
             .sorted { a, b in a.done == b.done ? (a.at ?? "") < (b.at ?? "") : (!a.done && b.done) }
     }
 
-    private func dayHeader(_ date: String) -> some View {
-        HStack(spacing: 7) {
-            Text(pretty(date)).font(Theme.chrome(11, weight: .semibold))
-            if date == todayISO() {
+    /// Only days with something on them. A fortnight of empty headings is a
+    /// lot of scrolling to learn nothing.
+    private var visibleDays: [Daemon.AgendaDay] {
+        model.days.filter { day in
+            !day.events.isEmpty || day.items.contains { !model.hidden.contains($0.typeName) }
+        }
+    }
+
+    private func header(_ date: String) -> some View {
+        let isToday = date == AgendaModel.todayISO()
+        return HStack(spacing: 7) {
+            Text(pretty(date))
+                .font(Theme.chrome(11, weight: .semibold))
+                .foregroundStyle(isToday ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.primary))
+            if isToday {
                 Text("today")
                     .font(Theme.chrome(9)).foregroundStyle(.white)
                     .padding(.horizontal, 5).padding(.vertical, 1)
@@ -130,8 +149,19 @@ struct AgendaView: View {
             }
             Spacer()
         }
-        .padding(.vertical, 4)
-        .background(.background.opacity(0.96))
+        .padding(.vertical, 5)
+        // Opaque, because it pins while the day beneath scrolls under it.
+        .background(Rectangle().fill(.background))
+    }
+
+    private var empty: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "checkmark.circle")
+                .font(.system(size: 18)).foregroundStyle(Theme.accent.opacity(0.55))
+            Text("Nothing scheduled from here on")
+                .font(Theme.body(11.5)).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 28)
     }
 
     private func feedRow(_ event: Daemon.FeedEvent) -> some View {
@@ -184,14 +214,10 @@ struct AgendaView: View {
         .onTapGesture { if let u = URL(string: item.url) { NSWorkspace.shared.open(u) } }
     }
 
-    private func todayISO() -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: Date())
-    }
-
     private func pretty(_ date: String) -> String {
         let inF = DateFormatter(); inF.dateFormat = "yyyy-MM-dd"
         guard let d = inF.date(from: date) else { return date }
-        let out = DateFormatter(); out.dateFormat = "EEEE d MMMM"
+        let out = DateFormatter(); out.dateFormat = "EEEE, d MMMM"
         return out.string(from: d)
     }
 

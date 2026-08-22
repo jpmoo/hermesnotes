@@ -171,8 +171,9 @@ what it wants to do and does nothing until you say. `"assistantHotkey"` in
 - **canvas** — read-only, at the coordinates the web app placed things at, with
   the sticky notes and the connections. Pan, zoom, click to open. Nothing is
   moved from here: a canvas is a spatial argument someone made on purpose.
-- **calendar** — an agenda: the next fortnight, day by day, merging dated
-  blocks with your calendar-feed events. Feed events wear their feed's colour;
+- **calendar** — an agenda that scrolls forward from today, day by day, merging
+  dated blocks with your calendar-feed events. There is nothing to click to see
+  next week; it is further down. Days with nothing on them are left out. Feed events wear their feed's colour;
   per-type pills persist; completed things sink and mute. Feed events are
   cached, so a lost connection gives you yesterday's copy and says so rather
   than an empty week.

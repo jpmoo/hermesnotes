@@ -216,8 +216,10 @@ enum Daemon {
         let days: [AgendaDay]
     }
 
-    static func agenda(days: Int) throws -> Agenda {
-        try JSONDecoder().decode(Envelope<Agenda>.self, from: get("/agenda?days=\(days)")).data
+    static func agenda(days: Int, date: String? = nil) throws -> Agenda {
+        var path = "/agenda?days=\(days)"
+        if let date { path += "&date=\(date)" }
+        return try JSONDecoder().decode(Envelope<Agenda>.self, from: get(path)).data
     }
 
     // MARK: The assistant

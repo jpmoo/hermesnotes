@@ -51,4 +51,9 @@ touch "$APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
   -f "$APP"
 
+# The pasteboard server caches Service declarations. Without this the menu
+# items can take until the next login to appear — and their absence looks
+# exactly like a bug in the app.
+/System/Library/CoreServices/pbs -flush 2>/dev/null || true
+
 echo "built $APP"

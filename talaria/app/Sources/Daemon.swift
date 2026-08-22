@@ -57,6 +57,41 @@ enum Daemon {
         let items: [Item]
     }
 
+    struct Captured: Decodable {
+        let title: String
+        let applied: Bool
+        let storedProse: Bool
+    }
+
+    /// Hand text to the daemon and let it decide where the pieces go.
+    static func capture(_ text: String, as kind: String) throws -> Captured {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = [
+            "-s", "--fail", "--unix-socket", socketPath,
+            "-H", "content-type: application/json",
+            // The text goes in a file rather than on the command line: a
+            // selection can be long, and anything with a newline or a quote in
+            // it should not be going anywhere near argv.
+            "--data-binary", "@-",
+            "http://talaria/capture",
+        ]
+        let stdin = Pipe(), out = Pipe()
+        task.standardInput = stdin
+        task.standardOutput = out
+        task.standardError = Pipe()
+        try task.run()
+        let payload = try JSONSerialization.data(withJSONObject: ["text": text, "as": kind])
+        stdin.fileHandleForWriting.write(payload)
+        stdin.fileHandleForWriting.closeFile()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else {
+            throw Failure(description: "the daemon refused the capture (curl exit \(task.terminationStatus))")
+        }
+        return try JSONDecoder().decode(Captured.self, from: data)
+    }
+
     static func health() throws -> Health {
         try JSONDecoder().decode(Health.self, from: get("/health"))
     }

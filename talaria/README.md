@@ -111,6 +111,30 @@ launchctl bootout gui/$(id -u)/dev.talaria.daemon
 A bad config therefore respawns rather than staying down; `ThrottleInterval`
 holds that to one attempt a minute so the error stays readable in the log.
 
+## Capturing from any app
+
+Select text anywhere, right-click, and under **Services**:
+
+- **Add to Hermes as Task** — first line becomes the title, the rest goes into
+  the type's prose field (and into the title, if the type hasn't got one, rather
+  than being dropped)
+- **Add to Hermes as Note** — the whole selection, as a text block
+
+Both work offline: the block is created locally with its real id and goes out on
+reconnect. A notification says which happened.
+
+If the items don't appear, macOS caches Service declarations — `build.sh` flushes
+that cache, but a stubborn menu is fixed by logging out and back in. They can be
+turned off individually in System Settings › Keyboard › Keyboard Shortcuts ›
+Services.
+
+The same capture is available anywhere else:
+
+```bash
+pbpaste | talaria capture          # as a task
+pbpaste | talaria capture --note   # as a note
+```
+
 ## Spotlight and links
 
 The app indexes the mirror into CoreSpotlight, so ⌘Space finds your blocks and

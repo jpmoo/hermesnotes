@@ -32,8 +32,12 @@ launchctl bootstrap "$DOMAIN" "$PLIST"
 launchctl kickstart "$DOMAIN/$LABEL"
 
 echo "==> Waiting for the socket"
+# Measured at about eleven seconds from bootout to listening: launchd takes a
+# few to bring the app back, and the daemon spends a few more compiling
+# TypeScript on the way up. Ten was just short enough to report a failure that
+# had not happened.
 SOCK="$HOME/Library/Application Support/Talaria/talaria.sock"
-for _ in $(seq 1 50); do [ -S "$SOCK" ] && break; sleep 0.2; done
-[ -S "$SOCK" ] || { echo "!! no socket after 10s — see ~/Library/Logs/talaria.log"; exit 1; }
+for _ in $(seq 1 150); do [ -S "$SOCK" ] && break; sleep 0.2; done
+[ -S "$SOCK" ] || { echo "!! no socket after 30s — see ~/Library/Logs/talaria.log"; exit 1; }
 echo "==> Up. Checking:"
 exec "$ROOT/bin/talaria" doctor

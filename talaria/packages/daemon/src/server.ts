@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
+import { bodyFieldKey } from "@hermes/shared";
 import { toCanonical, type HermesTypeRow } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
@@ -227,6 +228,75 @@ export function buildServer(deps: {
     const { id } = z.object({ id: z.coerce.number().int() }).parse(req.params);
     mirror.dequeue(id);
     return { dropped: id };
+  });
+
+  /**
+   * Turn a lump of selected text into a task.
+   *
+   * The split is the same one Hermes itself makes when you extract a selection
+   * into a new block: the first line is the title, the rest goes in the type's
+   * prose field, and if the type has nowhere to put prose then everything goes
+   * in the title rather than being dropped. Caller sends text; where the pieces
+   * land is worked out here, because here is where the property schema is.
+   */
+  app.post("/capture", async (req, reply) => {
+    const body = z
+      .object({
+        text: z.string().min(1),
+        as: z.enum(["task", "note"]).default("task"),
+        blockTypeId: z.string().uuid().optional(),
+      })
+      .parse(req.body);
+
+    const typeId = body.blockTypeId ?? defaultTypeId(body.as);
+    if (!typeId) {
+      return reply.code(503).send({ error: "no block types mirrored yet — has a sync finished?" });
+    }
+    const type = types().get(typeId);
+    const text = body.text.replace(/\r\n/g, "\n").trim();
+
+    // A note is a text block: its body *is* its content and it has no title to
+    // split off, so the selection goes across whole.
+    if (body.as === "note" || type?.isText) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/write",
+        payload: { kind: "create", blockTypeId: typeId, content: text },
+      });
+      const firstLine = (text.split("\n").find((l) => l.trim()) ?? "").trim();
+      return reply.code(res.statusCode).send({
+        ...(res.json() as Record<string, unknown>),
+        title: firstLine.slice(0, 120) || "Untitled",
+        storedProse: true,
+      });
+    }
+
+    const lines = text.split("\n");
+    const firstIndex = lines.findIndex((l) => l.trim());
+    const title = (firstIndex >= 0 ? lines[firstIndex]! : "").trim().slice(0, 500) || "Untitled";
+    const rest = firstIndex >= 0 ? lines.slice(firstIndex + 1).join("\n").trim() : "";
+
+    const prose = bodyFieldKey(type?.propertySchema ?? null);
+    const properties: Record<string, unknown> =
+      rest && prose
+        ? { title, [prose]: rest }
+        : rest
+          ? // Nowhere for prose to go. Keeping it in the title is ugly and is
+            // still better than a capture that silently ate most of what was
+            // selected.
+            { title: `${title}\n${rest}`.slice(0, 2000) }
+          : { title };
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/write",
+      payload: { kind: "create", blockTypeId: typeId, properties },
+    });
+    return reply.code(res.statusCode).send({
+      ...(res.json() as Record<string, unknown>),
+      title,
+      storedProse: Boolean(rest && prose),
+    });
   });
 
   /**

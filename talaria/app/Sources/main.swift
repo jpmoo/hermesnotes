@@ -1,6 +1,7 @@
 import AppKit
 import CoreSpotlight
 import Foundation
+import UserNotifications
 
 /// Talaria.app — a daemon wearing a bundle.
 ///
@@ -104,6 +105,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installSignalHandlers()
         d.start()
 
+        // Register as the provider for the Service declared in Info.plist, and
+        // tell the pasteboard server to re-read that declaration — without the
+        // update the menu item can take until the next login to appear.
+        NSApp.servicesProvider = self
+        NSUpdateDynamicServices()
+
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, err in
+            if let err { NSLog("talaria: notifications unavailable — \(err)") }
+            else if !granted { NSLog("talaria: notifications not permitted; captures will be silent") }
+        }
+
         // Poll for a moved cursor rather than reindexing on a schedule: the
         // check is one cheap call and reindexing when nothing changed is pure
         // waste. First pass is delayed so the daemon has a socket to answer on.
@@ -154,6 +166,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // the first seconds after login. Logged, never surfaced.
                 NSLog("talaria: index skipped — \(error)")
             }
+        }
+    }
+
+    // MARK: The Services menu
+
+    /// Selected text, from any app, becoming a task.
+    ///
+    /// The signature is fixed by the Services machinery: this exact shape, with
+    /// `@objc`, or the menu item does nothing and says nothing about why.
+    @objc func captureAsTask(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        capture(pboard, as: "task", error: error)
+    }
+
+    @objc func captureAsNote(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        capture(pboard, as: "note", error: error)
+    }
+
+    /// Selected text, from any app, becoming a block.
+    ///
+    /// The two selectors above exist because the Services machinery dispatches
+    /// by name and each menu item needs its own; the work is the same and the
+    /// difference — where the pieces of the text land — is the daemon's to make.
+    private func capture(_ pboard: NSPasteboard, as kind: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        guard let text = pboard.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            error.pointee = "There was no text to capture." as NSString
+            return
+        }
+        // Off the main thread: a Service call blocks the app that invoked it,
+        // and that app should not be waiting on our network.
+        Task.detached(priority: .userInitiated) {
+            do {
+                let made = try Daemon.capture(text, as: kind)
+                await Self.notify(
+                    title: made.applied ? "\(kind == "note" ? "Note" : "Task") created" : "Queued",
+                    body: made.applied
+                        ? made.title
+                        : "\(made.title) — Hermes wasn't reachable; it will go out on reconnect."
+                )
+            } catch {
+                await Self.notify(title: "Couldn't capture that", body: "\(error)")
+            }
+        }
+    }
+
+    /// Say something, because a Service that silently succeeds is
+    /// indistinguishable from one that silently failed.
+    @MainActor
+    private static func notify(title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { err in
+            if let err { NSLog("talaria: \(title) — \(body) (notification failed: \(err))") }
         }
     }
 

@@ -78,6 +78,7 @@ function usage(): void {
   talaria doctor                                     check everything that fails quietly
   talaria alfred <text>                              Alfred Script Filter JSON
   talaria open <text>                                open the best match in the browser
+  talaria capture [text] [--note]                    text -> a task (or a note with --note)
 
 Reads never touch the network. Writes go out when they can and queue when they can't.
 Socket: ${SOCKET}`);
@@ -312,6 +313,38 @@ async function main(argv: string[]): Promise<number> {
       const { spawn } = await import("node:child_process");
       spawn("/usr/bin/open", [hit.url], { detached: true, stdio: "ignore" }).unref();
       console.log(hit.title);
+      return 0;
+    }
+
+    /**
+     * Capture text as a task — from arguments, or from stdin when piped.
+     *
+     * The same call the Services menu makes, exposed so anything else can make
+     * it too: a Shortcut, Keyboard Maestro, a pipe from another command.
+     */
+    case "capture": {
+      const piped = !process.stdin.isTTY ? await new Promise<string>((res) => {
+        let buf = "";
+        process.stdin.setEncoding("utf8");
+        process.stdin.on("data", (c: string) => (buf += c));
+        process.stdin.on("end", () => res(buf));
+      }) : "";
+      const text = (words.join(" ").trim() || piped).trim();
+      if (!text) {
+        console.error("nothing to capture — pass text, or pipe it in");
+        return 2;
+      }
+      const res = await call<{ applied: boolean; id?: string; title: string; storedProse: boolean; note?: string }>(
+        "POST",
+        "/capture",
+        {
+          text,
+          as: flags.has("note") ? "note" : "task",
+          ...(str("type") ? { blockTypeId: str("type") } : {}),
+        },
+      );
+      const where = res.storedProse ? "" : dim(" (no prose field on that type — kept in the title)");
+      console.log(`${res.applied ? "created" : warn("queued")}: ${res.title}${where}`);
       return 0;
     }
 

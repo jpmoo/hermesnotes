@@ -57,6 +57,51 @@
     the app back with the item's identifier instead. This is for links pasted
     into other apps, Shortcuts, and `open talaria://block/<uuid>`.
   -->
+  <!--
+    A macOS Service. This is what puts "New Hermes Task" in the Services
+    submenu of the right-click menu in every app that can hand over text —
+    Mail, Safari, Notes, an editor, anything using the standard text system.
+
+    NSSendTypes says we take a string and NSReturnTypes is absent because we
+    give nothing back: the selection stays where it is and a task appears.
+    NSMessage names the selector on whatever is registered as the services
+    provider, and NSRequiredContext keeps it out of menus where there is no
+    text to send.
+  -->
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict><key>default</key><string>Add to Hermes as Task</string></dict>
+      <key>NSMessage</key>
+      <string>captureAsTask</string>
+      <key>NSPortName</key>
+      <string>Talaria</string>
+      <key>NSSendTypes</key>
+      <array>
+        <string>NSStringPboardType</string>
+        <string>public.utf8-plain-text</string>
+      </array>
+      <key>NSRequiredContext</key>
+      <dict><key>NSTextContent</key><string>Text</string></dict>
+    </dict>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict><key>default</key><string>Add to Hermes as Note</string></dict>
+      <key>NSMessage</key>
+      <string>captureAsNote</string>
+      <key>NSPortName</key>
+      <string>Talaria</string>
+      <key>NSSendTypes</key>
+      <array>
+        <string>NSStringPboardType</string>
+        <string>public.utf8-plain-text</string>
+      </array>
+      <key>NSRequiredContext</key>
+      <dict><key>NSTextContent</key><string>Text</string></dict>
+    </dict>
+  </array>
+
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

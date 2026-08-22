@@ -49,6 +49,15 @@ export function loadConfig(): Config {
   } catch (err) {
     throw new ConfigError(`${CONFIG_PATH} is not valid JSON: ${(err as Error).message}`);
   }
+  // The example file ships with this in it. Left as-is it would sail through
+  // validation and fail later as a 401, which reads as a revoked key rather than
+  // as a config nobody has filled in yet.
+  if ((parsed as { accessKey?: unknown })?.accessKey === "PASTE_YOUR_ACCESS_KEY") {
+    throw new ConfigError(
+      `${CONFIG_PATH} still has the placeholder access key in it.\n` +
+        `Mint a real one in Hermes under Settings → Access keys and paste it into "accessKey".`,
+    );
+  }
   const result = configSchema.safeParse(parsed);
   if (!result.success) {
     const lines = result.error.issues.map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`);

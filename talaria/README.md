@@ -22,23 +22,41 @@ launchd/             a LaunchAgent plist
 ## Setting it up
 
 Hermes needs the `/sync/*` routes, so deploy the server first (`./restart.sh` on
-the host). Then, on this Mac:
+the host).
+
+Then copy the example config into place and fill in the key:
 
 ```bash
 mkdir -p ~/Library/Application\ Support/Talaria
-cat > ~/Library/Application\ Support/Talaria/config.json <<'JSON'
-{ "origin": "https://your-hermes/hermesnotes", "accessKey": "hn_…" }
-JSON
+cp talaria/config.example.json ~/Library/Application\ Support/Talaria/config.json
 chmod 600 ~/Library/Application\ Support/Talaria/config.json
 ```
 
-Mint the key in Hermes under **Settings → Access keys**. Then:
+| field | required | what it is |
+|---|---|---|
+| `origin` | yes | Where Hermes lives, up to but **not** including `/api`. The daemon appends `/api/...` itself, so `https://host/hermesnotes` becomes `https://host/hermesnotes/api/sync/blocks`. No trailing slash needed. |
+| `accessKey` | yes | A Hermes access key — **Settings → Access keys** in the web app. Shown once when minted. The daemon reads it and nothing else does; it never leaves this machine except as a bearer header to `origin`. |
+| `pollSeconds` | no (default 30) | How often to ask for changes while the network is up. Backs off automatically when it isn't, up to 15 minutes, so a laptop on a dead hotel network doesn't hammer. |
+
+The file is read at startup only — restart the daemon after editing it. `chmod
+600` matters: it holds a key that can read and write everything in your account.
+
+Then:
 
 ```bash
 pnpm --filter @talaria/daemon start
 ```
 
 The first run walks the whole account; after that it follows the change log.
+Check it landed with:
+
+```bash
+talaria doctor
+```
+
+which reports the config, the socket, whether Hermes is reachable **and**
+accepting the key, how old the mirror is, and anything parked in the write
+queue — all things that otherwise fail silently.
 
 ## Using it
 

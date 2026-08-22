@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Install:  cp this to ~/Library/LaunchAgents/ and
+            launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.talaria.daemon.plist
+
+  Two things launchd is fussy about, both deliberate here:
+
+  - ProgramArguments uses ABSOLUTE paths. A LaunchAgent gets almost none of a
+    login shell's environment, so an `nvm`-shimmed `node` on PATH is not there
+    when this runs. Point at a real binary and change it when Node moves.
+  - KeepAlive is conditional on a clean exit rather than unconditional. The
+    daemon exits 78 (EX_CONFIG) when its config is missing or wrong, and
+    restarting that forever would turn one clear error into a log full of them.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.talaria.daemon</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>--import</string>
+    <string>tsx</string>
+    <string>/Users/CHANGEME/Documents/Misc/Scripts/hermesnotes/talaria/packages/daemon/src/index.ts</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/CHANGEME/Library/Logs/talaria.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/CHANGEME/Library/Logs/talaria.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/CHANGEME/Documents/Misc/Scripts/hermesnotes</string>
+</dict>
+</plist>

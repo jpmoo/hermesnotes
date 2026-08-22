@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { blocks, changes } from "@hermes/db";
@@ -76,10 +76,22 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get("/sync/blocks", async (req) => {
     const userId = requireUser(req);
-    const { after, limit } = z
+    const { after, limit, ids } = z
       .object({
         after: z.string().uuid().optional(),
         limit: z.coerce.number().int().min(1).max(2000).default(1000),
+        /**
+         * Named blocks instead of a page of them — what a mirror wants after the
+         * change log has told it which ids moved. Without this it would re-read
+         * one block per request, and a tag rename touching a hundred notes would
+         * cost a hundred round trips over a link that may be the reason it fell
+         * behind in the first place.
+         */
+        ids: z
+          .string()
+          .transform((v) => v.split(",").map((x) => x.trim()).filter(Boolean))
+          .pipe(z.array(z.string().uuid()).min(1).max(500))
+          .optional(),
       })
       .parse(req.query);
 
@@ -91,9 +103,14 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
     const rows = await db
       .select(mirrorView)
       .from(blocks)
-      .where(and(eq(blocks.ownerId, userId), after ? gt(blocks.id, after) : sql`true`))
+      .where(
+        and(
+          eq(blocks.ownerId, userId),
+          ids ? inArray(blocks.id, ids) : after ? gt(blocks.id, after) : sql`true`,
+        ),
+      )
       .orderBy(asc(blocks.id))
-      .limit(limit);
+      .limit(ids ? ids.length : limit);
 
     return {
       blocks: rows,
@@ -105,7 +122,10 @@ export async function syncRoutes(app: FastifyInstance): Promise<void> {
        * page's; resuming from the later number steps over it.
        */
       seq,
-      next: rows.length === limit ? (rows[rows.length - 1]?.id ?? null) : null,
+      // Naming ids answers exactly those and is never a page of a walk, so
+      // there is nothing after it to ask for. An id that has since been deleted
+      // is simply absent, which is the answer the caller needed.
+      next: ids ? null : rows.length === limit ? (rows[rows.length - 1]?.id ?? null) : null,
     };
   });
 

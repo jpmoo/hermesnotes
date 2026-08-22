@@ -1,6 +1,8 @@
 # Talaria — Phase 0 Design
 
-**Status:** Proposal, awaiting review. No code written.
+**Status:** Phases 0 and 1 done. Both core changes landed and verified; the
+daemon, mirror and CLI work, with the offline/reconnect scenario passing in
+`acceptance/`. Phase 2 (Spotlight, `hermes://`) not started.
 **Scope:** Answers the open questions in the brief (§5), records what recon
 actually found, and names the two things that block later phases.
 **Companion:** `HERMES-CORE-CHANGES.md` — everything this project asks of Hermes

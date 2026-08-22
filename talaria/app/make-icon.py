@@ -33,23 +33,38 @@ mark = art.crop((0, 0, min(art.height, art.width), art.height))
 mark = mark.crop(mark.getbbox())
 
 
-def square(size: int) -> Image.Image:
-    """The mark on a rounded tile.
+def tile(size: int, bleed: bool) -> Image.Image:
+    """The mark on a tile.
 
-    A tile rather than transparency: this is line art in a mid-tone teal, and
-    Spotlight draws results on backgrounds it chooses, not ones we do. On the
-    dark one it disappeared entirely.
+    Two shapes, for two consumers that want opposite things.
+
+    `bleed=True` is the app icon: an opaque square, corner to corner, no
+    rounding of our own. Since macOS 26 the system masks app icons to its own
+    shape, and an icon that arrives already rounded with transparent corners is
+    treated as non-conforming — it gets inset inside a generic dark frame, which
+    is then what Spotlight badges every result with.
+
+    `bleed=False` is the Spotlight thumbnail, which is drawn as given and looks
+    better as a squircle.
+
+    Either way there is a tile rather than transparency: this is line art in a
+    mid-tone teal, and Spotlight picks the background, not us.
     """
-    scale = 4  # supersample, so the rounded corners aren't jagged at 16px
+    scale = 4  # supersample, so the rounding isn't jagged at 16px
     big = size * scale
     canvas = Image.new("RGBA", (big, big), (0, 0, 0, 0))
     draw = ImageDraw.Draw(canvas)
-    draw.rounded_rectangle(
-        [(0, 0), (big - 1, big - 1)],
-        radius=int(big * 0.2237),  # the macOS squircle, near enough
-        fill=(255, 255, 255, 255),
-    )
-    inset = int(big * 0.16)
+    if bleed:
+        draw.rectangle([(0, 0), (big, big)], fill=(255, 255, 255, 255))
+    else:
+        draw.rounded_rectangle(
+            [(0, 0), (big - 1, big - 1)],
+            radius=int(big * 0.2237),  # the macOS squircle, near enough
+            fill=(255, 255, 255, 255),
+        )
+    # Apple insets app artwork inside the masked shape; matching that keeps the
+    # glyph from running under the rounded corners the system adds.
+    inset = int(big * (0.20 if bleed else 0.16))
     box = big - inset * 2
     # resize, not thumbnail: thumbnail only ever shrinks, and the glyph is a few
     # hundred pixels being placed on a supersampled canvas several times larger,
@@ -61,15 +76,15 @@ def square(size: int) -> Image.Image:
 
 
 # The thumbnail Spotlight shows beside a result.
-square(512).save(out / "Talaria.png")
+tile(512, bleed=False).save(out / "Talaria.png")
 
 # An iconset is a directory of exact sizes with exact names; iconutil is fussy
 # about both.
 iconset = out / "Talaria.iconset"
 iconset.mkdir(exist_ok=True)
 for base in (16, 32, 128, 256, 512):
-    square(base).save(iconset / f"icon_{base}x{base}.png")
-    square(base * 2).save(iconset / f"icon_{base}x{base}@2x.png")
+    tile(base, bleed=True).save(iconset / f"icon_{base}x{base}.png")
+    tile(base * 2, bleed=True).save(iconset / f"icon_{base}x{base}@2x.png")
 
 subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(out / "Talaria.icns")], check=True)
 print(f"icon: {out / 'Talaria.icns'}")

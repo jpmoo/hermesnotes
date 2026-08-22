@@ -45,6 +45,9 @@ codesign --force --sign - --identifier dev.talaria.Talaria "$APP"
 codesign --verify --strict "$APP"
 
 echo "==> Registering with LaunchServices (so talaria:// routes here)"
+# Icon services cache by path and modification date, so an app rebuilt in place
+# keeps showing the icon it had. Touching it is what makes a new one appear.
+touch "$APP"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
   -f "$APP"
 

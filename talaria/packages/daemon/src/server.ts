@@ -322,8 +322,9 @@ export function buildServer(deps: {
         if (c.archivedAt) continue;
         drawer.push({
           id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
-          done: c.completion?.done ?? false, due: c.schedule?.end?.value ?? null,
-          tags: c.tags, url: c.url,
+          done: c.completion?.done ?? false, completable: c.completable,
+          due: c.schedule?.end?.value ?? null,
+          tags: c.tags, url: c.url, x: null, y: null, w: null, h: null,
         });
       }
     }
@@ -365,33 +366,61 @@ export function buildServer(deps: {
       const all = canon(mirror.search({ limit: 500 }));
       const byId = new Map(all.map((b) => [b.id, b]));
 
-      const asCard = (b: (typeof all)[number]) => ({
-        id: b.id, title: b.title, kind: b.kind, typeName: b.typeName,
-        done: b.completion?.done ?? false, status: b.completion?.status ?? null,
-        completable: b.completable,
-        due: b.schedule?.end?.value ?? null, tags: b.tags, url: b.url,
-        x: null, y: null, w: null, h: null,
-      });
+      /** A collection's contents: its query's answer if it has one, else rows. */
+      const membersOfCollection = (cid: string): string[] => {
+        const cached = mirror.get(`query.${cid}`);
+        if (cached) return JSON.parse(cached) as string[];
+        return mirror.membersOf(cid).map((m) => (JSON.parse(m.raw) as { id: string }).id);
+      };
 
-      /** What sits under one parent, per the first level. */
-      const childrenOf = (parentId: string) => {
-        const level = levels[0];
-        if (!level) return [];
-        const wantType = typeof level.typeId === "string" ? level.typeId : null;
-        const refKey = typeof level.refKey === "string" ? level.refKey : null;
-        const out = all.filter((b) => {
-          if (b.collectionKind) return false;
-          if (wantType && b.typeId !== wantType) return false;
-          if (b.archivedAt) return false;
-          return b.links.some((l) => l.id === parentId && (!refKey || l.role === refKey));
-        });
-        if (level.members) {
-          for (const m of mirror.membersOf(parentId)) {
-            const b = byId.get((JSON.parse(m.raw) as { id: string }).id);
-            if (b && !out.includes(b)) out.push(b);
+      /**
+       * What sits under a parent at a given depth, and under that, and so on.
+       *
+       * One level was enough for a two-tier rollup and wrong for anything
+       * deeper — "projects, then tasks, then subtasks" showed two of its three
+       * tiers and gave no sign the third existed.
+       *
+       * `seen` is the path walked to get here, not a global visited set: the
+       * same block legitimately appears under two different parents, and
+       * forbidding that would hide real rows. What it forbids is a block
+       * turning up beneath itself, which a reference field pointing at an
+       * ancestor would otherwise turn into an unbounded descent.
+       */
+      const nodeFor = (
+        block: (typeof all)[number],
+        depth: number,
+        seen: ReadonlySet<string>,
+      ): Record<string, unknown> => {
+        const level = levels[depth];
+        let children: Record<string, unknown>[] = [];
+        if (level && !seen.has(block.id)) {
+          const wantType = typeof level.typeId === "string" ? level.typeId : null;
+          const refKey = typeof level.refKey === "string" ? level.refKey : null;
+          const found = all.filter((b) => {
+            if (b.collectionKind || b.archivedAt) return false;
+            if (wantType && b.typeId !== wantType) return false;
+            return b.links.some((l) => l.id === block.id && (!refKey || l.role === refKey));
+          });
+          if (level.members && block.collectionKind) {
+            for (const bid of membersOfCollection(block.id)) {
+              const b = byId.get(bid);
+              if (b && !found.includes(b)) found.push(b);
+            }
           }
+          const nextSeen = new Set(seen).add(block.id);
+          children = found.map((child) => nodeFor(child, depth + 1, nextSeen));
         }
-        return out;
+        return {
+          id: block.id,
+          title: block.title,
+          typeName: block.typeName,
+          url: block.url,
+          done: block.completion?.done ?? false,
+          completable: block.completable,
+          due: block.schedule?.end?.value ?? null,
+          tags: block.tags,
+          children,
+        };
       };
 
       for (const rootId of roots) {
@@ -404,25 +433,12 @@ export function buildServer(deps: {
         // smart collection that is the query's answer, not the membership rows,
         // of which it has none. Reading only memberships is why a rollup rooted
         // on a smart list came back empty.
-        let buckets: (typeof all)[number][] = [];
-        if (rootBlock.collectionKind) {
-          const cached = mirror.get(`query.${rootId}`);
-          const ids = cached
-            ? (JSON.parse(cached) as string[])
-            : mirror.membersOf(rootId).map((m) => (JSON.parse(m.raw) as { id: string }).id);
-          buckets = ids.map((bid) => byId.get(bid)).filter((b): b is (typeof all)[number] => Boolean(b));
-        } else {
-          buckets = [rootBlock];
-        }
-        for (const bucket of buckets) {
-          groups.push({
-            id: bucket.id,
-            title: bucket.title,
-            typeName: bucket.typeName,
-            url: bucket.url,
-            children: childrenOf(bucket.id).map(asCard),
-          });
-        }
+        const buckets = rootBlock.collectionKind
+          ? membersOfCollection(rootId)
+              .map((bid) => byId.get(bid))
+              .filter((b): b is (typeof all)[number] => Boolean(b))
+          : [rootBlock];
+        for (const bucket of buckets) groups.push(nodeFor(bucket, 0, new Set()));
       }
     }
 

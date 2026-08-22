@@ -107,12 +107,24 @@ enum Daemon {
         let url: String
         /// Whether this block has a status at all — a note or a person has none,
         /// and a checkbox on one is an offer of nonsense.
-        let completable: Bool
+        ///
+        /// Optional rather than required, and read through `canComplete`.
+        ///
+        /// Swift's synthesized decoder is all-or-nothing and does *not* fall
+        /// back to a property's default — only an optional gets decodeIfPresent
+        /// — so one field missing from one card in one list threw the whole
+        /// board away and put a decoding error where the window should be. A
+        /// payload that has drifted should cost the feature it belongs to, not
+        /// the view.
+        let completable: Bool?
         /// Where it sits on a canvas, and how big; nil on every other kind.
         let x: Double?
         let y: Double?
         let w: Double?
         let h: Double?
+
+        /// Whether to offer a checkbox at all.
+        var canComplete: Bool { completable ?? false }
     }
 
     struct StickyNote: Decodable, Identifiable {
@@ -125,12 +137,20 @@ enum Daemon {
         let color: String?
     }
     struct Edge: Decodable { let from: String; let to: String; let dashed: Bool }
+    /// A rollup node. Recursive, because a rollup is however many levels deep
+    /// it was configured to be.
     struct Group: Decodable, Identifiable {
         let id: String
         let title: String
         let typeName: String
         let url: String
-        let children: [Card]
+        let done: Bool
+        let completable: Bool?
+        let due: String?
+        let tags: [String]
+        let children: [Group]
+
+        var canComplete: Bool { completable ?? false }
     }
     struct Board: Decodable {
         let id: String
@@ -216,10 +236,12 @@ enum Daemon {
         let kind: String
         let typeName: String
         let done: Bool
-        let completable: Bool
+        let completable: Bool?
         let at: String?
         let isEnd: Bool
         let url: String
+
+        var canComplete: Bool { completable ?? false }
     }
     struct AgendaDay: Decodable {
         let date: String

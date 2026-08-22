@@ -232,7 +232,7 @@ struct AgendaView: View {
 
     private func itemRow(_ item: Daemon.AgendaItem) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            if item.completable {
+            if item.canComplete {
                 Button { model.complete(item) } label: {
                     Image(systemName: item.done ? "checkmark.square.fill" : "square")
                         .font(.system(size: 12))

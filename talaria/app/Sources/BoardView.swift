@@ -221,35 +221,13 @@ struct BoardView: View {
         }
     }
 
-    /// A rollup: a heading per bucket, with what hangs under it.
+    /// A rollup: a heading per bucket, with whatever hangs under it, however
+    /// many levels deep that goes.
     private func rollup(_ groups: [Daemon.Group]) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: 8) {
                 ForEach(groups) { group in
-                    Section {
-                        VStack(spacing: 3) {
-                            ForEach(group.children) { child in CardRow(card: child, model: model) }
-                            if group.children.isEmpty {
-                                Text("nothing under this")
-                                    .font(Theme.body(10.5)).foregroundStyle(.tertiary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.leading, 6)
-                            }
-                        }
-                    } header: {
-                        HStack(spacing: 6) {
-                            Text(group.title).font(Theme.chrome(11, weight: .semibold))
-                            Text("\(group.children.count)")
-                                .font(Theme.chrome(9.5)).foregroundStyle(.secondary)
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(Capsule().fill(Color.secondary.opacity(0.13)))
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        .background(Rectangle().fill(.background))
-                        .contentShape(Rectangle())
-                        .onTapGesture { if let u = URL(string: group.url) { NSWorkspace.shared.open(u) } }
-                    }
+                    RollupNode(node: group, depth: 0, model: model)
                 }
                 if groups.isEmpty {
                     Text("Nothing rolls up here")
@@ -374,7 +352,7 @@ private struct CardRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
-            if card.completable {
+            if card.canComplete {
                 Button { model.complete(card) } label: {
                     Image(systemName: card.done ? "checkmark.square.fill" : "square")
                         .font(.system(size: 12))
@@ -567,5 +545,75 @@ struct CanvasBoard: View {
             width: -((minX + maxX) / 2) * scale,
             height: -((minY + maxY) / 2) * scale
         )
+    }
+}
+
+/// One rollup row and everything beneath it.
+///
+/// Recursive rather than two hard-coded tiers: a rollup is as deep as it was
+/// configured to be, and a renderer that stops at the second level shows part of
+/// the answer while looking like all of it.
+private struct RollupNode: View {
+    let node: Daemon.Group
+    let depth: Int
+    @ObservedObject var model: BoardModel
+    @State private var open = true
+    @State private var hovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                if !node.children.isEmpty {
+                    Button { open.toggle() } label: {
+                        Image(systemName: open ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9))
+                    }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+                } else {
+                    // Keeps titles aligned whether or not a row can open.
+                    Color.clear.frame(width: 11, height: 1)
+                }
+
+                if node.canComplete {
+                    Image(systemName: node.done ? "checkmark.square.fill" : "square")
+                        .font(.system(size: 11))
+                        .foregroundStyle(node.done ? Theme.accent : Color.secondary)
+                }
+
+                Text(node.title)
+                    .font(depth == 0 ? Theme.chrome(11.5, weight: .semibold) : Theme.body(11))
+                    .strikethrough(node.done)
+                    .foregroundStyle(node.done ? .secondary : .primary)
+                    .lineLimit(1)
+
+                if !node.children.isEmpty {
+                    Text("\(node.children.count)")
+                        .font(Theme.chrome(9.5)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Capsule().fill(Color.secondary.opacity(0.13)))
+                }
+                if let due = node.due {
+                    Text(due).font(Theme.chrome(9.5)).foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 3).padding(.horizontal, 5)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.controlRadius)
+                    .fill(hovering ? Theme.accent.opacity(0.10) : Color.clear)
+            )
+            .onHover { hovering = $0 }
+            .contentShape(Rectangle())
+            .onTapGesture { if let u = URL(string: node.url) { NSWorkspace.shared.open(u) } }
+
+            if open {
+                ForEach(node.children) { child in
+                    RollupNode(node: child, depth: depth + 1, model: model)
+                        // Indent per level, so depth is visible rather than
+                        // inferred from what the titles happen to say.
+                        .padding(.leading, 14)
+                }
+            }
+        }
     }
 }

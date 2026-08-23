@@ -36,9 +36,10 @@ runner can act on it.
 
 ## Operations
 
-An implementation is testable when it can answer these eight. They are the whole
+An implementation is testable when it can answer these ten. They are the whole
 adapter surface; a producer that only writes files implements the first two and
-declares the rest unsupported.
+declares the rest unsupported, and the last two are only asked of something with
+a live binding.
 
 | op | given | answers |
 |---|---|---|
@@ -50,10 +51,16 @@ declares the rest unsupported.
 | `nextOccurrence` | `series`, `instance`, `when` | `{ start?, due? }` or `null` |
 | `import` | `export`, `with` | `{ result, fidelity, reports }` |
 | `roundtrip` | `export`, `with` | import, then serialize, then compare |
+| `patch` | `object`, `patch`, `with` | `{ ok, conflict?, object, fidelity, reports }` |
+| `follow` | `feed` | `{ alive, gone }` — what a follower concludes |
 
 `fidelity` is `"full"` or `"reduced"`. `reports` name what was lost; a `reduced`
 with an empty `reports` is a failed case, because an unexplained warning trains
 people to ignore warnings.
+
+`patch` matches its expected property bag **exactly** rather than as a subset. A
+patch that leaves a property behind is the whole subject of that suite, and a
+loose match would not see it.
 
 ## Capabilities
 
@@ -92,6 +99,9 @@ without matching an error message.
 | `series.month-end-required` | monthly and yearly rules must declare `monthEnd` |
 | `conformance.undeclared-feature` | the data uses a feature the manifest omits |
 | `inline.field-not-declared` | an inline edge names a field its type hasn't got |
+| `changes.child-op` | a child row's own operation reported as the object's |
+| `conformance.missing-roles` | a level claimed without saying for which role |
+| `conformance.binding-required` | `operate` claimed with no live binding |
 
 ## One thing the spec does not yet answer
 

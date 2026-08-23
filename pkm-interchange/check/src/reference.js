@@ -126,6 +126,64 @@ export function roundtrip(envelope, capabilities = {}) {
 }
 
 /**
+ * Apply a partial write.
+ *
+ * The only two moves are `set` and `unset`, and everything the patch does not
+ * name is left exactly as it was — including the properties this implementation
+ * has never heard of. That is the round-trip rule at write time, and it is the
+ * half that gets skipped: a tool can be scrupulous about an export and still
+ * destroy a field the moment an agent changes a title.
+ */
+export function patch(object, p = {}, capabilities = {}) {
+  const reports = [];
+  const say = (what) => {
+    if (!reports.includes(what)) reports.push(what);
+  };
+
+  // Versioned and stale: refuse. Merging is how one client's edit silently
+  // reverts another's, with the writer told it landed.
+  if (p.version !== undefined && object.version !== undefined && p.version !== object.version) {
+    return { ok: false, conflict: true, object, fidelity: "full", reports: [] };
+  }
+
+  const next = structuredClone(object);
+  next.properties = { ...(next.properties ?? {}) };
+  for (const [k, v] of Object.entries(p.set ?? {})) {
+    const anchors = capabilities.series?.anchors;
+    if (Array.isArray(anchors) && v && typeof v === "object" && v.anchor && !anchors.includes(v.anchor)) {
+      // Stored as given, but this server cannot act on that anchor. Answering a
+      // bare `ok` here is how a caller learns nothing went wrong.
+      say("series.anchor");
+    }
+    next.properties[k] = v;
+  }
+  for (const k of p.unset ?? []) delete next.properties[k];
+  if (object.version !== undefined) next.version = object.version + 1;
+
+  return { ok: true, object: next, fidelity: reports.length ? "reduced" : "full", reports };
+}
+
+/**
+ * What a follower concludes from a change feed.
+ *
+ * Rows arrive in order and the last one about an object is the current one — in
+ * both directions. A delete that outranks every later row is the bug that makes
+ * a dragged card disappear: a card moving between columns is a membership
+ * removed and re-added, and a feed reporting the child row's own operation calls
+ * that a deletion.
+ */
+export function follow(feed = []) {
+  const state = new Map();
+  for (const row of [...feed].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))) {
+    state.set(row.object, row.op === "delete" ? "gone" : "alive");
+  }
+  return {
+    alive: [...state].filter(([, v]) => v === "alive").map(([id]) => id),
+    gone: [...state].filter(([, v]) => v === "gone").map(([id]) => id),
+  };
+}
+
+/**
  * Ordering tokens compare byte-wise. Under a language-aware collation "Zz" sorts
  * before "a0" and the top of every list is wrong.
  */
@@ -144,4 +202,6 @@ export const adapter = {
   nextOccurrence,
   import: importEnvelope,
   roundtrip,
+  patch,
+  follow,
 };

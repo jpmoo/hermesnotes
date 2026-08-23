@@ -24,7 +24,8 @@ is in [fixtures/README.md](fixtures/README.md); nothing the suites *say* changed
 and every `why` is the original text.
 
 ```bash
-node check/src/cli.js --self
+node check/src/cli.js --self      # 54 cases, levels 1 to 4
+node check/src/mutants.js         # 21 wrong implementations, each of which must fail
 ```
 
 One thing the spec refers to that still doesn't exist: `fixtures/conformance.json`,

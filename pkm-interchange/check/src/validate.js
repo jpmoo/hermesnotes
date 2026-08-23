@@ -71,6 +71,31 @@ export function validate(envelope) {
     }
   });
 
+  // Only an object can be deleted. A membership, a tag, a placement going away
+  // is an update to the object that had it — and `delete` is a word every
+  // follower treats as final.
+  (envelope.changes ?? []).forEach((row, i) => {
+    if (row.op === "delete" && row.cause && row.cause !== "object") {
+      fail("changes.child-op", `changes[${i}]`);
+    }
+  });
+
+  const manifest = envelope.conformance;
+  if (manifest) {
+    const roles = ["produce", "consume", "operate"];
+    // A level is earned per role: writing a valid file, reading one, and being
+    // safe to write to are three different achievements.
+    if (Array.isArray(manifest.bindings) && roles.some((r) => manifest[r] === undefined)) {
+      fail("conformance.missing-roles", "conformance");
+    }
+    // Operating means something can write to you and follow you. A file on disk
+    // is not something that can be written to and followed.
+    const live = (manifest.bindings ?? []).some((b) => b !== "file");
+    if ((manifest.operate ?? 0) > 0 && !live) {
+      fail("conformance.binding-required", "conformance.bindings");
+    }
+  }
+
   // The manifest is a promise about this export, not an aspiration. A feature
   // that turns up in the data without being declared means no part of the
   // manifest can be trusted, which is worse than shipping no manifest.

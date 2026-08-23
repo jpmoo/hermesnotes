@@ -1,0 +1,180 @@
+{
+  "suite": "operational",
+  "level": 4,
+  "about": "Behaviour of a live surface rather than the shape of a file. Everything below is a rule a snapshot format never needs and a mutable one cannot live without: how a partial write is expressed, what a write owes the caller when it could not keep everything, and what a follower is told when something goes away. Every case here comes from a bug in a real implementation.",
+  "cases": [
+    {
+      "id": "operational/absent-is-not-delete",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": {
+          "id": "o_1",
+          "type": "t_task",
+          "properties": { "title": "Ship it", "status": "doing", "owner": "o_9" },
+          "version": 4
+        },
+        "patch": { "set": { "status": "done" } }
+      },
+      "expect": {
+        "ok": true,
+        "object": { "properties": { "title": "Ship it", "status": "done", "owner": "o_9" } }
+      },
+      "why": "A property the patch never mentions is untouched. This is the single most common way data dies inside an otherwise conformant tool: a client sends the two fields it knows about, the server treats the payload as the whole object, and everything else is gone. Absent means absent. It never means delete."
+    },
+    {
+      "id": "operational/patch-leaves-unknowns-alone",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": {
+          "id": "o_1",
+          "properties": { "title": "Ship it", "energyLevel": "low", "roastNotes": { "beans": "Guatemalan" } },
+          "version": 1
+        },
+        "patch": { "set": { "title": "Ship it today" } }
+      },
+      "expect": {
+        "ok": true,
+        "object": {
+          "properties": {
+            "title": "Ship it today",
+            "energyLevel": "low",
+            "roastNotes": { "beans": "Guatemalan" }
+          }
+        }
+      },
+      "why": "The round-trip rule at write time. An agent that has never heard of energyLevel must be able to change a title without destroying it — and an agent is exactly what will be doing most of the writing. A format that guarantees unknown fields survive an export but not a write has guaranteed nothing."
+    },
+    {
+      "id": "operational/unset-is-the-only-way-to-remove",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "properties": { "title": "Ship it", "owner": "o_9" }, "version": 1 },
+        "patch": { "unset": ["owner"] }
+      },
+      "expect": { "ok": true, "object": { "properties": { "title": "Ship it" } } },
+      "why": "Removing a value has to be sayable, and it has to be said out loud. Making null mean delete collides with every model where null is a legitimate value, and making an absent key mean delete collides with the case above. One explicit list, and no ambiguity left over."
+    },
+    {
+      "id": "operational/stale-patch-is-refused",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "properties": { "title": "Ship it" }, "version": 7 },
+        "patch": { "set": { "title": "Ship it tomorrow" }, "version": 3 }
+      },
+      "expect": { "ok": false, "conflict": true, "object": { "properties": { "title": "Ship it" } } },
+      "why": "A producer that versions its objects must refuse a patch written against an older version rather than merging it in. Merging looks helpful and is how one client's edit silently reverts another's — the writer believes it landed, and nothing anywhere says otherwise. Refusing is the only answer that gives the caller a chance to re-read and try again."
+    },
+    {
+      "id": "operational/write-that-loses-something-says-so",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "properties": { "title": "Haircut" }, "version": 1 },
+        "patch": {
+          "set": { "recurrence": { "anchor": "completion", "freq": "weekly", "interval": 4 } }
+        }
+      },
+      "with": { "series": { "anchors": ["schedule"] } },
+      "expect": { "ok": true, "fidelity": "reduced", "reports": ["series.anchor"] },
+      "why": "The loud-failure rule, applied to a write instead of an import. A server that stores what it can and answers `ok` has told the caller everything went in. This is the same haircut that drifts a month by March, except now it drifts inside a tool the user chose deliberately, having been told the write succeeded."
+    },
+    {
+      "id": "operational/full-write-is-a-promise",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "properties": { "title": "Haircut" }, "version": 1 },
+        "patch": { "set": { "title": "Haircut, booked" } }
+      },
+      "expect": { "ok": true, "fidelity": "full", "reports": [] },
+      "why": "The counterpart, and the reason the rule above is worth anything. If every write reported reduced fidelity defensively, the report would carry no information and callers would stop reading it. Saying `full` is a promise that what was sent is what is now stored."
+    },
+    {
+      "id": "operational/last-word-wins",
+      "level": 4,
+      "op": "follow",
+      "given": {
+        "feed": [
+          { "seq": 1, "object": "o_1", "op": "insert" },
+          { "seq": 2, "object": "o_1", "op": "delete" },
+          { "seq": 3, "object": "o_1", "op": "insert" }
+        ]
+      },
+      "expect": { "alive": ["o_1"], "gone": [] },
+      "why": "Rows arrive in order, so the last row about an object is the current one — in both directions. Letting a delete outrank everything after it is defensible right up until something legitimately comes back, and then the follower's copy is missing an object that exists, with nothing to correct it until a full re-read."
+    },
+    {
+      "id": "operational/deletion-is-reported",
+      "level": 4,
+      "op": "follow",
+      "given": {
+        "feed": [
+          { "seq": 1, "object": "o_1", "op": "insert" },
+          { "seq": 2, "object": "o_2", "op": "insert" },
+          { "seq": 3, "object": "o_2", "op": "delete" }
+        ]
+      },
+      "expect": { "alive": ["o_1"], "gone": ["o_2"] },
+      "why": "A follower cannot tell 'deleted' from 'not in the page I asked for' unless the feed says so. Without tombstones the only way to learn something is gone is to read everything and diff, which is exactly what a change feed exists to avoid."
+    },
+    {
+      "id": "operational/child-change-is-an-object-update",
+      "level": 4,
+      "op": "validate",
+      "given": {
+        "export": {
+          "changes": [{ "seq": 9, "object": "o_1", "op": "delete", "cause": "membership" }]
+        }
+      },
+      "expect": { "valid": false, "errors": [{ "code": "changes.child-op" }] },
+      "why": "Only the object itself can be deleted. A membership, a tag, a placement going away is an update to the object that had it — and `delete` is a word every follower treats as final. A feed that reports a child row's own operation will announce a live object as gone every time somebody drags a card between two columns, because that is a membership removed and re-added."
+    },
+    {
+      "id": "operational/child-change-survives-as-an-update",
+      "level": 4,
+      "op": "follow",
+      "given": {
+        "feed": [
+          { "seq": 1, "object": "o_1", "op": "insert" },
+          { "seq": 2, "object": "o_1", "op": "update", "cause": "membership" },
+          { "seq": 3, "object": "o_1", "op": "update", "cause": "membership" }
+        ]
+      },
+      "expect": { "alive": ["o_1"], "gone": [] },
+      "why": "The same card move, reported correctly: two updates, and the object is still there afterwards. This case and the one above are the two halves of one bug, and the bug is worth stating plainly because it is invisible in testing — everything works until somebody uses a board."
+    },
+    {
+      "id": "operational/manifest-names-its-roles",
+      "level": 4,
+      "op": "validate",
+      "given": {
+        "export": { "conformance": { "profiles": ["task"], "features": [], "bindings": ["http"] } }
+      },
+      "expect": { "valid": false, "errors": [{ "code": "conformance.missing-roles" }] },
+      "why": "A level is earned per role. Producing a valid file and consuming one are different achievements, and being safe to write to is a third — most tools in this genre can do the first and not the second. A manifest that reports one number is hiding which of the three it means."
+    },
+    {
+      "id": "operational/operating-requires-a-live-binding",
+      "level": 4,
+      "op": "validate",
+      "given": {
+        "export": {
+          "conformance": {
+            "produce": 2,
+            "consume": 2,
+            "operate": 4,
+            "profiles": ["task"],
+            "features": [],
+            "bindings": ["file"]
+          }
+        }
+      },
+      "expect": { "valid": false, "errors": [{ "code": "conformance.binding-required" }] },
+      "why": "Claiming to be operable while offering nothing to operate is the manifest describing an aspiration again. Operating means something can write to you and follow you, and that needs a binding that is not a file on disk."
+    }
+  ]
+}

@@ -175,6 +175,68 @@ const MUTANTS = [
     }),
   },
   {
+    name: "treats a patch as the whole object",
+    caught: "operational/absent-is-not-delete",
+    patch: (a) => ({
+      ...a,
+      patch: (obj, p, caps) => {
+        const out = a.patch(obj, p, caps);
+        if (out.ok) out.object.properties = { ...(p.set ?? {}) };
+        return out;
+      },
+    }),
+  },
+  {
+    name: "drops properties its schema has no room for on write",
+    caught: "operational/patch-leaves-unknowns-alone",
+    patch: (a) => ({
+      ...a,
+      patch: (obj, p, caps) => {
+        const out = a.patch(obj, p, caps);
+        if (out.ok) {
+          out.object.properties = Object.fromEntries(
+            Object.entries(out.object.properties).filter(([k]) => ["title", "status", "owner"].includes(k)),
+          );
+        }
+        return out;
+      },
+    }),
+  },
+  {
+    name: "merges a stale patch instead of refusing it",
+    caught: "operational/stale-patch-is-refused",
+    patch: (a) => ({ ...a, patch: (obj, p, caps) => a.patch(obj, { ...p, version: undefined }, caps) }),
+  },
+  {
+    name: "answers ok for a write it could not fully store",
+    caught: "operational/write-that-loses-something-says-so",
+    patch: (a) => ({ ...a, patch: (obj, p, caps) => a.patch(obj, p, { ...caps, series: undefined }) }),
+  },
+  {
+    name: "lets a delete outrank everything after it",
+    caught: "operational/last-word-wins",
+    patch: (a) => ({
+      ...a,
+      follow: (feed) => {
+        const gone = new Set(feed.filter((r) => r.op === "delete").map((r) => r.object));
+        const all = a.follow(feed);
+        return {
+          alive: [...all.alive, ...all.gone].filter((id) => !gone.has(id)),
+          gone: [...gone],
+        };
+      },
+    }),
+  },
+  {
+    name: "reports a membership removal as a deleted object",
+    caught: "operational/child-change-is-an-object-update",
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      return { ...got, errors: got.errors.filter((x) => x.code !== "changes.child-op"),
+               valid: got.errors.every((x) => x.code === "changes.child-op") };
+    } }),
+  },
+  {
     name: "accepts a semantic placement given as coordinates",
     caught: "placement/semantic-requires-named-regions",
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),

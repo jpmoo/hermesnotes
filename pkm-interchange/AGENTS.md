@@ -29,6 +29,39 @@ Everything below is these two rules applied to a specific case.
 
 ---
 
+## Levels
+
+There are different ways to be interoperable and they are not the same
+achievement. "My app makes something yours can open" is real and worth having;
+it is also several rungs below "our two apps can work in unison with a harness
+between them". Most of this genre says *interoperable* and means the first one,
+which is why the word has stopped carrying information.
+
+So it is a ladder, and each rung is a claim a checker can verify — and one you
+can lose.
+
+| | claim | what it takes | what it buys |
+|---|---|---|---|
+| **0 · Readable** | a valid export | envelope, types, objects | someone can open it and see it |
+| **1 · Legible** | declared profiles | profiles on types; no name-guessing | a stranger's tool finds the due date without knowing your vocabulary |
+| **2 · Faithful** | round-trip | unknown fields, ids, flags, relation types all survive | your app can be a **waypoint** rather than a terminus |
+| **3 · Honest** | loud failure | fidelity reporting; manifest matches behaviour | a human can trust the transfer |
+| **4 · Operable** | a live surface | patch semantics, capability discovery, a change feed | a harness can drive both apps in unison |
+
+Rungs are earned **per role**, because they are different work. Levels 0 and 1
+need only a producer. Level 2 changes character: round-trip is undemonstrable
+unless you can also *consume*, and most tools in this genre are write-only —
+they export and never import. That is exactly why so much interoperability
+stalls at portability. A claim therefore reads `produce: 2, consume: 1,
+operate: 0`, never one number.
+
+Every suite in `fixtures/` is tagged with the rung it tests, and the level you
+have earned is the highest one with nothing failing beneath it. Derive it from a
+run rather than writing it down: a manifest a producer writes is a promise, one
+that falls out of the suite is evidence.
+
+---
+
 ## Envelope
 
 ```json
@@ -36,6 +69,8 @@ Everything below is these two rules applied to a specific case.
   "format": "pkm-interchange/0",
   "producer": { "name": "hermes", "version": "2.1.0" },
   "conformance": {
+    "produce": 2, "consume": 1, "operate": 0,
+    "bindings": ["file"],
     "profiles": ["task", "note"],
     "features": ["series", "placement", "relations"],
     "unsupported": ["attachments"]
@@ -282,6 +317,82 @@ That is the whole proposal. Prose stays a black box; its edges are stated in a p
 There is no syntax vocabulary here and there should not be one. Standardising markup is the same trap as standardising an edge vocabulary, one layer down.
 
 → `fixtures/inline.json`
+
+---
+
+## The live binding (L4)
+
+Everything above describes a file. A format that also governs an API, an agent
+tool surface and a database write needs three things a snapshot never does, and
+this section is those three. The vocabulary does not change — types, objects,
+profiles, placement, series, relations are the same words here. What changes is
+how they are carried, which is why this is a *binding* rather than a second
+format. `bindings` in the manifest names the ones you offer: `file`, `http`,
+`mcp`, or whatever comes next.
+
+### Partial writes
+
+```json
+{ "set": { "status": "done" }, "unset": ["owner"], "version": 7 }
+```
+
+Two moves and no third. **A property named by neither is untouched** — including
+every property the implementation has never heard of. This is the round-trip rule
+at write time, and it is the half that gets skipped: a tool can be scrupulous
+about an export and still destroy a field the moment an agent changes a title,
+because the agent sent the two keys it knew about and the server treated the
+payload as the whole object.
+
+`unset` is the only way to remove a value. Not `null` — that collides with every
+model where null means something. Not an absent key — that is the case above.
+
+If you version objects, a patch may carry `version`, and a stale one **MUST** be
+refused rather than merged. Merging looks helpful and is how one client's edit
+silently reverts another's, with the writer told it landed.
+
+### Every write answers for itself
+
+```json
+{ "ok": true, "fidelity": "reduced", "reports": ["series.anchor"] }
+```
+
+Loud failure, applied to writing. A server that stores what it can and answers a
+bare `ok` has told the caller everything went in. `"fidelity": "full"` is a
+promise, and it is worth something only because it is not said defensively —
+report reduced on everything and the field stops carrying information.
+
+### Capabilities are a question, not a header
+
+A manifest on an export describes that file. A live surface has to answer
+**before** a client writes, so `conformance` is something you can ask for. Same
+shape as the envelope's, with `bindings`, and the same rule: it is a promise
+about behaviour, not an aspiration. Claiming `operate` while offering only the
+`file` binding is claiming to be operable with nothing to operate.
+
+### The change feed
+
+```json
+{ "seq": 976, "object": "o_1", "op": "update", "cause": "membership" }
+```
+
+Deletions **MUST** be reported. A follower cannot tell "deleted" from "not in the
+page I asked for", and diffing everything is precisely what a feed exists to
+avoid.
+
+`op` describes **the object**, never the row that changed in your storage. Only
+an object can be deleted; a membership, a tag or a placement going away is an
+`update` to the object that had it. This one is worth stating plainly because it
+is invisible in testing: a card moving between two columns is a membership
+removed and re-added, so a feed reporting the child row's own operation announces
+a live object as deleted every time somebody uses a board. `cause` is optional
+and says which part moved.
+
+And rows arrive in order, so **the last row about an object is the current one —
+in both directions**. A delete outranking everything after it is defensible right
+up until something legitimately comes back, and then the follower is missing an
+object that exists with nothing to correct it short of a full re-read.
+
+→ `fixtures/operational.json`
 
 ---
 

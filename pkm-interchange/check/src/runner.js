@@ -22,6 +22,7 @@ function envelopeOf(given) {
   if (given.collections) e.collections = [...(e.collections ?? []), ...given.collections];
   if (given.collection) push("collections", given.collection);
   if (given.relations) e.relations = [...(e.relations ?? []), ...given.relations];
+  if (given.changes) e.changes = [...(e.changes ?? []), ...given.changes];
   if (given.members) push("collections", { members: given.members });
   if (given.series) {
     for (const s of Array.isArray(given.series) ? given.series : [given.series]) push("series", s);
@@ -122,6 +123,37 @@ function runCase(adapter, c, bySuiteId) {
       }
       if ("next" in c.expect) return { pass: exact(got, c.expect.next), got };
       return { pass: subset(c.expect, got ?? {}), got };
+    }
+    case "patch": {
+      const got = adapter.patch(given.object, given.patch, caps);
+      const checks = [got.ok === c.expect.ok];
+      if (c.expect.conflict !== undefined) checks.push(Boolean(got.conflict) === c.expect.conflict);
+      if (c.expect.fidelity !== undefined) checks.push(got.fidelity === c.expect.fidelity);
+      if (c.expect.reports !== undefined) {
+        checks.push(
+          c.expect.reports.length === 0
+            ? (got.reports ?? []).length === 0
+            : c.expect.reports.every((r) => (got.reports ?? []).includes(r)),
+        );
+      }
+      if (c.expect.object !== undefined) {
+        checks.push(subset(c.expect.object, got.object));
+        // A patch that leaves a property behind is the failure this suite is
+        // about, so an expected property bag is matched exactly, not loosely.
+        if (c.expect.object.properties) {
+          checks.push(exact(Object.keys(c.expect.object.properties).sort(),
+                            Object.keys(got.object?.properties ?? {}).sort()));
+        }
+      }
+      return { pass: checks.every(Boolean), got };
+    }
+    case "follow": {
+      const got = adapter.follow(given.feed);
+      return {
+        pass: exact([...(got.alive ?? [])].sort(), [...c.expect.alive].sort()) &&
+              exact([...(got.gone ?? [])].sort(), [...c.expect.gone].sort()),
+        got,
+      };
     }
     case "import":
     case "roundtrip": {

@@ -490,7 +490,25 @@ One integer in `format`. Additive changes do not bump it; the round-trip rule is
 ## Checking yourself
 
 ```
-npx pkm-check ./my-export.json
+npx pkm-check ./my-export.json     # is this export valid?
+npx pkm-check --self               # the fixtures, against the reference implementation
 ```
+
+Installing the checker installs this file and the fixtures with it, which is the
+point: `AGENTS.md` is what you paste at your agent, and `fixtures/` is what tells
+you whether it listened.
+
+To measure your own implementation rather than a file, export the ten operations
+in `fixtures/README.md` and hand them to the runner:
+
+```js
+import { runSuites, levelsFrom } from "pkm-check/check/src/runner.js";
+const results = runSuites(myAdapter, "node_modules/pkm-check/fixtures");
+console.log(levelsFrom(results));   // { earned: 2, byLevel: {...} }
+```
+
+The level that comes back is derived from the run. Do not write one down
+somewhere and hope: a manifest a producer writes is a promise, and one that falls
+out of a suite is evidence.
 
 Paste the failures at your agent along with this file.

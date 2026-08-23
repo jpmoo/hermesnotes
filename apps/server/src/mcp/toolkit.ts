@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { randomUUID } from "node:crypto";
 import { optionLabel, type Condition, type FilterGroup, type PropertySchema } from "@hermes/shared";
+import { CONFORMANCE, toInterchange } from "@hermes/interchange";
 import { z } from "zod";
 import { effectiveTimeZone } from "../lib/timezone.js";
 import { Api, ApiError } from "./api.js";
@@ -1053,6 +1054,91 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
     if (!c) throw new Error(`No collection matching "${idOrTitle}".`);
     return c.id;
   };
+
+  // ---------- the interchange binding ----------
+  //
+  // Four tools rather than forty rewritten. Everything else here is a Hermes
+  // convenience, phrased in Hermes' own words: `task_update` wants a project
+  // title, `block_get` prints a block the way a person reads one. Those are good
+  // tools and they are not a binding — a binding is the claim that the shared
+  // vocabulary travels over this transport, and a caller who only knows the
+  // vocabulary has to be able to get somewhere with it.
+  //
+  // So: ask what this instance honours, read the types in profile terms, read an
+  // object, and write part of one. An agent that has never heard of Hermes can
+  // work from those; an agent that has can carry on using everything else.
+
+  tool(
+    "interchange_conformance",
+    "What this Hermes honours, as a pkm-interchange manifest: levels per role, bindings, profiles, features. Ask before writing rather than discovering by trying.",
+    {},
+    run(async () => JSON.stringify(CONFORMANCE, null, 2)),
+  );
+
+  tool(
+    "interchange_types",
+    "The block types as pkm-interchange declares them: fields with value kinds, and the profiles each type declares (task, note, and so on). This is how to find out which field carries a due date or a completion state without knowing what this account calls them.",
+    {},
+    run(async () => {
+      const types = await api.get<{ id: string; name: string; isText: boolean; propertySchema: PropertySchema | null }[]>(
+        "/block-types",
+      );
+      const { envelope } = toInterchange({ types: types.map((t) => ({ ...t, propertySchema: t.propertySchema ?? null })), blocks: [], memberships: [] });
+      return JSON.stringify((envelope as { types: unknown[] }).types, null, 2);
+    }),
+  );
+
+  tool(
+    "interchange_object",
+    "One block as a pkm-interchange object: properties, tags, archived, created, updated. Paired with interchange_types, this is readable by anything that knows the format and nothing about Hermes.",
+    { id: z.string().describe("block id") },
+    run(async (a: { id: string }) => {
+      const [b, types] = await Promise.all([
+        api.get<Record<string, unknown>>(`/blocks/${a.id}`),
+        api.get<{ id: string; name: string; isText: boolean; propertySchema: PropertySchema | null }[]>("/block-types"),
+      ]);
+      const { envelope } = toInterchange({
+        types: types.map((t) => ({ ...t, propertySchema: t.propertySchema ?? null })),
+        blocks: [
+          {
+            id: String(b.id),
+            blockTypeId: (b.blockTypeId as string) ?? null,
+            collectionKind: (b.collectionKind as string) ?? null,
+            content: (b.content as string) ?? null,
+            properties: (b.properties ?? {}) as Record<string, unknown>,
+            archivedAt: (b.archivedAt as string) ?? null,
+            createdAt: String(b.createdAt),
+            updatedAt: String(b.updatedAt),
+            seriesId: (b.seriesId as string) ?? null,
+          },
+        ],
+        memberships: [],
+      });
+      const [only] = (envelope as { objects: unknown[] }).objects;
+      return JSON.stringify(only ?? null, null, 2);
+    }),
+  );
+
+  tool(
+    "interchange_patch",
+    "Write part of a block: set these properties, remove those, leave everything else exactly as it is — including properties you have never heard of. This is the safe way to change one field. The answer says whether anything was lost.",
+    {
+      id: z.string().describe("block id"),
+      set: z.record(z.unknown()).optional().describe("properties to write"),
+      unset: z.array(z.string()).optional().describe("properties to remove — the only way to remove one"),
+    },
+    run(async (a: { id: string; set?: Record<string, unknown>; unset?: string[] }) => {
+      const b = await api.get<{ version: number }>(`/blocks/${a.id}`);
+      await api.patch(`/blocks/${a.id}`, {
+        version: b.version,
+        patch: { set: a.set ?? {}, unset: a.unset ?? [] },
+      });
+      // Hermes stores properties as an open bag, so there is nothing it can be
+      // handed that it cannot keep. Saying "full" is a promise, and it is worth
+      // something only because it is not said defensively.
+      return JSON.stringify({ ok: true, fidelity: "full", reports: [] });
+    }),
+  );
 
   tool("list_types", "List the block types available (name, and whether it's a plain-text type).", {}, run(async () => {
     const types = await getTypes();

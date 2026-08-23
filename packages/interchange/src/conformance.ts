@@ -21,13 +21,16 @@ export const CONFORMANCE = {
   consume: 4,
   operate: 4,
   /**
-   * `mcp` is deliberately absent. The MCP tools are safe — they read a block and
-   * merge, so an agent that sets one field does not destroy the others — but
-   * safe is not the same as speaking this vocabulary. They know nothing of
-   * profiles and report no fidelity, and a binding is a claim that the model
-   * travels over that transport, not that the transport is well behaved.
+   * `mcp` is claimed on the strength of four tools, not forty.
+   *
+   * Everything else on that surface is a Hermes convenience phrased in Hermes'
+   * own words, and those are good tools that are not a binding. A binding is the
+   * claim that the shared vocabulary travels over the transport — so a caller
+   * who knows only the vocabulary can ask what this instance honours, read the
+   * types in profile terms, read an object, and write part of one. Four tools do
+   * that. Retrofitting the other forty would be a nicety.
    */
-  bindings: ["file", "http"],
+  bindings: ["file", "http", "mcp"],
   profiles: ["task", "note"],
   features: ["series", "placement", "derivations", "relations", "attachments"],
   unsupported: [] as string[],

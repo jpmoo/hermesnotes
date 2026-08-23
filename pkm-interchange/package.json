@@ -1,0 +1,14 @@
+{
+  "name": "pkm-check",
+  "version": "0.0.1",
+  "description": "The pkm-interchange specification, its fixtures, and the checker that runs them against your implementation",
+  "keywords": ["pkm", "interchange", "interoperability", "notes", "conformance"],
+  "license": "MIT",
+  "type": "module",
+  "bin": { "pkm-check": "check/src/cli.js" },
+  "files": ["AGENTS.md", "README.md", "fixtures", "example", "check"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node check/src/cli.js --self && node check/src/mutants.js"
+  }
+}

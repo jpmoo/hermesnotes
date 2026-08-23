@@ -141,7 +141,15 @@ The type system is open. Producers do not share an ontology, so an export carrie
 
 Dates are `YYYY-MM-DD`. Datetimes are `YYYY-MM-DDTHH:mm` with an optional `timezone` on the field (IANA name). A `datespan` is `{ "start": ..., "end": ... }`, both optional, with producer-supplied labels — do not assume the labels are "Start" and "Due".
 
+**The list is open.** A producer with a kind nobody has standardised declares it anyway and it travels untouched; consumers treat an unknown kind as opaque and must not drop the field. The alternative is that a field's type becomes unsayable while its values survive, leaving a consumer holding data it cannot describe.
+
 There is deliberately **no recurrence value kind**. Recurrence is not a value; see Series.
+
+**An empty string is not a value.** Real libraries are full of them, where a field was opened and left alone. Producers should omit rather than store `""`; consumers must read it as absent. Saying nothing about this was worth one consumer reading no start date and another reading a start that fails to parse and showing the epoch.
+
+**Cardinality.** `"many": true` on a field says its value is a list. One task belongs to two projects and one note cites four sources — the commonest shape in a knowledge base — and without a way to declare it a producer either drops the extras or smuggles them somewhere unreadable. It is checkable in both directions: a `many` field holds a list, a field without it does not. A consumer whose own model allows only one may take the first, and **must report reduced fidelity when it does**.
+
+→ `fixtures/values.json`
 
 ### Profiles
 
@@ -169,6 +177,8 @@ A type may declare several. A type may declare none, in which case consumers can
   "updated": "2026-08-19T15:55:06Z"
 }
 ```
+
+`content` is the one reserved slot outside the property bag: the object's body. A document with a body and some metadata about it is the dominant shape in this genre — a Markdown file with frontmatter is exactly that — and a format where everything must be a property has nowhere to put the body. A profile names it like any other target: `"body": "content"`. Producers that keep the body in a field carry on doing so and nothing changes for them.
 
 `archived` means hidden from normal views but not deleted. A consumer with no such concept must preserve the flag rather than dropping the object or un-archiving it.
 
@@ -445,6 +455,26 @@ up until something legitimately comes back, and then the follower is missing an
 object that exists with nothing to correct it short of a full re-read.
 
 → `fixtures/operational.json`
+
+---
+
+## Known limits of v0
+
+Two things a real library ran into that v0 does not solve, written down so they
+are not rediscovered as bugs.
+
+**`placement.semantic` is one flag for a whole collection.** A board can mix
+regions that copy their meaning onto the objects entering them with regions that
+keep it, and that is a per-region question. One flag is right often enough to
+ship and wrong on a board built both ways.
+
+**A canvas holds things that are not objects.** Sticky notes with no id, and
+connections drawn between them. They survive, as properties of the collection
+that the round-trip rule carries — but nothing outside the producer can address
+one, so no other tool can link to a note or state the connections as relations.
+A canvas of drawn argument arrives as an opaque lump. Giving stickies ids would
+fix it and would also make every canvas doodle a first-class object in everyone's
+library, which is not obviously the better trade.
 
 ---
 

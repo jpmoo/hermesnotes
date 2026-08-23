@@ -56,7 +56,7 @@ export function toInterchange(input: ExportInput): {
   const types = input.types.map((t) => {
     const schema = t.propertySchema;
     const fields = (schema?.fields ?? []).flatMap((f) => mapField(f, note));
-    const declared = profilesOf(schema);
+    const declared = profilesOf(schema, { isText: t.isText });
     const profiles: Record<string, unknown> = {};
     for (const p of declared) {
       profiles[p.name] = p.map;
@@ -89,19 +89,18 @@ export function toInterchange(input: ExportInput): {
         if (span.start === "" || span.end === "") {
           note(
             "datespan.empty-string-end",
-            "format",
-            'A datespan end is stored as "" rather than being absent. The format says both ends are optional and says nothing about the empty string, so two consumers will disagree about whether this span has a start.',
+            "hermes",
+            'A datespan end is stored as "" rather than being absent. The format now says an empty string is not a value and consumers must read it as omitted, so nothing is lost — but Hermes is writing a value where it means nothing, and the two shapes will keep meeting each other.',
           );
         }
       }
-      // The array is the finding, not how full it is: a field that *can* hold
-      // several is a cardinality the format has no way to declare, and a
-      // consumer reading it strictly sees a single link either way.
-      if (f.type === "reference" && Array.isArray(v)) {
+      // Declared `many` above, so a scalar here is Hermes storing one field two
+      // ways rather than anything the format cannot express.
+      if (f.type === "reference" && v !== undefined && v !== null && v !== "" && !Array.isArray(v)) {
         note(
-          "reference.multi-valued",
-          "format",
-          "A reference field holds several ids. The format's `reference` kind is scalar and has no way to declare cardinality, so a consumer reading this strictly sees one link where there are three.",
+          "reference.scalar-in-a-many-field",
+          "hermes",
+          "A reference field holds a bare id where every other value of the same field holds a list. The export declares the field `many`, so this one contradicts its own type.",
         );
       }
       if (f.type === "recurrence" && v) {
@@ -111,13 +110,6 @@ export function toInterchange(input: ExportInput): {
           "A recurrence rule is stored on the block. The format holds recurrence as a series with instances pointing at it, and Hermes has no series identity to export — so this rule travels as an opaque property and the occurrences travel as unrelated objects.",
         );
       }
-    }
-    if (b.content !== null && b.content !== "") {
-      note(
-        "object.body-outside-properties",
-        "format",
-        "A text block keeps its body in `content`, outside `properties`. The format has no place for a body that is not a property, so it travels as an unknown top-level key on the object.",
-      );
     }
     return {
       id: b.id,
@@ -180,10 +172,19 @@ export function toInterchange(input: ExportInput): {
       };
     });
 
+    // Everything else the collection carries — a canvas's notes and edges, a
+    // table's columns, a rollup's levels, saved view state — travels untouched.
+    // Naming five keys and dropping the rest is precisely the failure the
+    // round-trip rule exists to stop, and an exporter is the easiest place in
+    // the world to commit it without noticing.
+    const carried = { ...props };
+    for (const k of ["title", "matrix_regions", "membership_mode", "filter_query"]) delete carried[k];
+
     return {
       id: c.id,
       name: String(props.title ?? "Untitled"),
       kind,
+      ...(Object.keys(carried).length ? { properties: carried } : {}),
       placement: gridded ? { semantic: true, regions: regionNames } : { semantic: false },
       membership: smart
         ? { mode: "query", materialized: false, query: props.filter_query ?? null }
@@ -229,9 +230,9 @@ export function toInterchange(input: ExportInput): {
     const stickies = Array.isArray(b.properties.canvas_notes) ? b.properties.canvas_notes : [];
     if (stickies.length) {
       note(
-        "canvas.stickies-are-not-objects",
+        "canvas.stickies-are-not-addressable",
         "format",
-        `A canvas holds ${stickies.length} note(s) that are not blocks — they live on the collection, have no id anyone else can address, and there is nothing in the format to put them in. The connections between them go the same way, so a canvas of drawn argument exports as an empty board.`,
+        `A canvas holds ${stickies.length} note(s) that are not blocks. They survive — they are properties of the collection and the round-trip rule carries them — but they have no id anyone outside this producer can address, so nothing can link to one and the connections between them cannot be stated as relations. A canvas of drawn argument arrives as an opaque lump.`,
       );
     }
 
@@ -296,15 +297,11 @@ export function toInterchange(input: ExportInput): {
 }
 
 function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string) => void) {
-  const kind = KIND[f.type];
-  if (!kind) {
-    note(
-      "field.no-kind",
-      "format",
-      `A field of type "${f.type}" has no counterpart among the format's value kinds, so its type cannot be declared and only its values travel.`,
-    );
-    return [];
-  }
+  // The list of kinds is open, so a kind the format has never heard of is
+  // declared under its own name rather than dropped. `recurrence` is the one
+  // that matters here, and it travels opaque because the format wants recurrence
+  // as a series — which is the series.no-identity finding, not this one.
+  const kind = KIND[f.type] ?? f.type;
   return [
     {
       key: f.key,
@@ -314,6 +311,9 @@ function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string)
       ...(f.options ? { options: f.options } : {}),
       ...(f.optionLabels ? { optionLabels: f.optionLabels } : {}),
       ...(f.refTypeId ? { targetType: f.refTypeId } : {}),
+      // Hermes reference fields hold a list, always — 62 of 62 values in a real
+      // library — so this is a declaration rather than an observation.
+      ...(f.type === "reference" ? { many: true } : {}),
       ...(f.units ? { units: f.units } : {}),
       ...(f.startLabel ? { startLabel: f.startLabel } : {}),
       ...(f.endLabel ? { endLabel: f.endLabel } : {}),

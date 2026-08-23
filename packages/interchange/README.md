@@ -21,20 +21,24 @@ file and teaches nobody anything — the failure the format spends most of its
 rules preventing. This one keeps a tally instead, and each finding says which
 side has to move.
 
-Run against a real library of 108 objects, 6 types and 8 collections, in
-descending order of how often it bit:
+Run against a real library of 108 objects, 6 types and 8 collections. The first
+run found nine; the format has since answered four of them and the list now
+reads:
 
 | finding | owner | ×  |
 |---|---|---|
-| `reference.multi-valued` | format | 62 |
-| `object.body-outside-properties` | format | 17 |
 | `series.no-identity` | hermes | 12 |
-| `datespan.empty-string-end` | format | 6 |
-| `field.no-kind` | format | 1 |
-| `profile.derived-not-declared` | hermes | 1 |
+| `datespan.empty-string-end` | hermes | 6 |
+| `profile.derived-not-declared` | hermes | 2 |
 | `placement.semantic-is-per-region` | format | 1 |
-| `canvas.stickies-are-not-objects` | format | 1 |
+| `canvas.stickies-are-not-addressable` | format | 1 |
 | `attachments.contents-do-not-travel` | format | 1 |
 
 The counts matter as much as the list: "one canvas does this" and "every task
-does this" are different sizes of problem.
+does this" are different sizes of problem — which is why cardinality, at 62,
+was the first thing fixed and the canvas, at 1, is a written-down limit instead.
+
+The three still owned by the format are in `AGENTS.md` under **Known limits of
+v0**. The three owned by Hermes are real work: series identity is a schema
+change, the empty strings are a write-path habit, and the undeclared profiles
+just need somebody to open the type editor.

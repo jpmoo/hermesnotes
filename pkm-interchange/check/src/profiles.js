@@ -28,14 +28,28 @@ export function read(type, object, key, profile = "task") {
   const spec = map[key];
   if (spec === undefined || spec === null) return undefined;
   const props = object?.properties ?? {};
-  if (typeof spec === "string") return props[spec];
+  // The one reserved name outside the property bag. A document with a body and
+  // some metadata about it is the dominant shape in this genre, and a format
+  // where everything must be a property has nowhere to put the body.
+  if (spec === "content") return blank(object?.content);
+  if (typeof spec === "string") return blank(props[spec]);
   if (typeof spec === "object" && spec.field) {
     const v = props[spec.field];
     if (v === null || v === undefined) return undefined;
-    return spec.part ? v?.[spec.part] : v;
+    return blank(spec.part ? v?.[spec.part] : v);
   }
   return undefined;
 }
+
+/**
+ * An empty string is not a value.
+ *
+ * Real libraries are full of them, where a field was opened and left alone. The
+ * format used to say both ends of a span were optional without saying what ""
+ * meant, so one consumer read no start and another read a start that failed to
+ * parse and showed the epoch.
+ */
+const blank = (v) => (v === "" ? undefined : v);
 
 /**
  * Whether an object is finished.

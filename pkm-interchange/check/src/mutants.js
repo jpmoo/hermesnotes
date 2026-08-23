@@ -199,6 +199,47 @@ const MUTANTS = [
     }),
   },
   {
+    name: "takes the first of many references and carries on",
+    caught: "values/one-holder-must-say-so",
+    patch: (a) => ({ ...a, import: (env, caps) => a.import(env, { ...caps, references: undefined }) }),
+  },
+  {
+    name: "reads an empty string as a value",
+    caught: "values/an-empty-string-is-not-a-value",
+    patch: (a) => ({
+      ...a,
+      read: (t, o, k, p) => {
+        const spec = t?.profiles?.[p ?? "task"]?.[k];
+        if (spec && typeof spec === "object" && spec.field) {
+          return (o?.properties ?? {})[spec.field]?.[spec.part];
+        }
+        return a.read(t, o, k, p);
+      },
+    }),
+  },
+  {
+    name: "drops a field whose kind it has never heard of",
+    caught: "values/an-unknown-kind-is-carried",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const known = ["text","richtext","number","boolean","url","date","datetime","datespan","enum","reference","attachment"];
+        const out = a.roundtrip(env, caps);
+        for (const t of out.result.types ?? []) t.fields = (t.fields ?? []).filter((f) => known.includes(f.kind));
+        return out;
+      },
+    }),
+  },
+  {
+    name: "accepts a list in a field declared single",
+    caught: "values/a-single-reference-is-not-a-list",
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      const kept = got.errors.filter((x) => x.code !== "value.cardinality");
+      return { valid: kept.length === 0, errors: kept };
+    } }),
+  },
+  {
     name: "treats a patch as the whole object",
     caught: "operational/absent-is-not-delete",
     patch: (a) => ({

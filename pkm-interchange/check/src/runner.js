@@ -95,8 +95,9 @@ function runCase(adapter, c, bySuiteId) {
     }
     case "read": {
       const obj = (env.objects ?? [])[0];
-      const got = adapter.read(typeOf(obj), obj, c.args.key);
-      return { pass: exact(got, c.expect), got };
+      const got = adapter.read(typeOf(obj), obj, c.args.key, c.args.profile ?? "task");
+      // `expect: null` in a fixture means "no value" — JSON has no undefined.
+      return { pass: exact(got ?? null, c.expect ?? null), got };
     }
     case "isComplete": {
       const obj = (env.objects ?? [])[0];

@@ -230,13 +230,22 @@ export interface ResolvedProfile {
  * no answer at all — the format is explicit that an absent declaration is
  * information rather than an invitation to infer.
  */
-export function profilesOf(schema: PropertySchema | null | undefined): ResolvedProfile[] {
+export function profilesOf(
+  schema: PropertySchema | null | undefined,
+  opts: { isText?: boolean } = {},
+): ResolvedProfile[] {
   const out: ResolvedProfile[] = [];
   const declared = schema?.profiles ?? {};
   for (const name of Object.keys(declared)) {
     if ((PROFILE_NAMES as readonly string[]).includes(name)) {
       out.push({ name: name as ProfileName, map: declared[name] as Record<string, unknown>, derived: false });
     }
+  }
+  // A text type is a note. This is the second derivation that is safe rather
+  // than convenient: the body is `content` by definition for these, and Hermes
+  // has always treated isText as settling the question.
+  if (!out.some((p) => p.name === "note") && opts.isText) {
+    out.push({ name: "note", map: { title: "title", body: "content" }, derived: true });
   }
   if (!out.some((p) => p.name === "task") && schema?.status_field && schema.complete_values?.length) {
     out.push({

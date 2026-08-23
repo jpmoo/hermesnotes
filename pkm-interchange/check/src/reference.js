@@ -97,6 +97,20 @@ export function importEnvelope(envelope, capabilities = {}) {
 
   if (capabilities.relations === false && (doc.relations ?? []).length) say("relations");
 
+  if (capabilities.references === "single") {
+    const many = new Set(
+      (doc.types ?? []).flatMap((t) => (t.fields ?? []).filter((f) => f.many).map((f) => `${t.id}.${f.key}`)),
+    );
+    // Taking the first and carrying on is allowed. Doing it quietly is not: the
+    // user made that second relationship deliberately and has just lost it.
+    const hit = (doc.objects ?? []).some((o) =>
+      Object.entries(o.properties ?? {}).some(
+        ([k, v]) => many.has(`${o.type}.${k}`) && Array.isArray(v) && v.length > 1,
+      ),
+    );
+    if (hit) say("reference.cardinality");
+  }
+
   const prose = (e) =>
     (e.types ?? []).some((t) => (t.fields ?? []).some((f) => f.kind === "richtext")) ||
     (e.objects ?? []).some((o) => Object.values(o.properties ?? {}).some((v) => typeof v === "string"));

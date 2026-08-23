@@ -1,0 +1,108 @@
+{
+  "suite": "values",
+  "level": 1,
+  "about": "What a value is allowed to be, and what a consumer must do with one it cannot hold. Every case here came out of running a real library through an exporter and finding something the format had no way to say.",
+  "cases": [
+    {
+      "id": "values/a-reference-may-hold-many",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "types": [
+          {
+            "id": "t_task",
+            "fields": [{ "key": "project", "kind": "reference", "targetType": "t_project", "many": true }]
+          }
+        ],
+        "objects": [{ "id": "o_1", "type": "t_task", "properties": { "project": "o_p" } }]
+      },
+      "expect": { "valid": false, "errors": [{ "code": "value.cardinality" }] },
+      "why": "One task belongs to two projects; one note cites four sources. A reference that can only be scalar makes the commonest shape in a knowledge base unsayable, and a producer meeting that wall will either drop the extras or smuggle them into a field nobody can read. `many` declares it, and a declared cardinality is checkable: a many field holds a list, a single field does not."
+    },
+    {
+      "id": "values/a-single-reference-is-not-a-list",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "types": [{ "id": "t_task", "fields": [{ "key": "owner", "kind": "reference" }] }],
+        "objects": [{ "id": "o_1", "type": "t_task", "properties": { "owner": ["o_a", "o_b"] } }]
+      },
+      "expect": { "valid": false, "errors": [{ "code": "value.cardinality" }] },
+      "why": "The check has to bite both ways or it is not a declaration, it is a hint. A producer that stores every reference as a one-element array and declares none of them `many` has told consumers nothing, and the first tool to read a value rather than a list will show an id where a name should be."
+    },
+    {
+      "id": "values/one-holder-must-say-so",
+      "level": 3,
+      "op": "import",
+      "given": {
+        "types": [
+          { "id": "t_task", "fields": [{ "key": "project", "kind": "reference", "many": true }] }
+        ],
+        "objects": [{ "id": "o_1", "type": "t_task", "properties": { "project": ["o_a", "o_b"] } }]
+      },
+      "with": { "references": "single" },
+      "expect": { "fidelity": "reduced", "reports": ["reference.cardinality"] },
+      "why": "A tool whose model allows one project per task may take the first and carry on — refusing the import helps nobody — but the user has just silently lost a relationship they made deliberately. Taking the first quietly is the same failure as importing completion-anchored recurrence as schedule-anchored: it looks right and it is wrong, and only the report gives anyone a chance to notice."
+    },
+    {
+      "id": "values/an-empty-string-is-not-a-value",
+      "level": 1,
+      "op": "read",
+      "given": {
+        "type": {
+          "id": "t_task",
+          "fields": [{ "key": "dates", "kind": "datespan" }],
+          "profiles": { "task": { "start": { "field": "dates", "part": "start" } } }
+        },
+        "object": { "properties": { "dates": { "start": "", "end": "2026-08-26" } } }
+      },
+      "args": { "key": "start" },
+      "expect": null,
+      "why": "Real libraries are full of empty strings where a field was opened and left alone, and the format said both ends of a span were optional without ever saying what \"\" meant. One consumer reads it as no start; another reads a start that fails to parse and shows the epoch, or today, or nothing with no explanation. It is absent. Producers should omit it and consumers must treat it as omitted."
+    },
+    {
+      "id": "values/an-unknown-kind-is-carried",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "types": [
+          {
+            "id": "t_task",
+            "fields": [
+              { "key": "title", "kind": "text" },
+              { "key": "repeat", "kind": "recurrence", "someProducerDetail": 3 }
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "types": [
+            {
+              "fields": [
+                { "key": "repeat", "kind": "recurrence", "someProducerDetail": 3 }
+              ]
+            }
+          ]
+        }
+      },
+      "why": "The list of value kinds is open. A producer with a kind the format has never heard of declares it anyway and it travels untouched — the alternative is that the field's type becomes unsayable and only its values survive, which leaves a consumer holding data it cannot describe. Consumers treat an unknown kind as opaque: carry it, do not coerce it, do not drop the field."
+    },
+    {
+      "id": "values/a-body-outside-the-property-bag",
+      "level": 1,
+      "op": "read",
+      "given": {
+        "type": {
+          "id": "t_note",
+          "fields": [{ "key": "title", "kind": "text" }],
+          "profiles": { "note": { "title": "title", "body": "content" } }
+        },
+        "object": { "properties": { "title": "Roof" }, "content": "Rang the roofer again." }
+      },
+      "args": { "key": "body", "profile": "note" },
+      "expect": "Rang the roofer again.",
+      "why": "A document with a body and some metadata about it is the dominant shape in this genre — a Markdown file with frontmatter is exactly that — and a format where everything must be a property has nowhere to put the body. `content` is the one reserved slot outside the bag, and a profile may name it as the body. Producers that keep the body in a field carry on doing so; nothing changes for them."
+    }
+  ]
+}

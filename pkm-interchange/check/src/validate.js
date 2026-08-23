@@ -73,6 +73,23 @@ export function validate(envelope) {
     }
   });
 
+  // A declared cardinality has to bite both ways or it is a hint rather than a
+  // declaration: a `many` field holds a list, a single one does not. A producer
+  // that stores every reference as a one-element array and declares none of them
+  // has told consumers nothing.
+  {
+    const byId = new Map((envelope.types ?? []).map((t) => [t.id, t]));
+    (envelope.objects ?? []).forEach((o, i) => {
+      const fields = byId.get(o.type)?.fields ?? [];
+      for (const f of fields) {
+        const v = (o.properties ?? {})[f.key];
+        if (v === undefined || v === null) continue;
+        if (f.many === true && !Array.isArray(v)) fail("value.cardinality", `objects[${i}].${f.key}`);
+        if (f.many !== true && Array.isArray(v)) fail("value.cardinality", `objects[${i}].${f.key}`);
+      }
+    });
+  }
+
   // An edge may lack an id — a mention of somebody who does not exist yet has a
   // name and nothing else — but it cannot lack both. With neither it points at
   // nothing and says nothing, and a consumer can only carry it forever.

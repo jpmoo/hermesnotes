@@ -2,6 +2,8 @@ export * from "./periodic-notes.js";
 export * from "./carry-forward.js";
 export * from "./templates.js";
 export * from "./property-schema.js";
+export * from "./changes.js";
+export * from "./patch.js";
 export * from "./mentions.js";
 export * from "./collections.js";
 export * from "./display.js";

@@ -104,14 +104,17 @@ export function startChangeWatcher(log: FastifyBaseLogger): () => void {
 
     // One message per block, not per write. Renaming a tag or resolving a
     // placeholder touches every note that named it, and a hundred rows saying
-    // so is still one piece of news per block. Rows arrive in order, so the
-    // last word about a block is the current one — except that a delete
-    // outranks everything: a block that has gone is not a block to refetch.
+    // so is still one piece of news per block.
+    //
+    // Rows arrive in order, so the last word about a block is the current one —
+    // in both directions. A delete used to outrank everything after it, which
+    // is defensible right up until something legitimately comes back: with
+    // client-supplied ids a block can be created under an id that has been used
+    // before, and every open tab would have been left holding a deletion.
     const perUser = new Map<string, Map<string, ChangeEvent>>();
     for (const r of rows) {
       let forUser = perUser.get(r.ownerId);
       if (!forUser) perUser.set(r.ownerId, (forUser = new Map()));
-      if (forUser.get(r.blockId)?.kind === "delete") continue;
       forUser.set(
         r.blockId,
         r.op === "delete"

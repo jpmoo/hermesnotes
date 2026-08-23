@@ -12,6 +12,8 @@
  * trust their notes to it.
  */
 import {
+  applyPatch,
+  foldChanges,
   isComplete as hermesIsComplete,
   profilesOf as hermesProfilesOf,
   readProfile,
@@ -68,6 +70,32 @@ function roundtrip(envelope: Record<string, unknown>) {
 
 export const hermesAdapter = {
   validate: validateEnvelope,
+
+  /** The same applyPatch the block route uses. */
+  patch: (
+    object: { properties?: Record<string, unknown>; version?: number },
+    p: { set?: Record<string, unknown>; unset?: string[]; version?: number },
+  ) => {
+    const out = applyPatch({ properties: object.properties ?? {}, version: object.version }, p ?? {});
+    return {
+      ok: out.ok,
+      ...(out.conflict ? { conflict: true } : {}),
+      object: {
+        ...object,
+        properties: out.properties,
+        ...(out.ok && object.version !== undefined ? { version: object.version + 1 } : {}),
+      },
+      fidelity: out.fidelity,
+      reports: out.reports,
+    };
+  },
+
+  /** The same foldChanges the live-sync watcher uses. */
+  follow: (feed: { seq?: number; object: string; op: string; cause?: string }[]) =>
+    foldChanges(
+      [...feed].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).map((r) => ({ blockId: r.object, op: r.op, cause: r.cause })),
+    ),
+
 
   /**
    * Byte-wise, which is what the database does.

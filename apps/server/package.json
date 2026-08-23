@@ -25,7 +25,8 @@
     "tsx": "^4.19.2",
     "zod": "^3.23.8",
     "@fastify/multipart": "^9.0.1",
-    "zod-to-json-schema": "^3.24.1"
+    "zod-to-json-schema": "^3.24.1",
+    "@hermes/interchange": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

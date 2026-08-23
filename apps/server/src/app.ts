@@ -12,6 +12,7 @@ import { getAuthSecret } from "./config.js";
 import { isDbReady } from "./db.js";
 import { HttpError } from "./lib/errors.js";
 import { authRoutes } from "./auth/routes.js";
+import { interchangeRoutes } from "./interchange/routes.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { blockRoutes } from "./blocks/routes.js";
 import { mcpRoutes } from "./mcp/routes.js";
@@ -147,6 +148,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(setupRoutes, { prefix: "/api" });
   await app.register(authRoutes, { prefix: "/api" });
   await app.register(settingsRoutes, { prefix: "/api" });
+  await app.register(interchangeRoutes, { prefix: "/api" });
   await app.register(backupRoutes, { prefix: "/api" });
   await app.register(exportRoutes, { prefix: "/api" });
   await app.register(adminRoutes, { prefix: "/api" });

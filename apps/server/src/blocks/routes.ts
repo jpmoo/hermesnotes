@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
+import { applyPatch, datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
@@ -1552,7 +1552,22 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const body = z
       .object({
         content: z.string().optional(),
+        /**
+         * The whole property bag. Every caller in this codebase reads the block
+         * first and sends it all back, which is the only reason this has never
+         * lost anything — the shape itself says "send me everything you want to
+         * keep", and the first client that sends only what it changed would be
+         * the last time the rest of that block existed. Kept because those
+         * callers exist; `patch` is the one to reach for.
+         */
         properties: z.record(z.unknown()).optional(),
+        /** A partial write: set these, remove those, leave everything else. */
+        patch: z
+          .object({
+            set: z.record(z.unknown()).optional(),
+            unset: z.array(z.string()).optional(),
+          })
+          .optional(),
         version: z.number().int(),
       })
       .parse(req.body);
@@ -1572,10 +1587,17 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const nextContent = type.isText ? body.content ?? current.content ?? "" : current.content;
     // Text blocks now carry fields too (their body is `content`; other fields
     // live in properties), so both kinds may update properties.
+    // A patch names what it touches; a bare bag replaces everything. The stale
+    // check is the version in the WHERE clause below, which is why applyPatch is
+    // not also given one — two places refusing the same write would disagree
+    // eventually.
+    const incoming = body.patch
+      ? applyPatch({ properties: (current.properties ?? {}) as Record<string, unknown> }, body.patch).properties
+      : ((body.properties ?? current.properties ?? {}) as Record<string, unknown>);
     const nextProps = stampDoneAt(
       type.propertySchema,
       (current.properties ?? {}) as Record<string, unknown>,
-      (body.properties ?? current.properties ?? {}) as Record<string, unknown>,
+      incoming,
     );
     const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
     const hash = sha256(embedSource);

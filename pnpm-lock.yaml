@@ -29,6 +29,9 @@ importers:
       '@hermes/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@hermes/interchange':
+        specifier: workspace:*
+        version: link:../../packages/interchange
       '@hermes/shared':
         specifier: workspace:*
         version: link:../../packages/shared

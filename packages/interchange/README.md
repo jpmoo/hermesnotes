@@ -115,6 +115,15 @@ member arrived as a bare id and left as an object, which turned out to be an
 ambiguity in the format rather than a bug in the code: two spellings for one
 member, now written down as shorthand with expansion declared not to be a loss.
 
-**Hermes: 34 of 66, level 0.** Level 2 is 16 passed, 6 failed, 5 not applicable.
-Five of those six failures are a missing validator — Hermes has no way to tell a
-valid envelope from an invalid one, which is a real gap and not a hard one.
+**Hermes earns level 4.** 57 of 66, with 9 cases not applicable.
+
+```
+level 1: 23 passed, 0 failed
+level 2: 22 passed, 0 failed, 5 not applicable
+level 3:  1 passed, 0 failed, 3 not applicable
+level 4: 11 passed, 0 failed, 1 not applicable
+```
+
+`src/conformance.ts` holds the claim and `pnpm measure` refuses to pass if the
+claim exceeds what the suite found. `GET /api/conformance` serves it, so a client
+can ask before it writes rather than discovering by trying.

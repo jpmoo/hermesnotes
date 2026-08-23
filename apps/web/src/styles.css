@@ -7968,3 +7968,20 @@ mark[data-from]::before {
 .note-editor .caret-slot *::selection {
   background: rgba(95, 164, 181, 0.25);
 }
+
+/* A project's page carries what hangs off it, one section per type. The
+   sections themselves are a rollup's, and look like one. */
+.proj-rollup {
+  margin-top: 18px;
+}
+.proj-rollup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockCard } from "../components/BlockCard.tsx";
+import { ProjectRollup, isProjectType } from "../components/ProjectRollup.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 import { useSetRouteBanner } from "../lib/route-banner.tsx";
 import { focusFirstFieldSoon } from "../lib/focus-first.ts";
@@ -74,6 +75,7 @@ export function BlockPage() {
       <div ref={cardRef}>
         <BlockCard block={block} type={type} onConflict={() => void load()} onDeleted={() => nav(-1)} />
       </div>
+      {isProjectType(type) && <ProjectRollup block={block} types={types} onChanged={() => void load()} />}
     </>
   );
 }

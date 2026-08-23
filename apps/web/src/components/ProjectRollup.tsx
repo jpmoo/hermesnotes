@@ -1,9 +1,8 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
-import type { Block, BlockType } from "../api.ts";
+import { api, type Block, type BlockType } from "../api.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
-import { childrenOfBlock } from "../lib/rollup.ts";
 import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { CollapseAllButton, CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
 
@@ -193,6 +192,11 @@ function Section({
  * around it, and the info pane's flat list of connections doesn't answer "what
  * is left to do here" — so this is the rollup a project would be if someone
  * built one for it, without their having to build it.
+ *
+ * Connected means connected, not "names this project in a reference field":
+ * the notes that mention it, the canvases it was drawn on and the collections
+ * it belongs to are all things around a project, and a section that quietly
+ * showed only its tasks would be read as the whole answer.
  */
 export function ProjectRollup({
   block,
@@ -204,15 +208,19 @@ export function ProjectRollup({
   onChanged: () => void;
 }) {
   const [kids, setKids] = useState<Block[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const { loaded } = usePreferences();
   const viewFor = useSectionViews(block.id);
   const shut = useShut(block.id);
 
   useEffect(() => {
     let alive = true;
-    void childrenOfBlock(block.id, Boolean(block.collectionKind))
-      .then((rows) => {
-        if (alive) setKids(rows);
+    void api
+      .get<{ blocks: Block[]; truncated: boolean }>(`/blocks/${block.id}/connected`)
+      .then((r) => {
+        if (!alive) return;
+        setKids(r.blocks);
+        setTruncated(r.truncated);
       })
       .catch(() => {
         if (alive) setKids([]);
@@ -220,7 +228,7 @@ export function ProjectRollup({
     return () => {
       alive = false;
     };
-  }, [block.id, block.collectionKind]);
+  }, [block.id]);
 
   // Nothing renders until the preferences bag has arrived. A section reads its
   // saved arrangement once, when it mounts, so mounting before the bag lands
@@ -264,6 +272,8 @@ export function ProjectRollup({
       <div className="proj-rollup-head">
         {/* The style sheet does the shouting; the markup says it once, plainly. */}
         Project blocks <span className="ru-count">{kids.length}</span>
+        {/* A cap that doesn't say so reads as "this is all of it". */}
+        {truncated && <span className="hint">densely connected — showing the first {kids.length}</span>}
       </div>
       {keys.map((k) => (
         <Section

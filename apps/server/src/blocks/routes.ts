@@ -1139,6 +1139,43 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  /**
+   * Everything connected to a block, in full.
+   *
+   * The graph panel's first ring, answered as blocks rather than as labelled
+   * dots: whatever a project's page shows underneath it has to be sortable by
+   * the properties of the things in it, and a node with an icon and a name is
+   * not enough to sort by a due date.
+   *
+   * The relationship model is the graph's, which is the info pane's — reference
+   * fields, `block:`/`|` links, `@name` mentions in both directions, collection
+   * membership (including smart collections that store no membership rows), and
+   * canvas edges. `/blocks/children` deliberately sees less than this: it is a
+   * rollup level, and a rollup follows a named field down a hierarchy. "What is
+   * this connected to" is a different question and wants every answer.
+   */
+  app.get("/blocks/:id/connected", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    let graph;
+    try {
+      graph = await buildGraph(userId, id, 1);
+    } catch {
+      throw notFound("block");
+    }
+    const ids = graph.nodes.filter((n) => n.gen === 1).map((n) => n.id);
+    if (!ids.length) return { blocks: [], truncated: graph.truncated };
+    // Archived neighbours are left out. The info pane keeps them and marks them,
+    // because there the question is "does this link still point somewhere"; here
+    // the question is what is around this project now, and something archived
+    // has been answered already.
+    const rows = await db
+      .select(blockView)
+      .from(blocks)
+      .where(and(eq(blocks.ownerId, userId), inArray(blocks.id, ids), notArchived));
+    return { blocks: rows, truncated: graph.truncated };
+  });
+
   /** Info + connections for a block (right-panel info pane). */
   app.get("/blocks/:id/info", async (req) => {
     const userId = requireUser(req);

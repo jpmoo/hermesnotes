@@ -77,23 +77,6 @@ async function childrenOf(parents: string[], level: RollupLevel): Promise<Map<st
 }
 
 /**
- * Everything hanging off one block, however it was connected: any reference
- * property naming it, plus its members when it is a collection.
- *
- * The same query a rollup level runs, with the level left unconfigured — which
- * is what "connected to it" means when nobody has said which field to follow.
- */
-export async function childrenOfBlock(parentId: string, members: boolean): Promise<Block[]> {
-  const { edges } = await api.post<{ edges: Edge[] }>("/blocks/children", {
-    parents: [parentId],
-    typeId: null,
-    refKey: null,
-    members,
-  });
-  return edges.map(asBlock);
-}
-
-/**
  * The top row: a collection root contributes each of its members as a bucket,
  * a plain block is a bucket on its own.
  *

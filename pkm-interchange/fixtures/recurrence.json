@@ -1,0 +1,123 @@
+{
+  "suite": "recurrence",
+  "about": "Next-occurrence computation. Every case gives a rule, a completion event, and the expected next instance. These are the cases where real implementations disagree today.",
+  "cases": [
+    {
+      "id": "recurrence/monthly-31st-skip",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "monthly", "interval": 1, "monthEnd": "skip", "end": { "type": "never" } },
+        "instance": { "due": "2026-01-31" }
+      },
+      "when": { "completed": "2026-01-31" },
+      "expect": { "due": "2026-03-31" },
+      "why": "February is skipped, not absorbed. This is what RRULE with BYMONTHDAY=31 does, and what EventKit does. A tool that returns 2026-02-28 here has silently changed the user's rule."
+    },
+    {
+      "id": "recurrence/monthly-31st-clamp",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "monthly", "interval": 1, "monthEnd": "clamp", "end": { "type": "never" } },
+        "instance": { "due": "2026-01-31" }
+      },
+      "when": { "completed": "2026-01-31" },
+      "expect": { "due": "2026-02-28" },
+      "why": "Clamping is a legitimate behaviour and many tools do it. It is only a bug when undeclared. Both this case and the one above must pass — the format does not pick a winner, it requires producers to say which they do."
+    },
+    {
+      "id": "recurrence/monthly-clamp-does-not-reanchor",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "monthly", "interval": 1, "monthEnd": "clamp", "end": { "type": "never" } },
+        "instance": { "due": "2026-01-31" }
+      },
+      "when": { "completed": "2026-01-31", "thenCompleted": "2026-02-28" },
+      "expect": { "due": "2026-03-31" },
+      "why": "The most common clamping bug. Clamping to Feb 28 must not move the series to the 28th permanently — the rule is still 'the 31st', and March has one. Implementations that advance from the clamped date rather than from the rule degrade a month-end task to the 28th forever after one February, and the user is never told."
+    },
+    {
+      "id": "recurrence/completion-anchor-horizon",
+      "given": {
+        "rule": { "anchor": "completion", "freq": "weekly", "interval": 4, "end": { "type": "never" } },
+        "horizon": 3
+      },
+      "expect": { "invalid": true, "reason": "horizon must be 1 when anchor is completion" },
+      "why": "Completion-anchored recurrence is a function of history, not of time. The date of occurrence N+2 depends on when the user completes N+1, which has not happened. A producer claiming to have materialised three instances ahead is claiming to know something unknowable."
+    },
+    {
+      "id": "recurrence/completion-anchor-late",
+      "given": {
+        "rule": { "anchor": "completion", "freq": "weekly", "interval": 4, "end": { "type": "never" } },
+        "instance": { "due": "2026-03-01" }
+      },
+      "when": { "completed": "2026-03-22" },
+      "expect": { "due": "2026-04-19" },
+      "why": "Four weeks after the haircut you actually got, not four weeks after the one you meant to get. Completing three weeks late must not produce an occurrence one week away."
+    },
+    {
+      "id": "recurrence/schedule-anchor-late",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "weekly", "interval": 4, "end": { "type": "never" } },
+        "instance": { "due": "2026-03-01" }
+      },
+      "when": { "completed": "2026-03-22" },
+      "expect": { "due": "2026-03-29" },
+      "why": "Same lateness, same rule shape, opposite answer. Schedule-anchored ignores the completion date entirely. This case exists to be run alongside the one above: a tool that returns the same value for both has not implemented anchoring at all."
+    },
+    {
+      "id": "recurrence/schedule-anchor-preserves-span",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "weekly", "interval": 1, "end": { "type": "never" } },
+        "instance": { "start": "2026-08-25", "due": "2026-08-26" }
+      },
+      "when": { "completed": "2026-08-26" },
+      "expect": { "start": "2026-09-01", "due": "2026-09-02" },
+      "why": "The whole span advances. A task available a day before it is due stays available a day before it is due."
+    },
+    {
+      "id": "recurrence/completion-anchor-preserves-gap",
+      "given": {
+        "rule": { "anchor": "completion", "freq": "daily", "interval": 7, "end": { "type": "never" } },
+        "instance": { "start": "2026-08-25", "due": "2026-08-26" }
+      },
+      "when": { "completed": "2026-08-30" },
+      "expect": { "start": "2026-09-05", "due": "2026-09-06" },
+      "why": "The new due date derives from the completion; the available date derives from the gap, not from its own advance. Advancing both independently from the completion date collapses the span."
+    },
+    {
+      "id": "recurrence/end-after-count",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "weekly", "interval": 1, "end": { "type": "after", "count": 3 } },
+        "instances": ["i1", "i2", "i3"]
+      },
+      "when": { "completed": "2026-08-26" },
+      "expect": { "next": null },
+      "why": "The series ends by counting instances, not by reading a counter carried on the rule. An occurrence index stored inside the rule object is instance state hiding in a rule, and every code path that copies or edits a rule then has to remember to preserve it. One that forgets restarts the series silently."
+    },
+    {
+      "id": "recurrence/end-on-date-boundary",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "weekly", "interval": 1, "end": { "type": "on", "date": "2026-09-02" } },
+        "instance": { "due": "2026-08-26" }
+      },
+      "when": { "completed": "2026-08-26" },
+      "expect": { "due": "2026-09-02" },
+      "why": "The end date is inclusive. An occurrence falling exactly on it is generated."
+    },
+    {
+      "id": "recurrence/weekly-interval-anchoring",
+      "given": {
+        "rule": { "anchor": "schedule", "freq": "weekly", "interval": 2, "byWeekday": ["WE"], "end": { "type": "never" } },
+        "instance": { "due": "2026-08-26" }
+      },
+      "when": { "completed": "2026-08-26" },
+      "expect": { "due": "2026-09-09" },
+      "why": "Bi-weekly intervals anchor to the series start, not to whichever date is being advanced from. Implementations that count week offsets from the current instance re-phase the series whenever an instance is rescheduled."
+    },
+    {
+      "id": "recurrence/completion-anchor-rejects-weekday-list",
+      "given": {
+        "rule": { "anchor": "completion", "freq": "weekly", "interval": 1, "byWeekday": ["WE"] }
+      },
+      "expect": { "invalid": true, "reason": "byWeekday is not meaningful with anchor=completion" },
+      "why": "A weekday pattern describes positions in a calendar; completion anchoring describes an interval since an event. Combining them has no coherent answer — completing on a Thursday would yield next Wednesday, six days later, which is neither the pattern nor the interval. Producers wanting interval-from-completion should use freq=daily with an interval in days."
+    }
+  ]
+}

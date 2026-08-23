@@ -1,0 +1,83 @@
+{
+  "suite": "placement",
+  "about": "Which placement survives an import and which may be thrown away. A consumer cannot tell by looking at the collection kind, so the producer declares it.",
+  "cases": [
+    {
+      "id": "placement/semantic-must-survive",
+      "given": {
+        "collection": {
+          "kind": "matrix",
+          "placement": { "semantic": true, "regions": ["urgent-important", "calm-later"] },
+          "members": [{ "object": "o_1", "region": "urgent-important" }]
+        }
+      },
+      "when": { "importInto": "a tool with no matrix view" },
+      "expect": { "region": "urgent-important", "fidelity": "reduced" },
+      "why": "The region is a judgment the user made about the task, stored as a position. A tool that draws no grid must still keep the value and report that it cannot display it. Dropping it destroys the only record of the assessment."
+    },
+    {
+      "id": "placement/view-may-be-dropped",
+      "given": {
+        "collection": {
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "members": [{ "object": "o_1", "context": { "x": 340, "y": 120 } }]
+        }
+      },
+      "when": { "importInto": "a tool with no canvas" },
+      "expect": { "fidelity": "full" },
+      "why": "Canvas coordinates are furniture — where the user dragged something on one particular day. Discarding them loses nothing, and an import that reports reduced fidelity here will train users to ignore the warning that matters."
+    },
+    {
+      "id": "placement/semantic-requires-named-regions",
+      "given": {
+        "collection": {
+          "kind": "matrix",
+          "placement": { "semantic": true },
+          "members": [{ "object": "o_1", "context": { "x": 340, "y": 120 } }]
+        }
+      },
+      "expect": { "invalid": true, "reason": "semantic placement must use named regions, not coordinates" },
+      "why": "A coordinate is meaningless outside the grid that produced it — the same point means different things at different zoom levels and window sizes. 'urgent-important' opens correctly in a tool that renders a plain list."
+    },
+    {
+      "id": "placement/kanban-column-is-semantic",
+      "given": {
+        "collection": {
+          "kind": "kanban",
+          "placement": { "semantic": true, "regions": ["backlog", "doing", "shipped"] },
+          "members": [{ "object": "o_1", "region": "doing" }]
+        }
+      },
+      "when": { "importInto": "a flat list tool" },
+      "expect": { "region": "doing", "fidelity": "reduced" },
+      "why": "A kanban column is usually status wearing a position. Flattening the board loses the status of every card on it, which is the entire content of a board."
+    },
+    {
+      "id": "placement/kanban-column-may-be-view",
+      "given": {
+        "collection": {
+          "kind": "kanban",
+          "placement": { "semantic": false },
+          "membership": { "mode": "query", "materialized": false },
+          "members": [{ "object": "o_1", "region": "doing" }]
+        }
+      },
+      "expect": { "fidelity": "full" },
+      "why": "When a board's columns are generated from a status field the objects already carry, the column is a rendering of data held elsewhere and carries nothing of its own. Same kind, opposite answer — which is exactly why the collection kind cannot be trusted to imply the semantics."
+    },
+    {
+      "id": "placement/position-is-opaque",
+      "given": {
+        "members": [
+          { "object": "o_1", "position": "a0" },
+          { "object": "o_2", "position": "a0V" },
+          { "object": "o_3", "position": "a1" }
+        ]
+      },
+      "ask": "order",
+      "expect": ["o_1", "o_2", "o_3"],
+      "why": "Ordering tokens sort byte-wise, not numerically or by locale. Under a language-aware collation 'Zz' sorts after 'a0' and the top of every list is wrong. Do not parse these as numbers and do not re-generate them on import."
+    }
+  ]
+}

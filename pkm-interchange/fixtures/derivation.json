@@ -1,0 +1,59 @@
+{
+  "suite": "derivation",
+  "about": "Collections whose membership is computed rather than stated. The failure this suite exists to prevent is a live query being silently frozen into stale facts.",
+  "cases": [
+    {
+      "id": "derivation/query-members-are-not-authoritative",
+      "given": {
+        "collection": {
+          "membership": { "mode": "query", "materialized": false, "query": { "match": "all", "conditions": [{ "field": "status", "op": "eq", "value": "doing" }] } },
+          "members": ["o_1", "o_2"]
+        }
+      },
+      "when": { "reexport": true },
+      "expect": { "mode": "query", "materialized": false },
+      "why": "The members array is a convenience snapshot for consumers that cannot run the query. Re-exporting it as an explicit collection converts a rule into two frozen facts, and the user's smart list stops updating without ever announcing that it has."
+    },
+    {
+      "id": "derivation/materialized-query-is-authoritative",
+      "given": {
+        "collection": {
+          "membership": { "mode": "query", "materialized": true, "query": { "match": "all", "conditions": [] } },
+          "members": ["o_1", "o_2"]
+        }
+      },
+      "when": { "reexport": true },
+      "expect": { "members": ["o_1", "o_2"] },
+      "why": "A materialized query ran once and its result was deliberately fixed. The members are real. The query is retained as provenance — how this set came to be — not as a live rule."
+    },
+    {
+      "id": "derivation/downgrade-must-be-reported",
+      "given": {
+        "collection": { "membership": { "mode": "query", "materialized": false } }
+      },
+      "when": { "importInto": "a tool with no query engine" },
+      "expect": { "mode": "explicit", "fidelity": "reduced" },
+      "why": "Importing a live query as a fixed list is permitted, because refusing the import outright helps nobody. Doing it quietly is not: the user believes they still have a smart collection."
+    },
+    {
+      "id": "derivation/unknown-condition-preserved",
+      "given": {
+        "collection": {
+          "membership": { "mode": "query", "materialized": false, "query": { "match": "all", "conditions": [{ "kind": "semantic", "value": "things about the roof", "floor": 0.75 }] } }
+        }
+      },
+      "when": { "importInto": "a tool with no semantic search", "reexport": true },
+      "expect": { "conditions": [{ "kind": "semantic", "value": "things about the roof", "floor": 0.75 }] },
+      "why": "A consumer that cannot evaluate a condition must still carry it through untouched. Query languages will diverge faster than anything else in this format, and round-tripping the parts you do not understand is what stops that divergence from being lossy."
+    },
+    {
+      "id": "derivation/empty-result-is-not-empty-collection",
+      "given": {
+        "collection": { "membership": { "mode": "query", "materialized": false }, "members": [] }
+      },
+      "when": { "importInto": "a tool with no query engine" },
+      "expect": { "fidelity": "reduced" },
+      "why": "A query that currently matches nothing is not the same as a collection that is empty. Importing it as an ordinary empty collection loses a rule, and the reduced-fidelity report is the only signal the user gets."
+    }
+  ]
+}

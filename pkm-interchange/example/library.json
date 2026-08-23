@@ -1,0 +1,222 @@
+{
+  "format": "pkm-interchange/0",
+  "producer": { "name": "example-pkm", "version": "0.1.0", "stableIds": true },
+  "conformance": {
+    "profiles": ["task", "note", "contact"],
+    "features": ["series", "placement", "relations", "derivations"],
+    "unsupported": ["attachments"]
+  },
+
+  "types": [
+    {
+      "id": "t_task",
+      "name": "Task",
+      "fields": [
+        { "key": "title", "kind": "text", "required": true },
+        { "key": "dates", "kind": "datespan", "startLabel": "Available", "endLabel": "Due" },
+        { "key": "status", "kind": "enum", "options": ["todo", "doing", "done", "dropped"] },
+        { "key": "notes", "kind": "richtext" },
+        { "key": "owner", "kind": "reference", "targetType": "t_person" },
+        { "key": "estimate", "kind": "number", "units": "minutes" }
+      ],
+      "profiles": {
+        "task": {
+          "title": "title",
+          "start": { "field": "dates", "part": "start" },
+          "due": { "field": "dates", "part": "end" },
+          "status": "status",
+          "completeValues": ["done", "dropped"]
+        }
+      }
+    },
+    {
+      "id": "t_note",
+      "name": "Note",
+      "fields": [
+        { "key": "title", "kind": "text" },
+        { "key": "body", "kind": "richtext" }
+      ],
+      "profiles": { "note": { "title": "title", "body": "body" } }
+    },
+    {
+      "id": "t_person",
+      "name": "Person",
+      "fields": [
+        { "key": "name", "kind": "text", "required": true },
+        { "key": "email", "kind": "text" },
+        { "key": "org", "kind": "reference", "targetType": "t_org" }
+      ],
+      "profiles": { "contact": { "name": "name", "email": "email" } }
+    },
+    {
+      "id": "t_org",
+      "name": "Organization",
+      "fields": [{ "key": "name", "kind": "text", "required": true }],
+      "profiles": { "contact": { "name": "name", "kind": "org" } }
+    },
+    {
+      "id": "t_reading",
+      "name": "Reading",
+      "fields": [
+        { "key": "title", "kind": "text" },
+        { "key": "author", "kind": "text" },
+        { "key": "url", "kind": "url" },
+        { "key": "verdict", "kind": "enum", "options": ["unread", "skimmed", "read", "abandoned"] }
+      ],
+      "profiles": {}
+    }
+  ],
+
+  "objects": [
+    {
+      "id": "o_review",
+      "type": "t_task",
+      "properties": {
+        "title": "Weekly review",
+        "dates": { "start": "2026-08-25", "end": "2026-08-26" },
+        "status": "todo",
+        "estimate": 45
+      },
+      "tags": ["admin", "ritual"],
+      "archived": false,
+      "created": "2026-08-19T15:55:06Z",
+      "updated": "2026-08-19T15:55:06Z"
+    },
+    {
+      "id": "o_review_prev",
+      "type": "t_task",
+      "properties": {
+        "title": "Weekly review",
+        "dates": { "start": "2026-08-18", "end": "2026-08-19" },
+        "status": "done"
+      },
+      "completedAt": "2026-08-19T15:55:06Z",
+      "archived": false,
+      "created": "2026-08-12T09:00:00Z",
+      "updated": "2026-08-19T15:55:06Z"
+    },
+    {
+      "id": "o_spec",
+      "type": "t_task",
+      "properties": {
+        "title": "Draft the interchange spec",
+        "dates": { "end": "2026-09-15" },
+        "status": "doing",
+        "owner": "o_jeff",
+        "notes": "Fixtures first. The prose is commentary."
+      },
+      "tags": ["writing"],
+      "archived": false,
+      "created": "2026-08-23T11:00:00Z",
+      "updated": "2026-08-23T11:00:00Z"
+    },
+    {
+      "id": "o_note_anchor",
+      "type": "t_note",
+      "properties": {
+        "title": "Why anchoring is a topology question",
+        "body": "Schedule-anchored recurrence is a set generator — a pure function of rule and start. Completion-anchored recurrence is a state machine: the next occurrence depends on an event that has not happened. Only one future instance is ever knowable, which is why horizon must be 1."
+      },
+      "tags": ["writing"],
+      "archived": false,
+      "created": "2026-08-23T11:20:00Z",
+      "updated": "2026-08-23T11:20:00Z"
+    },
+    {
+      "id": "o_jeff",
+      "type": "t_person",
+      "properties": { "name": "J. Moore", "email": "jeff@example.invalid", "org": "o_district" },
+      "archived": false,
+      "created": "2026-01-04T08:00:00Z",
+      "updated": "2026-01-04T08:00:00Z"
+    },
+    {
+      "id": "o_district",
+      "type": "t_org",
+      "properties": { "name": "Example School District" },
+      "archived": false,
+      "created": "2026-01-04T08:00:00Z",
+      "updated": "2026-01-04T08:00:00Z"
+    },
+    {
+      "id": "o_reading_1",
+      "type": "t_reading",
+      "properties": {
+        "title": "Local-first software",
+        "author": "Kleppmann et al.",
+        "url": "https://www.inkandswitch.com/local-first/",
+        "verdict": "read",
+        "marginNote": "The philosophical twin of the standards argument."
+      },
+      "archived": false,
+      "created": "2026-08-20T19:00:00Z",
+      "updated": "2026-08-21T07:30:00Z"
+    }
+  ],
+
+  "series": [
+    {
+      "id": "s_review",
+      "rule": {
+        "anchor": "schedule",
+        "freq": "weekly",
+        "interval": 1,
+        "byWeekday": ["WE"],
+        "end": { "type": "never" }
+      },
+      "horizon": 1,
+      "instances": ["o_review_prev", "o_review"]
+    }
+  ],
+
+  "collections": [
+    {
+      "id": "c_quarter",
+      "name": "This quarter",
+      "kind": "matrix",
+      "placement": {
+        "semantic": true,
+        "regions": ["urgent-important", "urgent-later", "calm-important", "calm-later"]
+      },
+      "membership": { "mode": "explicit" },
+      "members": [
+        { "object": "o_spec", "region": "calm-important", "position": "a0" },
+        { "object": "o_review", "region": "urgent-later", "position": "a1" }
+      ]
+    },
+    {
+      "id": "c_writing",
+      "name": "Writing desk",
+      "kind": "canvas",
+      "placement": { "semantic": false },
+      "membership": { "mode": "explicit" },
+      "members": [
+        { "object": "o_spec", "context": { "x": 120, "y": 80 } },
+        { "object": "o_note_anchor", "context": { "x": 420, "y": 210, "collapsed": true } }
+      ]
+    },
+    {
+      "id": "c_active",
+      "name": "In flight",
+      "kind": "list",
+      "placement": { "semantic": false },
+      "membership": {
+        "mode": "query",
+        "materialized": false,
+        "query": {
+          "match": "all",
+          "conditions": [
+            { "field": "status", "op": "eq", "value": "doing" },
+            { "kind": "tag", "tag": "writing", "op": "include" }
+          ]
+        }
+      },
+      "members": ["o_spec"]
+    }
+  ],
+
+  "relations": [
+    { "from": "o_note_anchor", "to": "o_spec", "type": "supports" },
+    { "from": "o_reading_1", "to": "o_note_anchor", "type": "informs" }
+  ]
+}

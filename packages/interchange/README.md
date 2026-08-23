@@ -57,24 +57,27 @@ Missing counts as failing, and it should: to somebody deciding whether to trust
 their notes to a tool, "we have not built that" and "we built it wrong" are the
 same news.
 
-**Hermes earns level 0.** 13 of 64.
+**Hermes earns level 0.** 16 of 64.
 
-Most of that is absence — no consumer, no validator, no patch semantics, so 51
+Most of that is absence — no consumer, no validator, no patch semantics, so 48
 cases fail with nothing to call. The interesting number is the other one: of the
-17 cases Hermes can actually answer, it fails 5.
+17 cases Hermes can answer, it fails 2, both of them recurrence.
 
 | case | Hermes says | should be |
 |---|---|---|
-| `profile/multiple-complete-values` | `false` | `true` |
 | `recurrence/monthly-31st-skip` | `2026-02-28` | `2026-03-31` |
 | `recurrence/monthly-clamp-does-not-reanchor` | `2026-03-28` | `2026-03-31` |
-| `values/an-empty-string-is-not-a-value` | `""` | nothing |
-| `values/a-body-outside-the-property-bag` | nothing | the body |
 
-The first is the one that matters most: `isComplete` still reads `status_field`
-off the schema and has never heard of the profile sitting next to it, so a type
-that declares its completion the new way is read as never finished. Hermes
-declared a vocabulary and does not yet speak it.
+Hermes has no `monthEnd`: it always clamps, and then advances from the clamped
+date, so a task due on the 31st becomes a task due on the 28th permanently after
+one February. Neither is fixable without somewhere to record the day the series
+was anchored to — the format has the same hole, recorded in
+`fixtures/README.md` — so this is one change on both sides rather than a bug fix
+on one.
+
+Three others were fixed by reading the vocabulary Hermes had already declared:
+`isComplete` now goes through the task profile, `readProfile` treats an empty
+string as absent, and a profile can name `content` as the body.
 
 One caveat the run exposed about the fixtures themselves:
 `profile/unknown-name-is-readable` passes here for the wrong reason. It expects

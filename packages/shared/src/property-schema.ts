@@ -195,9 +195,18 @@ export function isComplete(
   schema: PropertySchema,
   properties: Record<string, unknown>,
 ): boolean {
-  if (!schema.status_field || !schema.complete_values?.length) return false;
-  const current = properties[schema.status_field];
-  return typeof current === "string" && schema.complete_values.includes(current);
+  // Read through the task profile rather than off `status_field` directly.
+  // For every type that has ever existed here the two are the same thing —
+  // profilesOf derives that profile from status_field and complete_values, so
+  // the answer does not move. What changes is that a type which *declares* its
+  // completion, in the vocabulary a stranger can read, is now understood by the
+  // app that asked it to declare. Declaring something and then not reading it is
+  // worse than never asking.
+  const task = profilesOf(schema).find((p) => p.name === "task");
+  const complete = task?.map.completeValues;
+  if (!task || !Array.isArray(complete) || !complete.length) return false;
+  const current = readProfile(schema, properties, "status");
+  return typeof current === "string" && (complete as unknown[]).includes(current);
 }
 
 /** The profile vocabulary a consumer can rely on. Anything else is carried, not read. */
@@ -294,19 +303,33 @@ export function readProfile(
   properties: Record<string, unknown>,
   key: string,
   profile: ProfileName = "task",
+  /** A text block's body, which lives outside the property bag. */
+  content?: string | null,
 ): unknown {
-  const p = profilesOf(schema).find((x) => x.name === profile);
+  const p = profilesOf(schema, { isText: content !== undefined }).find((x) => x.name === profile);
   const spec = p?.map[key];
-  if (typeof spec === "string") return properties[spec];
+  // The one name that isn't a field: a text block keeps its body in `content`,
+  // and a profile that wants the body has to be able to say so.
+  if (spec === "content") return blank(content);
+  if (typeof spec === "string") return blank(properties[spec]);
   if (spec && typeof spec === "object") {
     const { field, part } = spec as { field?: string; part?: string };
     if (!field) return undefined;
     const v = properties[field];
     if (v === null || v === undefined) return undefined;
-    return part ? (v as Record<string, unknown>)[part] : v;
+    return blank(part ? (v as Record<string, unknown>)[part] : v);
   }
   return undefined;
 }
+
+/**
+ * An empty string is not a value.
+ *
+ * A field opened and left alone stores "" here all the time — six datespans in
+ * one real library — and a reader that takes it at face value shows a date that
+ * fails to parse rather than a blank.
+ */
+const blank = (v: unknown): unknown => (v === "" ? undefined : v);
 
 /** The calendar day a stored date/datetime belongs to, or null if it isn't one. */
 export function dayOf(v: unknown): string | null {

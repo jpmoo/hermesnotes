@@ -44,8 +44,12 @@ function asSchema(type: Type | undefined): PropertySchema {
 export const hermesAdapter = {
   profilesOf: (type: Type) => hermesProfilesOf(asSchema(type)).map((p) => p.name),
 
-  read: (type: Type, object: { properties?: Record<string, unknown> }, key: string, profile = "task") =>
-    readProfile(asSchema(type), object?.properties ?? {}, key, profile as never),
+  read: (
+    type: Type,
+    object: { properties?: Record<string, unknown>; content?: string | null },
+    key: string,
+    profile = "task",
+  ) => readProfile(asSchema(type), object?.properties ?? {}, key, profile as never, object?.content),
 
   isComplete: (type: Type, object: { properties?: Record<string, unknown> }) =>
     hermesIsComplete(asSchema(type), object?.properties ?? {}),

@@ -14,14 +14,23 @@ The layout is what `AGENTS.md` expects (`fixtures/`, `example/`), so an agent
 pointed at this directory can follow its own instructions without rewriting the
 paths.
 
-Two things the spec refers to that do not exist yet, recorded so they aren't
-mistaken for oversights in a reader's own setup:
+```
+check/               pkm-check — the runner, a reference adapter, and the mutants
+```
 
-- `fixtures/conformance.json` — cited under "Loud failure". The two conformance
-  cases currently live at the end of `fixtures/roundtrip.json`
-  (`conformance/unsupported-must-be-declared`,
-  `conformance/silent-coercion-is-a-failure`).
-- `npx pkm-check` — cited under "Checking yourself". No such package.
+The fixtures are now executable: a scenario like "a tool with no matrix view" is
+capability data rather than English, so a runner can act on it. The case grammar
+is in [fixtures/README.md](fixtures/README.md); nothing the suites *say* changed,
+and every `why` is the original text.
+
+```bash
+node check/src/cli.js --self
+```
+
+One thing the spec refers to that still doesn't exist: `fixtures/conformance.json`,
+cited under "Loud failure". Its two cases live at the end of
+`fixtures/roundtrip.json` (`conformance/unsupported-must-be-declared`,
+`conformance/silent-coercion-is-a-failure`) and are tagged level 3.
 
 `AGENTS.md` is a specification, not instructions for this repository. An agent
 working on Hermes that wanders in here will read it as direction; that is what

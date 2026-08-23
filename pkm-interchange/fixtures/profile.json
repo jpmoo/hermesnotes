@@ -1,96 +1,195 @@
 {
   "suite": "profile",
+  "level": 1,
   "about": "Reading a type you have never seen. Every case supplies a type definition and asks a question a consumer needs answered without knowing the producer's vocabulary.",
   "cases": [
     {
       "id": "profile/unknown-name-is-readable",
+      "level": 1,
+      "op": "isComplete",
       "given": {
         "type": {
           "id": "t_errand",
           "name": "Errand",
           "fields": [
-            { "key": "what", "kind": "text" },
-            { "key": "by", "kind": "date" },
-            { "key": "state", "kind": "enum", "options": ["open", "sorted", "abandoned"] }
+            {
+              "key": "what",
+              "kind": "text"
+            },
+            {
+              "key": "by",
+              "kind": "date"
+            },
+            {
+              "key": "state",
+              "kind": "enum",
+              "options": [
+                "open",
+                "sorted",
+                "abandoned"
+              ]
+            }
           ],
           "profiles": {
-            "task": { "title": "what", "due": "by", "status": "state", "completeValues": ["sorted", "abandoned"] }
+            "task": {
+              "title": "what",
+              "due": "by",
+              "status": "state",
+              "completeValues": [
+                "sorted",
+                "abandoned"
+              ]
+            }
           }
         },
-        "object": { "type": "t_errand", "properties": { "what": "Post the forms", "by": "2026-09-01", "state": "open" } }
+        "object": {
+          "type": "t_errand",
+          "properties": {
+            "what": "Post the forms",
+            "by": "2026-09-01",
+            "state": "open"
+          }
+        }
       },
-      "ask": "isComplete",
       "expect": false,
       "why": "The consumer has never heard of an Errand and must not need to. Completion is read through the declared mapping, not inferred from a field called 'status' or a value called 'done'."
     },
     {
       "id": "profile/multiple-complete-values",
+      "level": 1,
+      "op": "isComplete",
+      "inherit": "profile/unknown-name-is-readable",
       "given": {
-        "object": { "type": "t_errand", "properties": { "state": "abandoned" } }
+        "object": {
+          "type": "t_errand",
+          "properties": {
+            "state": "abandoned"
+          }
+        }
       },
-      "ask": "isComplete",
       "expect": true,
       "why": "Completion is a set, not a single value. Abandoned counts as complete for this producer; a consumer must respect that rather than treating only the last option as done."
     },
     {
       "id": "profile/datespan-part-mapping",
+      "level": 1,
+      "op": "read",
       "given": {
         "type": {
           "id": "t_task",
-          "fields": [{ "key": "dates", "kind": "datespan", "startLabel": "Available", "endLabel": "Due" }],
+          "fields": [
+            {
+              "key": "dates",
+              "kind": "datespan",
+              "startLabel": "Available",
+              "endLabel": "Due"
+            }
+          ],
           "profiles": {
-            "task": { "start": { "field": "dates", "part": "start" }, "due": { "field": "dates", "part": "end" } }
+            "task": {
+              "start": {
+                "field": "dates",
+                "part": "start"
+              },
+              "due": {
+                "field": "dates",
+                "part": "end"
+              }
+            }
           }
         },
-        "object": { "properties": { "dates": { "start": "2026-08-25", "end": "2026-08-26" } } }
+        "object": {
+          "properties": {
+            "dates": {
+              "start": "2026-08-25",
+              "end": "2026-08-26"
+            }
+          }
+        }
       },
-      "ask": "due",
+      "args": {
+        "key": "due"
+      },
       "expect": "2026-08-26",
       "why": "One producer's compound field maps onto two of a profile's scalars. A consumer must follow the part mapping rather than assuming a field named 'due' exists, and must not assume the labels are Start and Due — they are producer text."
     },
     {
       "id": "profile/no-declaration-no-guessing",
+      "level": 1,
+      "op": "profilesOf",
       "given": {
         "type": {
           "id": "t_recipe",
           "name": "Recipe",
           "fields": [
-            { "key": "title", "kind": "text" },
-            { "key": "status", "kind": "enum", "options": ["todo", "done"] }
+            {
+              "key": "title",
+              "kind": "text"
+            },
+            {
+              "key": "status",
+              "kind": "enum",
+              "options": [
+                "todo",
+                "done"
+              ]
+            }
           ],
           "profiles": {}
         }
       },
-      "ask": "profiles",
       "expect": [],
       "why": "This type has a field called status with a value called done and is still not a task. A consumer that infers task-ness from field names will import the user's recipe box into their to-do list. Absence of a declaration is information."
     },
     {
       "id": "profile/multiple-profiles",
+      "level": 1,
+      "op": "profilesOf",
       "given": {
         "type": {
           "id": "t_meeting",
           "name": "Meeting",
           "profiles": {
-            "event": { "title": "subject", "start": { "field": "when", "part": "start" } },
-            "note": { "title": "subject", "body": "minutes" }
+            "event": {
+              "title": "subject",
+              "start": {
+                "field": "when",
+                "part": "start"
+              }
+            },
+            "note": {
+              "title": "subject",
+              "body": "minutes"
+            }
           }
         }
       },
-      "ask": "profiles",
-      "expect": ["event", "note"],
+      "expect": [
+        "event",
+        "note"
+      ],
       "why": "A type can satisfy several profiles at once. A calendar tool reads it as an event, a notes tool reads it as a note, and neither has to be told which the producer 'really' meant."
     },
     {
       "id": "profile/unknown-profile-name-ignored",
+      "level": 1,
+      "op": "profilesOf",
       "given": {
         "type": {
           "id": "t_thing",
-          "profiles": { "task": { "title": "t" }, "habit": { "streak": "s" } }
+          "profiles": {
+            "task": {
+              "title": "t"
+            },
+            "habit": {
+              "streak": "s"
+            }
+          }
         }
       },
-      "ask": "profiles",
-      "expect": ["task"],
+      "expect": [
+        "task"
+      ],
       "why": "Profiles outside the v0 vocabulary are ignored for consumption but must survive a round-trip. A producer experimenting with a habit profile loses nothing by declaring it, which is how a vocabulary grows without a committee."
     }
   ]

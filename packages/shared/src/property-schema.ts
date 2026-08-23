@@ -69,9 +69,46 @@ export const fieldDefSchema = z.object({
 });
 export type FieldDef = z.infer<typeof fieldDefSchema>;
 
+/**
+ * How one of a type's fields fills one slot of a profile: a field key, or one
+ * half of a compound field.
+ *
+ * A producer's single datespan is the task profile's `start` and `due` both, and
+ * the labels on it ("Available", "Due") are that producer's own words — never a
+ * vocabulary to match against.
+ */
+export const profileMappingSchema = z.union([
+  z.string(),
+  z.object({ field: z.string(), part: z.enum(["start", "end"]).optional() }),
+]);
+
+/**
+ * What this type *is*, said out loud, in a vocabulary a stranger can read.
+ *
+ * The rule at the top of this file — that nothing outside a property schema may
+ * special-case a type — leaves a gap it never closed: a consumer can be told not
+ * to look at the name, but nothing tells it what to look at instead. Talaria's
+ * seam works a type out from its shape and then falls back to matching seeded
+ * names, and its own comment admits the name is "the best evidence available
+ * when the shape says nothing". This is the shape saying something.
+ *
+ * A type may declare several profiles — a Meeting is an event to a calendar and
+ * a note to a notebook, and neither has to be told which it "really" is. A type
+ * may declare none, and that is an answer: a Recipe with a `status` field whose
+ * options include `done` is still not a task, and only the person who made it
+ * could have said so.
+ *
+ * Names outside the vocabulary are kept, not rejected. That is how a vocabulary
+ * grows without a committee sitting.
+ */
+export const typeProfilesSchema = z.record(z.record(z.unknown()));
+export type TypeProfiles = z.infer<typeof typeProfilesSchema>;
+
 export const propertySchemaSchema = z
   .object({
     fields: z.array(fieldDefSchema),
+    /** What this type is, in profile vocabulary (see typeProfilesSchema). */
+    profiles: typeProfilesSchema.optional(),
     /** which field (by key) carries completion state, if any (§7) */
     status_field: z.string().nullable().optional(),
     /** option values that count as "complete" for checklist/kanban logic */
@@ -161,6 +198,92 @@ export function isComplete(
   if (!schema.status_field || !schema.complete_values?.length) return false;
   const current = properties[schema.status_field];
   return typeof current === "string" && schema.complete_values.includes(current);
+}
+
+/** The profile vocabulary a consumer can rely on. Anything else is carried, not read. */
+export const PROFILE_NAMES = ["task", "event", "contact", "note"] as const;
+export type ProfileName = (typeof PROFILE_NAMES)[number];
+
+export interface ResolvedProfile {
+  name: ProfileName;
+  map: Record<string, unknown>;
+  /**
+   * True when nobody declared this and it was worked out from the schema's
+   * shape. A guess that says it is a guess can be corrected later; one that
+   * passes itself off as a declaration becomes the user's data.
+   */
+  derived: boolean;
+}
+
+/**
+ * What a type declares itself to be — falling back, for `task` only, to what the
+ * schema has always implied.
+ *
+ * `status_field` plus `complete_values` is a task profile that Hermes has been
+ * keeping without a name since the beginning: it says which field carries
+ * completion and which of its values mean finished, which is exactly what a
+ * stranger needs and exactly what the profile asks for. Deriving it costs
+ * nothing and is certain.
+ *
+ * Nothing else is derived. `event`, `contact` and `note` can only be guessed at
+ * from field shapes, and a wrong guess written into a user's type is worse than
+ * no answer at all — the format is explicit that an absent declaration is
+ * information rather than an invitation to infer.
+ */
+export function profilesOf(schema: PropertySchema | null | undefined): ResolvedProfile[] {
+  const out: ResolvedProfile[] = [];
+  const declared = schema?.profiles ?? {};
+  for (const name of Object.keys(declared)) {
+    if ((PROFILE_NAMES as readonly string[]).includes(name)) {
+      out.push({ name: name as ProfileName, map: declared[name] as Record<string, unknown>, derived: false });
+    }
+  }
+  if (!out.some((p) => p.name === "task") && schema?.status_field && schema.complete_values?.length) {
+    out.push({
+      name: "task",
+      map: {
+        title: "title",
+        status: schema.status_field,
+        completeValues: schema.complete_values,
+        ...datespanSlots(schema),
+      },
+      derived: true,
+    });
+  }
+  return out;
+}
+
+/** The first datespan a type has, offered as the task profile's two ends. */
+function datespanSlots(schema: PropertySchema): Record<string, unknown> {
+  const span = schema.fields.find((f) => f.type === "datespan");
+  if (span) return { start: { field: span.key, part: "start" }, due: { field: span.key, part: "end" } };
+  const single = schema.fields.find((f) => f.type === "date" || f.type === "datetime");
+  return single ? { due: single.key } : {};
+}
+
+/**
+ * One value read through a profile rather than off a field name.
+ *
+ * This is the call that replaces knowing what a producer calls things. It is
+ * deliberately not clever: if the mapping doesn't say, the answer is nothing.
+ */
+export function readProfile(
+  schema: PropertySchema | null | undefined,
+  properties: Record<string, unknown>,
+  key: string,
+  profile: ProfileName = "task",
+): unknown {
+  const p = profilesOf(schema).find((x) => x.name === profile);
+  const spec = p?.map[key];
+  if (typeof spec === "string") return properties[spec];
+  if (spec && typeof spec === "object") {
+    const { field, part } = spec as { field?: string; part?: string };
+    if (!field) return undefined;
+    const v = properties[field];
+    if (v === null || v === undefined) return undefined;
+    return part ? (v as Record<string, unknown>)[part] : v;
+  }
+  return undefined;
 }
 
 /** The calendar day a stored date/datetime belongs to, or null if it isn't one. */

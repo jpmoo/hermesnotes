@@ -1,69 +1,229 @@
 {
   "suite": "roundtrip",
+  "level": 2,
   "about": "What must survive a tool that does not understand it. This is the suite most implementations skip and the one that decides whether the format is actually useful between tools that model things differently.",
   "cases": [
     {
       "id": "roundtrip/unknown-property-survives",
+      "level": 2,
+      "op": "roundtrip",
       "given": {
-        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it", "energyLevel": "low", "roastNotes": { "beans": "Guatemalan", "grind": 22 } } }
+        "object": {
+          "id": "o_1",
+          "type": "t_task",
+          "properties": {
+            "title": "Ship it",
+            "energyLevel": "low",
+            "roastNotes": {
+              "beans": "Guatemalan",
+              "grind": 22
+            }
+          }
+        }
       },
-      "when": { "importInto": "a tool with a fixed task schema", "reexport": true },
-      "expect": { "properties": { "title": "Ship it", "energyLevel": "low", "roastNotes": { "beans": "Guatemalan", "grind": 22 } } },
+      "when": {
+        "importInto": "a tool with a fixed task schema",
+        "reexport": true
+      },
+      "with": {
+        "fixedSchema": true
+      },
+      "expect": {
+        "result": {
+          "properties": {
+            "title": "Ship it",
+            "energyLevel": "low",
+            "roastNotes": {
+              "beans": "Guatemalan",
+              "grind": 22
+            }
+          }
+        }
+      },
       "why": "The whole premise is that people model things their own way. If my fields do not survive a trip through your tool, the format has failed at the only job it has. Store unknowns opaquely — do not normalise, reorder, coerce types, or strip nesting."
     },
     {
       "id": "roundtrip/unknown-top-level-key-survives",
+      "level": 2,
+      "op": "roundtrip",
       "given": {
-        "export": { "format": "pkm-interchange/0", "objects": [], "annotations": [{ "note": "exported mid-migration" }] }
+        "export": {
+          "format": "pkm-interchange/0",
+          "objects": [],
+          "annotations": [
+            {
+              "note": "exported mid-migration"
+            }
+          ]
+        }
       },
-      "when": { "reexport": true },
-      "expect": { "annotations": [{ "note": "exported mid-migration" }] },
+      "when": {
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "annotations": [
+            {
+              "note": "exported mid-migration"
+            }
+          ]
+        }
+      },
       "why": "Additive extension at the top level is how this format grows without a version bump. A consumer that drops keys it does not recognise makes every future extension a breaking change."
     },
     {
       "id": "roundtrip/unknown-relation-type-survives",
+      "level": 2,
+      "op": "roundtrip",
       "given": {
-        "relations": [{ "from": "o_1", "to": "o_2", "type": "contradicts" }]
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_2",
+            "type": "contradicts"
+          }
+        ]
       },
-      "when": { "importInto": "a tool with only backlinks", "reexport": true },
-      "expect": { "relations": [{ "from": "o_1", "to": "o_2", "type": "contradicts" }] },
+      "when": {
+        "importInto": "a tool with only backlinks",
+        "reexport": true
+      },
+      "with": {
+        "relations": false
+      },
+      "expect": {
+        "result": {
+          "relations": [
+            {
+              "from": "o_1",
+              "to": "o_2",
+              "type": "contradicts"
+            }
+          ]
+        }
+      },
       "why": "There is no relation vocabulary and there will not be one. Flattening a typed edge into an untyped backlink discards the only thing the edge was carrying."
     },
     {
       "id": "roundtrip/archived-flag-survives",
+      "level": 2,
+      "op": "roundtrip",
       "given": {
-        "object": { "id": "o_1", "archived": true }
+        "object": {
+          "id": "o_1",
+          "archived": true
+        }
       },
-      "when": { "importInto": "a tool with no archive concept", "reexport": true },
-      "expect": { "archived": true },
+      "when": {
+        "importInto": "a tool with no archive concept",
+        "reexport": true
+      },
+      "with": {
+        "archive": false
+      },
+      "expect": {
+        "result": {
+          "archived": true
+        }
+      },
       "why": "The two obvious wrong answers are dropping the object and un-archiving it. Both are visible to the user immediately and both look like data loss, because they are."
     },
     {
       "id": "roundtrip/no-id-rewriting",
+      "level": 2,
+      "op": "roundtrip",
       "given": {
-        "object": { "id": "block-2f9a", "type": "t_task" },
-        "relations": [{ "from": "block-2f9a", "to": "o_9", "type": "supports" }]
+        "object": {
+          "id": "block-2f9a",
+          "type": "t_task"
+        },
+        "relations": [
+          {
+            "from": "block-2f9a",
+            "to": "o_9",
+            "type": "supports"
+          }
+        ]
       },
-      "when": { "importInto": "a tool using integer ids", "reexport": true },
-      "expect": { "id": "block-2f9a" },
+      "when": {
+        "importInto": "a tool using integer ids",
+        "reexport": true
+      },
+      "with": {
+        "remapIds": true
+      },
+      "expect": {
+        "result": {
+          "id": "block-2f9a"
+        }
+      },
       "why": "A consumer may map ids internally but must export the originals. Rewriting them breaks every relation, membership, and series reference held by anyone else who has seen this data, and breaks the next sync from the producer."
     },
     {
       "id": "conformance/unsupported-must-be-declared",
+      "level": 3,
+      "op": "validate",
       "given": {
-        "export": { "conformance": { "profiles": ["task"], "features": ["series"] } },
-        "objects": [{ "properties": { "brief": { "kind": "attachment", "filename": "notes.pdf" } } }]
+        "export": {
+          "conformance": {
+            "profiles": [
+              "task"
+            ],
+            "features": [
+              "series"
+            ]
+          }
+        },
+        "objects": [
+          {
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "notes.pdf"
+              }
+            }
+          }
+        ]
       },
-      "expect": { "invalid": true, "reason": "attachment present but not declared in conformance.features" },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "conformance.undeclared-feature"
+          }
+        ]
+      },
       "why": "The manifest is a promise about the export, not an aspiration. An undeclared feature appearing in the data means a consumer cannot trust the manifest at all, which is worse than having no manifest."
     },
     {
       "id": "conformance/silent-coercion-is-a-failure",
+      "level": 3,
+      "op": "import",
       "given": {
-        "series": { "rule": { "anchor": "completion", "freq": "daily", "interval": 28 } }
+        "series": {
+          "rule": {
+            "anchor": "completion",
+            "freq": "daily",
+            "interval": 28
+          }
+        }
       },
-      "when": { "importInto": "a tool with only schedule-anchored recurrence" },
-      "expect": { "fidelity": "reduced", "reported": "anchor=completion not supported" },
+      "when": {
+        "importInto": "a tool with only schedule-anchored recurrence"
+      },
+      "with": {
+        "series": {
+          "anchors": [
+            "schedule"
+          ]
+        }
+      },
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "series.anchor"
+        ]
+      },
       "why": "Importing this as schedule-anchored produces a task that looks right and drifts. The user discovers it in March. An import that reports the loss lets them decide; one that does not has quietly handed them wrong data and told them everything went fine."
     }
   ]

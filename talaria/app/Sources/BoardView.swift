@@ -301,7 +301,7 @@ struct BoardView: View {
                                 .frame(width: widths[i], alignment: .leading)
                         }
                     }
-                    .background(Rectangle().fill(Color.secondary.opacity(0.10)))
+                    .background(Rectangle().fill(Color.primary.opacity(0.09)))
 
                     ForEach(Array(board.tableRows.enumerated()), id: \.element.id) { r, row in
                         HStack(spacing: 0) {
@@ -315,8 +315,10 @@ struct BoardView: View {
                             }
                         }
                         // Banded, because a wide row is hard to follow across
-                        // without something to hold the eye on the line.
-                        .background(r.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.05))
+                        // without something to hold the eye on the line — as a
+                        // tint of the text rather than a surface colour, which
+                        // is what a control is painted with.
+                        .background(r.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.06))
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if let card = model.allCards.first(where: { $0.id == row.id }),

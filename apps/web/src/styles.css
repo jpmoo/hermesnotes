@@ -4982,8 +4982,15 @@ input.matrix-axis-y::placeholder {
   vertical-align: middle;
 }
 /* Alternate row shading. */
+/* Banding is a tint of the text, not a surface.
+
+   --surface-2 is what buttons and chips are painted, so a banded row read as a
+   control — most obviously in the dark theme, where the two are close enough to
+   be the same thing. A translucent tint of --text has no such collision and is
+   how the list stripes already do it; a row band is wider than a list stripe, so
+   it takes less of it to say the same thing. */
 .tv-table tbody tr:nth-child(even) {
-  background: var(--surface-2);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 .tv-table tbody tr:last-child td {
   border-bottom: none;

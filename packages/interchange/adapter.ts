@@ -22,6 +22,7 @@ import {
 } from "@hermes/shared";
 import { fromInterchange } from "./src/import.js";
 import { toInterchange } from "./src/map.js";
+import { validateEnvelope } from "./src/validate.js";
 
 type Type = { propertySchema?: PropertySchema; fields?: unknown[]; profiles?: Record<string, unknown> };
 
@@ -66,6 +67,22 @@ function roundtrip(envelope: Record<string, unknown>) {
 }
 
 export const hermesAdapter = {
+  validate: validateEnvelope,
+
+  /**
+   * Byte-wise, which is what the database does.
+   *
+   * `memberships.position` is `COLLATE "C"` — migration 0028, which exists
+   * because the column used to carry the install's language collation and a
+   * language collation reads letters before case. "Zz" landed after "a0", and
+   * the one drop that generates a capital key is dropping at the top of a list,
+   * so a card dragged to the first line came back at the bottom.
+   */
+  order: (members: { object?: string; id?: string; position?: string }[]) =>
+    [...members]
+      .sort((a, b) => (String(a.position) < String(b.position) ? -1 : String(a.position) > String(b.position) ? 1 : 0))
+      .map((m) => m.object ?? m.id),
+
   import: roundtrip,
   roundtrip,
 

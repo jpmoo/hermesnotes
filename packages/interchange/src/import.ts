@@ -183,7 +183,12 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
 
     for (const m of (c.members ?? []) as Record<string, unknown>[]) {
       const region = typeof m.region === "string" ? names.indexOf(m.region) : -1;
-      if (typeof m.region === "string" && region < 0) {
+      // Only a *semantic* region is a judgment somebody made and a placement
+      // that has to land somewhere. On a board whose columns are drawn from a
+      // status field the objects already carry, the region is a rendering of
+      // data held elsewhere: dropping it loses nothing, and reporting it would
+      // teach a reader to ignore the report that matters.
+      if (placement.semantic === true && typeof m.region === "string" && region < 0) {
         note(
           "placement.region-not-declared",
           "format",

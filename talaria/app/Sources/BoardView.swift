@@ -276,45 +276,74 @@ struct BoardView: View {
     /// Drawn as a list of titles it stopped being a table — the columns are the
     /// whole point of choosing that shape for a collection.
     private func table(_ board: Daemon.Board) -> some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    ForEach(board.columns) { column in
-                        Text(column.label)
-                            .font(Theme.chrome(10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: width(for: column, in: board), alignment: .leading)
-                            .padding(.vertical, 5).padding(.horizontal, 6)
-                    }
-                }
-                .background(Rectangle().fill(Color.secondary.opacity(0.10)))
-
-                ForEach(Array(board.tableRows.enumerated()), id: \.element.id) { i, row in
+        GeometryReader { geo in
+            // Fills the width, keeping whatever proportions were set in the web
+            // app. A fixed pixel width there means nothing here — the panel is
+            // not the browser — but the relative sizes are a real choice and
+            // worth carrying across.
+            // Room for the scroller, which overlays the content on a trackpad
+            // and takes space from it on a mouse.
+            let widths = columnWidths(board, available: geo.size.width - 16)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 0) {
-                        ForEach(board.columns) { column in
-                            Text(row.cells[column.key] ?? "")
-                                .font(Theme.body(11))
+                        ForEach(Array(board.columns.enumerated()), id: \.element.key) { i, column in
+                            Text(column.label)
+                                .font(Theme.chrome(10, weight: .semibold))
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
-                                .frame(width: width(for: column, in: board), alignment: .leading)
-                                .padding(.vertical, 4).padding(.horizontal, 6)
+                                // Padding first, then the frame: the other way
+                                // round the padding is added *outside* the
+                                // width, so every column is twelve points wider
+                                // than it was measured to be and the last one
+                                // falls off the edge.
+                                .padding(.vertical, 5).padding(.horizontal, 6)
+                                .frame(width: widths[i], alignment: .leading)
                         }
                     }
-                    // Banded, because a wide row is hard to follow across
-                    // without something to hold the eye on the line.
-                    .background(i.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.05))
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if let card = model.allCards.first(where: { $0.id == row.id }),
-                           let u = URL(string: card.url) { Opener.open(u) }
+                    .background(Rectangle().fill(Color.secondary.opacity(0.10)))
+
+                    ForEach(Array(board.tableRows.enumerated()), id: \.element.id) { r, row in
+                        HStack(spacing: 0) {
+                            ForEach(Array(board.columns.enumerated()), id: \.element.key) { i, column in
+                                Text(row.cells[column.key] ?? "")
+                                    .font(Theme.body(11))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .padding(.vertical, 4).padding(.horizontal, 6)
+                                    .frame(width: widths[i], alignment: .leading)
+                            }
+                        }
+                        // Banded, because a wide row is hard to follow across
+                        // without something to hold the eye on the line.
+                        .background(r.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.05))
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if let card = model.allCards.first(where: { $0.id == row.id }),
+                               let u = URL(string: card.url) { Opener.open(u) }
+                        }
                     }
                 }
             }
         }
     }
 
-    /// Title gets the room; everything else is a date or a word.
-    private func width(for column: Daemon.Column, in board: Daemon.Board) -> CGFloat {
-        column.key == "title" ? 260 : 130
+    /// Each column's share of the room available.
+    ///
+    /// A column nobody has resized has no stored width, so it is given a
+    /// sensible one to be proportional *with* — otherwise it would collapse to
+    /// nothing beside the columns that do have one.
+    private func columnWidths(_ board: Daemon.Board, available: CGFloat) -> [CGFloat] {
+        let weights = board.columns.map { column -> CGFloat in
+            if let w = column.width, w > 0 { return CGFloat(w) }
+            return column.key == "title" ? 260 : 130
+        }
+        let total = weights.reduce(0, +)
+        guard total > 0, available > 0 else { return weights }
+        // A floor, so a narrow panel doesn't squeeze a column into a sliver;
+        // the horizontal scroll picks up the overflow when that happens.
+        let scaled = weights.map { max(64, available * $0 / total) }
+        return scaled
     }
 
     /// Everything that isn't a grid or a canvas: a list, in its own order.

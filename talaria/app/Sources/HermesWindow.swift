@@ -66,7 +66,7 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
             backing: .buffered,
             defer: false
         )
-        win.title = "Hermes"
+        win.title = "Hermes Notes"
         win.contentView = view
         win.delegate = self
         win.isReleasedWhenClosed = false
@@ -167,7 +167,7 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
 
         let viewItem = NSMenuItem()
         let view = NSMenu(title: "View")
-        view.addItem(withTitle: "Open Hermes", action: #selector(openHome), keyEquivalent: "0").target = shared
+        view.addItem(withTitle: "Open Hermes Notes", action: #selector(openHome), keyEquivalent: "0").target = shared
         view.addItem(.separator())
         view.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "r").target = shared
         view.addItem(withTitle: "Back", action: #selector(goBack), keyEquivalent: "[").target = shared

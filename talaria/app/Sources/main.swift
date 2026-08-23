@@ -223,7 +223,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // This one is the same two overlapping bubbles, which is as close to
             // the mark as legibility allows.
             let symbolName = Self.configured("menuBarSymbol") ?? "bubble.left.and.bubble.right"
-            if let sym = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Hermes") {
+            if let sym = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Hermes Notes") {
                 sym.isTemplate = true // so macOS inverts it for a dark menu bar
                 button.image = sym.withSymbolConfiguration(
                     NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
@@ -235,7 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 button.image = icon
                 NSLog("talaria: status item fell back to MenuBar.png")
             } else {
-                button.title = "Hermes"
+                button.title = "Hermes Notes"
                 NSLog("talaria: status item has no image at all")
             }
             button.action = #selector(toggleBoard(_:))
@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Ask Hermes"
+        panel.title = "Ask Hermes Notes"
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.level = .floating
@@ -332,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.title = "Hermes"
+        panel.title = "Hermes Notes Collections"
         panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.level = .floating
@@ -374,14 +374,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Right-click is the way out of an app with no menu bar.
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
-            let open = menu.addItem(withTitle: "Open Hermes", action: #selector(showHermes), keyEquivalent: "")
+            let open = menu.addItem(withTitle: "Open Hermes Notes", action: #selector(showHermes), keyEquivalent: "")
             open.target = self
             open.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
             menu.addItem(.separator())
-            let ask = menu.addItem(withTitle: "Ask Hermes", action: #selector(showAssistant), keyEquivalent: "")
+            let ask = menu.addItem(withTitle: "Ask Hermes Notes", action: #selector(showAssistant), keyEquivalent: "")
             ask.target = self
             ask.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
-            let coll = menu.addItem(withTitle: "Collections", action: #selector(showBoard), keyEquivalent: "")
+            let coll = menu.addItem(withTitle: "Hermes Notes Collections", action: #selector(showBoard), keyEquivalent: "")
             coll.target = self
             coll.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)
 
@@ -390,7 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // one left click to give, and which one you want depends on how you
             // work — so it is a choice rather than my guess.
             let submenu = NSMenu()
-            for (title, value) in [("Ask Hermes", "assistant"), ("Collections", "board")] {
+            for (title, value) in [("Ask Hermes Notes", "assistant"), ("Hermes Notes Collections", "board")] {
                 let item = submenu.addItem(withTitle: title, action: #selector(setPrimary(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = value

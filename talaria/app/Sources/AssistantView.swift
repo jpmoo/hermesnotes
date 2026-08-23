@@ -109,7 +109,7 @@ struct AssistantView: View {
         HStack(spacing: 7) {
             Image(systemName: "bubble.left.and.bubble.right.fill")
                 .font(.system(size: 12)).foregroundStyle(Theme.accent)
-            Text("Ask Hermes").font(Theme.chrome(12, weight: .semibold))
+            Text("Ask Hermes Notes").font(Theme.chrome(12, weight: .semibold))
             Spacer()
             if !model.turns.isEmpty {
                 Button {
@@ -126,7 +126,7 @@ struct AssistantView: View {
 
     private var placeholder: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Ask about anything in Hermes.")
+            Text("Ask about anything in Hermes Notes.")
                 .font(Theme.body(12)).foregroundStyle(.secondary)
             ForEach(["What's due this week?",
                      "Mark the roof task done",
@@ -253,7 +253,7 @@ struct AssistantView: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
-            TextField("Ask Hermes…", text: $model.draft, axis: .vertical)
+            TextField("Ask Hermes Notes…", text: $model.draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(Theme.body(12))
                 .lineLimit(1...4)

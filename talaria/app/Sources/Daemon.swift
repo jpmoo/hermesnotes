@@ -170,6 +170,10 @@ enum Daemon {
     struct Column: Decodable, Identifiable, Hashable {
         let key: String
         let label: String
+        /// The width it was dragged to in the web app, if it ever was. Used as
+        /// a proportion here rather than a size — the panel is a different width
+        /// from the browser and should still be full.
+        let width: Double?
         var id: String { key }
     }
     struct Row: Decodable, Identifiable {

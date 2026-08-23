@@ -305,8 +305,15 @@ export function buildServer(deps: {
      * two legs are separate columns. Rendered as a list of blocks with a date
      * underneath, a table stops being a table — the columns are the point.
      */
-    const tableColumns = (): { key: string; label: string }[] => {
+    const tableColumns = (): { key: string; label: string; width: number | null }[] => {
       const raw = Array.isArray(props.table_columns) ? (props.table_columns as string[]) : [];
+      // Stored per column in pixels, and not for every column — a width the
+      // user has never dragged simply isn't there. Passed on as-is; turning
+      // them into shares of whatever room there is belongs where the room is
+      // known, which is not here.
+      const widths = (props.table_col_widths ?? {}) as Record<string, unknown>;
+      const widthOf = (key: string): number | null =>
+        typeof widths[key] === "number" && Number.isFinite(widths[key]) ? (widths[key] as number) : null;
       const schemaOf = (typeId: string | null) => (typeId ? types().get(typeId)?.propertySchema : null);
       // Members can be of mixed types; the first one with a schema names the
       // columns, which is what the app does when it draws a heading.
@@ -315,15 +322,15 @@ export function buildServer(deps: {
         .find((b) => b.blockTypeId);
       const schema = schemaOf(firstTyped?.blockTypeId ?? null);
       return raw.map((key) => {
-        if (key === "title") return { key, label: "Title" };
-        if (key === "edited") return { key, label: "Edited" };
+        if (key === "title") return { key, label: "Title", width: widthOf(key) };
+        if (key === "edited") return { key, label: "Edited", width: widthOf(key) };
         const bare = key.startsWith("prop:") ? key.slice(5) : key;
         const [fieldKey, leg] = bare.split(".");
         const field = (schema?.fields ?? []).find((f) => f.key === fieldKey);
         const base = field?.label?.trim() || (fieldKey ?? key).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-        if (leg === "start") return { key, label: field?.startLabel?.trim() || `${base} from` };
-        if (leg === "end") return { key, label: field?.endLabel?.trim() || `${base} to` };
-        return { key, label: base };
+        if (leg === "start") return { key, label: field?.startLabel?.trim() || `${base} from`, width: widthOf(key) };
+        if (leg === "end") return { key, label: field?.endLabel?.trim() || `${base} to`, width: widthOf(key) };
+        return { key, label: base, width: widthOf(key) };
       });
     };
 

@@ -20,7 +20,14 @@ export const CONFORMANCE = {
   produce: 4,
   consume: 4,
   operate: 4,
-  bindings: ["file", "http", "mcp"],
+  /**
+   * `mcp` is deliberately absent. The MCP tools are safe — they read a block and
+   * merge, so an agent that sets one field does not destroy the others — but
+   * safe is not the same as speaking this vocabulary. They know nothing of
+   * profiles and report no fidelity, and a binding is a claim that the model
+   * travels over that transport, not that the transport is well behaved.
+   */
+  bindings: ["file", "http"],
   profiles: ["task", "note"],
   features: ["placement", "derivations", "relations", "attachments"],
   /** Recurrence is held on the block, not as a series with instances pointing at it. */

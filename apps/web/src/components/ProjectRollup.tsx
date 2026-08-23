@@ -262,7 +262,8 @@ export function ProjectRollup({
   return (
     <div className="proj-rollup">
       <div className="proj-rollup-head">
-        Connected <span className="ru-count">{kids.length}</span>
+        {/* The style sheet does the shouting; the markup says it once, plainly. */}
+        Project blocks <span className="ru-count">{kids.length}</span>
       </div>
       {keys.map((k) => (
         <Section

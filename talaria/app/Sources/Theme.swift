@@ -78,33 +78,18 @@ enum Theme {
 
 /// Opening a Hermes address.
 ///
-/// Everything in Talaria resolves to an `https://` URL and hands it to whatever
-/// opens those — normally a browser. `openWith` in config.json names an
-/// application to hand them to instead, so a wrapped copy of Hermes can take
-/// them rather than a browser tab.
+/// Anything belonging to this Hermes opens in Talaria's own window; anything
+/// else is somebody else's website and goes to the browser. That distinction is
+/// the whole reason the window exists — a deep link should land on the thing it
+/// names, in the application that already knows what the link means.
 enum Opener {
-    private static var preferred: URL? {
-        let path = NSHomeDirectory() + "/Library/Application Support/Talaria/config.json"
-        guard let data = FileManager.default.contents(atPath: path),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let name = obj["openWith"] as? String, !name.isEmpty
-        else { return nil }
-        if name.hasPrefix("/") { return URL(fileURLWithPath: name) }
-        // A bundle id, or a bare application name.
-        if let byId = NSWorkspace.shared.urlForApplication(withBundleIdentifier: name) { return byId }
-        return URL(fileURLWithPath: "/Applications/\(name).app")
-    }
-
+    /// Called from views, which are already on the main actor.
+    @MainActor
     static func open(_ url: URL) {
-        guard let app = preferred, FileManager.default.fileExists(atPath: app.path) else {
+        if HermesWindow.shared.isHermes(url) {
+            HermesWindow.shared.show(url)
+        } else {
             NSWorkspace.shared.open(url)
-            return
-        }
-        NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, err in
-            if let err {
-                NSLog("talaria: couldn't open in \(app.lastPathComponent) — \(err); falling back")
-                DispatchQueue.main.async { NSWorkspace.shared.open(url) }
-            }
         }
     }
 }

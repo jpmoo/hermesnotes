@@ -212,6 +212,26 @@ no drag, no drop and no scroll — and dragging between quadrants is most of wha
 a matrix is for. A window also reaches the daemon socket directly, with no
 sandbox, App Group or entitlement in the way, and needs no App Intents.
 
+## Hermes in a window
+
+Talaria carries its own `WKWebView` window. **Open Hermes** in the menu bar
+item's right-click menu, or click anything anywhere in Talaria — a card, a
+Spotlight result, a `talaria://` link — and it lands there rather than in a
+browser tab.
+
+Links *out* of Hermes still go to the default browser: someone else's website
+belongs in a browser, and the distinction is the whole reason the window exists.
+
+The session persists on disk, so logging in is a one-off. While the window is
+open the app takes a Dock icon and a menu bar — without one there is no Edit
+menu, and a web view swallows ⌘C and ⌘V with no way to get them back. It drops
+back to a menu-bar-only tool when the window closes.
+
+This replaces pointing deep links at a Nativefier wrapper. That build receives
+`open-url` and forwards it to a renderer with no listener for it, so links
+arrive and vanish; its `second-instance` handler ignores argv too. Registering a
+scheme against it would have raised the window and discarded the link.
+
 ## Spotlight and links
 
 The app indexes the mirror into CoreSpotlight, so ⌘Space finds your blocks and

@@ -347,6 +347,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Right-click is the way out of an app with no menu bar.
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
+            let open = menu.addItem(withTitle: "Open Hermes", action: #selector(showHermes), keyEquivalent: "")
+            open.target = self
+            open.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
+            menu.addItem(.separator())
             let ask = menu.addItem(withTitle: "Ask Hermes", action: #selector(showAssistant), keyEquivalent: "")
             ask.target = self
             ask.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
@@ -390,6 +394,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showBoard() { toggleBoardWindow() }
+
+    @objc private func showHermes() { HermesWindow.shared.show() }
 
     @objc private func refreshBoard() { boardModel.load() }
 

@@ -286,9 +286,34 @@ Two mechanisms, deliberately.
 
 `type` is a free string. There is no vocabulary and v0 does not attempt one — the moment you standardise an edge vocabulary you are running an ontology committee, which is where this genre of project goes to die. Consumers preserve relation types they do not understand and must not drop them.
 
-`via` says where the edge came from: `"field"` for one a type declared, `"inline"` for one written into prose (see below), `"edge"` for one drawn — on a canvas, say. Absent means unspecified. It is not decoration: an edge in a sentence and an edge in a form are edited in completely different ways, and a consumer that flattens them together will offer to change the wrong one.
+`via` says where an edge came from: `"inline"` for one written into prose (see below), `"edge"` for one drawn — on a canvas, say. Absent means unspecified. It is not decoration: an edge in a sentence and an edge someone dragged are edited in completely different ways, and a consumer that flattens them together will offer to change the wrong one.
 
-`resolved: false` marks an edge whose far end is not in this export — deleted, or out of scope. Consumers keep it. Dropping an edge because its target is missing destroys the only remaining record that the writing points at something.
+A declared reference is **not** repeated here. It already exists as a property value, the type system already says what it points at, and copying it into `relations` gives a consumer two records of one fact that drift the moment somebody edits either.
+
+### What a link's type is, and where it lives
+
+Nothing here says what *kind* of link an edge is, and that is deliberate.
+
+The kind of the **thing at the far end** — person, project, book — belongs to that thing. It is on the target object's type, exactly once. Stamping it onto the edge as well means retyping an object silently falsifies every edge pointing at it.
+
+The kind of the **relationship** is a different question with two different answers. A declared reference already carries it: the field is named `owner` or `project`, and its `targetType` says what it accepts. That is a link type, declared by the person who built the type, and it needs no help.
+
+An inline mention has no relationship type, because nobody declared one. Somebody typed a name in a sentence. Inventing `references` or `relates-to` for it would be guessing, and guessing at meaning is the thing this format exists to stop. `type` on a mirrored edge says how the edge was made, not what it means, and a consumer that needs more looks at the target.
+
+### An edge that points at nothing yet
+
+```json
+{ "from": "o_1", "type": "mentions", "via": "inline",
+  "field": "body", "label": "the roofer", "resolved": false }
+```
+
+`resolved: false` marks an edge whose far end is not in this export — deleted, or out of scope, or never created. Consumers keep it: dropping an edge because its target is missing destroys the only remaining record that the writing points at something.
+
+`label` is what the mention said. Without it an unresolved edge is a bare id, and the prose around it cannot be rendered at all — a reader is left with a sentence that plainly refers to somebody and no way to know who. With it, a tool can show the name, offer to create the thing, or offer to clear the link.
+
+`to` may therefore be **absent**: a mention of a person who does not exist yet is a real and common thing to write, and it has a label and no id. A relation must carry `from`, and must carry `to` or `label` — an edge with neither is not an edge, it is a row.
+
+→ `fixtures/inline.json`
 
 ---
 

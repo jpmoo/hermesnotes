@@ -249,6 +249,67 @@
         ]
       },
       "why": "The mirror is only trustworthy if it points at something real. An edge claiming to come from a field the type does not have is either a stale export or a producer guessing, and a consumer has no way to tell which — so it is caught here rather than becoming a link nobody can trace back to a sentence."
+    },
+    {
+      "id": "inline/unresolved-mention-keeps-its-label",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "properties": {
+              "body": "Rang @the_roofer again."
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "type": "mentions",
+            "via": "inline",
+            "field": "body",
+            "label": "the roofer",
+            "resolved": false
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "relations": [
+            {
+              "label": "the roofer",
+              "resolved": false
+            }
+          ]
+        }
+      },
+      "why": "A mention with no id is a bare row unless it says what it said. Without the label a consumer cannot render the sentence around it — the reader is left with prose that plainly refers to somebody and no way to know who — and cannot offer to create the missing thing or clear the link. The label is the whole difference between a broken reference and a reference to something that does not exist yet."
+    },
+    {
+      "id": "inline/an-edge-needs-a-far-end",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "export": {
+          "relations": [
+            {
+              "from": "o_1",
+              "type": "mentions",
+              "via": "inline"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "relation.no-target"
+          }
+        ]
+      },
+      "why": "`to` may be absent — a mention of a person who does not exist yet is a normal thing to write, and it has a name and no id. What is not allowed is neither: an edge with no id and no label points at nothing and says nothing, and a consumer can do exactly nothing with it except carry it forever."
     }
   ]
 }

@@ -175,6 +175,18 @@ const MUTANTS = [
     }),
   },
   {
+    name: "keeps the dangling edge but throws away what it said",
+    caught: "inline/unresolved-mention-keeps-its-label",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        for (const r of out.result.relations ?? []) delete r.label;
+        return out;
+      },
+    }),
+  },
+  {
     name: "treats a patch as the whole object",
     caught: "operational/absent-is-not-delete",
     patch: (a) => ({

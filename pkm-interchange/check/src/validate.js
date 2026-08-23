@@ -71,6 +71,13 @@ export function validate(envelope) {
     }
   });
 
+  // An edge may lack an id — a mention of somebody who does not exist yet has a
+  // name and nothing else — but it cannot lack both. With neither it points at
+  // nothing and says nothing, and a consumer can only carry it forever.
+  (envelope.relations ?? []).forEach((r, i) => {
+    if (!r.to && !r.label) fail("relation.no-target", `relations[${i}]`);
+  });
+
   // Only an object can be deleted. A membership, a tag, a placement going away
   // is an update to the object that had it — and `delete` is a word every
   // follower treats as final.

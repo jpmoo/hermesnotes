@@ -20,7 +20,13 @@ const MUTANTS = [
   {
     name: "clamp re-anchors to the shorter month",
     caught: "recurrence/monthly-clamp-does-not-reanchor",
-    patch: (a) => ({ ...a, nextOccurrence: (s, i, e) => a.nextOccurrence({ ...s, anchorDay: undefined }, i, e) }),
+    // Advance from the last occurrence's day rather than the rule's. The rule
+    // now carries the day, so forgetting it means ignoring `byMonthDay` too.
+    patch: (a) => ({
+      ...a,
+      nextOccurrence: (s, i, e) =>
+        a.nextOccurrence({ ...s, anchorDay: undefined, rule: { ...s.rule, byMonthDay: undefined } }, i, e),
+    }),
   },
   {
     name: "drops regions it cannot draw",

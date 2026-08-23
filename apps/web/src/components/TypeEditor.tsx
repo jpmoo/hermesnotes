@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { api, ApiError, type Block, type BlockType } from "../api.ts";
 import { useAiConfig } from "../lib/ai-config.tsx";
 import { BlockIcon } from "../lib/icons.tsx";
-import { ProfileDeclaration } from "./ProfileDeclaration.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
 import { IconPickerModal } from "./IconPickerModal.tsx";
 
@@ -130,12 +129,12 @@ export function TypeEditor({
     initial?.propertySchema?.complete_values ?? [],
   );
   const [defaultValue, setDefaultValue] = useState(initial?.propertySchema?.default_value ?? "");
-  // Every declared profile, including names this editor doesn't render. A type
-  // carrying a profile from a newer Hermes — or from a hand edit — must not lose
-  // it just because it was opened here.
-  const [profiles, setProfiles] = useState<Record<string, Record<string, unknown>>>(
-    (initial?.propertySchema?.profiles as Record<string, Record<string, unknown>>) ?? {},
-  );
+  // Carried, not edited. Nothing here asks what a type is — the question is
+  // about interoperability with tools the reader may never touch, and the two
+  // profiles that cannot be worked out from the schema are the two nothing in
+  // Hermes reads yet. But a type that has declared one, by hand or by some
+  // later surface, must not lose it for having been opened in this form.
+  const profiles = (initial?.propertySchema?.profiles ?? {}) as Record<string, Record<string, unknown>>;
   const initialStatus = initial?.propertySchema?.fields.find(
     (f) => f.type === "status" && f.key === initial?.propertySchema?.status_field,
   );
@@ -224,9 +223,9 @@ export function TypeEditor({
       status_field: activeStatus ? activeStatus.key : null,
       complete_values: activeStatus ? completeValues : undefined,
       default_value: activeStatus ? defaultValue || null : null,
-      // The task profile's completion slots are filled from the status field
-      // rather than asked for twice: two places to say the same thing is two
-      // places to disagree.
+      // A declared task profile keeps its completion slots in step with the
+      // status field set below: two places to say the same thing is two places
+      // to disagree.
       profiles: Object.keys(profiles).length
         ? Object.fromEntries(
             Object.entries(profiles).map(([name, map]) => [
@@ -479,13 +478,6 @@ export function TypeEditor({
           )}
         </div>
       )}
-
-      <ProfileDeclaration
-        fields={fields}
-        value={profiles}
-        onChange={setProfiles}
-        hasCompletion={Boolean(activeStatus)}
-      />
 
       {error && <div className="error">{error}</div>}
       <div className="type-actions">

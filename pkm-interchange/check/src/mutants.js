@@ -115,6 +115,66 @@ const MUTANTS = [
     }),
   },
   {
+    name: "normalises prose into its own markup",
+    caught: "inline/prose-is-opaque",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        for (const o of out.result.objects ?? []) {
+          for (const [k, v] of Object.entries(o.properties ?? {})) {
+            if (typeof v === "string") o.properties[k] = v.replace(/\(\((\w+)\)\)/g, "[[$1]]");
+          }
+        }
+        return out;
+      },
+    }),
+  },
+  {
+    name: "drops inline edges it cannot find in the prose",
+    caught: "inline/mirrored-edge-survives-prose-blindness",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        out.result.relations = (out.result.relations ?? []).filter((r) => r.via !== "inline");
+        return out;
+      },
+    }),
+  },
+  {
+    name: "flattens typed edges into untyped backlinks",
+    caught: "inline/inline-edge-is-not-a-backlink",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        out.result.relations = (out.result.relations ?? []).map((r) => ({ from: r.from, to: r.to }));
+        return out;
+      },
+    }),
+  },
+  {
+    name: "tidies away mentions whose target has gone",
+    caught: "inline/unresolved-mention-survives",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        out.result.relations = (out.result.relations ?? []).filter((r) => r.resolved !== false);
+        return out;
+      },
+    }),
+  },
+  {
+    name: "rewrites prose without saying so",
+    caught: "inline/rewriting-prose-must-report",
+    patch: (a) => ({
+      ...a,
+      import: (env, caps) => a.import(env, { ...caps, richtextRewrite: false }),
+    }),
+  },
+  {
     name: "accepts a semantic placement given as coordinates",
     caught: "placement/semantic-requires-named-regions",
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),

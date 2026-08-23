@@ -1,19 +1,7 @@
 import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import {
-  filterQuerySchema,
-  isComplete,
-  datedInRange,
-  nextSpan,
-  normalizeFilter,
-  oneLineLabel,
-  periodicKindOf,
-  TEMPLATE_MARKER,
-  recurrenceContinues,
-  recurrenceSchema,
-  type PropertySchema,
-} from "@hermes/shared";
+import { datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
@@ -1265,21 +1253,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       if (Array.isArray(v)) outIds.push(...v.map(String));
       else if (typeof v === "string" && v) outIds.push(v);
     }
-    const linkRe = /block:([0-9a-fA-F-]{36})|\|([0-9a-fA-F-]{36})/g;
-    for (const text of [b.content ?? "", ...Object.values(props).map((v) => (typeof v === "string" ? v : ""))]) {
-      let m: RegExpExecArray | null;
-      while ((m = linkRe.exec(text)) !== null) {
-        const target = m[1] ?? m[2];
-        if (target && target !== id) outIds.push(target);
-      }
-    }
-    // Raw `@Name_With_Underscores` mentions resolve by exact title match.
-    const atNames = new Set<string>();
-    for (const text of Object.values(props).map((v) => (typeof v === "string" ? v : ""))) {
-      const re = /(^|\s)@([A-Za-z0-9][\w-]*)/g;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(text)) !== null) if (m[2]) atNames.add(m[2].replace(/_/g, " ").toLowerCase());
-    }
+    // One reader for prose references, shared with the graph panel. It scans the
+    // body as well as the properties, which this site did for `block:` links and
+    // not for `@Name` — so a daily note that mentioned somebody was connected on
+    // the graph and not here.
+    const inline = inlineMentions(props, b.content, id);
+    outIds.push(...inline.ids);
+    const atNames = new Set<string>(inline.names);
     if (atNames.size) {
       const named = await db
         .select({ id: blocks.id })

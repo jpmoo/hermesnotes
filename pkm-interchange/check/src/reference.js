@@ -97,6 +97,23 @@ export function importEnvelope(envelope, capabilities = {}) {
 
   if (capabilities.relations === false && (doc.relations ?? []).length) say("relations");
 
+  const prose = (e) =>
+    (e.types ?? []).some((t) => (t.fields ?? []).some((f) => f.kind === "richtext")) ||
+    (e.objects ?? []).some((o) => Object.values(o.properties ?? {}).some((v) => typeof v === "string"));
+  if (capabilities.richtext === false && prose(doc)) {
+    // The writing comes back intact — nothing here takes a document apart — but
+    // this tool cannot show it, and a reader here is missing the body of every
+    // note.
+    say("richtext");
+  }
+  if (capabilities.richtextRewrite && (doc.relations ?? []).some((r) => r.via === "inline")) {
+    // The whole point of mirroring prose edges into relations. A tool that
+    // rewrites markup cannot parse the dialect it is replacing, so it cannot
+    // tell whether it just destroyed a link — but the mirror can tell it there
+    // was one to destroy.
+    say("richtext.mentions");
+  }
+
   return { result: doc, fidelity: reports.length ? "reduced" : "full", reports };
 }
 

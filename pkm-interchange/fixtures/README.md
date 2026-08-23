@@ -29,6 +29,9 @@ runner can act on it.
 - `with` — the **capabilities** of the consumer being simulated.
 - `expect` — matched as a **subset**. Keys absent from `expect` are not checked,
   so a case says only what it is about.
+- `of` — which part of the result `expect.result` is about: `envelope`,
+  `object` or `collection`. Inferred when absent, from what `given` holds. Say it
+  outright whenever `given` holds more than one thing.
 - `level` — the interoperability rung the case belongs to (see `AGENTS.md`).
 
 ## Operations
@@ -66,6 +69,8 @@ people to ignore warnings.
 | `series: { anchors: [...] }` | recurrence, but only these anchors |
 | `conditions: [...]` | query condition kinds it can evaluate |
 | `profiles: [...]` | profiles it understands |
+| `richtext: false` | cannot hold prose at all |
+| `richtextRewrite: true` | normalises prose into its own markup on import |
 | `fixedSchema: true` | maps into a fixed internal model — the hard case for unknown fields |
 | `remapIds: true` | keys objects by its own ids internally |
 
@@ -86,6 +91,7 @@ without matching an error message.
 | `series.completion-byweekday` | `byWeekday` is meaningless with `anchor: completion` |
 | `series.month-end-required` | monthly and yearly rules must declare `monthEnd` |
 | `conformance.undeclared-feature` | the data uses a feature the manifest omits |
+| `inline.field-not-declared` | an inline edge names a field its type hasn't got |
 
 ## One thing the spec does not yet answer
 

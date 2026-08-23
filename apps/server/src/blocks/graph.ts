@@ -1,7 +1,7 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { blockTypes, blocks, memberships } from "@hermes/db";
 import type { FilterQuery, PropertySchema } from "@hermes/shared";
-import { oneLineLabel } from "@hermes/shared";
+import { inlineMentions, oneLineLabel, textsOf } from "@hermes/shared";
 import { db } from "../db.js";
 import { runQuery } from "../collections/query.js";
 
@@ -34,7 +34,6 @@ export interface GraphResult {
 }
 
 const NODE_CAP = 160;
-const LINK_RE = /block:([0-9a-fA-F-]{36})|\|([0-9a-fA-F-]{36})/g;
 
 type Row = {
   id: string;
@@ -52,13 +51,6 @@ const ROW_COLS = {
   properties: blocks.properties,
   content: blocks.content,
 };
-
-/** Strings to scan for links: content + every string-valued property. */
-function stringsOf(props: Record<string, unknown>, content: string | null): string[] {
-  const out = content ? [content] : [];
-  for (const v of Object.values(props)) if (typeof v === "string") out.push(v);
-  return out;
-}
 
 function nodeFrom(row: Row, gen: number, types: Map<string, TypeMeta>): GraphNode {
   const props = (row.properties ?? {}) as Record<string, unknown>;
@@ -251,23 +243,13 @@ async function neighborsOf(
       if (Array.isArray(v)) for (const x of v) addOut(row.id, String(x));
       else if (typeof v === "string" && v) addOut(row.id, v);
     }
-    // block:/| links in content + string props
-    for (const s of stringsOf(props, row.content)) {
-      let m: RegExpExecArray | null;
-      LINK_RE.lastIndex = 0;
-      while ((m = LINK_RE.exec(s)) !== null) {
-        const tgt = m[1] ?? m[2];
-        if (tgt) addOut(row.id, tgt);
-      }
-      // @Name mentions → resolve by title
-      const at = /(^|\s)@([A-Za-z0-9][\w-]*)/g;
-      let a: RegExpExecArray | null;
-      while ((a = at.exec(s)) !== null) {
-        if (!a[2]) continue;
-        const name = a[2].replace(/_/g, " ").toLowerCase();
-        if (!nameToFrom.has(name)) nameToFrom.set(name, new Set());
-        nameToFrom.get(name)!.add(row.id);
-      }
+    // Prose references — the same reader the info pane uses, so the two
+    // surfaces cannot drift apart again.
+    const inline = inlineMentions(props, row.content, row.id);
+    for (const tgt of inline.ids) addOut(row.id, tgt);
+    for (const name of inline.names) {
+      if (!nameToFrom.has(name)) nameToFrom.set(name, new Set());
+      nameToFrom.get(name)!.add(row.id);
     }
     // canvas edges
     for (const other of canvasAdj.get(row.id) ?? []) addOut(row.id, other);
@@ -311,7 +293,7 @@ async function neighborsOf(
   for (const row of inbound) {
     if (frontSet.has(row.id)) continue;
     const props = (row.properties ?? {}) as Record<string, unknown>;
-    const hay = stringsOf(props, row.content).join("\n");
+    const hay = textsOf(props, row.content).join("\n");
     const propText = JSON.stringify(props);
     for (const fid of frontier) {
       if (hay.includes(`block:${fid}`) || hay.includes(`|${fid}`) || propText.includes(fid)) addOut(row.id, fid);

@@ -36,10 +36,20 @@ function envelopeOf(given) {
   return e;
 }
 
-/** Which part of the result a case is talking about. */
-function slice(given, envelope) {
-  if (given.collection || given.members) return (envelope.collections ?? [])[0];
-  if (given.object) return (envelope.objects ?? [])[0];
+/**
+ * Which part of the result a case is talking about.
+ *
+ * A case may say outright with `of`. Left unsaid, it is inferred from what the
+ * case handed over: one object means the expectation is about that object, and
+ * anything else means the whole export. Inference is a convenience — a case
+ * whose `given` holds several things should say which one it means, because
+ * guessing from the shape of the input is how a fixture ends up asserting
+ * something other than what it reads as asserting.
+ */
+function slice(given, envelope, of) {
+  const pick = of ?? (given.collection || given.members ? "collection" : given.object ? "object" : "envelope");
+  if (pick === "collection") return (envelope.collections ?? [])[0];
+  if (pick === "object") return (envelope.objects ?? [])[0];
   return envelope;
 }
 
@@ -123,7 +133,7 @@ function runCase(adapter, c, bySuiteId) {
       }
       // A warning nobody can act on is how people learn to ignore warnings.
       if (got.fidelity === "reduced") checks.push((got.reports ?? []).length > 0);
-      if (c.expect.result !== undefined) checks.push(subset(c.expect.result, slice(given, got.result)));
+      if (c.expect.result !== undefined) checks.push(subset(c.expect.result, slice(given, got.result, c.of)));
       return { pass: checks.every(Boolean), got };
     }
     default:

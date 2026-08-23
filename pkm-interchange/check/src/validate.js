@@ -57,6 +57,20 @@ export function validate(envelope) {
     }
   });
 
+  // An inline edge claims to come from a particular piece of writing. If the
+  // field it names does not exist, the claim cannot be traced back to a sentence
+  // and a consumer has no way to tell a stale export from a producer guessing.
+  const typeById = new Map((envelope.types ?? []).map((t) => [t.id, t]));
+  const objectById = new Map((envelope.objects ?? []).map((o) => [o.id, o]));
+  (envelope.relations ?? []).forEach((r, i) => {
+    if (r.via !== "inline" || !r.field) return;
+    const type = typeById.get(objectById.get(r.from)?.type);
+    if (!type) return; // nothing to check against; not an error on its own
+    if (!(type.fields ?? []).some((f) => f.key === r.field)) {
+      fail("inline.field-not-declared", `relations[${i}].field`);
+    }
+  });
+
   // The manifest is a promise about this export, not an aspiration. A feature
   // that turns up in the data without being declared means no part of the
   // manifest can be trusted, which is worse than shipping no manifest.

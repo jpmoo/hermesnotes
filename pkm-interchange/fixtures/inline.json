@@ -1,0 +1,254 @@
+{
+  "suite": "inline",
+  "level": 2,
+  "about": "References written inside prose. In a knowledge base most of the graph lives in the writing rather than in the schema, and a format that only models declared reference fields cannot see it. The rule is that prose stays opaque and its edges are mirrored into relations, so a consumer that cannot read your dialect can still hold your graph — and knows what it is about to break.",
+  "cases": [
+    {
+      "id": "inline/mirrored-edge-survives-prose-blindness",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "types": [
+          {
+            "id": "t_note",
+            "name": "Note",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              },
+              {
+                "key": "body",
+                "kind": "richtext"
+              }
+            ],
+            "profiles": {
+              "note": {
+                "title": "title",
+                "body": "body"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "title": "Roof",
+              "body": "Rang [[the roofer]] again. See ((o_2)) for the quote."
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_2",
+            "type": "mentions",
+            "via": "inline",
+            "field": "body"
+          }
+        ]
+      },
+      "with": {
+        "richtext": false
+      },
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "richtext"
+        ],
+        "result": {
+          "relations": [
+            {
+              "from": "o_1",
+              "to": "o_2",
+              "type": "mentions",
+              "via": "inline",
+              "field": "body"
+            }
+          ]
+        }
+      },
+      "why": "A tool with no prose at all still has to come out of this holding the edge. Mirroring inline references into relations is what makes that possible: the link between two notes is a fact about the library, and locking it inside one producer's markup dialect makes it a fact only that producer can read."
+    },
+    {
+      "id": "inline/prose-is-opaque",
+      "level": 2,
+      "op": "roundtrip",
+      "of": "object",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "properties": {
+              "body": "Rang [[the roofer]] again. See ((o_2)) for the quote."
+            }
+          }
+        ]
+      },
+      "with": {
+        "fixedSchema": true
+      },
+      "expect": {
+        "result": {
+          "properties": {
+            "body": "Rang [[the roofer]] again. See ((o_2)) for the quote."
+          }
+        }
+      },
+      "why": "Nobody has to understand double brackets, double parens, or whatever the next tool invents. The format deliberately does not standardise a markup dialect — it standardises that yours comes back exactly as you wrote it. A consumer that normalises prose into its own syntax has rewritten the user's writing, which is the one thing in a knowledge base nobody wants touched."
+    },
+    {
+      "id": "inline/rewriting-prose-must-report",
+      "level": 3,
+      "op": "import",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "properties": {
+              "body": "See ((o_2))."
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_2",
+            "type": "mentions",
+            "via": "inline",
+            "field": "body"
+          }
+        ]
+      },
+      "with": {
+        "richtextRewrite": true
+      },
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "richtext.mentions"
+        ]
+      },
+      "why": "This is what the mirror buys. A tool that rewrites prose into its own markup cannot know whether it just destroyed a link, because it cannot parse the dialect it is replacing — but the relations array told it there was one. Without the mirror the loss is not merely unreported, it is undetectable."
+    },
+    {
+      "id": "inline/unresolved-mention-survives",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "properties": {
+              "body": "See ((o_gone))."
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_gone",
+            "type": "mentions",
+            "via": "inline",
+            "field": "body",
+            "resolved": false
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "relations": [
+            {
+              "from": "o_1",
+              "to": "o_gone",
+              "resolved": false
+            }
+          ]
+        }
+      },
+      "why": "A mention whose target has been deleted is not noise to be tidied away. It is the only remaining record that the writing points at something, and it is what lets a tool offer to fix or clear the link rather than leaving a reader to wonder what the sentence meant. Dropping an edge because its far end is missing quietly rewrites the prose's meaning."
+    },
+    {
+      "id": "inline/inline-edge-is-not-a-backlink",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_2",
+            "type": "contradicts",
+            "via": "inline",
+            "field": "body"
+          }
+        ]
+      },
+      "with": {
+        "relations": false
+      },
+      "expect": {
+        "result": {
+          "relations": [
+            {
+              "type": "contradicts",
+              "via": "inline",
+              "field": "body"
+            }
+          ]
+        }
+      },
+      "why": "A tool with only untyped backlinks must keep the type, and must keep where the edge came from. Flattening an inline mention and a declared reference field into the same undifferentiated link loses the difference between what someone wrote in a sentence and what they filled into a form, and only one of those can be edited without touching the prose."
+    },
+    {
+      "id": "inline/mirror-names-a-real-field",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "types": [
+          {
+            "id": "t_note",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              },
+              {
+                "key": "body",
+                "kind": "richtext"
+              }
+            ]
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "body": "hi"
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_2",
+            "type": "mentions",
+            "via": "inline",
+            "field": "notes"
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "inline.field-not-declared"
+          }
+        ]
+      },
+      "why": "The mirror is only trustworthy if it points at something real. An edge claiming to come from a field the type does not have is either a stale export or a producer guessing, and a consumer has no way to tell which — so it is caught here rather than becoming a link nobody can trace back to a sentence."
+    }
+  ]
+}

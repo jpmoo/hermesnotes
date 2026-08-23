@@ -93,6 +93,7 @@
       "with": {
         "query": false
       },
+      "simulated": true,
       "expect": {
         "fidelity": "reduced",
         "reports": [
@@ -174,6 +175,7 @@
       "with": {
         "query": false
       },
+      "simulated": true,
       "expect": {
         "fidelity": "reduced",
         "reports": [
@@ -181,6 +183,36 @@
         ]
       },
       "why": "A query that currently matches nothing is not the same as a collection that is empty. Importing it as an ordinary empty collection loses a rule, and the reduced-fidelity report is the only signal the user gets."
+    },
+    {
+      "id": "derivation/a-bare-id-is-a-member",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "collection": {
+          "membership": {
+            "mode": "explicit"
+          },
+          "members": [
+            "o_1",
+            {
+              "object": "o_2",
+              "position": "a0"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "result": {
+          "members": [
+            {
+              "object": "o_2",
+              "position": "a0"
+            }
+          ]
+        }
+      },
+      "why": "Both spellings mean the same member, and a consumer that expands the short one has lost nothing. This case exists because a round-trip through a real implementation came back structurally different for exactly this reason, and a rule that reads as absolute — do not normalise — needs its one exception written down rather than argued about."
     }
   ]
 }

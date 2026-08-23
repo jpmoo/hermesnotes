@@ -31,6 +31,7 @@
       "with": {
         "placement": false
       },
+      "simulated": true,
       "expect": {
         "fidelity": "reduced",
         "reports": [
@@ -138,6 +139,7 @@
       "with": {
         "placement": false
       },
+      "simulated": true,
       "expect": {
         "fidelity": "reduced",
         "reports": [

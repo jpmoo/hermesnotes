@@ -40,7 +40,8 @@ if (args.includes("--self")) {
       suite = r.suite;
       console.log(`\n${suite}`);
     }
-    console.log(`  ${r.pass ? green("pass") : red("FAIL")}  ${dim(`L${r.level}`)} ${r.id}`);
+    const mark = r.na ? dim("n/a ") : r.pass ? green("pass") : red("FAIL");
+    console.log(`  ${mark}  ${dim(`L${r.level}`)} ${r.id}`);
     if (!r.pass) {
       console.log(`        expected ${JSON.stringify(r.expect)}`);
       console.log(`        got      ${String(JSON.stringify(r.got)).slice(0, 400)}`);
@@ -51,7 +52,9 @@ if (args.includes("--self")) {
   const { earned, byLevel } = levelsFrom(results);
   console.log(`\n${results.length - failed.length}/${results.length} passing`);
   for (const [level, at] of Object.entries(byLevel)) {
-    console.log(`  level ${level}: ${at.passed} passed, ${at.failed} failed`);
+    console.log(
+      `  level ${level}: ${at.passed} passed, ${at.failed} failed` + (at.na ? `, ${at.na} not applicable` : ""),
+    );
   }
   // The level is derived from the run, never from what anyone claimed.
   console.log(failed.length ? red(`\nlevel earned: ${earned}`) : green(`\nlevel earned: ${earned}`));

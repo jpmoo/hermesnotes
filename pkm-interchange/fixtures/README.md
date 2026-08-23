@@ -32,6 +32,10 @@ runner can act on it.
 - `of` — which part of the result `expect.result` is about: `envelope`,
   `object` or `collection`. Inferred when absent, from what `given` holds. Say it
   outright whenever `given` holds more than one thing.
+- `simulated` — the expected answer depends on the consumer *lacking* something.
+  A real tool that has the thing cannot answer, so the case is skipped as not
+  applicable rather than failed. Only for cases where the lack drives the
+  expectation; a `with` that merely describes a kind of tool is not enough.
 - `level` — the interoperability rung the case belongs to (see `AGENTS.md`).
 
 ## Operations

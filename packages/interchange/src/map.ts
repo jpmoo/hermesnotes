@@ -1,4 +1,5 @@
 import { inlineMentions, profilesOf, type FieldDef, type PropertySchema } from "@hermes/shared";
+import { CARRY_KEY } from "./import.js";
 import type { Finding, HermesBlock, HermesMembership, HermesType } from "./types.js";
 
 /**
@@ -34,6 +35,12 @@ export interface ExportInput {
   blocks: HermesBlock[];
   memberships: HermesMembership[];
   producer?: { name: string; version: string };
+  /** Unknown top-level keys a previous import could not model. */
+  carry?: Record<string, unknown>;
+  /** Series that arrived from elsewhere. Hermes derives none of its own. */
+  series?: unknown[];
+  /** Edges that arrived and cannot be re-derived from properties or prose. */
+  relations?: unknown[];
 }
 
 export function toInterchange(input: ExportInput): {
@@ -111,10 +118,19 @@ export function toInterchange(input: ExportInput): {
         );
       }
     }
+    // What an import had nowhere to put rode along in the property bag. It comes
+    // back out as the keys it arrived as and leaves no trace in the properties —
+    // handing somebody their own data back with our filing label still on it is
+    // not a round trip, it is littering.
+    const carried = (b.properties[CARRY_KEY] ?? {}) as Record<string, unknown>;
+    const props = { ...b.properties };
+    delete props[CARRY_KEY];
+
     return {
       id: b.id,
       ...(b.blockTypeId ? { type: b.blockTypeId } : {}),
-      properties: b.properties,
+      ...carried,
+      properties: props,
       ...(b.content ? { content: b.content } : {}),
       ...(b.tags?.length ? { tags: b.tags } : {}),
       archived: b.archivedAt !== null,
@@ -272,6 +288,17 @@ export function toInterchange(input: ExportInput): {
     relations.length ? "relations" : null,
   ].filter(Boolean) as string[];
 
+  // An edge that arrived from elsewhere and one Hermes worked out for itself are
+  // the same edge; saying it twice is not fidelity, it is duplication.
+  const key = (r: Record<string, unknown>) => `${r.from}|${r.to}|${r.type ?? ""}|${r.via ?? ""}`;
+  const seen = new Set(relations.map(key));
+  for (const r of (input.relations ?? []) as Record<string, unknown>[]) {
+    if (!seen.has(key(r))) {
+      relations.push(r);
+      seen.add(key(r));
+    }
+  }
+
   return {
     envelope: {
       format: "pkm-interchange/0",
@@ -290,11 +317,18 @@ export function toInterchange(input: ExportInput): {
       types,
       objects,
       collections: outCollections,
+      ...((input.series ?? []).length ? { series: input.series } : {}),
       relations,
+      ...(input.carry ?? {}),
     },
     findings,
   };
 }
+
+const FIELD_KEYS = new Set([
+  "key", "type", "label", "order", "includeEmbed", "options", "optionLabels", "optionIcons", "optionColors",
+  "refTypeId", "templateId", "startLabel", "endLabel", "units", "required", "locked",
+]);
 
 function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string) => void) {
   // The list of kinds is open, so a kind the format has never heard of is
@@ -317,6 +351,8 @@ function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string)
       ...(f.units ? { units: f.units } : {}),
       ...(f.startLabel ? { startLabel: f.startLabel } : {}),
       ...(f.endLabel ? { endLabel: f.endLabel } : {}),
+      // Anything a producer hung on this field that Hermes does not model.
+      ...Object.fromEntries(Object.entries(f).filter(([k]) => !FIELD_KEYS.has(k))),
     },
   ];
 }

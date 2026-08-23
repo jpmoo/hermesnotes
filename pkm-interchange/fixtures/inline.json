@@ -53,6 +53,7 @@
       "with": {
         "richtext": false
       },
+      "simulated": true,
       "expect": {
         "fidelity": "reduced",
         "reports": [
@@ -125,6 +126,7 @@
       "with": {
         "richtextRewrite": true
       },
+      "simulated": true,
       "expect": {
         "fidelity": "reduced",
         "reports": [

@@ -12,7 +12,9 @@
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "probe": "tsx probe.ts",
-    "measure": "tsx measure.ts"
+    "measure": "tsx measure.ts",
+    "roundtrip": "tsx roundtrip.ts",
+    "foreign": "tsx foreign.ts ../../pkm-interchange/example/library.json"
   },
   "dependencies": {
     "@hermes/shared": "workspace:*"

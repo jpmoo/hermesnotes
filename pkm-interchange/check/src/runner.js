@@ -63,6 +63,17 @@ function slice(given, envelope, of) {
  * value, on the other hand, is the whole answer and is compared exactly.
  */
 function subset(expected, actual) {
+  // A member is an object; a bare id is shorthand for one with nothing else to
+  // say. Expanding it is the single normalisation the format permits, so a
+  // fixture written either way matches an implementation that chose the other.
+  // Encoded here rather than in each expectation, because it is a fact about the
+  // format and not about any one case.
+  if (typeof expected === "string" && actual && typeof actual === "object" && actual.object === expected) {
+    return true;
+  }
+  if (typeof actual === "string" && expected && typeof expected === "object" && expected.object === actual) {
+    return true;
+  }
   if (expected === null || typeof expected !== "object") return Object.is(expected, actual);
   if (Array.isArray(expected)) {
     if (!Array.isArray(actual)) return false;
@@ -174,6 +185,31 @@ function runCase(adapter, c, bySuiteId) {
   }
 }
 
+/**
+ * Whether a case can be asked of this implementation at all.
+ *
+ * Most of the interop cases work by simulating a consumer that lacks something —
+ * no board, no query engine, no prose. A reference implementation can pretend;
+ * a real one cannot. Hermes has a matrix view, and asking it to behave as if it
+ * had none tests nothing about Hermes.
+ *
+ * The line is not "this case has capabilities" — most of those are flavour, and
+ * an implementation that genuinely preserves unknown properties should be
+ * credited for it whether or not it has the fixed schema the case describes. The
+ * line is whether the **expected answer depends** on the lack: a case that
+ * requires reduced fidelity because the consumer has no board is asking a
+ * question a tool with a board cannot answer. Those cases carry `simulated`.
+ *
+ * An adapter that can stand in for other tools says `simulates: ["*"]`.
+ * Everything skipped is counted next to the level, because an applicability rule
+ * is also the obvious way to dodge a suite and the count is what stops that
+ * being quiet.
+ */
+function applicable(adapter, c) {
+  if (!c.simulated) return true;
+  return (adapter.simulates ?? []).includes("*");
+}
+
 export function runSuites(adapter, dir) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
   const results = [];
@@ -181,6 +217,10 @@ export function runSuites(adapter, dir) {
     const suite = JSON.parse(readFileSync(join(dir, file), "utf8"));
     const byId = new Map(suite.cases.map((c) => [c.id, c]));
     for (const c of suite.cases) {
+      if (!applicable(adapter, c)) {
+        results.push({ suite: suite.suite, level: c.level ?? suite.level, ...c, na: true, pass: false });
+        continue;
+      }
       let outcome;
       try {
         outcome = runCase(adapter, c, byId);
@@ -202,8 +242,9 @@ export function runSuites(adapter, dir) {
 export function levelsFrom(results) {
   const byLevel = new Map();
   for (const r of results) {
-    const at = byLevel.get(r.level) ?? { passed: 0, failed: 0 };
-    at[r.pass ? "passed" : "failed"] += 1;
+    const at = byLevel.get(r.level) ?? { passed: 0, failed: 0, na: 0 };
+    if (r.na) at.na += 1;
+    else at[r.pass ? "passed" : "failed"] += 1;
     byLevel.set(r.level, at);
   }
   let earned = 0;

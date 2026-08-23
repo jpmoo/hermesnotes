@@ -20,6 +20,8 @@ import {
   type PropertySchema,
   type Recurrence,
 } from "@hermes/shared";
+import { fromInterchange } from "./src/import.js";
+import { toInterchange } from "./src/map.js";
 
 type Type = { propertySchema?: PropertySchema; fields?: unknown[]; profiles?: Record<string, unknown> };
 
@@ -41,7 +43,32 @@ function asSchema(type: Type | undefined): PropertySchema {
   } as PropertySchema;
 }
 
+/**
+ * Read an envelope in and write it back out.
+ *
+ * Fidelity is derived from what the importer could not model, rather than
+ * declared: the findings already say what had nowhere to go, so a report that
+ * disagreed with them would be one of the two lying.
+ */
+function roundtrip(envelope: Record<string, unknown>) {
+  const back = fromInterchange(envelope);
+  const out = toInterchange({
+    types: back.types,
+    blocks: back.blocks,
+    memberships: back.memberships,
+    carry: back.carry,
+    series: back.series,
+    relations: back.relations,
+    producer: (envelope.producer as { name: string; version: string }) ?? undefined,
+  });
+  const reports = back.findings.map((f) => f.code);
+  return { result: out.envelope, fidelity: reports.length ? "reduced" : "full", reports };
+}
+
 export const hermesAdapter = {
+  import: roundtrip,
+  roundtrip,
+
   profilesOf: (type: Type) => hermesProfilesOf(asSchema(type)).map((p) => p.name),
 
   read: (

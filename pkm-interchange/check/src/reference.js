@@ -208,6 +208,8 @@ export function order(members) {
 }
 
 export const adapter = {
+  // It exists to stand in for other tools, so it can be asked to lack anything.
+  simulates: ["*"],
   validate,
   profilesOf,
   read,

@@ -257,6 +257,8 @@ Semantic placement uses **named regions, never coordinates**. `"urgent-important
 
 `position` is an opaque ordering token. Compare byte-wise; do not parse it as a number.
 
+A member is an object — `{ "object": "o_412", … }`. A bare id is legal shorthand for one with nothing else to say, and expanding it to the object form is **not** a fidelity loss. This is the one place the format has two spellings for one thing, and saying so is cheaper than leaving every implementer to discover that their round-trip does not compare equal.
+
 → `fixtures/placement.json`
 
 ---

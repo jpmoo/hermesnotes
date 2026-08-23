@@ -83,3 +83,38 @@ One caveat the run exposed about the fixtures themselves:
 `profile/unknown-name-is-readable` passes here for the wrong reason. It expects
 `false`, and an implementation that always answers `false` passes it. A case
 whose expectation is a default is not a test.
+
+## Reading, not just writing
+
+```bash
+pnpm --filter @hermes/interchange roundtrip   # Hermes' own library, out and back
+pnpm --filter @hermes/interchange foreign     # a stranger's library, out and back
+```
+
+`fromInterchange` is the harder direction. Exporting only has to find a way to
+say what you hold; importing has to find somewhere to put what you don't.
+Anything with no Hermes column rides along in the property bag under
+`pkm:carried` and comes back out as the keys it arrived as — series definitions
+and relations are handed back separately, because Hermes has no table for either
+and pretending otherwise would round-trip cleanly right up until somebody
+checked.
+
+Two results, both measured:
+
+- **Hermes' own library**: 3495 lines out, 3495 back, **0 differing**.
+- **A stranger's library** (`example/library.json`, with series, profiles Hermes
+  has never seen, and properties no Hermes type declares): 205 leaves in,
+  **0 did not come back**.
+
+The second is the one that means anything. The first is nearly free — an
+exporter and an importer written together are inverses by construction.
+
+Both surfaced real bugs. Unknown keys hung on a *field* were being dropped,
+because a mapping table that names nine keys loses the tenth by omission. And a
+member arrived as a bare id and left as an object, which turned out to be an
+ambiguity in the format rather than a bug in the code: two spellings for one
+member, now written down as shorthand with expansion declared not to be a loss.
+
+**Hermes: 34 of 66, level 0.** Level 2 is 16 passed, 6 failed, 5 not applicable.
+Five of those six failures are a missing validator — Hermes has no way to tell a
+valid envelope from an invalid one, which is a real gap and not a hard one.

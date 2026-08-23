@@ -5491,6 +5491,26 @@ input.matrix-axis-y::placeholder {
   color: #1f2328;
 }
 
+/* And everything written on the paper inherits it.
+
+   Setting a colour on the paper alone was not enough: .md-input names
+   var(--text) explicitly, which beats anything inherited, so in the dark theme
+   the note's text stayed nearly white on pale paper. The editors inside a note
+   take the paper's ink instead — the note is the one place in the app whose
+   background is not the theme's. */
+.cv-note .cv-paper .md-input,
+.cv-note .cv-paper .md-editor,
+.cv-note .cv-paper .note-editor,
+.cv-note .cv-paper .note-editor * {
+  color: inherit;
+}
+
+/* The placeholder too, at a weight that reads as a hint rather than as text —
+   var(--text-faint) is built for the theme's background, not for a sticky. */
+.cv-note .cv-paper .note-editor p.is-editor-empty:first-child::before {
+  color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
 .cv-note {
   --fold: 14px;
   border: none;

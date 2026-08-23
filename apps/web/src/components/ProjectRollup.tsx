@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { declaresProfile } from "@hermes/shared";
 import { api, type Block, type BlockType } from "../api.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
@@ -7,13 +8,20 @@ import { useBlockView, type BlockViewState } from "../lib/useBlockView.tsx";
 import { CollapseAllButton, CollapsibleCard, useCollapse } from "./CollapsibleCard.tsx";
 
 /**
- * A project is whatever the account calls a project.
+ * A project is a type that says it is one.
  *
- * The built-in type is seeded as "project", but an account that had one of its
- * own before the built-in existed has a type with the same name and no builtin
- * flag — the same thing to the person using it, so it gets the same page.
+ * `project` is not in the shared profile vocabulary, which is the point: a name
+ * earns its place by being declared and used, not by being ratified first. A
+ * type declaring it here loses nothing anywhere else — other tools carry an
+ * unknown profile name through untouched.
+ *
+ * The name check underneath is a guess, and the rule this codebase otherwise
+ * forbids: it works for an account whose projects are called Projects and fails
+ * for one whose projects are called Initiatives. It stays only until declaring
+ * is the norm, and it is deliberately the second question rather than the first.
  */
 export const isProjectType = (type: BlockType | undefined): boolean =>
+  declaresProfile(type?.propertySchema, "project") ||
   (type?.name ?? "").trim().toLowerCase() === "project";
 
 /** Where a connected block is filed: its type, or the fact that it's a collection. */

@@ -253,6 +253,19 @@ export function profilesOf(schema: PropertySchema | null | undefined): ResolvedP
   return out;
 }
 
+/**
+ * Whether a type declares a named profile — including names outside the v0
+ * vocabulary.
+ *
+ * `profilesOf` filters to what a stranger can consume. This asks the raw
+ * question, which is what a surface reaching for a profile of its own needs:
+ * `project` is not in v0, and the format's answer to that is to declare it and
+ * see whether it earns its place, not to wait for a committee.
+ */
+export function declaresProfile(schema: PropertySchema | null | undefined, name: string): boolean {
+  return Boolean(schema?.profiles && Object.prototype.hasOwnProperty.call(schema.profiles, name));
+}
+
 /** The first datespan a type has, offered as the task profile's two ends. */
 function datespanSlots(schema: PropertySchema): Record<string, unknown> {
   const span = schema.fields.find((f) => f.type === "datespan");

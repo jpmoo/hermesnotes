@@ -1,4 +1,4 @@
-import { toCanonical, kindOf, type HermesTypeRow, type HermesBlockRow } from "./src/index.js";
+import { toCanonical, kindOf, resolveKind, type HermesTypeRow, type HermesBlockRow } from "./src/index.js";
 
 const taskSchema = {
   fields: [
@@ -96,3 +96,27 @@ console.log("a Project with a datespan ->", kindOf("Project", datedProject, { bu
 console.log("collection      →", kindOf("list", null, { collectionKind: "list" }));
 console.log("unknown shape   →", kindOf("Bookmark", { fields: [{ key: "title", type: "text", order: 0, includeEmbed: true }] } as never, {}));
 console.log("event-shaped    →", kindOf("Gig", { fields: [{ key: "when", type: "datespan", order: 0, includeEmbed: false }] } as never, {}));
+
+// Declared beats derived. The point of the whole exercise: a type that says what
+// it is settles the question, and an answer nobody gave says so.
+console.log("\n-- declared vs derived --");
+const show = (label: string, r: { kind: string; derived: boolean }) =>
+  console.log(`  ${label.padEnd(34)} ${r.kind.padEnd(13)} ${r.derived ? "derived (a guess)" : "declared"}`);
+
+show(
+  "Initiatives, declares project",
+  resolveKind("Initiatives", {
+    fields: [{ key: "title", type: "text", order: 0, includeEmbed: true }],
+    profiles: { project: { title: "title" } },
+  } as never, {}),
+);
+show("a Project with a datespan", resolveKind("Project", datedProject as never, {}));
+show(
+  "Errand, declares task, no status field",
+  resolveKind("Errand", {
+    fields: [{ key: "what", type: "text", order: 0, includeEmbed: true }],
+    profiles: { task: { title: "what", status: "state", completeValues: ["sorted"] } },
+  } as never, {}),
+);
+show("status_field, nobody declared it", resolveKind("Chore", taskSchema as never, {}));
+show("nothing to go on", resolveKind("Bookmark", { fields: [] } as never, {}));

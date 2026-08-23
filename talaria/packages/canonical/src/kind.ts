@@ -1,4 +1,4 @@
-import type { PropertySchema } from "@hermes/shared";
+import { declaresProfile, type PropertySchema } from "@hermes/shared";
 import type { CanonicalKind } from "./types.js";
 
 /**
@@ -12,17 +12,80 @@ import type { CanonicalKind } from "./types.js";
  * so the mapping from a user's types onto a fixed set of kinds is the only place
  * that can absorb the mismatch.
  *
- * Seeded types are recognised by name first, because that is exactly right for
- * the default install and costs nothing. Everything else is read off structure.
+ * A type that *declares* what it is settles the question outright — that is what
+ * profiles are for, and reading a declaration is not guessing. Everything below
+ * that is a fallback for types nobody has declared yet: structure first, then
+ * the seeded names, then `other`. Those answers are marked `derived` so a caller
+ * can tell an answer that was given from one that was worked out, and so this
+ * whole tail can be deleted once declaring is the norm rather than the exception.
+ *
  * Anything that matches nothing is `other`: indexed, searchable, openable, but
  * without bespoke Siri grammar — which fails gracefully rather than invisibly.
  */
+/**
+ * Which canonical kind each profile name settles the question as, most specific
+ * first.
+ *
+ * A type may declare several — a Meeting is an event to a calendar and a note to
+ * a notebook — and this list is the tie-break rather than whichever key happened
+ * to be written first. Talaria wants the most actionable reading, because that
+ * is the one with a grammar behind it: "when is my meeting" beats "read me my
+ * meeting".
+ *
+ * `project` and `organization` are not in the v0 vocabulary. They are here for
+ * the same reason the format keeps unknown profile names: a name earns its place
+ * by being declared and used.
+ */
+const BY_PROFILE: [name: string, kind: CanonicalKind][] = [
+  ["task", "task"],
+  ["event", "event"],
+  ["project", "project"],
+  ["organization", "organization"],
+  ["contact", "person"],
+  ["note", "note"],
+];
+
+/**
+ * The kind, and whether anybody actually said so.
+ *
+ * `derived` is the honest half. An answer worked out from a type's shape is
+ * usually right and is never authoritative, and a caller that cannot tell the
+ * difference will keep a wrong guess forever.
+ */
+export function resolveKind(
+  typeName: string | null,
+  schema: PropertySchema | null | undefined,
+  opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
+): { kind: CanonicalKind; derived: boolean } {
+  if (opts.collectionKind) return { kind: "other", derived: false };
+
+  // Declared beats everything, including the shape. A type that says it is a
+  // task is a task even if its status field was removed this morning.
+  //
+  // Read straight off the schema rather than through profilesOf, which derives
+  // `task` from status_field — a derived profile is the guess this branch exists
+  // to avoid laundering into a declaration.
+  for (const [name, kind] of BY_PROFILE) {
+    if (declaresProfile(schema, name)) return { kind, derived: false };
+  }
+
+  return { kind: derive(typeName, schema, opts), derived: true };
+}
+
 export function kindOf(
   typeName: string | null,
   schema: PropertySchema | null | undefined,
   opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
 ): CanonicalKind {
-  if (opts.collectionKind) return "other";
+  return resolveKind(typeName, schema, opts).kind;
+}
+
+/** Everything below here is the guess, kept until declaring is the norm. */
+function derive(
+  typeName: string | null,
+  schema: PropertySchema | null | undefined,
+  opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
+): CanonicalKind {
   if (opts.isText) return "note";
 
   const fields = schema?.fields ?? [];

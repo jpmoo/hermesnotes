@@ -21,7 +21,9 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 - **Block-first data model.** Define your own block types (Task, Project, Person, Book…) with typed fields — text, long-text (Markdown), dates & date-spans, numbers, selects, status, references to other blocks, and file attachments.
 - **Everything links.** Inline `@`/`#`/`|` mentions, reference fields, and a live backlinks/connections panel. Links to deleted blocks are surfaced so you can clean them up.
 - **Collections, many shapes.** Group blocks as a **list**, **table**, **kanban matrix** (rows × columns × regions), **calendar**, **spread**, **rollup** (a heading per project with its tasks nested under it), or **infinite canvas** — including *smart* collections driven by a query builder.
-- **Tasks & projects.** Statuses, due/scheduled date-spans, recurrence, and project relations. On a canvas, drawing a link from a task to a project files it under that project.
+- **Tasks & projects.** Statuses, due/scheduled date-spans, recurrence, and project relations. On a canvas, drawing a link from a task to a project files it under that project. A project's own page shows everything hanging off it — a section per type, each with its own sort, grouping and view — so opening a project answers "what is the state of this" and not just "what is this".
+- **A calendar you can live in.** Month, week, three-day and day views over dated blocks and your subscribed feeds. A span across days reads as one band rather than a staircase, the all-day row opens out or says how much it's holding, each type gets its own pill to show or hide, and finished things sink to the bottom of the day instead of leaving it.
+- **Live on every device.** The database itself records what changed, so an edit on your phone reaches the tab open on your desk — including the writes no HTTP request would have revealed: a day re-seeded on read, a tag renamed across a hundred notes, a placeholder turned real.
 - **Daily notes & weekly review.** A dated scratchpad per day, plus a configurable weekly-review flow with reflections.
 - **Send text forward.** Select anything in a daily note or weekly reflection and send it forward: it's copied into the next one, and the one after that, until you call it off. Days you never wrote in are skipped rather than breaking the thread, and earlier notes keep what they carried — stopping it tomorrow doesn't rewrite yesterday. Every copy is stamped with the day it set out from, so a line you keep meeting says how long you've been carrying it. Or send it to **particular days** instead — pick them off a calendar, and the text is set down on each and travels no further.
 - **Templates.** Named prose you keep reaching for. Right-click in any long-text field to apply one, attach one to a type's field so new blocks of that type start with it, or make one the shape every daily note or weekly reflection opens with. Two marks, each alone on a line: `/` is where the caret lands when you open the field, and `%` is where text sent forward from the last note arrives.
@@ -29,6 +31,7 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 - **Local AI assistant (optional).** Chat over your knowledge base using an Ollama model you choose — nothing leaves your server.
 - **MCP server built in.** Point Claude or any MCP client at your notes to read, search, and manage tasks/projects.
 - **Obsidian-compatible export.** Download a `.zip` of Markdown files (one per block, a folder per type, deduped attachments, YAML frontmatter, and `[[wikilinks]]`).
+- **On the Mac, properly.** [Talaria](talaria/README.md) mirrors your account to the laptop and hands it to the operating system: Spotlight, a `talaria://` scheme, a Services entry that captures selected text from any app, a menu bar board you can drag cards around, an Ask-Hermes prompt on a hotkey, and a `talaria` command. Reads never touch the network, so it all works on a plane.
 - **Yours to run.** Postgres for storage, per-user Ollama config, nightly database backups, and a first-run setup wizard so you don't have to hand-write config.
 
 ---
@@ -149,6 +152,23 @@ Everything's optional — with nothing set, the setup wizard handles the databas
 
 ---
 
+## Talaria — Hermes on macOS
+
+[Talaria](talaria/README.md) is a macOS layer that lives in this repo under [`talaria/`](talaria/). It keeps a local SQLite mirror of your account and lends it to the rest of the system:
+
+- **Spotlight.** ⌘Space finds your blocks and opens them, reindexed when the sync cursor moves rather than on a timer.
+- **A menu bar board.** ⌃⌥B opens any collection in a floating window — a matrix with cards you drag between regions, a canvas at the coordinates the web app placed things at, an agenda that scrolls forward from today, a rollup, a table with its columns.
+- **Capture from anywhere.** Select text in any app and, under Services, add it to Hermes Notes as a task or a note.
+- **Ask Hermes.** ⌃⌥Space puts the assistant a keystroke away, with anything destructive coming back for approval first.
+- **Hermes in a window.** A `WKWebView` window of its own, so a card, a Spotlight hit or a `talaria://` link lands in Hermes rather than a browser tab.
+- **A command line.** `talaria find`, `add`, `done`, `note`, `queue`, `doctor`.
+
+**Reads are answered from the mirror, never the network** — everything but Ask Hermes works with the machine entirely offline, and an answer that isn't current says how old it is. Writes go out immediately when the server is reachable and queue when it isn't; a task created offline gets its real id straight away, so it is findable and linkable before it has ever reached a server.
+
+It rides on two read-only routes Hermes serves for it — `/sync/blocks` walks the account, `/sync/changes` reports what has moved since a cursor — so any other mirror could be built the same way. Setup, the config file and the LaunchAgent are in [talaria/README.md](talaria/README.md); what it asked of Hermes proper is in [HERMES-CORE-CHANGES.md](talaria/HERMES-CORE-CHANGES.md).
+
+---
+
 ## Security & deploying safely
 
 Hermes is built for **personal use** — on your own laptop, or a home server on your own network, for you (and maybe a few people you trust). It is **not** hardened to be a public, multi-tenant service on the open internet. Running on localhost or a trusted LAN, the defaults are fine and there's nothing extra to do.
@@ -174,6 +194,7 @@ packages/shared   Shared block/property-schema types (zod)
 packages/db       Drizzle schema + SQL migrations
 apps/server       Fastify API (also serves the built web app + MCP)
 apps/web          React client
+talaria/          macOS integration: mirror daemon, CLI, Talaria.app
 docs/             Design doc + architecture notes
 ```
 

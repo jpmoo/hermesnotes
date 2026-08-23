@@ -14,7 +14,13 @@ const defaultRecurrence = (): Recurrence => ({
   interval: 1,
   weekdays: [new Date().getDay()],
   end: { type: "never" },
+  // Clamp, because that is what Hermes has always done. The choice is only ever
+  // visible on the 29th, 30th and 31st.
+  monthEnd: "clamp",
 });
+
+const ordinal = (n: number) =>
+  n % 10 === 1 && n !== 11 ? "st" : n % 10 === 2 && n !== 12 ? "nd" : n % 10 === 3 && n !== 13 ? "rd" : "th";
 
 function summary(r: Recurrence): string {
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -99,6 +105,24 @@ export function RecurrenceField({
                 />
                 <span>{UNIT[draft.frequency]}{draft.interval > 1 ? "s" : ""}</span>
               </div>
+
+              {(draft.frequency === "monthly" || draft.frequency === "yearly") && (
+                <label className="field">
+                  <span>When the month is short</span>
+                  <select
+                    value={draft.monthEnd}
+                    onChange={(e) => set({ monthEnd: e.target.value as Recurrence["monthEnd"] })}
+                  >
+                    <option value="clamp">Use the last day of the month</option>
+                    <option value="skip">Skip that month</option>
+                  </select>
+                  <span className="hint">
+                    {draft.monthDay && draft.monthDay > 28
+                      ? `On the ${draft.monthDay}${ordinal(draft.monthDay)}. February hasn't got one.`
+                      : "Only matters for the 29th, 30th and 31st."}
+                  </span>
+                </label>
+              )}
 
               {draft.frequency === "weekly" && (
                 <div className="field">

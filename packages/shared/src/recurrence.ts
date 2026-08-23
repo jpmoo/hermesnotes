@@ -8,6 +8,27 @@ export const recurrenceSchema = z.object({
   interval: z.number().int().min(1).default(1),
   /** for weekly: which weekdays recur (0=Sun … 6=Sat) */
   weekdays: z.array(z.number().int().min(0).max(6)).default([]),
+  /**
+   * monthly/yearly: which day of the month the rule is anchored to.
+   *
+   * Without it the day has to be read off the current occurrence, and once a
+   * short month has clamped one, the occurrence says the 28th while the rule
+   * meant the 31st — so the series moves to the 28th permanently. Absent on
+   * every rule written before this existed; stamped from the current due date
+   * the next time one is advanced, which stops the drift where it stands
+   * without pretending to undo what already happened.
+   */
+  monthDay: z.number().int().min(1).max(31).optional(),
+  /**
+   * monthly/yearly: what to do in a month too short for the anchor day.
+   *
+   * "clamp" gives 28 February for a rule on the 31st; "skip" leaves February out
+   * and goes to 31 March, which is what RRULE and EventKit do. Neither is wrong.
+   * Defaulted to clamp because that is what Hermes has always done, and a
+   * default that silently changed every existing month-end task would be a worse
+   * bug than the one being fixed.
+   */
+  monthEnd: z.enum(["skip", "clamp"]).default("clamp"),
   end: z
     .discriminatedUnion("type", [
       z.object({ type: z.literal("never") }),
@@ -51,15 +72,19 @@ export function nextAfter(anchor: Date, rec: Recurrence): Date {
     }
     return new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + 7 * iv);
   }
-  if (rec.frequency === "monthly") {
-    const d = new Date(anchor.getFullYear(), anchor.getMonth() + iv, 1);
-    const day = Math.min(anchor.getDate(), daysInMonth(d.getFullYear(), d.getMonth()));
-    return new Date(d.getFullYear(), d.getMonth(), day);
+  // Monthly and yearly are the same walk at different strides. The day comes
+  // from the rule where the rule says so — advancing from the last occurrence's
+  // day is what turns one clamped February into a series on the 28th forever.
+  const step = rec.frequency === "yearly" ? 12 * iv : iv;
+  const wanted = rec.monthDay ?? anchor.getDate();
+  for (let n = 1; n <= 60; n++) {
+    const probe = new Date(anchor.getFullYear(), anchor.getMonth() + step * n, 1);
+    const room = daysInMonth(probe.getFullYear(), probe.getMonth());
+    if (wanted <= room) return new Date(probe.getFullYear(), probe.getMonth(), wanted);
+    if (rec.monthEnd !== "skip") return new Date(probe.getFullYear(), probe.getMonth(), room);
+    // skip: this month cannot hold the day, so it is not an occurrence at all.
   }
-  // yearly
-  const y = anchor.getFullYear() + iv;
-  const day = Math.min(anchor.getDate(), daysInMonth(y, anchor.getMonth()));
-  return new Date(y, anchor.getMonth(), day);
+  return new Date(anchor.getFullYear(), anchor.getMonth() + step, 1);
 }
 
 function daysInMonth(y: number, m: number): number {

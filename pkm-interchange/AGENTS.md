@@ -214,6 +214,7 @@ A completion-anchored rule is a state machine: the next occurrence depends on an
 - `horizon`: how many unstarted instances the producer materialises ahead. **If `anchor` is `"completion"`, `horizon` MUST be 1.** Anything else is unrepresentable, not merely unusual.
 - `end`: `{"type":"never"}` | `{"type":"after","count":N}` | `{"type":"on","date":"YYYY-MM-DD"}`. Note that `after` is enforced by counting `instances`, not by a stored index — an occurrence counter carried on the rule is instance state hiding in a rule object, and every site that copies the rule then has to nurse it.
 - `monthEnd`: `"skip"` | `"clamp"`. **Required for monthly and yearly rules.**
+- `byMonthDay`: which day of the month the rule is anchored to. **Also required for monthly and yearly rules**, because a rule that can only be read by looking at one of its instances is not a rule — and the instance may already have been clamped, in which case it says the 28th and the intent said the 31st.
 
 ### On `monthEnd`
 
@@ -222,6 +223,8 @@ A monthly rule anchored to January 31 has two defensible behaviours. `skip` omit
 The format does not pick. It requires you to say. Silently clamping rewrites the user's intent after one short month, and the user never finds out; declaring it means the behaviour travels with the data and a consumer can reproduce it exactly.
 
 If your implementation clamps, say `"clamp"`. Do not say `"skip"` because it sounds more correct.
+
+Clamping is only implementable at all with `byMonthDay`: clamping without knowing the day you are clamping *from* is just moving to the end of the month, and it is what turns one short February into a series permanently on the 28th.
 
 → `fixtures/recurrence.json`
 

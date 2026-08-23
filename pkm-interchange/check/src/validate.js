@@ -54,8 +54,12 @@ export function validate(envelope) {
       if (s.horizon !== undefined && s.horizon !== 1) fail("series.completion-horizon", `${at}.horizon`);
       if ((rule.byWeekday ?? []).length) fail("series.completion-byweekday", `${at}.rule.byWeekday`);
     }
-    if ((rule.freq === "monthly" || rule.freq === "yearly") && !rule.monthEnd) {
-      fail("series.month-end-required", `${at}.rule.monthEnd`);
+    if (rule.freq === "monthly" || rule.freq === "yearly") {
+      if (!rule.monthEnd) fail("series.month-end-required", `${at}.rule.monthEnd`);
+      // Clamping without knowing the day you are clamping *from* is just moving
+      // to the end of the month, and a rule readable only by looking at an
+      // instance is not a rule.
+      if (!rule.byMonthDay) fail("series.month-day-required", `${at}.rule.byMonthDay`);
     }
   });
 

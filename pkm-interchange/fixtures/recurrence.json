@@ -12,6 +12,7 @@
           "anchor": "schedule",
           "freq": "monthly",
           "interval": 1,
+          "byMonthDay": 31,
           "monthEnd": "skip",
           "end": {
             "type": "never"
@@ -38,6 +39,7 @@
           "anchor": "schedule",
           "freq": "monthly",
           "interval": 1,
+          "byMonthDay": 31,
           "monthEnd": "clamp",
           "end": {
             "type": "never"
@@ -64,6 +66,7 @@
           "anchor": "schedule",
           "freq": "monthly",
           "interval": 1,
+          "byMonthDay": 31,
           "monthEnd": "clamp",
           "end": {
             "type": "never"
@@ -316,6 +319,34 @@
         ]
       },
       "why": "A weekday pattern describes positions in a calendar; completion anchoring describes an interval since an event. Combining them has no coherent answer — completing on a Thursday would yield next Wednesday, six days later, which is neither the pattern nor the interval. Producers wanting interval-from-completion should use freq=daily with an interval in days."
+    },
+    {
+      "id": "recurrence/monthly-must-say-which-day",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "export": {
+          "series": [
+            {
+              "rule": {
+                "anchor": "schedule",
+                "freq": "monthly",
+                "interval": 1,
+                "monthEnd": "clamp"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "series.month-day-required"
+          }
+        ]
+      },
+      "why": "A monthly rule that does not say which day it recurs on can only be interpreted by looking at an instance — and the instance may already have been clamped to the 28th, in which case the rule reads as a rule about the 28th and the original intent is gone. A rule has to be readable on its own. This is what makes `monthEnd: clamp` implementable at all: clamping without knowing the day you are clamping *from* is just moving to the end of the month."
     }
   ]
 }

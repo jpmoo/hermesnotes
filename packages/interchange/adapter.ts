@@ -70,6 +70,8 @@ export const hermesAdapter = {
         ["SU", "MO", "TU", "WE", "TH", "FR", "SA"].indexOf(w),
       ),
       end: (r.end as Recurrence["end"]) ?? { type: "never" },
+      ...(r.byMonthDay ? { monthDay: r.byMonthDay as number } : {}),
+      monthEnd: (r.monthEnd as "skip" | "clamp") ?? "clamp",
     };
     const out = nextSpan(
       { start: instance?.start, end: instance?.due },

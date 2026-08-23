@@ -234,7 +234,20 @@ async function spawnRecurrence(
     ...carried,
     [schema.status_field]: schema.default_value ?? null,
     [spanField.key]: next,
-    [recField.key]: { ...rec, n: currentN + 1 },
+    [recField.key]: {
+      ...rec,
+      n: currentN + 1,
+      // Pin the day a monthly or yearly series recurs on, from the occurrence
+      // being completed, if nobody has said yet. A rule written before this
+      // existed reads its day off whichever occurrence is in hand — and once a
+      // short February has clamped one, that reads as the 28th and the series
+      // never climbs back. Stamping it here stops the drift where it stands. It
+      // does not undo drift that already happened: the day it originally meant
+      // was never written down anywhere, and guessing at it would be inventing.
+      ...(rec.monthDay === undefined && (rec.frequency === "monthly" || rec.frequency === "yearly")
+        ? { monthDay: Number(String(span?.end ?? span?.start ?? "").slice(8, 10)) || undefined }
+        : {}),
+    },
   };
   const embedSource = computeEmbedSource(
     { isText: false, propertySchema: schema },

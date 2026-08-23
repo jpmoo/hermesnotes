@@ -105,15 +105,8 @@ without matching an error message.
 | `conformance.missing-roles` | a level claimed without saying for which role |
 | `conformance.binding-required` | `operate` claimed with no live binding |
 
-## One thing the spec does not yet answer
+## Error codes, continued
 
-`monthEnd: "clamp"` must not re-anchor: a monthly rule on the 31st that clamps to
-28 February has to give 31 March next, not 28 March. That is only computable if
-something remembers the 31, and nothing in the format does — the rule has no
-`byMonthDay` and an instance carries only its own dates.
-
-The runner reads it as **the series' first instance is the anchor**, which is the
-only interpretation the existing data supports. The spec should say so outright,
-or give the rule a `byMonthDay`. Recorded here rather than papered over, because
-two implementers reading this today would disagree and both would pass their own
-tests.
+| code | rule |
+|---|---|
+| `series.month-day-required` | a monthly or yearly rule with no `byMonthDay` |

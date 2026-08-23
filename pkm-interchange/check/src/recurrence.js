@@ -17,10 +17,9 @@ import {
  * completion-anchored one advances from when it was actually finished, which is
  * why it can only ever know one occurrence ahead.
  *
- * `anchorDay` is the day-of-month the series was built on. It is threaded
- * through because a clamped monthly rule must not re-anchor: the rule is still
- * "the 31st" after a February that had to settle for the 28th. The format has
- * nowhere to record it, which is a gap — see fixtures/README.md.
+ * A clamped monthly rule must not re-anchor: it is still "the 31st" after a
+ * February that had to settle for the 28th. `rule.byMonthDay` is where that
+ * lives; `anchorDay` is the fallback for a rule that predates it.
  */
 export function nextOccurrence({ rule, instances = [], anchorDay }, instance, event = {}) {
   const end = rule.end ?? { type: "never" };
@@ -36,7 +35,11 @@ export function nextOccurrence({ rule, instances = [], anchorDay }, instance, ev
   const base = rule.anchor === "completion" ? completed ?? due : due;
   if (base === null || base === undefined) return null;
 
-  const anchor = anchorDay ?? (due !== null ? dayOfMonth(due) : dayOfMonth(base));
+  // The rule says which day it is anchored to. Falling back to an instance is a
+  // guess, and a bad one on a series that has already been clamped — the
+  // instance says the 28th and the rule meant the 31st.
+  const anchor =
+    rule.byMonthDay ?? anchorDay ?? (due !== null ? dayOfMonth(due) : dayOfMonth(base));
   const nextDue = advance(base, rule, anchor);
   if (nextDue === null) return null;
 

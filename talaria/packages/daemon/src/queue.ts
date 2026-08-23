@@ -46,6 +46,8 @@ export interface MoveIntent {
   region: number | null;
   /** Whether this also joins the collection — see Hermes.placeMember. */
   join: boolean;
+  /** Where it came from, so the region it left can undo what it did. */
+  fromRegion: number | null;
 }
 export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent;
 
@@ -53,6 +55,77 @@ export type ReplayResult =
   | { id: number; outcome: "applied" | "already" }
   | { id: number; outcome: "parked"; reason: string }
   | { id: number; outcome: "deferred"; reason: string };
+
+/**
+ * What a matrix region does to a card that arrives in it.
+ *
+ * A region can carry a tag and a status, and dropping a card into one is
+ * supposed to apply them — that is what the region is *for*, and moving a task
+ * into "Do" without it becoming #do makes the board a picture of an
+ * arrangement rather than the arrangement itself. Talaria was setting the
+ * placement and nothing else.
+ *
+ * The rules are the app's: tag on entry unless the region says otherwise,
+ * remove the old region's tag only when it asked to be removed on leaving, and
+ * set a status only when it is one the type actually offers.
+ */
+export async function applyRegionActions(
+  hermes: Hermes,
+  mirror: Mirror,
+  intent: MoveIntent,
+): Promise<void> {
+  const raw = mirror.rawBlock(intent.collectionId);
+  if (!raw) return;
+  const props = (JSON.parse(raw) as { properties?: Record<string, unknown> }).properties ?? {};
+  const defs = Array.isArray(props.matrix_regions) ? (props.matrix_regions as Record<string, unknown>[]) : [];
+  const entering = intent.region === null ? undefined : defs[intent.region];
+  const leaving = intent.fromRegion === null ? undefined : defs[intent.fromRegion];
+
+  const addTag = typeof entering?.tag === "string" && entering.tag && entering.tagOnEnter !== false
+    ? String(entering.tag)
+    : null;
+  const dropTag = typeof leaving?.tag === "string" && leaving.tag && leaving.tagOffLeave === true
+    ? String(leaving.tag)
+    : null;
+
+  if (addTag || dropTag) {
+    try {
+      const current = await hermes.blockTags(intent.blockId);
+      let next = current;
+      if (dropTag) next = next.filter((t) => t !== dropTag);
+      if (addTag && !next.includes(addTag)) next = [...next, addTag];
+      if (next.length !== current.length || next.some((t, i) => t !== current[i])) {
+        await hermes.setBlockTags(intent.blockId, next);
+      }
+    } catch {
+      // A tag that wouldn't apply shouldn't undo a move that already has.
+    }
+  }
+
+  const wantStatus = typeof entering?.enterStatus === "string" ? String(entering.enterStatus) : "";
+  if (!wantStatus) return;
+  const blockRaw = mirror.rawBlock(intent.blockId);
+  if (!blockRaw) return;
+  const block = JSON.parse(blockRaw) as { blockTypeId: string | null; properties: Record<string, unknown>; version: number };
+  const type = mirror
+    .types()
+    .map((t) => JSON.parse(t) as { id: string; propertySchema: PropertySchema | null })
+    .find((t) => t.id === block.blockTypeId);
+  const statusKey = type?.propertySchema?.status_field;
+  if (!statusKey) return;
+  const field = (type?.propertySchema?.fields ?? []).find((f) => f.key === statusKey);
+  // Only if the type actually offers it: writing a value a status field has
+  // never heard of leaves a block in a state nothing can read.
+  if (!field?.options?.includes(wantStatus)) return;
+  try {
+    await hermes.patchBlock(intent.blockId, {
+      version: block.version,
+      properties: { ...block.properties, [statusKey]: wantStatus },
+    });
+  } catch {
+    // Same reasoning: the placement stands.
+  }
+}
 
 /** The same joining rule the app uses, so a queued append reads like a typed one. */
 export function appendedContent(before: string | null, addition: string): string {
@@ -193,6 +266,7 @@ export class Queue {
         { region: intent.region },
         intent.join,
       );
+      await applyRegionActions(this.hermes, this.mirror, intent);
       return { id: row.id, outcome: "applied" };
     } catch (err) {
       if (err instanceof HermesError && (err.status === 404 || err.status === 400)) {

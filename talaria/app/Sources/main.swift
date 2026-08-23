@@ -114,6 +114,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
 
         installStatusItem()
+        HermesWindow.installMainMenu()
+
+        // A panel is a way of getting somewhere. Once you have gone, it has
+        // done its job and should get out of the way rather than sit in front
+        // of what it just opened. Announced centrally so a new surface gets
+        // this without every call site remembering to ask for it.
+        NotificationCenter.default.addObserver(
+            forName: Opener.didOpen, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.boardWindow?.orderOut(nil)
+                self?.assistantWindow?.orderOut(nil)
+            }
+        }
 
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { granted, err in
             if let err { NSLog("talaria: notifications unavailable — \(err)") }

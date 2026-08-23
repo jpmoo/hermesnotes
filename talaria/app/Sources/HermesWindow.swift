@@ -44,11 +44,6 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
         } else if view.url == nil, let home = configuredOrigin() {
             view.load(URLRequest(url: home))
         }
-        // A Dock icon and a menu bar while the window is up: without them there
-        // is no Edit menu, and no Edit menu means no cut, copy, paste or undo
-        // in a window whose whole purpose is writing.
-        NSApp.setActivationPolicy(.regular)
-        installMainMenuIfNeeded()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
@@ -125,20 +120,39 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
 
     // MARK: A menu, because a web view needs one
 
-    private func installMainMenuIfNeeded() {
+    /// Built once at launch, not when a window opens.
+    ///
+    /// A menu bar installed on an app that has just changed activation policy is
+    /// drawn and connected to nothing — the Apple menu included. Saying what the
+    /// app is at launch and building the menu then is what makes it work.
+    static func installMainMenu() {
         guard NSApp.mainMenu == nil else { return }
         let main = NSMenu()
 
+        // The first menu is the application menu, whatever its title.
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(
+            withTitle: "About Talaria",
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
+            keyEquivalent: ""
+        )
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Talaria", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        let others = appMenu.addItem(
+            withTitle: "Hide Others",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        others.keyEquivalentModifierMask = [.command, .option]
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit Talaria", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
 
-        // The whole point of the menu: the standard editing keys. Without these
-        // a web view swallows ⌘C and ⌘V and there is no way to get them back.
+        // The whole point of the menu: the standard editing keys. They carry no
+        // target on purpose — they travel the responder chain to whatever has
+        // focus, which is what makes them work inside a web view.
         let editItem = NSMenuItem()
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
@@ -153,14 +167,27 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
 
         let viewItem = NSMenuItem()
         let view = NSMenu(title: "View")
-        view.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "r").target = self
-        view.addItem(withTitle: "Back", action: #selector(goBack), keyEquivalent: "[").target = self
-        view.addItem(withTitle: "Forward", action: #selector(goForward), keyEquivalent: "]").target = self
+        view.addItem(withTitle: "Open Hermes", action: #selector(openHome), keyEquivalent: "0").target = shared
+        view.addItem(.separator())
+        view.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "r").target = shared
+        view.addItem(withTitle: "Back", action: #selector(goBack), keyEquivalent: "[").target = shared
+        view.addItem(withTitle: "Forward", action: #selector(goForward), keyEquivalent: "]").target = shared
         viewItem.submenu = view
         main.addItem(viewItem)
 
+        // macOS expects a Window menu to exist and fills it in itself.
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowItem.submenu = windowMenu
+        main.addItem(windowItem)
+        NSApp.windowsMenu = windowMenu
+
         NSApp.mainMenu = main
     }
+
+    @objc private func openHome() { show() }
 
     @objc private func reload() { web?.reload() }
     @objc private func goBack() { web?.goBack() }

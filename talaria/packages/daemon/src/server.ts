@@ -7,7 +7,7 @@ import { toCanonical, type HermesTypeRow } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import type { Mirror } from "./mirror.js";
-import { Queue, type Intent } from "./queue.js";
+import { applyRegionActions, Queue, type Intent } from "./queue.js";
 import { describe, freshnessOf } from "./staleness.js";
 import type { Sync } from "./sync.js";
 
@@ -871,6 +871,8 @@ export function buildServer(deps: {
         blockId: body.blockId,
         region: body.region,
         join,
+        // Read before the local placement overwrites it.
+        fromRegion: mirror.regionOf(body.collectionId, body.blockId),
       };
       // Show the card in its new cell straight away. The sync loop will confirm
       // it, and a drag that snapped back while the request was in flight would
@@ -923,6 +925,10 @@ export function buildServer(deps: {
         { region: intent.region },
         intent.join,
       );
+      // What the region does to what lands in it — the tag, and the status if
+      // it sets one. Without this a board records an arrangement instead of
+      // making it.
+      await applyRegionActions(hermes, mirror, intent);
       return { id: intent.blockId };
     }
     if (intent.kind === "complete") {

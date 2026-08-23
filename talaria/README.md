@@ -167,7 +167,11 @@ what it wants to do and does nothing until you say. `"assistantHotkey"` in
 **Any** collection in a floating window, styled from the web app's own palette:
 
 - **matrix / kanban** — the grid, with cards draggable between regions and a
-  drawer for what the query matched but nobody placed
+  drawer for what the query matched but nobody placed. A region's actions apply
+  on the way in: its tag is added, its status is set if it sets one, and the tag
+  of the region left behind is removed when that region asked for it. Moving a
+  card into "Do" without it becoming `#do` would make the board a picture of an
+  arrangement rather than the arrangement itself.
 - **canvas** — read-only, at the coordinates the web app placed things at, with
   the sticky notes and the connections. Pan, zoom, click to open. Nothing is
   moved from here: a canvas is a spatial argument someone made on purpose.

@@ -260,6 +260,16 @@ export class Mirror {
     return row !== undefined;
   }
 
+  /** Which region a card currently sits in, if any. */
+  regionOf(collectionId: string, blockId: string): number | null {
+    const row = this.db
+      .prepare("SELECT context FROM memberships WHERE collection_id = ? AND block_id = ?")
+      .get(collectionId, blockId) as { context: string } | undefined;
+    if (!row) return null;
+    const v = (JSON.parse(row.context || "{}") as { region?: unknown }).region;
+    return typeof v === "number" && Number.isInteger(v) ? v : null;
+  }
+
   /** What's in a collection, in position order, with where each sits. */
   membersOf(collectionId: string): { raw: string; region: string | null; position: string | null; context: string }[] {
     return this.db

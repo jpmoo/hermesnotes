@@ -83,6 +83,10 @@ enum Theme {
 /// the whole reason the window exists — a deep link should land on the thing it
 /// names, in the application that already knows what the link means.
 enum Opener {
+    /// Announced whenever something is opened, so the panel that offered the
+    /// link can close itself without every call site remembering to.
+    static let didOpen = Notification.Name("talaria.didOpen")
+
     /// Called from views, which are already on the main actor.
     @MainActor
     static func open(_ url: URL) {
@@ -91,6 +95,7 @@ enum Opener {
         } else {
             NSWorkspace.shared.open(url)
         }
+        NotificationCenter.default.post(name: didOpen, object: nil)
     }
 }
 

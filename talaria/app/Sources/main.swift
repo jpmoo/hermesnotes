@@ -582,6 +582,8 @@ MainActor.assumeIsolated {
     let delegate = AppDelegate()
     appDelegate = delegate
     app.delegate = delegate
-    app.setActivationPolicy(.accessory) // no Dock icon, no menu bar
+    // Regular, not accessory: this app has a Dock tile people pin, a web view
+    // and a menu bar. Info.plist explains why switching at runtime did not work.
+    app.setActivationPolicy(.regular)
     app.run()
 }

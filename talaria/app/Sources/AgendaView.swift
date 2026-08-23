@@ -86,6 +86,10 @@ final class AgendaModel: ObservableObject {
 
 struct AgendaView: View {
     @ObservedObject var model: AgendaModel
+    /// Where a feed event goes when clicked. A feed event is not a block and
+    /// has no address of its own, so it opens the calendar it belongs to —
+    /// which is where you would have gone looking for it anyway.
+    var collectionURL: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -240,6 +244,10 @@ struct AgendaView: View {
         .padding(.vertical, 5).padding(.horizontal, 7)
         .frame(minHeight: 30)
         .background(RoundedRectangle(cornerRadius: Theme.controlRadius).fill(Color.secondary.opacity(0.07)))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let s = collectionURL, let u = URL(string: s) { Opener.open(u) }
+        }
     }
 
     /// The line under an item's title. Split out because the whole row as one

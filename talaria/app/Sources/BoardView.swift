@@ -128,7 +128,7 @@ struct BoardView: View {
             Divider()
             if let board = model.board {
                 if board.kind == "calendar" {
-                    AgendaView(model: model.agenda)
+                    AgendaView(model: model.agenda, collectionURL: board.url)
                 } else if board.rollup {
                     rollup(board.groups)
                 } else if board.canvas {

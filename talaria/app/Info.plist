@@ -14,8 +14,18 @@
     resolve bundle id", at index time rather than at call time, so the code looks
     like it worked.
 
-  LSUIElement keeps it out of the Dock and the app switcher. It is a daemon
-  wearing a bundle, not an app.
+  There is deliberately no LSUIElement.
+
+  It used to be here, with the app flipping to a regular activation policy when
+  a window opened and back when it closed. That half-worked and then didn't: an
+  app switched to foreground at runtime draws a menu bar that never properly
+  attaches — the Apple menu included — and the Dock declines to treat it as a
+  normal application, so an auto-hiding Dock will not reveal itself over its
+  windows.
+
+  This app carries a web view, an Edit menu and a Dock tile people pin. That is
+  a foreground application, and saying so once at launch is more honest than
+  pretending otherwise and correcting it later.
 
   LSBackgroundOnly used to sit alongside it, and that was wrong. It is the
   stronger claim — that the process presents no interface at all — so macOS
@@ -57,8 +67,6 @@
   <key>TalariaRepoRoot</key>
   <string>__REPO_ROOT__</string>
 
-  <key>LSUIElement</key>
-  <true/>
 
   <!--
     The URL scheme. Not `hermes`: that is another tool on this machine.

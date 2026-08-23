@@ -219,13 +219,24 @@ item's right-click menu, or click anything anywhere in Talaria — a card, a
 Spotlight result, a `talaria://` link — and it lands there rather than in a
 browser tab.
 
+Opening anything closes the panel that offered it — a panel is a way of getting
+somewhere, and once you have gone it should not sit behind what it opened. A
+calendar-feed event has no address of its own, so it opens the calendar it
+belongs to.
+
 Links *out* of Hermes still go to the default browser: someone else's website
 belongs in a browser, and the distinction is the whole reason the window exists.
 
-The session persists on disk, so logging in is a one-off. While the window is
-open the app takes a Dock icon and a menu bar — without one there is no Edit
-menu, and a web view swallows ⌘C and ⌘V with no way to get them back. It drops
-back to a menu-bar-only tool when the window closes.
+The session persists on disk, so logging in is a one-off.
+
+Talaria is a normal foreground application: it has a Dock tile you can pin, an
+Edit menu, and it shows in ⌘-Tab. It was an accessory app that flipped policy
+when a window opened, and that half-worked — a menu bar drawn at runtime never
+properly attaches, and an auto-hiding Dock won't reveal itself over the windows
+of an app it doesn't consider normal.
+
+Clicking the Dock tile opens the Hermes window even though the app is already
+running, which it always is — launchd starts it at login.
 
 This replaces pointing deep links at a Nativefier wrapper. That build receives
 `open-url` and forwards it to a renderer with no listener for it, so links

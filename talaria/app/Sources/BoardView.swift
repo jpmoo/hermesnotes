@@ -495,6 +495,8 @@ struct CanvasBoard: View {
     @State private var offset: CGSize = .zero
     @State private var dragged: CGSize = .zero
     @State private var cursor: CGPoint?
+    @StateObject private var scrollPanBox = ScrollPanBox()
+    private var scrollPan: ScrollPan { scrollPanBox.pan }
     @AppStorage("talaria.canvas.dots") private var showDots = true
 
     var body: some View {
@@ -512,14 +514,6 @@ struct CanvasBoard: View {
             // upward past the bar that is supposed to be above it.
             .clipped()
             .contentShape(Rectangle())
-            // Above the content so it sees the scroll, but hit-transparent so
-            // clicking and dragging still reach the nodes underneath.
-            .overlay(
-                ScrollCatcher { dx, dy in
-                    offset.width += dx
-                    offset.height += dy
-                }
-            )
             .onContinuousHover { phase in
                 if case let .active(point) = phase { cursor = point }
             }
@@ -538,7 +532,16 @@ struct CanvasBoard: View {
                     .onEnded { _ in pinchStart = scale }
             )
             .overlay(alignment: .bottomTrailing) { zoomControls(in: geo.size).padding(10) }
-            .onAppear { centre(in: geo.size) }
+            .onAppear {
+                centre(in: geo.size)
+                // Only while a canvas is on screen: a monitor left running
+                // would eat scrolling everywhere else in the app.
+                scrollPan.start { dx, dy in
+                    offset.width += dx
+                    offset.height += dy
+                }
+            }
+            .onDisappear { scrollPan.stop() }
         }
     }
 
@@ -822,34 +825,39 @@ struct CanvasBoard: View {
 
 /// Catches two-finger scrolling so a canvas can be pushed around.
 ///
-/// SwiftUI has gestures for dragging and pinching and nothing for a scroll
-/// wheel, which is what a trackpad swipe actually produces — so panning worked
-/// only by click-dragging, and the gesture everyone reaches for first did
-/// nothing at all. An NSView that overrides `scrollWheel` is the whole of it.
-private struct ScrollCatcher: NSViewRepresentable {
-    let onScroll: (CGFloat, CGFloat) -> Void
+/// A local event monitor rather than a view, because the view version could not
+/// work: to let clicks and drags reach the nodes underneath it returned nil from
+/// `hitTest`, and scroll events are routed by hit-testing too — so the thing
+/// existed precisely to receive scrolls and had made itself unable to.
+///
+/// A monitor sits outside that entirely. It sees the event before the window
+/// does, decides whether it is over the canvas, and either acts on it or hands
+/// it back untouched.
+@MainActor
+final class ScrollPan {
+    private var monitor: Any?
 
-    final class View: NSView {
-        var onScroll: ((CGFloat, CGFloat) -> Void)?
-        override func scrollWheel(with event: NSEvent) {
+    func start(onScroll: @escaping (CGFloat, CGFloat) -> Void) {
+        stop()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
             // Precise deltas come from a trackpad and are already in points; a
-            // mouse wheel reports in lines, which needs a multiplier or a canvas
+            // mouse wheel reports lines, which needs a multiplier or the canvas
             // barely moves.
             let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
-            onScroll?(event.scrollingDeltaX * scale, event.scrollingDeltaY * scale)
+            onScroll(event.scrollingDeltaX * scale, event.scrollingDeltaY * scale)
+            // Swallowed: nothing behind a canvas wants this scroll, and letting
+            // it through would scroll a list underneath at the same time.
+            return nil
         }
-        // Let clicks and drags through to the SwiftUI content beneath.
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 
-    func makeNSView(context: Context) -> View {
-        let v = View()
-        v.onScroll = onScroll
-        return v
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
     }
 
-    func updateNSView(_ nsView: View, context: Context) {
-        nsView.onScroll = onScroll
+    deinit {
+        if let monitor { NSEvent.removeMonitor(monitor) }
     }
 }
 
@@ -996,4 +1004,14 @@ private struct EdgeShape: View {
         }
         .fill(tint)
     }
+}
+
+/// Holds the scroll monitor for as long as the canvas is on screen.
+///
+/// A `@StateObject` because the monitor has to outlive a redraw: created in
+/// `@State` it would be torn down and re-made on every view update, and torn
+/// down at the wrong moment leaves the app with no way to pan.
+@MainActor
+final class ScrollPanBox: ObservableObject {
+    let pan = ScrollPan()
 }

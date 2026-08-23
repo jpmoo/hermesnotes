@@ -131,10 +131,10 @@ rebuild. `app/glyph-1024.png` is the mark on its own, if you need to start over.
 
 Select text anywhere, right-click, and under **Services**:
 
-- **Add to Hermes as Task** — first line becomes the title, the rest goes into
+- **Add to Hermes Notes as Task** — first line becomes the title, the rest goes into
   the type's prose field (and into the title, if the type hasn't got one, rather
   than being dropped)
-- **Add to Hermes as Note** — the whole selection, as a text block
+- **Add to Hermes Notes as Note** — the whole selection, as a text block
 
 Both work offline: the block is created locally with its real id and goes out on
 reconnect. A notification says which happened.

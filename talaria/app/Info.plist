@@ -95,7 +95,7 @@
   <array>
     <dict>
       <key>NSMenuItem</key>
-      <dict><key>default</key><string>Add to Hermes as Task</string></dict>
+      <dict><key>default</key><string>Add to Hermes Notes as Task</string></dict>
       <key>NSMessage</key>
       <string>captureAsTask</string>
       <key>NSPortName</key>
@@ -110,7 +110,7 @@
     </dict>
     <dict>
       <key>NSMenuItem</key>
-      <dict><key>default</key><string>Add to Hermes as Note</string></dict>
+      <dict><key>default</key><string>Add to Hermes Notes as Note</string></dict>
       <key>NSMessage</key>
       <string>captureAsNote</string>
       <key>NSPortName</key>

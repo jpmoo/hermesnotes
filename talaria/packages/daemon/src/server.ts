@@ -415,7 +415,12 @@ export function buildServer(deps: {
     const grouping = groupByOf(props, row.collectionKind);
     const cachedQuery = mirror.get(`query.${id}`);
     const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;
-    const isSmart = Boolean(props.filter_query) && matching !== null;
+    // What makes a collection smart is the mode it was put in, not the presence
+    // of a saved query — a manual collection can carry one from before it was
+    // switched back, and reading that as smart hid every card someone had
+    // placed by hand. This is the web app's own test, and the two surfaces
+    // showing different contents for the same board is the whole thing to avoid.
+    const isSmart = props.membership_mode === "smart" && matching !== null;
 
     const idx = types();
     const placed = new Set<string>();

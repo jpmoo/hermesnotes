@@ -242,13 +242,18 @@ export class Sync {
           return this.baseline();
         }
         for (const c of batch.changes) {
+          // Rows arrive in order, so the last word about a block is the true
+          // one — in *both* directions. Letting a delete outrank every later
+          // row was how a block could vanish from the mirror and stay gone:
+          // Hermes logs a matrix move as a delete followed by an insert, so
+          // dragging a card between regions deleted it here and the insert
+          // that put it back was discarded for arriving second.
           if (c.op === "delete") {
             gone.add(c.blockId);
             touched.delete(c.blockId);
           } else {
-            // A delete already seen in this drain outranks a later edit: rows
-            // arrive in order, so the last word about a block is the true one.
-            if (!gone.has(c.blockId)) touched.add(c.blockId);
+            touched.add(c.blockId);
+            gone.delete(c.blockId);
           }
         }
         since = batch.nextSeq;

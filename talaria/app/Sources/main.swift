@@ -133,6 +133,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// A click on the Dock icon.
+    ///
+    /// Needed because this app is usually already running, launched by launchd
+    /// at login. Opening it again doesn't start anything — macOS just activates
+    /// what is there — and an accessory app with no windows activates to
+    /// nothing at all, so a pinned icon would bounce once and appear broken.
+    /// This is the hook that turns that click into the window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        NSLog("talaria: reopen (visible windows: \(flag))")
+        if !flag { HermesWindow.shared.show() }
+        return true
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
         daemon?.stop()

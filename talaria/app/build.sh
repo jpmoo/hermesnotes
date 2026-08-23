@@ -13,7 +13,12 @@
 # pass — that is the point at which this stops being enough.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-APP="${TALARIA_APP:-$HOME/Library/Application Support/Talaria/Talaria.app}"
+FINAL="${TALARIA_APP:-$HOME/Library/Application Support/Talaria/Talaria.app}"
+# Assembled beside the real one and swapped at the end, never rebuilt in place.
+# A Dock item points at a path: emptying that path and refilling it leaves a
+# window in which the Dock can find nothing there and quietly drop the tile —
+# and a half-written bundle is something launchd might get to first.
+APP="$FINAL.building"
 
 echo "==> Assembling $APP"
 rm -rf "$APP"
@@ -96,6 +101,13 @@ xcrun swiftc \
 echo "==> Signing (ad-hoc; personal machine, no notarization)"
 codesign --force --sign - --identifier dev.talaria.Talaria "$APP"
 codesign --verify --strict "$APP"
+
+echo "==> Swapping into place"
+rm -rf "$FINAL.previous"
+[ -d "$FINAL" ] && mv "$FINAL" "$FINAL.previous"
+mv "$APP" "$FINAL"
+rm -rf "$FINAL.previous"
+APP="$FINAL"
 
 echo "==> Registering with LaunchServices (so talaria:// routes here)"
 # Icon services cache by path and modification date, so an app rebuilt in place

@@ -21,7 +21,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import { createPortal } from "react-dom";
 import { api, type Block, type BlockType, type Collection, type Member } from "../api.ts";
 import { useAnyBlockChange } from "../lib/block-events.ts";
-import { isOverdue, oneLineText } from "../lib/display.ts";
+import { isOverdue, oneLineText, readableOn } from "../lib/display.ts";
 import { MentionText } from "./MentionText.tsx";
 import { normalizeFilter } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -35,19 +35,6 @@ const REGION_HEIGHTS: Record<RegionSize, number> = { short: 224, medium: 280, ta
 const regionHeight = (size?: string): number =>
   REGION_HEIGHTS[(size as RegionSize) in REGION_HEIGHTS ? (size as RegionSize) : "medium"];
 
-/** A readable text color for a region's background: light on dark, dark on light. */
-function readableOn(bg: string | null): string | undefined {
-  if (!bg) return undefined;
-  const h = bg.trim().replace(/^#/, "");
-  const hex = h.length === 3 ? h.replace(/(.)/g, "$1$1") : h;
-  if (!/^[0-9a-f]{6}$/i.test(hex)) return undefined;
-  const n = parseInt(hex, 16);
-  const r = (n >> 16) & 255;
-  const g = (n >> 8) & 255;
-  const b = n & 255;
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return lum < 0.55 ? "#f4f5f6" : "#1f2328";
-}
 
 // Pointer-based collision so the droppable UNDER the cursor wins (reliable
 // reordering even when a big chip overlaps several drop zones); falls back to

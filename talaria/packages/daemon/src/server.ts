@@ -501,6 +501,46 @@ export function buildServer(deps: {
     // A sequence collection puts everything in one list; there are no regions to
     // put anything in, so what would have been "unplaced" is simply the contents.
     const members = gridded ? [] : drawer.slice();
+    // Named apart from the `placed` set above, which tracks something else
+    // entirely: this is "has coordinates on the canvas".
+    const positioned = members.filter((m) => (m as { x: number | null }).x !== null);
+
+    // "Show existing connections": an arrow between any two boxes whose blocks
+    // already link, which is a different thing from the connections somebody
+    // drew. Those are decoration on the collection; these are the real
+    // relationships the blocks already have — a task pointing at its project —
+    // and the canvas is set to show them.
+    const showLinks = isCanvas && props.canvas_show_links === true;
+    const linkEdges: unknown[] = [];
+    if (showLinks) {
+      const onCanvas = new Set(positioned.map((c) => (c as { id: string }).id));
+      for (const id of onCanvas) {
+        const raw = mirror.rawBlock(id);
+        if (!raw) continue;
+        const b = JSON.parse(raw);
+        const c = toCanonical(b, b.blockTypeId ? idx.get(b.blockTypeId) : undefined, {
+          appOrigin: config.origin,
+        });
+        for (const link of c.links) {
+          // Only between two things actually on this canvas: an arrow to
+          // somewhere off-screen has nowhere to point.
+          if (!onCanvas.has(link.id) || link.id === id) continue;
+          linkEdges.push({
+            from: id,
+            to: link.id,
+            fromSide: "e",
+            toSide: "w",
+            dash: "solid",
+            arrow: "forward",
+            width: 1.5,
+            color: null,
+            label: null,
+            derived: true,
+          });
+        }
+      }
+    }
+
     return envelope({
       id,
       title: me.title,
@@ -522,7 +562,7 @@ export function buildServer(deps: {
       // rather than presenting unexplained headings.
       groupBy: grouping,
       notes,
-      edges,
+      edges: [...edges, ...linkEdges],
       smart: isSmart,
     });
   });

@@ -512,6 +512,14 @@ struct CanvasBoard: View {
             // upward past the bar that is supposed to be above it.
             .clipped()
             .contentShape(Rectangle())
+            // Above the content so it sees the scroll, but hit-transparent so
+            // clicking and dragging still reach the nodes underneath.
+            .overlay(
+                ScrollCatcher { dx, dy in
+                    offset.width += dx
+                    offset.height += dy
+                }
+            )
             .onContinuousHover { phase in
                 if case let .active(point) = phase { cursor = point }
             }
@@ -809,6 +817,39 @@ struct CanvasBoard: View {
             width: -((minX + maxX) / 2) * scale,
             height: -((minY + maxY) / 2) * scale
         )
+    }
+}
+
+/// Catches two-finger scrolling so a canvas can be pushed around.
+///
+/// SwiftUI has gestures for dragging and pinching and nothing for a scroll
+/// wheel, which is what a trackpad swipe actually produces — so panning worked
+/// only by click-dragging, and the gesture everyone reaches for first did
+/// nothing at all. An NSView that overrides `scrollWheel` is the whole of it.
+private struct ScrollCatcher: NSViewRepresentable {
+    let onScroll: (CGFloat, CGFloat) -> Void
+
+    final class View: NSView {
+        var onScroll: ((CGFloat, CGFloat) -> Void)?
+        override func scrollWheel(with event: NSEvent) {
+            // Precise deltas come from a trackpad and are already in points; a
+            // mouse wheel reports in lines, which needs a multiplier or a canvas
+            // barely moves.
+            let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 12
+            onScroll?(event.scrollingDeltaX * scale, event.scrollingDeltaY * scale)
+        }
+        // Let clicks and drags through to the SwiftUI content beneath.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> View {
+        let v = View()
+        v.onScroll = onScroll
+        return v
+    }
+
+    func updateNSView(_ nsView: View, context: Context) {
+        nsView.onScroll = onScroll
     }
 }
 

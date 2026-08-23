@@ -1,6 +1,7 @@
 import { Grid2x2, GripHorizontal, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { readableOn } from "../lib/display.ts";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import {
   useEffect,
@@ -1745,7 +1746,11 @@ export function CanvasView({
           corners with it — they sit a few pixels outside its box. */}
       <div
         className="cv-paper"
-        style={isNote ? { background: r.color || "var(--postit)" } : undefined}
+        // Ink as well as paper. Without a colour here the text is whatever the
+        // theme's is, and in the dark theme that is nearly white — on a pale
+        // sticky, invisible. A note with no colour of its own falls through to
+        // the stylesheet, since its paper is light in both themes.
+        style={isNote ? { background: r.color || "var(--postit)", color: readableOn(r.color) } : undefined}
       >
         <div className="cv-grab" onPointerDown={(e) => startNodeDrag(id, e)} title="Drag to move">
           <GripHorizontal size={13} />

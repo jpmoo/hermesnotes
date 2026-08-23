@@ -104,3 +104,30 @@ export function darkTextOn(color: string): boolean {
   const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h!, 16) / 255);
   return 0.2126 * r! + 0.7152 * g! + 0.0722 * b! > 0.55;
 }
+
+/**
+ * A readable text colour for a coloured background: light on dark, dark on
+ * light.
+ *
+ * Lives here rather than in one view because two of them need it — a matrix
+ * region and a canvas note are both "someone chose a colour and text has to sit
+ * on it", and a sticky whose text is the theme's own colour disappears the
+ * moment the theme is dark and the paper is not.
+ *
+ * Eight-digit values are accepted because that is what the colour pickers
+ * store; the alpha is ignored, since what matters is the ink, not the paper's
+ * transparency.
+ */
+export function readableOn(bg: string | null | undefined): string | undefined {
+  if (!bg) return undefined;
+  const h = bg.trim().replace(/^#/, "");
+  const expanded = h.length === 3 ? h.replace(/(.)/g, "$1$1") : h;
+  const hex = expanded.length === 8 ? expanded.slice(0, 6) : expanded;
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return undefined;
+  const n = parseInt(hex, 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum < 0.55 ? "#f4f5f6" : "#1f2328";
+}

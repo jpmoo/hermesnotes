@@ -5483,6 +5483,14 @@ input.matrix-axis-y::placeholder {
 
    The shadow is a drop-shadow filter rather than a box-shadow, so it follows
    the cut corner instead of outlining a rectangle that isn't there. */
+/* A sticky's paper is pale in both themes, so its ink is dark in both. Without
+   this the text is var(--text), which in the dark theme is nearly white and
+   vanishes on the note. A note given a colour of its own overrides this
+   inline, with the ink chosen for that colour. */
+.cv-note .cv-paper {
+  color: #1f2328;
+}
+
 .cv-note {
   --fold: 14px;
   border: none;

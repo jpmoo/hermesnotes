@@ -193,6 +193,49 @@ async function syncTextTags(
 }
 
 /**
+ * Keep a block's series in step with the rule written on it.
+ *
+ * The rule lives in two places during the move onto the series table, and two
+ * places holding one fact will disagree the moment somebody edits one. Editing a
+ * recurrence in the app writes the property; without this the series row would
+ * still hold whatever it was backfilled with, and the export — the only thing
+ * reading the series today — would quietly describe a rule the user changed
+ * weeks ago.
+ *
+ * Also where a series is born. A task that gains a rule gets one immediately
+ * rather than waiting until its first completion, so it is exportable as a
+ * recurrence from the moment it becomes one.
+ *
+ * Returns the series id, which may be new.
+ */
+async function syncSeries(
+  userId: string,
+  blockId: string,
+  seriesId: string | null,
+  schema: PropertySchema | null,
+  props: Record<string, unknown>,
+): Promise<string | null> {
+  const recField = schema?.fields.find((f) => f.type === "recurrence");
+  if (!recField) return seriesId;
+  const parsed = recurrenceSchema.safeParse(props[recField.key]);
+  if (!parsed.success) {
+    // The rule is gone. The series stays: its instances are still real, and the
+    // record of what governed them is worth more than the tidiness of removing
+    // it. The link is what says this block no longer repeats.
+    if (seriesId) await db.update(blocks).set({ seriesId: null }).where(eq(blocks.id, blockId));
+    return null;
+  }
+  const { n: _n, ...rule } = parsed.data;
+  if (seriesId) {
+    await db.update(series).set({ rule }).where(and(eq(series.id, seriesId), eq(series.ownerId, userId)));
+    return seriesId;
+  }
+  const [made] = await db.insert(series).values({ ownerId: userId, rule }).returning({ id: series.id });
+  if (made) await db.update(blocks).set({ seriesId: made.id }).where(eq(blocks.id, blockId));
+  return made?.id ?? null;
+}
+
+/**
  * When a recurring task transitions to complete, spawn the next occurrence: a
  * copy with the status reset and the schedule datespan advanced per the rule.
  * Returns whether a new block was created.
@@ -511,6 +554,10 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .onConflictDoNothing()
       .returning(blockView);
     if (row) {
+      // A task created already repeating gets its series now, so it is a
+      // recurrence to anyone reading rather than only after its first
+      // completion.
+      await syncSeries(userId, row.id, null, type.propertySchema, (row.properties ?? {}) as Record<string, unknown>);
       reply.code(201);
       return row;
     }
@@ -1625,6 +1672,13 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       (current.properties ?? {}) as Record<string, unknown>,
       incoming,
     );
+    const seriesId = await syncSeries(
+      userId,
+      id,
+      current.seriesId ?? null,
+      type.propertySchema,
+      nextProps as Record<string, unknown>,
+    );
     const embedSource = computeEmbedSource(type, { content: nextContent, properties: nextProps });
     const hash = sha256(embedSource);
 
@@ -1684,7 +1738,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         { id: type.id, schemaVersion: type.schemaVersion, propertySchema: type.propertySchema },
         (current.properties ?? {}) as Record<string, unknown>,
         nextProps as Record<string, unknown>,
-        { id, seriesId: current.seriesId ?? null },
+        { id, seriesId },
       );
     }
     return { ...updated, recurred, tagsChanged };

@@ -5,12 +5,20 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "probe": "tsx probe.ts"
+    "probe": "tsx probe.ts",
+    "measure": "tsx measure.ts"
   },
-  "dependencies": { "@hermes/shared": "workspace:*" },
-  "devDependencies": { "typescript": "^5.6.3", "tsx": "^4.19.2" }
+  "dependencies": {
+    "@hermes/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.2"
+  }
 }

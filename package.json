@@ -2,7 +2,7 @@
   "name": "hermes-notes",
   "version": "2.0.0-alpha.0",
   "private": true,
-  "description": "Hermes Notes v2 — a block-first PKMS",
+  "description": "Hermes Notes v2 \u2014 a block-first PKMS",
   "type": "module",
   "packageManager": "pnpm@9.12.0",
   "engines": {
@@ -16,7 +16,8 @@
     "dev:web": "pnpm --filter @hermes/web dev",
     "db:generate": "pnpm --filter @hermes/db generate",
     "db:migrate": "pnpm --filter @hermes/db migrate",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "series:backfill": "pnpm --filter @hermes/db series:backfill"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

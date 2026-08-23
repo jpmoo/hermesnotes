@@ -94,6 +94,26 @@ export const blockTypes = pgTable(
   (t) => ({ ownerName: unique().on(t.ownerId, t.name) }),
 );
 
+/**
+ * A recurrence rule, once, with its occurrences pointing at it.
+ *
+ * Machinery rather than knowledge, which is why it is a table and not a block:
+ * as a block it would turn up in search, carry an embedding, and write a change
+ * row every time an occurrence advanced.
+ */
+export const series = pgTable(
+  "series",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The rule, as recurrenceSchema parses it — and without `n`, which is countable. */
+    rule: jsonb("rule").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
 export const blocks = pgTable("blocks", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: uuid("owner_id")
@@ -114,6 +134,13 @@ export const blocks = pgTable("blocks", {
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * The series this block is an occurrence of, if it is one.
+   *
+   * Set null on delete, never cascade: removing the rule that governs a
+   * repeating task must not remove the work.
+   */
+  seriesId: uuid("series_id").references(() => series.id, { onDelete: "set null" }),
 });
 
 export const blockEmbeddings = pgTable("block_embeddings", {

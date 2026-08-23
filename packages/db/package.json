@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "migrate": "tsx src/migrate.ts"
+    "migrate": "tsx src/migrate.ts",
+    "series:backfill": "tsx scripts/backfill-series.ts"
   },
   "dependencies": {
     "@hermes/shared": "workspace:*",

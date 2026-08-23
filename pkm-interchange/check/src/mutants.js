@@ -175,25 +175,25 @@ const MUTANTS = [
     }),
   },
   {
-    name: "corrects the expectation to match what it found",
-    caught: "inline/the-target-is-authoritative",
+    name: "mints a fresh id when a stub becomes real",
+    caught: "inline/resolving-a-stub-keeps-its-id",
     patch: (a) => ({
       ...a,
       roundtrip: (env, caps) => {
         const out = a.roundtrip(env, caps);
-        for (const r of out.result.relations ?? []) delete r.expects;
+        for (const o of out.result.objects ?? []) if (o.type) o.id = `${o.id}-v2`;
         return out;
       },
     }),
   },
   {
-    name: "keeps the dangling edge but throws away what it said",
-    caught: "inline/unresolved-mention-keeps-its-label",
+    name: "tidies a stub down to a bare id",
+    caught: "inline/a-name-with-no-thing-is-a-stub",
     patch: (a) => ({
       ...a,
       roundtrip: (env, caps) => {
         const out = a.roundtrip(env, caps);
-        for (const r of out.result.relations ?? []) delete r.label;
+        for (const o of out.result.objects ?? []) if (o.stub) delete o.properties;
         return out;
       },
     }),

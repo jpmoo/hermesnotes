@@ -76,13 +76,18 @@ export function validate(envelope) {
   // An edge may lack an id — a mention of somebody who does not exist yet has a
   // name and nothing else — but it cannot lack both. With neither it points at
   // nothing and says nothing, and a consumer can only carry it forever.
+  // A link says one thing: this points at that. An edge with no far end is not a
+  // link with a piece missing, it is a row. What a producer knows about a thing
+  // that does not exist yet belongs to a stub object, not to the edge.
   (envelope.relations ?? []).forEach((r, i) => {
-    if (!r.to && !r.label) fail("relation.no-target", `relations[${i}]`);
-    // An expectation the receiving tool cannot read is a note to self. A type id
-    // is one producer's private key; a profile name is the vocabulary everyone
-    // already shares.
-    if (r.expects !== undefined && !V0_PROFILES.includes(r.expects)) {
-      fail("relation.expects-not-a-profile", `relations[${i}].expects`);
+    if (!r.to) fail("relation.no-target", `relations[${i}]`);
+  });
+
+  // A suggestion the receiving tool cannot read is a note to self. A type id is
+  // one producer's private key; a profile name is the vocabulary everyone shares.
+  (envelope.objects ?? []).forEach((o, i) => {
+    if (o.suggests !== undefined && !V0_PROFILES.includes(o.suggests)) {
+      fail("stub.suggests-not-a-profile", `objects[${i}].suggests`);
     }
   });
 

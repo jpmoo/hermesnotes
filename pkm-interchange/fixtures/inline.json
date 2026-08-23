@@ -134,43 +134,6 @@
       "why": "This is what the mirror buys. A tool that rewrites prose into its own markup cannot know whether it just destroyed a link, because it cannot parse the dialect it is replacing — but the relations array told it there was one. Without the mirror the loss is not merely unreported, it is undetectable."
     },
     {
-      "id": "inline/unresolved-mention-survives",
-      "level": 2,
-      "op": "roundtrip",
-      "given": {
-        "objects": [
-          {
-            "id": "o_1",
-            "properties": {
-              "body": "See ((o_gone))."
-            }
-          }
-        ],
-        "relations": [
-          {
-            "from": "o_1",
-            "to": "o_gone",
-            "type": "mentions",
-            "via": "inline",
-            "field": "body",
-            "resolved": false
-          }
-        ]
-      },
-      "expect": {
-        "result": {
-          "relations": [
-            {
-              "from": "o_1",
-              "to": "o_gone",
-              "resolved": false
-            }
-          ]
-        }
-      },
-      "why": "A mention whose target has been deleted is not noise to be tidied away. It is the only remaining record that the writing points at something, and it is what lets a tool offer to fix or clear the link rather than leaving a reader to wonder what the sentence meant. Dropping an edge because its far end is missing quietly rewrites the prose's meaning."
-    },
-    {
       "id": "inline/inline-edge-is-not-a-backlink",
       "level": 2,
       "op": "roundtrip",
@@ -251,43 +214,7 @@
       "why": "The mirror is only trustworthy if it points at something real. An edge claiming to come from a field the type does not have is either a stale export or a producer guessing, and a consumer has no way to tell which — so it is caught here rather than becoming a link nobody can trace back to a sentence."
     },
     {
-      "id": "inline/unresolved-mention-keeps-its-label",
-      "level": 2,
-      "op": "roundtrip",
-      "given": {
-        "objects": [
-          {
-            "id": "o_1",
-            "properties": {
-              "body": "Rang @the_roofer again."
-            }
-          }
-        ],
-        "relations": [
-          {
-            "from": "o_1",
-            "type": "mentions",
-            "via": "inline",
-            "field": "body",
-            "label": "the roofer",
-            "resolved": false
-          }
-        ]
-      },
-      "expect": {
-        "result": {
-          "relations": [
-            {
-              "label": "the roofer",
-              "resolved": false
-            }
-          ]
-        }
-      },
-      "why": "A mention with no id is a bare row unless it says what it said. Without the label a consumer cannot render the sentence around it — the reader is left with prose that plainly refers to somebody and no way to know who — and cannot offer to create the missing thing or clear the link. The label is the whole difference between a broken reference and a reference to something that does not exist yet."
-    },
-    {
-      "id": "inline/an-edge-needs-a-far-end",
+      "id": "inline/a-link-always-has-a-far-end",
       "level": 2,
       "op": "validate",
       "given": {
@@ -296,7 +223,8 @@
             {
               "from": "o_1",
               "type": "mentions",
-              "via": "inline"
+              "via": "inline",
+              "field": "body"
             }
           ]
         }
@@ -309,10 +237,10 @@
           }
         ]
       },
-      "why": "`to` may be absent — a mention of a person who does not exist yet is a normal thing to write, and it has a name and no id. What is not allowed is neither: an edge with no id and no label points at nothing and says nothing, and a consumer can do exactly nothing with it except carry it forever."
+      "why": "A link says one thing: this points at that. An edge with no far end is not a link with a piece missing, it is a row. Whatever a producer knows about the thing that isn't there — its name, what it ought to become — is knowledge about that thing, and belongs to an object rather than to the edge, where it would be a second copy of a fact drifting from the first."
     },
     {
-      "id": "inline/expectation-outlives-the-target",
+      "id": "inline/a-name-with-no-thing-is-a-stub",
       "level": 2,
       "op": "roundtrip",
       "given": {
@@ -320,44 +248,76 @@
           {
             "id": "o_1",
             "properties": {
-              "body": "Rang @the_roofer again."
+              "body": "Rang the roofer again."
+            }
+          },
+          {
+            "id": "o_roofer",
+            "stub": true,
+            "properties": {
+              "title": "the roofer"
             }
           }
         ],
         "relations": [
           {
             "from": "o_1",
+            "to": "o_roofer",
             "type": "mentions",
             "via": "inline",
-            "field": "body",
-            "label": "the roofer",
-            "expects": "contact",
-            "resolved": false
+            "field": "body"
           }
         ]
       },
       "expect": {
         "result": {
-          "relations": [
+          "objects": [
             {
-              "label": "the roofer",
-              "expects": "contact",
-              "resolved": false
+              "id": "o_roofer",
+              "stub": true,
+              "properties": {
+                "title": "the roofer"
+              }
             }
           ]
         }
       },
-      "why": "At the moment of writing, the interface knew what was meant — somebody reached for the key that means 'a person'. Once the mention fails to resolve, that intent is the only type information left anywhere in the system, and it is what lets a tool offer to create a person rather than an untyped stub. Throwing it away turns a specific unfinished thought into a generic broken link."
+      "why": "Writing a name before the thing exists is normal, and the answer is not a broken link — it is a real object with a real id that has a name and no type yet. The link is ordinary. Everything unusual about the situation is on the object, where a consumer will look for it anyway, and where it can be corrected once rather than in every sentence."
     },
     {
-      "id": "inline/the-target-is-authoritative",
+      "id": "inline/a-stub-says-what-it-should-become",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "objects": [
+          {
+            "id": "o_roofer",
+            "stub": true,
+            "properties": {
+              "title": "the roofer"
+            },
+            "suggests": "contact"
+          }
+        ]
+      },
+      "of": "object",
+      "expect": {
+        "result": {
+          "stub": true,
+          "suggests": "contact"
+        }
+      },
+      "why": "An interface with one key for people and another for anything knows, at the moment of writing, which was reached for. That is real information and nothing else records it, so it is worth keeping — as a suggestion about the stub, not as a claim on the link. It is what lets a tool offer to create a person rather than an untyped stub, and it is only ever a suggestion: whatever the thing turns out to be, the thing is authoritative."
+    },
+    {
+      "id": "inline/resolving-a-stub-keeps-its-id",
       "level": 2,
       "op": "roundtrip",
       "given": {
         "types": [
           {
-            "id": "t_project",
-            "name": "Project",
+            "id": "t_person",
+            "name": "Person",
             "fields": [
               {
                 "key": "title",
@@ -365,61 +325,59 @@
               }
             ],
             "profiles": {
-              "project": {
-                "title": "title"
+              "contact": {
+                "name": "title"
               }
             }
           }
         ],
         "objects": [
           {
-            "id": "o_2",
-            "type": "t_project",
+            "id": "o_roofer",
+            "type": "t_person",
             "properties": {
-              "title": "The roof"
+              "title": "Dave Trent"
             }
           }
         ],
         "relations": [
           {
             "from": "o_1",
-            "to": "o_2",
+            "to": "o_roofer",
             "type": "mentions",
             "via": "inline",
-            "field": "body",
-            "expects": "contact"
+            "field": "body"
           }
         ]
       },
       "expect": {
         "result": {
-          "relations": [
-            {
-              "to": "o_2",
-              "expects": "contact"
-            }
-          ],
           "objects": [
             {
-              "id": "o_2",
-              "type": "t_project"
+              "id": "o_roofer",
+              "type": "t_person"
+            }
+          ],
+          "relations": [
+            {
+              "to": "o_roofer"
             }
           ]
         }
       },
-      "why": "Somebody meant to name a person and named a project. The target's own type wins — it is a fact about the target — and the expectation is kept rather than corrected, because the disagreement is the interesting part: it is either a mis-link worth showing a reader or a thing that changed under the sentence. A consumer that silently rewrites either end has destroyed the evidence and told nobody."
+      "why": "The same object as the case above, once somebody said what it was: the stub flag is gone, a type is on, and the id never moved — so every link pointing at it is still correct and nothing had to be rewritten. This is the whole reason to mint an id at the moment of writing. A producer that instead keeps the name inside the prose has to find and edit every piece of writing that mentioned it, atomically, and tell every open editor to reread."
     },
     {
-      "id": "inline/expects-speaks-the-shared-vocabulary",
+      "id": "inline/suggests-speaks-the-shared-vocabulary",
       "level": 2,
       "op": "validate",
       "given": {
         "export": {
-          "relations": [
+          "objects": [
             {
-              "from": "o_1",
-              "to": "o_2",
-              "expects": "t_person_4a91"
+              "id": "o_x",
+              "stub": true,
+              "suggests": "t_person_4a91"
             }
           ]
         }
@@ -428,11 +386,11 @@
         "valid": false,
         "errors": [
           {
-            "code": "relation.expects-not-a-profile"
+            "code": "stub.suggests-not-a-profile"
           }
         ]
       },
-      "why": "A type id is one producer's private key. Saying a link expected `t_person_4a91` tells a stranger nothing at all, and tells the same producer nothing once that type is deleted. The format already has a vocabulary for what something is, and an expectation that cannot be read by the tool receiving it is not an expectation, it is a note to self."
+      "why": "A type id is one producer's private key. Saying a stub should become `t_person_4a91` tells a stranger nothing, and tells the same producer nothing once that type is deleted. The format already has a vocabulary for what something is, and a suggestion the receiving tool cannot read is not a suggestion, it is a note to self."
     }
   ]
 }

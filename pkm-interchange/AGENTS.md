@@ -300,38 +300,43 @@ The kind of the **relationship** is a different question with two different answ
 
 An inline mention has no relationship type, because nobody declared one. Somebody typed a name in a sentence. Inventing `references` or `relates-to` for it would be guessing, and guessing at meaning is the thing this format exists to stop. `type` on a mirrored edge says how the edge was made, not what it means, and a consumer that needs more looks at the target.
 
-### An edge that points at nothing yet
+### A link is a link
 
 ```json
-{ "from": "o_1", "type": "mentions", "via": "inline",
-  "field": "body", "label": "the roofer", "resolved": false }
+{ "from": "o_1", "to": "o_2", "type": "mentions", "via": "inline", "field": "body" }
 ```
 
-`resolved: false` marks an edge whose far end is not in this export — deleted, or out of scope, or never created. Consumers keep it: dropping an edge because its target is missing destroys the only remaining record that the writing points at something.
+That is all of it, and `to` is **required**. A link says one thing: this points at that. Every question a reader might go on to ask — what kind of thing is it, does it still exist, was it ever created, what is it called — is a question about the far end, and belongs to the far end.
 
-`label` is what the mention said. Without it an unresolved edge is a bare id, and the prose around it cannot be rendered at all — a reader is left with a sentence that plainly refers to somebody and no way to know who. With it, a tool can show the name, offer to create the thing, or offer to clear the link.
+The temptation to answer those on the edge is strong and it is always the same mistake. A copy of the target's type falsifies itself the moment the target is retyped. A copy of its title falsifies itself on rename. A `resolved` flag is a join the consumer can do itself in one pass. Each looks like a convenience and each becomes a second version of a fact, drifting from the first with nothing to reconcile them.
 
-`to` may therefore be **absent**: a mention of a person who does not exist yet is a real and common thing to write, and it has a label and no id. A relation must carry `from`, and must carry `to` or `label` — an edge with neither is not an edge, it is a row.
+### A name that isn't a thing yet
 
-### What the link expected
+So what about `[[the roofer]]`, written before any roofer exists?
+
+That is not a link with a missing end. It is a link to a **stub**: an object that exists, has an id, has a name, and does not yet have a type.
 
 ```json
-{ "from": "o_1", "type": "mentions", "via": "inline",
-  "label": "the roofer", "expects": "contact", "resolved": false }
+{ "id": "o_roofer", "stub": true,
+  "properties": { "title": "the roofer" },
+  "suggests": "contact" }
 ```
 
-An interface that offers different keys for different things — one for people, one for anything — knows something at the moment of writing that is nowhere else afterwards: **what the writer meant to point at**. `expects` is that, and it is the one piece of type information an edge may legitimately carry.
+`stub: true` says this is a name somebody wrote rather than a thing they made. `suggests` is optional and names a profile — what the writer appeared to mean, which is worth keeping when an interface has separate ways to reach for a person and for anything, because at the moment of writing that is real information and nowhere else records it. It is a suggestion about the stub, not a claim about the link.
 
-It is not a copy of the target's type. The target's type belongs to the target, and duplicating it means retyping an object silently falsifies every edge pointing at it. `expects` is a statement about the *link*: this was written as a reference to a person.
+The point of doing it this way is what happens next. When the stub becomes real it keeps its id: `stub` comes off, a type goes on, and **every link pointing at it is already correct**. Nothing is rewritten. A producer that instead stores the name inside the prose has to find and edit every piece of writing that mentioned it, and has to do so atomically, and has to tell every open editor to reread — which is a large amount of machinery to own for a case that need not exist.
 
-- When the target resolves, **the target is authoritative** and a disagreement is legal. Somebody meant to name a person and named a project; that is worth showing a reader, and it is not an excuse to coerce either end. A consumer keeps both.
-- When nothing resolves, `expects` is the only type information that exists anywhere. It is what lets a tool offer to create the right kind of thing instead of an untyped stub.
+A stub is an ordinary object in every other respect. It can be exported, linked, listed, and swept up if nothing points at it any more.
 
-It takes a **profile name**, not a type id. A type id is one producer's private key and means nothing to anyone else; `contact` is the vocabulary this format already has for saying what something is.
+**What a new id costs.** Minting one at the moment of writing has three consequences a producer has to answer for, and they are worth stating because the alternative — resolving names at read time — answers them by accident.
 
-There is deliberately no equivalent for the near end. The origin's type is knowable twice already — the `from` object carries it, and `field` names the property whose schema declares it. A third copy would buy nothing and drift like the first.
+*Who mints it.* The client, before the write lands. An id that has to be fetched cannot be used offline and cannot be used in the same keystroke that created the reference. A producer that mints ids server-side has to either block or backfill, and backfilling is the prose rewrite this design exists to avoid.
 
-**Render hints.** Nothing stops a producer stamping the target's type or icon onto an edge to draw a chip without a lookup, and the round-trip rule means it will survive. Two cautions, in order of importance. Name it as a hint — `targetTypeHint`, never `targetType` — because a field that reads as a fact will be treated as one by the next person, and then a retyped object has a library full of edges lying about it. And check whether it buys anything first: a renderer usually has to resolve the target regardless, for the current title, or to find out the thing has been deleted, and the type arrives in that same answer.
+*Two people typing the same name.* Resolving by name converges for free: two writers naming the roofer land on one roofer without anyone deciding. Ids do not, so the picker has to offer existing stubs, and convergence stops being automatic and becomes chosen. That is a real cost, and it buys the case that name-matching gets wrong — two different Janes stay two people.
+
+*Names that were never chosen.* Text typed and never picked from a picker is text. It is not a link, it mints nothing, and it resolves to nothing. A producer that quietly links on a name match has reintroduced every problem above with none of the compensating clarity.
+
+**Render hints.** Nothing stops a producer stamping the target's title or icon onto an edge to draw a chip without a lookup, and the round-trip rule means it will survive. Two cautions, in order of importance. Name it as a hint — `targetTitleHint`, never `title` — because a field that reads as a fact will be treated as one by the next person. And check whether it buys anything first: a renderer usually has to resolve the target regardless, for its current title or to find out the thing has been deleted, and everything else arrives in that same answer.
 
 And note what is *not* here: a tag. A tag is not a link to an object. It has no far end to resolve, and it lives on the object as `tags`.
 

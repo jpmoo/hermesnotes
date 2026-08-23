@@ -549,14 +549,18 @@ private struct CardRow: View {
                     .strikethrough(card.done)
                     .foregroundStyle(card.done ? .secondary : .primary)
                     .lineLimit(2)
-                HStack(spacing: 5) {
-                    if let due = card.due {
-                        Label(due, systemImage: "calendar")
-                            .font(Theme.chrome(9.5)).foregroundStyle(.tertiary).labelStyle(.titleAndIcon)
-                    }
-                    ForEach(card.tags.prefix(2), id: \.self) { tag in
-                        Text("#\(tag)")
-                            .font(Theme.chrome(9.5)).foregroundStyle(Theme.accent)
+                // The card's dates, in full, the way the web app shows them —
+                // a range where there is one, rather than only its far end.
+                // Tags are left off: on a matrix they are mostly the region's
+                // own tag, so a card sitting in Do captioned "#do" is the board
+                // repeating itself.
+                if let bits = card.dates, !bits.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(bits, id: \.self) { bit in
+                            Text(bit.text)
+                                .font(Theme.chrome(9.5))
+                                .foregroundStyle(bit.overdue ? AnyShapeStyle(Theme.danger) : AnyShapeStyle(.secondary))
+                        }
                     }
                 }
             }

@@ -96,6 +96,10 @@ enum Daemon {
 
     struct BoardSummary: Decodable { let id: String; let title: String; let kind: String? }
     struct Region: Decodable { let index: Int; let title: String; let color: String? }
+    struct DateBit: Decodable, Hashable {
+        let text: String
+        let overdue: Bool
+    }
     struct Card: Decodable, Identifiable, Hashable {
         let id: String
         let title: String
@@ -107,6 +111,8 @@ enum Daemon {
         let url: String
         /// The heading this belongs under, when the collection is grouped.
         let group: String?
+        /// Every dated field the block has, formatted as the board shows them.
+        let dates: [DateBit]?
         /// Whether this block has a status at all — a note or a person has none,
         /// and a checkbox on one is an offer of nonsense.
         ///

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { bodyFieldKey, optionLabel } from "@hermes/shared";
+import { bodyFieldKey, isComplete, optionLabel } from "@hermes/shared";
 import { toCanonical, type HermesTypeRow } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
@@ -334,6 +334,54 @@ export function buildServer(deps: {
       });
     };
 
+    /**
+     * The dates on a card, the way the board shows them.
+     *
+     * Every dated field the type has, not just the one the canonical object
+     * picked as "the" schedule — a task with an available date and a due date
+     * has a range, and showing only its far end says less than the web app does
+     * about the same card. Formatted short, because a chip is small.
+     *
+     * Overdue means the far end has passed and the thing can still be finished;
+     * a note with yesterday's date on it is not late for anything.
+     */
+    const datesOf = (rawBlock: string): { text: string; overdue: boolean }[] => {
+      const b = JSON.parse(rawBlock) as {
+        blockTypeId: string | null;
+        properties: Record<string, unknown>;
+      };
+      const schema = b.blockTypeId ? types().get(b.blockTypeId)?.propertySchema : null;
+      if (!schema) return [];
+      const done = isComplete(schema, b.properties ?? {});
+      const canBeLate = Boolean(schema.status_field) && !done;
+      const today = new Date().toISOString().slice(0, 10);
+      const short = (v: string) => {
+        const d = new Date(v.includes("T") ? v : `${v}T12:00:00`);
+        return Number.isNaN(d.getTime())
+          ? v
+          : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      };
+      const out: { text: string; overdue: boolean }[] = [];
+      for (const f of schema.fields) {
+        const v = (b.properties ?? {})[f.key];
+        if (v === null || v === undefined || v === "") continue;
+        if (f.type === "datetime" || f.type === "date") {
+          out.push({ text: short(String(v)), overdue: false });
+        } else if (f.type === "datespan" && typeof v === "object") {
+          const span = v as { start?: string; end?: string };
+          const a = span.start ? short(span.start) : "";
+          const z = span.end ? short(span.end) : "";
+          if (!a && !z) continue;
+          const endDay = span.end ? String(span.end).slice(0, 10) : null;
+          out.push({
+            text: a && z ? `${a} – ${z}` : a || z,
+            overdue: canBeLate && Boolean(endDay) && endDay! < today,
+          });
+        }
+      }
+      return out;
+    };
+
     /** One cell, as text. */
     const cellValue = (rawBlock: string, key: string): string => {
       const b = JSON.parse(rawBlock) as {
@@ -390,6 +438,7 @@ export function buildServer(deps: {
       const region = rv === null || rv === undefined || rv === "" ? Number.NaN : Number(rv);
       const card = {
         group: groupLabelFor(m.raw, grouping),
+        dates: datesOf(m.raw),
         id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
         done: c.completion?.done ?? false, status: c.completion?.status ?? null,
         // A checkbox only belongs on something that can be completed — which is
@@ -429,6 +478,7 @@ export function buildServer(deps: {
         });
         if (c.archivedAt) continue;
         drawer.push({
+          dates: datesOf(r),
           id: c.id, title: c.title, kind: c.kind, typeName: c.typeName,
           done: c.completion?.done ?? false, completable: c.completable,
           due: c.schedule?.end?.value ?? null,

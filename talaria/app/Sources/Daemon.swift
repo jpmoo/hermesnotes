@@ -167,6 +167,15 @@ enum Daemon {
 
         var canComplete: Bool { completable ?? false }
     }
+    struct Column: Decodable, Identifiable, Hashable {
+        let key: String
+        let label: String
+        var id: String { key }
+    }
+    struct Row: Decodable, Identifiable {
+        let id: String
+        let cells: [String: String]
+    }
     struct Board: Decodable {
         let id: String
         let title: String
@@ -191,6 +200,10 @@ enum Daemon {
         let members: [Card]
         /// What the collection is grouped by, if anything.
         let groupBy: String?
+        /// A table draws its configured columns rather than a list of titles.
+        let table: Bool
+        let columns: [Column]
+        let tableRows: [Row]
         /// A canvas draws its members at coordinates, with notes and links.
         let canvas: Bool
         let notes: [StickyNote]

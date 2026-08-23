@@ -183,8 +183,14 @@ what it wants to do and does nothing until you say. `"assistantHotkey"` in
   than an empty week.
 - **rollup** — a heading per bucket with what hangs under it. A rollup owns no
   memberships at all; it is resolved from its roots and levels.
-- **everything else** — list, table, masonry — as a sequence. Deliberately one
-  renderer rather than three near-misses.
+- **table** — the columns it was configured with, from `table_columns`,
+  including a datespan split into its two legs. Drawn as a list of titles it
+  stops being a table; the columns are the point of choosing that shape.
+- **everything else** — list, masonry — as a sequence.
+
+Grouped collections show a heading per bucket, and the headings collapse. Which
+are shut is remembered per collection, because a board you have to re-collapse
+every time you open it is one you stop collapsing.
 
 The calendar is an agenda rather than a month grid on purpose: the web app's
 calendar has four range modes, an all-day band and multi-day lanes because it

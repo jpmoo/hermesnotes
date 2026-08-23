@@ -297,6 +297,66 @@ export function buildServer(deps: {
     // has been completed, a date that has fallen out of range — and offers the
     // matches nobody has placed yet as a drawer to drag from. Both come from
     // the cached answer to the collection's own query.
+    /**
+     * A table's columns, as configured.
+     *
+     * The keys are the app's own: "title", "edited", "prop:<key>", and a
+     * datespan split into "prop:<key>.start" and "prop:<key>.end" because the
+     * two legs are separate columns. Rendered as a list of blocks with a date
+     * underneath, a table stops being a table — the columns are the point.
+     */
+    const tableColumns = (): { key: string; label: string }[] => {
+      const raw = Array.isArray(props.table_columns) ? (props.table_columns as string[]) : [];
+      const schemaOf = (typeId: string | null) => (typeId ? types().get(typeId)?.propertySchema : null);
+      // Members can be of mixed types; the first one with a schema names the
+      // columns, which is what the app does when it draws a heading.
+      const firstTyped = mirror.membersOf(id)
+        .map((m) => JSON.parse(m.raw) as { blockTypeId: string | null })
+        .find((b) => b.blockTypeId);
+      const schema = schemaOf(firstTyped?.blockTypeId ?? null);
+      return raw.map((key) => {
+        if (key === "title") return { key, label: "Title" };
+        if (key === "edited") return { key, label: "Edited" };
+        const bare = key.startsWith("prop:") ? key.slice(5) : key;
+        const [fieldKey, leg] = bare.split(".");
+        const field = (schema?.fields ?? []).find((f) => f.key === fieldKey);
+        const base = field?.label?.trim() || (fieldKey ?? key).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        if (leg === "start") return { key, label: field?.startLabel?.trim() || `${base} from` };
+        if (leg === "end") return { key, label: field?.endLabel?.trim() || `${base} to` };
+        return { key, label: base };
+      });
+    };
+
+    /** One cell, as text. */
+    const cellValue = (rawBlock: string, key: string): string => {
+      const b = JSON.parse(rawBlock) as {
+        blockTypeId: string | null;
+        properties: Record<string, unknown>;
+        updatedAt: string;
+      };
+      const schema = b.blockTypeId ? types().get(b.blockTypeId)?.propertySchema : null;
+      if (key === "edited") return b.updatedAt.slice(0, 10);
+      const bare = key.startsWith("prop:") ? key.slice(5) : key;
+      const [fieldKey, leg] = bare.split(".");
+      if (!fieldKey) return "";
+      const value = b.properties?.[fieldKey];
+      if (value === null || value === undefined || value === "") return "";
+      if (leg) {
+        const span = value as Record<string, unknown>;
+        const v = span?.[leg];
+        return typeof v === "string" ? v.replace("T", " ") : "";
+      }
+      const field = (schema?.fields ?? []).find((f) => f.key === fieldKey);
+      // A select's stored value is not what a reader should be shown.
+      if (field && typeof value === "string") return optionLabel(field, value);
+      if (field?.type === "recurrence" && typeof value === "object") {
+        const rec = value as { frequency?: string; interval?: number };
+        return rec.frequency ? `every ${rec.interval ?? 1} ${rec.frequency}` : "";
+      }
+      if (typeof value === "object") return "";
+      return String(value);
+    };
+
     const grouping = groupByOf(props, row.collectionKind);
     const cachedQuery = mirror.get(`query.${id}`);
     const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;
@@ -505,6 +565,20 @@ export function buildServer(deps: {
     // entirely: this is "has coordinates on the canvas".
     const positioned = members.filter((m) => (m as { x: number | null }).x !== null);
 
+    // Tables carry their cells alongside the cards, so a view can draw either.
+    const isTable = row.collectionKind === "table";
+    const columns = isTable ? tableColumns() : [];
+    const rowsOut = isTable
+      ? members.map((m) => {
+          const card = m as { id: string };
+          const raw = mirror.rawBlock(card.id);
+          return {
+            id: card.id,
+            cells: raw ? Object.fromEntries(columns.map((c) => [c.key, cellValue(raw, c.key)])) : {},
+          };
+        })
+      : [];
+
     // "Show existing connections": an arrow between any two boxes whose blocks
     // already link, which is a different thing from the connections somebody
     // drew. Those are decoration on the collection; these are the real
@@ -556,6 +630,9 @@ export function buildServer(deps: {
       drawer: gridded ? drawer : [],
       members,
       canvas: isCanvas,
+      table: isTable,
+      columns,
+      tableRows: rowsOut,
       rollup: isRollup,
       groups,
       // What the grouping is called, so a view can say what it is grouping by

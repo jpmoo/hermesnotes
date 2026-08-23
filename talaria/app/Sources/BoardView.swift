@@ -52,6 +52,7 @@ final class BoardModel: ObservableObject {
                     self.note = got.note
                     self.error = nil
                     self.busy = false
+                    self.loadShutGroups()
                 }
             } catch {
                 await MainActor.run { self.error = "\(error)"; self.busy = false }
@@ -65,9 +66,29 @@ final class BoardModel: ObservableObject {
         return b.cells.values.flatMap { $0 } + b.drawer
     }
 
+    /// Which group headings are shut, per collection and remembered — a board
+    /// you have to re-collapse every time you open it is one you stop
+    /// collapsing. Shut rather than open, so a heading nobody has touched
+    /// starts open.
+    @Published private var shutGroups: Set<String> = []
+
+    private var shutKey: String { "talaria.groups.\(selected ?? "x")" }
+
+    func isShut(_ label: String) -> Bool { shutGroups.contains(label) }
+
+    func toggleGroup(_ label: String) {
+        if shutGroups.contains(label) { shutGroups.remove(label) } else { shutGroups.insert(label) }
+        UserDefaults.standard.set(Array(shutGroups), forKey: shutKey)
+    }
+
+    private func loadShutGroups() {
+        shutGroups = Set(UserDefaults.standard.stringArray(forKey: shutKey) ?? [])
+    }
+
     func choose(_ id: String) {
         selected = id
         UserDefaults.standard.set(id, forKey: lastBoardKey)
+        loadShutGroups()
         load()
     }
 
@@ -129,6 +150,8 @@ struct BoardView: View {
             if let board = model.board {
                 if board.kind == "calendar" {
                     AgendaView(model: model.agenda, collectionURL: board.url)
+                } else if board.table, !board.columns.isEmpty {
+                    table(board)
                 } else if board.rollup {
                     rollup(board.groups)
                 } else if board.canvas {
@@ -229,16 +252,69 @@ struct BoardView: View {
         return order.map { ($0, buckets[$0] ?? []) }
     }
 
-    private func groupHeading(_ label: String) -> some View {
-        HStack(spacing: 6) {
+    private func groupHeading(_ label: String, count: Int) -> some View {
+        let shut = model.isShut(label)
+        return HStack(spacing: 6) {
+            Image(systemName: shut ? "chevron.right" : "chevron.down")
+                .font(.system(size: 9)).foregroundStyle(.secondary)
             Text(label == "—" ? "Ungrouped" : label)
                 .font(Theme.chrome(10, weight: .semibold))
                 .foregroundStyle(Theme.accentInk)
                 .padding(.horizontal, 7).padding(.vertical, 2)
                 .background(Capsule().fill(Theme.accent.opacity(0.18)))
+            Text("\(count)")
+                .font(Theme.chrome(9.5)).foregroundStyle(.secondary)
             Rectangle().fill(Color.secondary.opacity(0.18)).frame(height: 0.5)
         }
         .padding(.top, 4)
+        .contentShape(Rectangle())
+        .onTapGesture { model.toggleGroup(label) }
+    }
+
+    /// A table, with the columns it was configured with.
+    ///
+    /// Drawn as a list of titles it stopped being a table — the columns are the
+    /// whole point of choosing that shape for a collection.
+    private func table(_ board: Daemon.Board) -> some View {
+        ScrollView([.horizontal, .vertical]) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    ForEach(board.columns) { column in
+                        Text(column.label)
+                            .font(Theme.chrome(10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: width(for: column, in: board), alignment: .leading)
+                            .padding(.vertical, 5).padding(.horizontal, 6)
+                    }
+                }
+                .background(Rectangle().fill(Color.secondary.opacity(0.10)))
+
+                ForEach(Array(board.tableRows.enumerated()), id: \.element.id) { i, row in
+                    HStack(spacing: 0) {
+                        ForEach(board.columns) { column in
+                            Text(row.cells[column.key] ?? "")
+                                .font(Theme.body(11))
+                                .lineLimit(1)
+                                .frame(width: width(for: column, in: board), alignment: .leading)
+                                .padding(.vertical, 4).padding(.horizontal, 6)
+                        }
+                    }
+                    // Banded, because a wide row is hard to follow across
+                    // without something to hold the eye on the line.
+                    .background(i.isMultiple(of: 2) ? Color.clear : Color.secondary.opacity(0.05))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if let card = model.allCards.first(where: { $0.id == row.id }),
+                           let u = URL(string: card.url) { Opener.open(u) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Title gets the room; everything else is a date or a word.
+    private func width(for column: Daemon.Column, in board: Daemon.Board) -> CGFloat {
+        column.key == "title" ? 260 : 130
     }
 
     /// Everything that isn't a grid or a canvas: a list, in its own order.
@@ -252,8 +328,10 @@ struct BoardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 if model.board?.groupBy != nil {
                     ForEach(grouped(cards, by: { $0.group }), id: \.0) { label, items in
-                        groupHeading(label)
-                        ForEach(items) { card in CardRow(card: card, model: model) }
+                        groupHeading(label, count: items.count)
+                        if !model.isShut(label) {
+                            ForEach(items) { card in CardRow(card: card, model: model) }
+                        }
                     }
                 } else {
                     ForEach(cards) { card in CardRow(card: card, model: model) }
@@ -275,9 +353,11 @@ struct BoardView: View {
             LazyVStack(alignment: .leading, spacing: 8) {
                 if model.board?.groupBy != nil {
                     ForEach(grouped(groups, by: { $0.group }), id: \.0) { label, buckets in
-                        groupHeading(label)
-                        ForEach(buckets) { group in
-                            RollupNode(node: group, depth: 0, model: model)
+                        groupHeading(label, count: buckets.count)
+                        if !model.isShut(label) {
+                            ForEach(buckets) { group in
+                                RollupNode(node: group, depth: 0, model: model)
+                            }
                         }
                     }
                 } else {

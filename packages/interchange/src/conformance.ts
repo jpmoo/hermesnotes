@@ -29,7 +29,6 @@ export const CONFORMANCE = {
    */
   bindings: ["file", "http"],
   profiles: ["task", "note"],
-  features: ["placement", "derivations", "relations", "attachments"],
-  /** Recurrence is held on the block, not as a series with instances pointing at it. */
-  unsupported: ["series"],
+  features: ["series", "placement", "derivations", "relations", "attachments"],
+  unsupported: [] as string[],
 } as const;

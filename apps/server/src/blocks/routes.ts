@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { applyPatch, datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
-import { attachments, blocks, blockTags, blockTypes, memberships, tags, userSettings } from "@hermes/db";
+import { attachments, blocks, blockTags, blockTypes, memberships, series, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
@@ -202,6 +202,8 @@ async function spawnRecurrence(
   type: { id: string; schemaVersion: number; propertySchema: PropertySchema | null },
   prevProps: Record<string, unknown>,
   nextProps: Record<string, unknown>,
+  /** The occurrence being completed: the new one joins its series. */
+  from: { id: string; seriesId: string | null },
 ): Promise<boolean> {
   const schema = type.propertySchema;
   if (!schema?.status_field) return false;
@@ -223,7 +225,30 @@ async function spawnRecurrence(
   const next = nextSpan(span, rec, completedOn);
   if (!next?.end) return false;
 
-  const currentN = rec.n ?? 1;
+  // A series that predates the series table, or one created since, gets one now.
+  // Doing it here rather than when a rule is first saved keeps the change to one
+  // path: every repeating task passes through this function to advance, so every
+  // repeating task acquires a series the first time it does.
+  let seriesId = from.seriesId;
+  if (!seriesId) {
+    const { n: _n, ...ruleOnly } = rec;
+    const [made] = await db.insert(series).values({ ownerId: userId, rule: ruleOnly }).returning({ id: series.id });
+    seriesId = made?.id ?? null;
+    if (seriesId) await db.update(blocks).set({ seriesId }).where(eq(blocks.id, from.id));
+  }
+
+  // Where this occurrence sits in its series. Counted from the instances, which
+  // is what the count is about — but never less than the counter the rule has
+  // been carrying, so a series with history behind it keeps its place instead of
+  // restarting at one. `n` is still written for the surfaces that read it; the
+  // count is what decides.
+  const [counted] = seriesId
+    ? await db
+        .select({ n: sql<number>`COUNT(*)::int` })
+        .from(blocks)
+        .where(and(eq(blocks.ownerId, userId), eq(blocks.seriesId, seriesId)))
+    : [];
+  const currentN = Math.max(counted?.n ?? 0, rec.n ?? 1);
   if (!recurrenceContinues(rec, currentN, next.end)) return false;
 
   // `nextProps` has already been through `stampDoneAt`, so it carries the moment
@@ -1577,6 +1602,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         content: blocks.content,
         properties: blocks.properties,
         blockTypeId: blocks.blockTypeId,
+        seriesId: blocks.seriesId,
       })
       .from(blocks)
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
@@ -1649,12 +1675,16 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     // Recurring task just completed → spawn the next occurrence.
     let recurred = false;
-    if (!type.isText && body.properties) {
+    // `body.patch` counts too. Guarding on `body.properties` alone meant a client
+    // that completed a task the new way — the way this codebase now recommends —
+    // silently got no next occurrence.
+    if (!type.isText && (body.properties || body.patch)) {
       recurred = await spawnRecurrence(
         userId,
         { id: type.id, schemaVersion: type.schemaVersion, propertySchema: type.propertySchema },
         (current.properties ?? {}) as Record<string, unknown>,
         nextProps as Record<string, unknown>,
+        { id, seriesId: current.seriesId ?? null },
       );
     }
     return { ...updated, recurred, tagsChanged };

@@ -1,6 +1,6 @@
 import { inlineMentions, profilesOf, type FieldDef, type PropertySchema } from "@hermes/shared";
 import { CARRY_KEY } from "./import.js";
-import type { Finding, HermesBlock, HermesMembership, HermesType } from "./types.js";
+import type { Finding, HermesBlock, HermesMembership, HermesSeries, HermesType } from "./types.js";
 
 /**
  * Hermes, as pkm-interchange sees it.
@@ -37,8 +37,10 @@ export interface ExportInput {
   producer?: { name: string; version: string };
   /** Unknown top-level keys a previous import could not model. */
   carry?: Record<string, unknown>;
-  /** Series that arrived from elsewhere. Hermes derives none of its own. */
+  /** Series that arrived from elsewhere, carried back out untouched. */
   series?: unknown[];
+  /** Hermes' own series rows, emitted as the format's series objects. */
+  seriesRows?: HermesSeries[];
   /** Edges that arrived and cannot be re-derived from properties or prose. */
   relations?: unknown[];
 }
@@ -110,11 +112,11 @@ export function toInterchange(input: ExportInput): {
           "A reference field holds a bare id where every other value of the same field holds a list. The export declares the field `many`, so this one contradicts its own type.",
         );
       }
-      if (f.type === "recurrence" && v) {
+      if (f.type === "recurrence" && v && !b.seriesId) {
         note(
           "series.no-identity",
           "hermes",
-          "A recurrence rule is stored on the block. The format holds recurrence as a series with instances pointing at it, and Hermes has no series identity to export — so this rule travels as an opaque property and the occurrences travel as unrelated objects.",
+          "A block carries a recurrence rule and belongs to no series, so the rule travels as an opaque property and this occurrence travels as an unrelated object. `pnpm series:backfill` links the ones that predate the series table; anything still here acquired a rule without passing through a completion.",
         );
       }
     }
@@ -209,6 +211,31 @@ export function toInterchange(input: ExportInput): {
     };
   });
 
+  // ---- series --------------------------------------------------------------
+  // One rule, once, with its occurrences named. The instances come from the
+  // blocks rather than from a list kept beside them, so the two cannot disagree.
+  const instancesOf = new Map<string, string[]>();
+  const dayOfDue = new Map<string, number>();
+  for (const b of live) {
+    if (!b.seriesId) continue;
+    instancesOf.set(b.seriesId, [...(instancesOf.get(b.seriesId) ?? []), b.id]);
+    const schema = b.blockTypeId ? typeById.get(b.blockTypeId)?.propertySchema : null;
+    const span = schema?.fields.find((f) => f.type === "datespan");
+    const end = span ? (b.properties[span.key] as { end?: string } | undefined)?.end : undefined;
+    const day = Number(String(end ?? "").slice(8, 10));
+    if (day && !dayOfDue.has(b.seriesId)) dayOfDue.set(b.seriesId, day);
+  }
+  const outSeries = (input.seriesRows ?? [])
+    .filter((s) => instancesOf.has(s.id))
+    .map((s) => ({
+      id: s.id,
+      rule: formatRule(s.rule, dayOfDue.get(s.id), note),
+      // Hermes materialises exactly one unstarted occurrence, which is also the
+      // only number a completion-anchored rule is allowed to claim.
+      horizon: 1,
+      instances: instancesOf.get(s.id) ?? [],
+    }));
+
   // ---- relations ---------------------------------------------------------
   const relations: Record<string, unknown>[] = [];
   const titleToId = new Map<string, string>();
@@ -282,6 +309,7 @@ export function toInterchange(input: ExportInput): {
 
   const findings = [...found.values()].sort((a, b) => b.count - a.count);
   const features = [
+    outSeries.length ? "series" : null,
     hasAttachments ? "attachments" : null,
     outCollections.some((c) => c.placement.semantic) ? "placement" : null,
     outCollections.some((c) => c.membership.mode === "query") ? "derivations" : null,
@@ -312,16 +340,59 @@ export function toInterchange(input: ExportInput): {
         features,
         // Recurrence is the honest one: Hermes plainly has it and cannot say so
         // here, because the format wants a series and Hermes has no series.
-        unsupported: ["series"],
+        unsupported: [] as string[],
       },
       types,
       objects,
       collections: outCollections,
-      ...((input.series ?? []).length ? { series: input.series } : {}),
+      ...(outSeries.length || (input.series ?? []).length
+        ? { series: [...outSeries, ...((input.series ?? []) as unknown[])] }
+        : {}),
       relations,
       ...(input.carry ?? {}),
     },
     findings,
+  };
+}
+
+const WEEKDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+
+/**
+ * A Hermes rule said in the format's vocabulary.
+ *
+ * `byMonthDay` is required for monthly and yearly, and a rule written before
+ * Hermes had one has to get it from somewhere. The current occurrence's due date
+ * is the only evidence available — which is exactly the guess the format warns
+ * about, since an occurrence that has already been clamped says the 28th while
+ * the rule meant the 31st. So it is derived, and said out loud.
+ */
+function formatRule(
+  r: Record<string, unknown>,
+  dueDay: number | undefined,
+  note: (c: string, o: Finding["owner"], d: string) => void,
+): Record<string, unknown> {
+  const freq = String(r.frequency ?? "weekly");
+  const monthly = freq === "monthly" || freq === "yearly";
+  const days = Array.isArray(r.weekdays) ? (r.weekdays as number[]) : [];
+  let byMonthDay = typeof r.monthDay === "number" ? r.monthDay : undefined;
+  if (monthly && byMonthDay === undefined) {
+    byMonthDay = dueDay;
+    note(
+      "series.month-day-inferred",
+      "hermes",
+      "A monthly or yearly rule has no anchor day of its own, so the export reads one off the current occurrence's due date. If that occurrence was ever clamped by a short month, the exported rule says the day it settled for rather than the day it meant.",
+    );
+  }
+  return {
+    anchor: r.completeFrom === "completed" ? "completion" : "schedule",
+    freq,
+    interval: typeof r.interval === "number" ? r.interval : 1,
+    ...(days.length && r.completeFrom !== "completed"
+      ? { byWeekday: days.map((d) => WEEKDAYS[d]).filter(Boolean) }
+      : {}),
+    ...(monthly ? { monthEnd: r.monthEnd === "skip" ? "skip" : "clamp" } : {}),
+    ...(monthly && byMonthDay ? { byMonthDay } : {}),
+    end: (r.end as unknown) ?? { type: "never" },
   };
 }
 

@@ -1,4 +1,4 @@
-import { blockTypes, blocks, memberships } from "@hermes/db";
+import { blockTypes, blocks, memberships, series } from "@hermes/db";
 import { CONFORMANCE, toInterchange } from "@hermes/interchange";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -58,9 +58,15 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           archivedAt: blocks.archivedAt,
           createdAt: blocks.createdAt,
           updatedAt: blocks.updatedAt,
+          seriesId: blocks.seriesId,
         })
         .from(blocks)
         .where(eq(blocks.ownerId, userId));
+
+      const seriesRows = await db
+        .select({ id: series.id, rule: series.rule })
+        .from(series)
+        .where(eq(series.ownerId, userId));
 
       const mem = await db
         .select({
@@ -87,6 +93,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           position: m.position,
           context: (m.context ?? {}) as Record<string, unknown>,
         })),
+        seriesRows,
         producer: { name: "hermes", version: "2.0.0" },
       });
       return { ...envelope, findings };

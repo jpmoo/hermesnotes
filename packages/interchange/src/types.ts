@@ -16,6 +16,8 @@ export interface HermesBlock {
   createdAt: string;
   updatedAt: string;
   tags?: string[];
+  /** The series this block is an occurrence of, if it is one. */
+  seriesId?: string | null;
 }
 
 export interface HermesMembership {
@@ -39,4 +41,10 @@ export interface Finding {
   count: number;
   /** Which side has to move: the format, or Hermes. */
   owner: "format" | "hermes";
+}
+
+/** A recurrence rule, once, as the series table holds it. */
+export interface HermesSeries {
+  id: string;
+  rule: Record<string, unknown>;
 }

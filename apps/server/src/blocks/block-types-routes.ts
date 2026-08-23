@@ -124,10 +124,19 @@ export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
 
     let nextSchema = current.propertySchema;
     let schemaChanged = false;
+    let embedShapeChanged = false;
     if (body.propertySchema !== undefined) {
       if (!current.isText) requireTitle(body.propertySchema);
       nextSchema = preserveLocked(current.propertySchema, body.propertySchema);
       schemaChanged = JSON.stringify(nextSchema) !== JSON.stringify(current.propertySchema);
+      // What a block's embed_source is made of comes from `fields` and nothing
+      // else — see deriveEmbedSource. The rest of a schema says what the type
+      // *means*: which field carries completion, which profiles it declares. A
+      // whole-object comparison read a profile declaration as a reason to
+      // recompute and re-embed every block of the type, which is a lot of work
+      // for a change that cannot alter a single embed_source.
+      embedShapeChanged =
+        JSON.stringify(nextSchema?.fields ?? null) !== JSON.stringify(current.propertySchema?.fields ?? null);
     }
     const nextVersion = schemaChanged ? current.schemaVersion + 1 : current.schemaVersion;
 
@@ -146,8 +155,10 @@ export async function blockTypeRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(blockTypes.id, id));
 
       // Schema-change cascade (design doc §4): recompute embed_source for every
-      // block of this type and mark it stale so the worker re-embeds.
-      if (schemaChanged) {
+      // block of this type and mark it stale so the worker re-embeds. Gated on
+      // the fields alone — nothing else in a schema can change what an
+      // embed_source contains.
+      if (embedShapeChanged) {
         const rows = await tx
           .select({ id: blocks.id, content: blocks.content, properties: blocks.properties })
           .from(blocks)

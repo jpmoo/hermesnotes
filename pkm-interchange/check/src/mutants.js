@@ -175,6 +175,18 @@ const MUTANTS = [
     }),
   },
   {
+    name: "corrects the expectation to match what it found",
+    caught: "inline/the-target-is-authoritative",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        for (const r of out.result.relations ?? []) delete r.expects;
+        return out;
+      },
+    }),
+  },
+  {
     name: "keeps the dangling edge but throws away what it said",
     caught: "inline/unresolved-mention-keeps-its-label",
     patch: (a) => ({

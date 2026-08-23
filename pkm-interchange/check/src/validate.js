@@ -1,3 +1,5 @@
+import { V0_PROFILES } from "./profiles.js";
+
 /**
  * Structural validation, reported as codes.
  *
@@ -76,6 +78,12 @@ export function validate(envelope) {
   // nothing and says nothing, and a consumer can only carry it forever.
   (envelope.relations ?? []).forEach((r, i) => {
     if (!r.to && !r.label) fail("relation.no-target", `relations[${i}]`);
+    // An expectation the receiving tool cannot read is a note to self. A type id
+    // is one producer's private key; a profile name is the vocabulary everyone
+    // already shares.
+    if (r.expects !== undefined && !V0_PROFILES.includes(r.expects)) {
+      fail("relation.expects-not-a-profile", `relations[${i}].expects`);
+    }
   });
 
   // Only an object can be deleted. A membership, a tag, a placement going away

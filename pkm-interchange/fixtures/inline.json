@@ -310,6 +310,129 @@
         ]
       },
       "why": "`to` may be absent — a mention of a person who does not exist yet is a normal thing to write, and it has a name and no id. What is not allowed is neither: an edge with no id and no label points at nothing and says nothing, and a consumer can do exactly nothing with it except carry it forever."
+    },
+    {
+      "id": "inline/expectation-outlives-the-target",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "properties": {
+              "body": "Rang @the_roofer again."
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "type": "mentions",
+            "via": "inline",
+            "field": "body",
+            "label": "the roofer",
+            "expects": "contact",
+            "resolved": false
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "relations": [
+            {
+              "label": "the roofer",
+              "expects": "contact",
+              "resolved": false
+            }
+          ]
+        }
+      },
+      "why": "At the moment of writing, the interface knew what was meant — somebody reached for the key that means 'a person'. Once the mention fails to resolve, that intent is the only type information left anywhere in the system, and it is what lets a tool offer to create a person rather than an untyped stub. Throwing it away turns a specific unfinished thought into a generic broken link."
+    },
+    {
+      "id": "inline/the-target-is-authoritative",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "types": [
+          {
+            "id": "t_project",
+            "name": "Project",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              }
+            ],
+            "profiles": {
+              "project": {
+                "title": "title"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_2",
+            "type": "t_project",
+            "properties": {
+              "title": "The roof"
+            }
+          }
+        ],
+        "relations": [
+          {
+            "from": "o_1",
+            "to": "o_2",
+            "type": "mentions",
+            "via": "inline",
+            "field": "body",
+            "expects": "contact"
+          }
+        ]
+      },
+      "expect": {
+        "result": {
+          "relations": [
+            {
+              "to": "o_2",
+              "expects": "contact"
+            }
+          ],
+          "objects": [
+            {
+              "id": "o_2",
+              "type": "t_project"
+            }
+          ]
+        }
+      },
+      "why": "Somebody meant to name a person and named a project. The target's own type wins — it is a fact about the target — and the expectation is kept rather than corrected, because the disagreement is the interesting part: it is either a mis-link worth showing a reader or a thing that changed under the sentence. A consumer that silently rewrites either end has destroyed the evidence and told nobody."
+    },
+    {
+      "id": "inline/expects-speaks-the-shared-vocabulary",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "export": {
+          "relations": [
+            {
+              "from": "o_1",
+              "to": "o_2",
+              "expects": "t_person_4a91"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "relation.expects-not-a-profile"
+          }
+        ]
+      },
+      "why": "A type id is one producer's private key. Saying a link expected `t_person_4a91` tells a stranger nothing at all, and tells the same producer nothing once that type is deleted. The format already has a vocabulary for what something is, and an expectation that cannot be read by the tool receiving it is not an expectation, it is a note to self."
     }
   ]
 }

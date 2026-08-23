@@ -100,6 +100,7 @@ without matching an error message.
 | `conformance.undeclared-feature` | the data uses a feature the manifest omits |
 | `inline.field-not-declared` | an inline edge names a field its type hasn't got |
 | `relation.no-target` | an edge with neither `to` nor `label` |
+| `relation.expects-not-a-profile` | `expects` naming a type id rather than a profile |
 | `changes.child-op` | a child row's own operation reported as the object's |
 | `conformance.missing-roles` | a level claimed without saying for which role |
 | `conformance.binding-required` | `operate` claimed with no live binding |

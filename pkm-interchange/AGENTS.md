@@ -313,6 +313,26 @@ An inline mention has no relationship type, because nobody declared one. Somebod
 
 `to` may therefore be **absent**: a mention of a person who does not exist yet is a real and common thing to write, and it has a label and no id. A relation must carry `from`, and must carry `to` or `label` — an edge with neither is not an edge, it is a row.
 
+### What the link expected
+
+```json
+{ "from": "o_1", "type": "mentions", "via": "inline",
+  "label": "the roofer", "expects": "contact", "resolved": false }
+```
+
+An interface that offers different keys for different things — one for people, one for anything — knows something at the moment of writing that is nowhere else afterwards: **what the writer meant to point at**. `expects` is that, and it is the one piece of type information an edge may legitimately carry.
+
+It is not a copy of the target's type. The target's type belongs to the target, and duplicating it means retyping an object silently falsifies every edge pointing at it. `expects` is a statement about the *link*: this was written as a reference to a person.
+
+- When the target resolves, **the target is authoritative** and a disagreement is legal. Somebody meant to name a person and named a project; that is worth showing a reader, and it is not an excuse to coerce either end. A consumer keeps both.
+- When nothing resolves, `expects` is the only type information that exists anywhere. It is what lets a tool offer to create the right kind of thing instead of an untyped stub.
+
+It takes a **profile name**, not a type id. A type id is one producer's private key and means nothing to anyone else; `contact` is the vocabulary this format already has for saying what something is.
+
+There is deliberately no equivalent for the near end. The origin's type is knowable twice already — the `from` object carries it, and `field` names the property whose schema declares it. A third copy would buy nothing and drift like the first.
+
+And note what is *not* here: a tag. A tag is not a link to an object. It has no far end to resolve, and it lives on the object as `tags`.
+
 → `fixtures/inline.json`
 
 ---

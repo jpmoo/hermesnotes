@@ -111,7 +111,15 @@ async function main() {
       for (const r of b) console.log(`      ${r.id}  n=${(r.properties[key] as { n?: number }).n ?? "-"}`);
     }
     console.log("\nThese are a guess: Hermes has never recorded which occurrences belong together.");
-  } else if (!GROUP) {
+  } else if (GROUP) {
+    // The quiet answer, which used to print nothing at all and so read as
+    // though --group had been ignored. Finding nothing to join is a result:
+    // every rule here belongs to a different repeating thing.
+    console.log(
+      "Nothing to join: no two of these look like occurrences of the same series, " +
+        "so each becomes a series of one — the same outcome as running without --group.",
+    );
+  } else {
     console.log("Each becomes a series of one. Pass --group to try joining them, and read what it proposes.");
   }
 

@@ -331,6 +331,8 @@ It takes a **profile name**, not a type id. A type id is one producer's private 
 
 There is deliberately no equivalent for the near end. The origin's type is knowable twice already — the `from` object carries it, and `field` names the property whose schema declares it. A third copy would buy nothing and drift like the first.
 
+**Render hints.** Nothing stops a producer stamping the target's type or icon onto an edge to draw a chip without a lookup, and the round-trip rule means it will survive. Two cautions, in order of importance. Name it as a hint — `targetTypeHint`, never `targetType` — because a field that reads as a fact will be treated as one by the next person, and then a retyped object has a library full of edges lying about it. And check whether it buys anything first: a renderer usually has to resolve the target regardless, for the current title, or to find out the thing has been deleted, and the type arrives in that same answer.
+
 And note what is *not* here: a tag. A tag is not a link to an object. It has no far end to resolve, and it lives on the object as `tags`.
 
 → `fixtures/inline.json`

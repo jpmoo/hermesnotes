@@ -33,7 +33,7 @@ const SETTLE_MS = 200;
  * row indefinitely, and nothing anywhere reports it. Saying the version out loud
  * is what lets a client notice.
  */
-const PAYLOAD_VERSION = 2;
+const PAYLOAD_VERSION = 3;
 
 /** A block as a mirror needs it. */
 const mirrorView = {
@@ -45,6 +45,11 @@ const mirrorView = {
   blockTypeSchemaVersion: blocks.blockTypeSchemaVersion,
   version: blocks.version,
   archivedAt: blocks.archivedAt,
+  // The series an occurrence belongs to. Carried since payload 3: a mirror that
+  // had to work out for itself which occurrences were the same repeating thing
+  // could only guess from the type, the title and the rule — stable until
+  // somebody renames a task, and there is no reason to guess now.
+  seriesId: blocks.seriesId,
   createdAt: blocks.createdAt,
   updatedAt: blocks.updatedAt,
   // Tags come along rather than being fetched per block: a tag change is logged

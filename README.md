@@ -32,6 +32,7 @@ Hermes Notes is a self-hosted PKB. Every piece of information — a note, a task
 - **MCP server built in.** Point Claude or any MCP client at your notes to read, search, and manage tasks/projects.
 - **Obsidian-compatible export.** Download a `.zip` of Markdown files (one per block, a folder per type, deduped attachments, YAML frontmatter, and `[[wikilinks]]`).
 - **On the Mac, properly.** [Talaria](talaria/README.md) mirrors your account to the laptop and hands it to the operating system: Spotlight, a `talaria://` scheme, a Services entry that captures selected text from any app, a menu bar board you can drag cards around, an Ask-Hermes prompt on a hotkey, and a `talaria` command. Reads never touch the network, so it all works on a plane.
+- **Portable on purpose.** Hermes speaks [pkm-interchange](pkm-interchange/), a small format for moving personal-knowledge objects between tools that model them differently. Your types travel with your data and explain themselves, so another tool can find which field is a due date and which values mean finished without being told. `GET /api/conformance` says what this instance honours; `GET /api/interchange` hands over everything it holds — and reports what it could not express, rather than leaving you to notice.
 - **Yours to run.** Postgres for storage, per-user Ollama config, nightly database backups, and a first-run setup wizard so you don't have to hand-write config.
 
 ---
@@ -149,6 +150,45 @@ Everything's optional — with nothing set, the setup wizard handles the databas
 - **Ollama is per-user and configured in-app** (Settings → Admin → Ollama URL + embed model). Choose an embedding model for semantic search and an inference model for the assistant. Set the similarity threshold in Settings; the Admin tab shows embedding coverage and a "re-embed all" button.
 - **MCP server.** A Model Context Protocol endpoint is mounted at `<your-app>/mcp` (streamable HTTP, `Authorization: Bearer <access key>` from Settings → Access Keys). Connect Claude or any MCP client to read/search blocks and manage tasks & projects.
 - **Export.** Settings → Export builds an Obsidian-compatible `.zip`: one Markdown file per block, a folder per type, a shared deduped `attachments/` folder, YAML frontmatter from your field labels, and connections as `[[wikilinks]]`.
+
+---
+
+## Interoperating
+
+Hermes is the first implementation of [**pkm-interchange**](pkm-interchange/), a
+format for exchanging personal-knowledge objects between tools that model them
+differently — notes, tasks, boards, recurrences, the links between them.
+
+```bash
+curl https://your-host/api/conformance
+```
+
+```json
+{ "format": "pkm-interchange/0",
+  "produce": 4, "consume": 4, "operate": 4,
+  "bindings": ["file", "http", "mcp"],
+  "profiles": ["task", "note"],
+  "features": ["series", "placement", "derivations", "relations", "attachments"],
+  "unsupported": [] }
+```
+
+Those numbers are not a claim anyone has to take on trust: they are checked
+against a fixture suite on every run, per role, and the build fails if the
+manifest says more than the suite earned.
+
+- **`GET /api/conformance`** — what this instance honours, without credentials,
+  so a client can ask before it writes.
+- **`GET /api/interchange`** — the whole account as one envelope, with a
+  `findings` list saying what Hermes could not express. An export that reports
+  nothing is claiming to have lost nothing.
+- **Four MCP tools** — `interchange_conformance`, `interchange_types`,
+  `interchange_object`, `interchange_patch` — so an agent that has never heard of
+  Hermes can read your types in shared vocabulary and change one field without
+  destroying the rest.
+
+The format, its fixtures and a checker live in [`pkm-interchange/`](pkm-interchange/)
+and depend on nothing in Hermes. `npx pkm-check <export.json>` will tell you
+whether any tool's export is valid, including this one's.
 
 ---
 

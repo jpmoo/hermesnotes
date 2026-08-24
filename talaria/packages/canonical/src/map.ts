@@ -176,7 +176,11 @@ export function toCanonical(
     completable,
     schedule: scheduleOf(schema, props),
     recurrence: recField
-      ? toCanonicalRecurrence(props[recField.key], { typeId: row.blockTypeId, title })
+      ? toCanonicalRecurrence(props[recField.key], {
+          typeId: row.blockTypeId,
+          title,
+          seriesId: (row as { seriesId?: string | null }).seriesId ?? null,
+        })
       : null,
     tags: row.tags ?? [],
     links: linksOf(schema, props, `${rawTitle}\n${rawBody}`),

@@ -3,7 +3,7 @@
 Kept separate from Talaria's own code on purpose (brief §3, §9). Nothing here is
 written yet — this is the proposal that `DESIGN.md` §6 refers to.
 
-**Status:** §1 and §2 implemented and verified 2026-08-22. §3 still deferred.
+**Status:** §1 and §2 implemented and verified 2026-08-22. §3 landed 2026-08-23.
 
 ---
 
@@ -137,23 +137,43 @@ Against a throwaway Postgres:
 
 ---
 
-## 3. Deferred: series identity on recurrence
+## 3. Series identity on recurrence ✅ landed
 
-**Not proposed for now.** Recorded because `DESIGN.md` §3.2 depends on it and
-the deferral should be a decision rather than an omission.
+### Why
 
-Recurring occurrences are separate blocks linked by nothing; `n` is a counter
-standing in for an absent relationship. EventKit models recurrence as a master
-with occurrences beneath it, so a Phase 4 Calendar/Reminders bridge needs a
-stable series identity that Hermes does not have.
+Recurring occurrences were separate blocks linked by nothing, and `n` was a
+counter standing in for an absent relationship. EventKit models recurrence as a
+master with occurrences beneath it, so a Phase 4 Calendar/Reminders bridge needs
+a stable series identity. Talaria synthesized one from the type, the title and
+the rule — stable for a series nobody edits, wrong the moment a title changes,
+and acceptable only because the PoC is read-only.
 
-The eventual core change is small: when `spawnRecurrence` creates the next
-occurrence, stamp the parent's series id (the first occurrence's UUID) onto the
-child. Until then, Talaria synthesizes `seriesId` inside the canonical layer —
-stable for unedited series, wrong when a title changes, and acceptable only
-because the PoC is read-only.
+### What
 
-Revisit before any write bridge to an Apple store.
+A `series` table holding one rule, with `blocks.series_id` pointing at it.
+`ON DELETE SET NULL`, never cascade: removing the rule that governs a repeating
+task must not remove the work. Created when a block gains a rule, kept in step on
+every write, and inherited by each new occurrence on completion. `n` is no longer
+written — the series is counted.
+
+`series_id` travels in the sync payload as of **payload version 3**, so mirrors
+re-walk once and stop guessing. The synthesis in `canonical/recurrence.ts` is now
+the fallback for blocks written before Hermes had series, and can be deleted once
+none remain.
+
+### Verified
+
+Migration applied on a throwaway cluster; `pnpm series:backfill` dry-run,
+grouped, applied, and run twice; `n` stripped from the stored rule; deleting a
+series left the blocks standing. Twelve series on the live account, and the
+interchange export emits them as real recurrences — `unsupported` is empty.
+
+### What it deliberately does not do
+
+Reconstruct history. Occurrences that predate the table are not joined into their
+old series, because nothing ever recorded which belonged together and guessing
+would be inventing. Each existing task became a series of one and grows forward
+from where it stands.
 
 ---
 

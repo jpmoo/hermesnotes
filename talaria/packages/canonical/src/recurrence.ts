@@ -8,11 +8,12 @@ import type { CanonicalRecurrence } from "./types.js";
  * ordinary independent block, and nothing links the two. `n` counts occurrences
  * precisely because there is no relationship to count them by.
  *
- * v0 derives it from the things that don't change between occurrences — the
- * type, the title, and the rule itself. That is stable for a series nobody
- * edits and wrong the moment a title changes, which is tolerable for a
- * read-only proof of concept and would not be for a write bridge. When Hermes
- * learns to stamp a parent id on spawn, only this function changes.
+ * Hermes stamps a real one now and the mirror carries it, so this is the
+ * fallback rather than the answer: derived from the things that don't change
+ * between occurrences — the type, the title, and the rule itself — which is
+ * stable for a series nobody edits and wrong the moment a title changes. It
+ * still runs for blocks written before Hermes had series, and for anything that
+ * has not passed through a completion since.
  */
 function seriesIdFor(typeId: string | null, title: string, rule: unknown): string {
   const basis = JSON.stringify([typeId, title.trim().toLowerCase(), rule]);
@@ -29,14 +30,15 @@ function seriesIdFor(typeId: string | null, title: string, rule: unknown): strin
 /** A Hermes recurrence value as the canonical form, or null if it isn't one. */
 export function toCanonicalRecurrence(
   value: unknown,
-  ctx: { typeId: string | null; title: string },
+  ctx: { typeId: string | null; title: string; seriesId?: string | null },
 ): CanonicalRecurrence | null {
   const parsed = recurrenceSchema.safeParse(value);
   if (!parsed.success) return null;
   const rec = parsed.data;
   const anchor = rec.completeFrom === "completed" ? "completion" : "schedule";
   return {
-    seriesId: seriesIdFor(ctx.typeId, ctx.title, {
+    // Hermes' own, when it has one. Guessing is for blocks written before it did.
+    seriesId: ctx.seriesId ?? seriesIdFor(ctx.typeId, ctx.title, {
       f: rec.frequency,
       i: rec.interval,
       w: rec.weekdays,

@@ -3,8 +3,7 @@
 **A way for personal-knowledge apps to work with each other's data.**
 
 Not a database, not a sync protocol, and not a schema you have to adopt. A small
-format your app can read and write, plus a checker that tells you how far you
-have got.
+format your app can read and write, plus a checker that tells you how close you are.
 
 ```bash
 npx pkm-check my-export.json                  # where do I stand, and what next?
@@ -16,35 +15,36 @@ npx pkm-check --self                          # the whole suite, against a refer
 
 ## Why you would bother
 
-You wrote a notes app, or a task app, or a board. It works. It fits your head.
-The reason it fits your head is that you made every decision yourself, and that
-is also the reason nobody else can use it and it can use nothing else.
+It's easier to develop software than ever, and the PKM space is alive with hordes of new tools. You wrote a notes app, or a task app, or a canvas app. It works. It fits your head. The reason it fits your head is that you made every decision. That's also a potential obstacle to anyone else using it. And, likewise, you probably can't use any of the growing number of cool apps made by other folks without forking them and shoe-horning them into your practice and your data structure.
 
-This format is a way out of that without giving any of it up.
+Export is one thing, and it's fine. Markdown has been a Godsend in that regard.
+
+But we're talking interoperability. You self-host a block-based Notion-clone that someone else made. You made a great little app for Kanban boards that runs right on your laptop. It'd be great if those two apps shared info with one another so that your tasks weren't just transportable via export/import, but alive in both places — both apps working against the one store you already keep, rather than two copies trying to stay in step.
+
+This spec describes a way for all of these apps to achieve interoperability without sacrificing any of the creativity, personalization, or fun.
 
 ### Your app becomes something other apps can talk to
 
 Someone writes a kanban. Someone else writes a post-it widget. Someone else
 writes a review dashboard. None of them are a whole PKM, and none of them need
-to be — each one is a single surface that works against **whatever the user
-already runs**, because all of them speak the same small vocabulary.
+to be. Each one is a single surface that works against **whatever the user
+already runs**, because all of them speak the same language.
 
-That is the thing that has never existed here. Today, a satellite app has to be
-written against one specific host's API, so it gets written once, for one app,
-by that app's author. There is no reason for that except the absence of a shared
-way to ask "what have you got, and what does it mean?"
+And it's a language with a small, manageable vocabulary.
 
-### Agents work with your app without anybody writing an integration
+And it's a language that's structured for LLM coding agents to read.
 
-This is the payoff you get **before any second app exists**, which makes it the
-one worth doing first.
+Without this, a satellite app has to be written against one specific host's API, so it gets written once, for one app, by that app's author. There is no reason for that except the absence of a shared way for apps to ask one another: "What have you got, and what does it mean?"
 
-An agent that wants to complete a task in your app currently needs to be told
-that your due date lives in `deadline`, that your finished states are `shipped`
-and `dropped`, and that your project reference is an array. Somebody has to write
-that down, per app, and keep it current.
+Could you code up harnesses? MCP? Sure. But there's a better lesson to learn here. A GIF works all over the place because everything from your messaging app to your word processor knows what a GIF is all about. Not just to "File > Import" it, but to work with it as if it were native content.
 
-Declare a profile instead:
+A task. A calendar event. A contact. A note. This spec and its tools hope to make them behave the same way.
+
+### Agents can work with your app without anybody writing an integration
+
+An agent or secondary app that wants to complete a task in your primary to-do app currently needs to be told that your due date lives in `deadline`, that your tasks are `open`, `shipped`, or `dropped`, and that your project reference is an array. Somebody has to write that down, per app, and keep it current.
+
+Here is a type — one kind of thing your app stores, described the way your app already thinks about it:
 
 ```json
 {
@@ -52,47 +52,57 @@ Declare a profile instead:
   "name": "Thing To Do",
   "fields": [
     { "key": "what", "kind": "text" },
-    { "key": "deadline", "kind": "date" },
-    { "key": "state", "kind": "enum", "options": ["open", "shipped", "dropped"] }
+    { "key": "deadline", "kind": "date" }
+  ]
+}
+```
+
+A stranger reading that learns your app holds things with two fields, one of them text and one of them a date. That is all. Which field is the *title* and which is the *due date* is a guess, and `deadline` only looks obvious because it is in English and you chose a helpful word. Rename it `d2` and nothing about the export gets worse — it was never readable in the first place.
+
+So add three lines saying what those fields mean:
+
+```json
+{
+  "id": "t_thing",
+  "name": "Thing To Do",
+  "fields": [
+    { "key": "what", "kind": "text" },
+    { "key": "deadline", "kind": "date" }
   ],
   "profiles": {
-    "task": {
-      "title": "what",
-      "due": "deadline",
-      "status": "state",
-      "completeValues": ["shipped", "dropped"]
-    }
+    "task": { "title": "what", "due": "deadline" }
   }
 }
 ```
 
-Now any agent that knows what a `task` is can find the title, the due date and
-whether it is finished — in your app, without knowing anything about your app.
-Your fields keep their own names. You did not adopt anyone's schema. You said
-what yours means.
+That reads: *this is a task; its title is in `what`, and its due date is in `deadline`.*
 
-### Your users' data outlives your app
+`task` is a word from a short shared list — `task`, `event`, `contact`, `note` — so an app that has never heard of you still knows what one is. Everything to the right of it is yours. Nothing was renamed, nothing moved, and `fields` is untouched. You added a translation, not a conversion.
 
-Weekend projects stop being maintained. That is fine and normal, and it is
-usually the moment somebody's two years of notes go to die — exported as
-Markdown, which keeps the words and loses which field was the due date, which
-board position was a judgment, and which task was supposed to repeat.
+Now any app that knows what a `task` is can find the title and due date of yours without knowing anything else about your app. If you go further and let it write, it can hand you back "this one is shipped" from its own store of tasks.
 
-An export in this format keeps the meaning, so the next tool can do something
-with it beyond displaying paragraphs.
+Your fields keep their own names. You didn't adopt anyone's schema.
 
-### You can be a waypoint rather than a terminus
+The only thing that you did was explain what yours means.
 
-The rule that makes all of the above work is that **data can pass through your
-app without being damaged**. Someone tries your focus tool for a week, exports
-back out, and the fields you never modelled are still there. That is the
-difference between a tool people will try and a tool people will not risk.
+### Data can outlive apps
+
+You made a cool notes app, but now you want to try someone else's. That's fine and normal, and exporting your notes from one to the other can be an easy process or a hard one, depending on the situation.
+
+If apps are actually talking to one another, we can do more than just use them to complement one another. We can walk from one to the other without skipping a beat. Your data flows among all of them rather than syncing from one to the next to the next, losing coherence or features along the way like a game of telephone.
+
+### An app can be a waypoint rather than a terminus
+
+The rule that makes all of the above work is that **data can pass through an
+app without being damaged**. Does your Eisenhower matrix app want to add additional information to a task so that it appears in the right quadrant? Does your canvas app need to keep information about edges and connections? It all works where it needs to, without altering the core of the task unless you want it to. Mark it complete in that canvas app — which is writing to the same store the rest of them read — and it shows up complete everywhere else, taking on whatever extra characteristics each of those apps wants to represent. Maybe completed tasks are shaded gray on your canvas, checked off on your task list, slid into another lane on a Kanban, or simply drop from an Eisenhower matrix altogether.
+
+It all works the way each app wants it to.
 
 ---
 
 ## What it is, concretely
 
-One JSON document. Everything in it is optional except saying what it is.
+An app announces itself with a JSON document: the kind of data it is willing to share, and how much can be done with it — whether the app produces data, will consume data, and whether it will make changes to what it consumes and pump those back out.
 
 ```json
 {
@@ -102,15 +112,36 @@ One JSON document. Everything in it is optional except saying what it is.
                    "bindings": ["file"],
                    "profiles": ["task"], "features": [] },
 
-  "types":       [ /* what kinds of thing you have, and what they mean */ ],
-  "objects":     [ /* the things */ ],
+  "types":       [ /* the kinds of thing you have, and what each one means */ ],
+  "objects":     [ /* the things themselves */ ],
   "collections": [ /* lists, boards, canvases */ ],
   "series":      [ /* recurrence rules */ ],
   "relations":   [ /* links */ ]
 }
 ```
 
-An export with only `types` and `objects` is valid. Start there.
+An app doesn't need to deal in all of these different kinds of things. Types and objects are enough to get you started.
+
+### One warning about that sample, because it trips everybody
+
+The word `profiles` appears twice in this format, at two different heights, meaning two different things.
+
+The one you just saw inside `conformance` is a **claim about scope**: "somewhere below, my types declare the `task` profile." Nothing consults it to read an object — it is not how a due date gets found. What it does is set what you are measured on: a checker asks a `task`-shaped question only of a producer that claimed `task`, so declaring narrowly is the mechanism working rather than a way of hiding.
+
+The real thing lives **inside a type**, next to that type's `fields`, and it is the mapping from the previous section. Types are not filed under profiles. It is the other way round: a type carries its profiles the way a class carries the interfaces it implements.
+
+```
+envelope
+├── conformance
+│   └── profiles: ["task"]        ← a claim. "one of my types is a task."
+└── types
+    └── Thing To Do
+        ├── fields                 ← what you store
+        └── profiles               ← what it means
+            └── task: { title: "what", due: "deadline" }
+```
+
+It reads top-down as though profiles outrank types because `conformance` is printed first. It doesn't. `conformance` is the label on the outside of the box.
 
 Two rules everything else follows from, both worth reading twice:
 
@@ -123,6 +154,46 @@ Two rules everything else follows from, both worth reading twice:
 
 The full specification is [`AGENTS.md`](AGENTS.md). It is written to be handed to
 a coding agent, and it takes about twenty minutes to read yourself.
+
+---
+
+## Who is the producer, and who is the consumer?
+
+Not two apps having a conversation. They are **the two ends of one direction of data movement**. A producer writes a document; a consumer reads it. Nothing goes back, and nothing was asked for.
+
+Below the top level, that is the whole protocol: *somebody hands you a document.* It might be a file on disk or a response from a URL — that part is only transport, and either way it moves one way and you send nothing back, because there is nothing to send it to. (The levels are a ladder, laid out in [Getting there](#getting-there-in-the-order-that-pays) below. All that matters here is that the top rung is the one with something live on the other end.)
+
+Which is why one app is normally both. Your app is a producer when it exports, a consumer when it imports, and an operator when it serves a live API — three different jobs, which is why conformance carries three numbers instead of one. `produce: 2, consume: 1, operate: 0` is one app scored three times, not three apps.
+
+### What a consumer receives, and what it does with it
+
+One document. As a consumer, the parts you care about are `types` and `objects`: the objects hold the values, and the type each object points at tells you what those values mean.
+
+```js
+const type = typeById.get(object.type);
+const task = type.profiles?.task;
+if (!task) return;                          // no task profile? not a task. don't guess.
+
+const title = object.properties[task.title];   // → "Ring the roofer"
+const due   = object.properties[task.due];     // → "2026-09-01"
+```
+
+Two hops: the profile tells you which key to look under, then you look under it. That is the entire mechanism, and the rest of this document is details on top of it — compound fields, completion values, bodies that live outside the property bag.
+
+Notice what never appears: `type.name`. You do not know or care that they call it a `Thing To Do`.
+
+### What a consumer gives back is behaviour, not a message
+
+There is no reply to send, but you are not off the hook. If that data ever leaves you again, the fields you never understood come back intact, and anything you could not keep, you say so out loud. Those are the two rungs above simply reading a file, and they are the obligations that make somebody else willing to point their library at you.
+
+### Sending starts at level 4
+
+Only the top rung has a counterpart that answers, and only there does a consumer transmit anything. What makes it level 4 is not that a network is involved — an export can be fetched over HTTP by an app that does nothing else — it is that you can ask it questions and change what it holds:
+
+- **You send** a capability question — *before* writing, so you learn the limits instead of discovering them by breaking something — and partial writes: `{ "set": { "status": "done" }, "unset": ["owner"] }`.
+- **You receive** the capabilities, the data, an answer for each write saying whether all of it landed, and a feed of what has changed since you last looked.
+
+Same vocabulary as the file. Types, objects, profiles, placement, series, relations are the same words over HTTP or MCP as they are on disk — which is why level 4 is a *binding* and not a second format.
 
 ---
 
@@ -201,6 +272,10 @@ are different jobs. Most apps in this genre can write a file and cannot read one
 
 Write your types and your objects into the envelope shape. Ids can be anything
 as long as they are unique within the export; nobody is allowed to parse them.
+
+This is the same `Thing To Do` from the top of the page, with the rest of its
+fields filled in and one object to go with it — including `tags_i_use`, which is
+nobody's business but yours and travels anyway.
 
 ```json
 {

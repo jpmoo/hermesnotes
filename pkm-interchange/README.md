@@ -297,14 +297,32 @@ Three things, all small, all covered in `AGENTS.md`:
 
 Three ways, in order of how much setup they need.
 
-### Validate a file
+### Ask where you stand
 
 ```bash
 npx pkm-check my-export.json
 ```
 
-Nothing to install, nothing to write. Tells you whether what you emit is
-well-formed, which is level 0 and the place to start.
+Nothing to install, nothing to write. It answers the question people actually
+arrive with:
+
+```
+  ok    well-formed              no rule broken
+  ok    has something in it      1 type(s), 1 object(s)
+  FAIL  types say what they are  none — a consumer has to guess which
+                                 field is a due date
+
+  produce: level 0
+
+Next: Declare a profile on at least one type — task, event, contact or
+note — mapping your own field names onto it. That is level 1, and it is
+the rung that makes agents and other apps able to read your data.
+```
+
+A rung, and one thing to do to reach the next. It scores **producing** only,
+because that is all a document can honestly show: a file cannot demonstrate that
+your app preserves what it did not understand, or that a partial write leaves the
+rest alone. Those are the next two sections.
 
 ### Check a running server
 

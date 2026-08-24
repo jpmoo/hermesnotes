@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { adapter as reference } from "./reference.js";
 import { levelsFrom, runSuites } from "./runner.js";
+import { assess } from "./assess.js";
 import { probe } from "./probe.js";
-import { validate } from "./validate.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(here, "..", "..", "fixtures");
@@ -89,10 +89,16 @@ if (urlAt >= 0) {
 }
 
 const path = resolve(args[0]);
-const { valid, errors } = validate(JSON.parse(readFileSync(path, "utf8")));
-if (valid) {
-  console.log(green(`${path}: valid`));
-} else {
-  for (const e of errors) console.log(red(e.code), dim(`at ${e.path}`));
-  process.exit(1);
+const { checks, produce, next } = assess(JSON.parse(readFileSync(path, "utf8")));
+console.log(`${path}\n`);
+for (const c of checks) {
+  console.log(`  ${c.ok ? green("ok  ") : red("FAIL")}  ${c.name}`);
+  console.log(dim(`        ${c.detail}`));
 }
+// The rung, then the one thing to do about it. "Valid" answers a question
+// nobody asked; people arrive wanting to know where they stand.
+const rung = produce < 0 ? red("not yet a valid export") : green(`produce: level ${produce}`);
+console.log(`\n  ${rung}`);
+console.log(dim("  consume and operate are not visible in a file — see --url or the suite"));
+console.log(`\nNext: ${next}`);
+process.exit(produce < 0 ? 1 : 0);

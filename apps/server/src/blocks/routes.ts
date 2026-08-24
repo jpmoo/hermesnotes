@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { applyPatch, datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
+import { applyPatch, datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, stripBlankDates, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, series, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
@@ -256,7 +256,14 @@ async function spawnRecurrence(
   const spanField = schema.fields.find((f) => f.type === "datespan");
   if (!recField || !spanField) return false;
 
-  const parsed = recurrenceSchema.safeParse(nextProps[recField.key]);
+  // The rule comes from the series. syncSeries has already written it there from
+  // whatever this update stored, so this reads the same value the property holds
+  // — which is the point of doing the sync first: moving a reader across is a
+  // change that can be checked rather than one that has to be trusted.
+  const [linked] = from.seriesId
+    ? await db.select({ rule: series.rule }).from(series).where(eq(series.id, from.seriesId))
+    : [];
+  const parsed = recurrenceSchema.safeParse(linked?.rule ?? nextProps[recField.key]);
   if (!parsed.success) return false;
   const rec = parsed.data;
 
@@ -268,17 +275,11 @@ async function spawnRecurrence(
   const next = nextSpan(span, rec, completedOn);
   if (!next?.end) return false;
 
-  // A series that predates the series table, or one created since, gets one now.
-  // Doing it here rather than when a rule is first saved keeps the change to one
-  // path: every repeating task passes through this function to advance, so every
-  // repeating task acquires a series the first time it does.
-  let seriesId = from.seriesId;
-  if (!seriesId) {
-    const { n: _n, ...ruleOnly } = rec;
-    const [made] = await db.insert(series).values({ ownerId: userId, rule: ruleOnly }).returning({ id: series.id });
-    seriesId = made?.id ?? null;
-    if (seriesId) await db.update(blocks).set({ seriesId }).where(eq(blocks.id, from.id));
-  }
+  // Creating a series is syncSeries' job and only syncSeries' job — it runs on
+  // every write, including the one that completed this task, so a block with a
+  // rule already has one by the time it gets here. Two places minting series
+  // would be the same duplication this whole change is removing, one level up.
+  const seriesId = from.seriesId;
 
   // Where this occurrence sits in its series. Counted from the instances, which
   // is what the count is about — but never less than the counter the rule has
@@ -1670,7 +1671,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     const nextProps = stampDoneAt(
       type.propertySchema,
       (current.properties ?? {}) as Record<string, unknown>,
-      incoming,
+      stripBlankDates(type.propertySchema, incoming),
     );
     const seriesId = await syncSeries(
       userId,

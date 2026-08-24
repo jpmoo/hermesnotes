@@ -331,6 +331,39 @@ export function readProfile(
  */
 const blank = (v: unknown): unknown => (v === "" ? undefined : v);
 
+/**
+ * Strip values that mean nothing.
+ *
+ * A date field opened and left alone stores `""`, and a datespan whose start was
+ * cleared keeps the key with an empty string in it. Neither is a value. The
+ * interchange format now says so outright — an empty string is absent, and a
+ * consumer must read it that way — but a producer that keeps writing one is
+ * still handing every other tool something to be wrong about, and half of them
+ * will parse it into the epoch or today rather than into nothing.
+ *
+ * Done on the way in rather than in a form, so it holds for every client: the
+ * app, an agent over MCP, the daemon's write queue, and whatever comes next.
+ */
+export function stripBlankDates(
+  schema: PropertySchema | null | undefined,
+  properties: Record<string, unknown>,
+): Record<string, unknown> {
+  const out = { ...properties };
+  for (const f of schema?.fields ?? []) {
+    const v = out[f.key];
+    if (f.type === "date" || f.type === "datetime") {
+      if (v === "") delete out[f.key];
+    } else if (f.type === "datespan" && v && typeof v === "object") {
+      const span = { ...(v as Record<string, unknown>) };
+      for (const end of ["start", "end"]) if (span[end] === "") delete span[end];
+      // A span with neither end left is not a span.
+      out[f.key] = span.start === undefined && span.end === undefined ? undefined : span;
+      if (out[f.key] === undefined) delete out[f.key];
+    }
+  }
+  return out;
+}
+
 /** The calendar day a stored date/datetime belongs to, or null if it isn't one. */
 export function dayOf(v: unknown): string | null {
   if (typeof v !== "string" || !v) return null;

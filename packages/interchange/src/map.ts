@@ -112,6 +112,20 @@ export function toInterchange(input: ExportInput): {
           "A reference field holds a bare id where every other value of the same field holds a list. The export declares the field `many`, so this one contradicts its own type.",
         );
       }
+      // While the rule lives in two places, they can drift — and a writer that
+      // reaches past the sync will not announce itself. Nobody reads the series
+      // but the export, so the export is where a disagreement has to surface.
+      if (f.type === "recurrence" && v && b.seriesId) {
+        const linked = (input.seriesRows ?? []).find((x) => x.id === b.seriesId)?.rule;
+        const { n: _n, ...onBlock } = v as Record<string, unknown>;
+        if (linked && JSON.stringify(linked) !== JSON.stringify(onBlock)) {
+          note(
+            "series.rule-diverged",
+            "hermes",
+            "A block's recurrence rule and its series row say different things. Something wrote the property without syncing the series — the two copies exist only until the readers finish moving across, and this is the sound of one of them being wrong.",
+          );
+        }
+      }
       if (f.type === "recurrence" && v && !b.seriesId) {
         note(
           "series.no-identity",

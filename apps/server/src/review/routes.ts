@@ -20,6 +20,7 @@ import {
 import { blocks, blockTypes, userSettings } from "@hermes/db";
 import { templateBody } from "../blocks/routes.js";
 import { db } from "../db.js";
+import { syncSeries } from "../blocks/series.js";
 import { badRequest, notFound } from "../lib/errors.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { purgeEmptyAutoNotes } from "../blocks/auto-notes.js";
@@ -99,6 +100,7 @@ const taskView = {
   id: blocks.id,
   properties: blocks.properties,
   version: blocks.version,
+  seriesId: blocks.seriesId,
 };
 
 /** The current (incomplete, unarchived) "Do weekly review" task, newest first. */
@@ -160,6 +162,10 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
       .update(blocks)
       .set({ properties: props, embedSource, embedSourceHash: null, version: sql`${blocks.version} + 1` })
       .where(and(eq(blocks.id, active.id), eq(blocks.ownerId, userId)));
+    // This writes the block directly rather than through PATCH, so the sync that
+    // keeps a series in step with its rule has to be asked for by name. A second
+    // writer that forgets is exactly how the two copies drift apart.
+    await syncSeries(userId, active.id, active.seriesId ?? null, schema, props);
     return;
   }
   const props: Record<string, unknown> = {
@@ -171,15 +177,19 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
     ...(projRefKey ? { [projRefKey]: wr.project } : {}),
   };
   const embedSource = computeEmbedSource({ isText: task.isText, propertySchema: schema }, { properties: props });
-  await db.insert(blocks).values({
-    ownerId: userId,
-    blockTypeId: task.id,
-    content: null,
-    properties: props,
-    embedSource,
-    embedSourceHash: null,
-    blockTypeSchemaVersion: task.schemaVersion,
-  });
+  const [made] = await db
+    .insert(blocks)
+    .values({
+      ownerId: userId,
+      blockTypeId: task.id,
+      content: null,
+      properties: props,
+      embedSource,
+      embedSourceHash: null,
+      blockTypeSchemaVersion: task.schemaVersion,
+    })
+    .returning({ id: blocks.id });
+  if (made) await syncSeries(userId, made.id, null, schema, props);
 }
 
 /** Find (or lazily create) the reflection note for a cycle's due date. */

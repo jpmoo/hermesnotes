@@ -4,6 +4,7 @@ import { z } from "zod";
 import { applyPatch, datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, stripBlankDates, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, series, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
+import { syncSeries } from "./series.js";
 import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
 import { sha256 } from "../lib/hash.js";
 import { badRequest, conflict, forbidden, notFound } from "../lib/errors.js";
@@ -190,49 +191,6 @@ async function syncTextTags(
     }
   });
   return changed;
-}
-
-/**
- * Keep a block's series in step with the rule written on it.
- *
- * The rule lives in two places during the move onto the series table, and two
- * places holding one fact will disagree the moment somebody edits one. Editing a
- * recurrence in the app writes the property; without this the series row would
- * still hold whatever it was backfilled with, and the export — the only thing
- * reading the series today — would quietly describe a rule the user changed
- * weeks ago.
- *
- * Also where a series is born. A task that gains a rule gets one immediately
- * rather than waiting until its first completion, so it is exportable as a
- * recurrence from the moment it becomes one.
- *
- * Returns the series id, which may be new.
- */
-async function syncSeries(
-  userId: string,
-  blockId: string,
-  seriesId: string | null,
-  schema: PropertySchema | null,
-  props: Record<string, unknown>,
-): Promise<string | null> {
-  const recField = schema?.fields.find((f) => f.type === "recurrence");
-  if (!recField) return seriesId;
-  const parsed = recurrenceSchema.safeParse(props[recField.key]);
-  if (!parsed.success) {
-    // The rule is gone. The series stays: its instances are still real, and the
-    // record of what governed them is worth more than the tidiness of removing
-    // it. The link is what says this block no longer repeats.
-    if (seriesId) await db.update(blocks).set({ seriesId: null }).where(eq(blocks.id, blockId));
-    return null;
-  }
-  const { n: _n, ...rule } = parsed.data;
-  if (seriesId) {
-    await db.update(series).set({ rule }).where(and(eq(series.id, seriesId), eq(series.ownerId, userId)));
-    return seriesId;
-  }
-  const [made] = await db.insert(series).values({ ownerId: userId, rule }).returning({ id: series.id });
-  if (made) await db.update(blocks).set({ seriesId: made.id }).where(eq(blocks.id, blockId));
-  return made?.id ?? null;
 }
 
 /**

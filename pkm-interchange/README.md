@@ -295,14 +295,49 @@ Three things, all small, all covered in `AGENTS.md`:
 
 ## Checking yourself
 
-The fixtures are the specification. Where the prose and a fixture disagree, the
-fixture is right and the prose is a bug.
+Three ways, in order of how much setup they need.
+
+### Validate a file
+
+```bash
+npx pkm-check my-export.json
+```
+
+Nothing to install, nothing to write. Tells you whether what you emit is
+well-formed, which is level 0 and the place to start.
+
+### Check a running server
+
+```bash
+npx pkm-check --url https://my-app.example/api
+npx pkm-check --url https://my-app.example/api --token "$KEY"
+```
+
+Asks what the instance claims, reads what it actually emits, and holds the two
+against each other — whether it declares the features its own data uses, whether
+anything it calls unsupported turns up anyway, whether its types say what they
+are, whether it reports what it could not express. **Read-only**, so it is safe
+to point at a live instance including somebody else's.
+
+Without a token it checks the manifest and stops, because everything else is
+behind authentication and should be.
+
+This is what most apps can be measured by, and it is honest about being narrower
+than the suite: most fixture cases are pure questions about data the case
+supplies — *given this type you have never seen, is this object finished* — and
+there is nowhere over a network to send one.
+
+### Run the whole suite against your implementation
 
 ```bash
 npx pkm-check --self       # 66 cases, four levels, against a reference implementation
 ```
 
-To measure **your** app, export ten operations and hand them to the runner:
+To measure **your** app, export ten operations and hand them to the runner. This
+is an in-process check, so it wants your app to be JavaScript — if it is not, the
+fixtures are plain JSON and `fixtures/README.md` describes the case grammar, so a
+runner in your own language is a couple of hundred lines and a genuinely useful
+thing to contribute back:
 
 ```js
 import { runSuites, levelsFrom } from "pkm-check/check/src/runner.js";

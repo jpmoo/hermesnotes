@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { adapter as reference } from "./reference.js";
 import { levelsFrom, runSuites } from "./runner.js";
+import { probe } from "./probe.js";
 import { validate } from "./validate.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -22,11 +23,16 @@ if (args.length === 0 || args.includes("--help")) {
     [
       "pkm-check",
       "",
-      "  pkm-check <export.json>   validate one export",
-      "  pkm-check --self          run the fixtures against the reference adapter",
+      "  pkm-check <export.json>          validate one export",
+      "  pkm-check --url <base> [--token] check a live server, read-only",
+      "  pkm-check --self                 the fixtures, against the reference adapter",
       "",
-      "An implementation plugs in by exporting the eight operations in",
-      "fixtures/README.md and calling runSuites() from src/runner.js.",
+      "--url asks a running instance what it claims, reads what it actually emits,",
+      "and holds the two against each other. It writes nothing, so it is safe to",
+      "point at anything — including somebody else's server.",
+      "",
+      "To measure an implementation against the whole suite, export the ten",
+      "operations in fixtures/README.md and call runSuites() from src/runner.js.",
     ].join("\n"),
   );
   process.exit(0);
@@ -61,6 +67,25 @@ if (args.includes("--self")) {
   const line = `produce ${roles.produce}  consume ${roles.consume}  operate ${roles.operate}`;
   console.log(failed.length ? red(`\nlevels earned: ${line}`) : green(`\nlevels earned: ${line}`));
   process.exit(failed.length ? 1 : 0);
+}
+
+const urlAt = args.indexOf("--url");
+if (urlAt >= 0) {
+  const base = args[urlAt + 1];
+  const tokenAt = args.indexOf("--token");
+  const token = tokenAt >= 0 ? args[tokenAt + 1] : process.env.PKM_TOKEN;
+  if (!base) {
+    console.log(red("--url needs a base address, e.g. https://host/api"));
+    process.exit(2);
+  }
+  const { checks } = await probe(base, token);
+  for (const c of checks) {
+    console.log(`  ${c.ok ? green("ok  ") : red("FAIL")}  ${c.name}`);
+    console.log(dim(`        ${c.detail}`));
+  }
+  const bad = checks.filter((c) => !c.ok).length;
+  console.log(bad ? red(`\n${bad} problem(s)`) : green("\nnothing to report"));
+  process.exit(bad ? 1 : 0);
 }
 
 const path = resolve(args[0]);

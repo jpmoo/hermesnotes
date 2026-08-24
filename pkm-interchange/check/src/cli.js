@@ -49,15 +49,17 @@ if (args.includes("--self")) {
     }
   }
   const failed = results.filter((r) => !r.pass);
-  const { earned, byLevel } = levelsFrom(results);
+  const { earned, roles, byLevel } = levelsFrom(results);
   console.log(`\n${results.length - failed.length}/${results.length} passing`);
   for (const [level, at] of Object.entries(byLevel)) {
     console.log(
       `  level ${level}: ${at.passed} passed, ${at.failed} failed` + (at.na ? `, ${at.na} not applicable` : ""),
     );
   }
-  // The level is derived from the run, never from what anyone claimed.
-  console.log(failed.length ? red(`\nlevel earned: ${earned}`) : green(`\nlevel earned: ${earned}`));
+  // Derived from the run, never from what anyone claimed. Per role, because a
+  // tool that writes a good file and cannot read one has earned one of those.
+  const line = `produce ${roles.produce}  consume ${roles.consume}  operate ${roles.operate}`;
+  console.log(failed.length ? red(`\nlevels earned: ${line}`) : green(`\nlevels earned: ${line}`));
   process.exit(failed.length ? 1 : 0);
 }
 

@@ -186,6 +186,35 @@ function runCase(adapter, c, bySuiteId) {
 }
 
 /**
+ * Which role each operation is evidence about.
+ *
+ * A level is earned per role — writing a valid file, reading one, and being safe
+ * to write to are three different achievements, and most tools in this genre can
+ * do the first and not the second. The suite has been reporting one number for
+ * all three, which is the promise-rather-than-evidence failure it exists to
+ * catch, sitting in its own scoreboard.
+ *
+ * `validate` counts for both producing and consuming: telling a valid export
+ * from an invalid one is how you avoid emitting the second and how you notice
+ * receiving it. `roundtrip` likewise — it reads and then writes, and the writing
+ * half is exactly what producing is.
+ *
+ * A case may name its own `roles` when the default is wrong for it.
+ */
+const ROLES = {
+  validate: ["produce", "consume"],
+  profilesOf: ["consume"],
+  read: ["consume"],
+  isComplete: ["consume"],
+  order: ["consume"],
+  nextOccurrence: ["consume"],
+  import: ["consume"],
+  roundtrip: ["produce", "consume"],
+  patch: ["operate"],
+  follow: ["operate"],
+};
+
+/**
  * Whether a case can be asked of this implementation at all.
  *
  * Most of the interop cases work by simulating a consumer that lacks something —
@@ -218,7 +247,14 @@ export function runSuites(adapter, dir) {
     const byId = new Map(suite.cases.map((c) => [c.id, c]));
     for (const c of suite.cases) {
       if (!applicable(adapter, c)) {
-        results.push({ suite: suite.suite, level: c.level ?? suite.level, ...c, na: true, pass: false });
+          results.push({
+          suite: suite.suite,
+          level: c.level ?? suite.level,
+          roles: c.roles ?? ROLES[c.op] ?? [],
+          ...c,
+          na: true,
+          pass: false,
+        });
         continue;
       }
       let outcome;
@@ -227,7 +263,13 @@ export function runSuites(adapter, dir) {
       } catch (err) {
         outcome = { pass: false, got: `threw: ${err.message}` };
       }
-      results.push({ suite: suite.suite, level: c.level ?? suite.level, ...c, ...outcome });
+      results.push({
+        suite: suite.suite,
+        level: c.level ?? suite.level,
+        roles: c.roles ?? ROLES[c.op] ?? [],
+        ...c,
+        ...outcome,
+      });
     }
   }
   return results;
@@ -247,10 +289,31 @@ export function levelsFrom(results) {
     else at[r.pass ? "passed" : "failed"] += 1;
     byLevel.set(r.level, at);
   }
-  let earned = 0;
-  for (const level of [...byLevel.keys()].sort((a, b) => a - b)) {
-    if (byLevel.get(level).failed > 0) break;
-    earned = level;
+
+  /** The highest rung with nothing failing beneath it, over a subset of cases. */
+  const climb = (subset) => {
+    const levels = new Map();
+    for (const r of subset) {
+      if (r.na) continue;
+      const at = levels.get(r.level) ?? { failed: 0 };
+      if (!r.pass) at.failed += 1;
+      levels.set(r.level, at);
+    }
+    let earned = 0;
+    for (const level of [...levels.keys()].sort((a, b) => a - b)) {
+      if (levels.get(level).failed > 0) break;
+      earned = level;
+    }
+    return earned;
+  };
+
+  const roles = {};
+  for (const role of ["produce", "consume", "operate"]) {
+    roles[role] = climb(results.filter((r) => (r.roles ?? []).includes(role)));
   }
-  return { earned, byLevel: Object.fromEntries([...byLevel].sort((a, b) => a[0] - b[0])) };
+  return {
+    earned: climb(results),
+    roles,
+    byLevel: Object.fromEntries([...byLevel].sort((a, b) => a[0] - b[0])),
+  };
 }

@@ -36,6 +36,10 @@ runner can act on it.
   A real tool that has the thing cannot answer, so the case is skipped as not
   applicable rather than failed. Only for cases where the lack drives the
   expectation; a `with` that merely describes a kind of tool is not enough.
+- `roles` — which of `produce`, `consume`, `operate` this case is evidence
+  about. Defaulted from the op and rarely worth setting: `validate` and
+  `roundtrip` count for both producing and consuming, the reading ops for
+  consuming, `patch` and `follow` for operating.
 - `level` — the interoperability rung the case belongs to (see `AGENTS.md`).
 
 ## Operations

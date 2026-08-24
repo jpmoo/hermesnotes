@@ -6,14 +6,12 @@
  * manifest a producer writes is a promise; one a suite has to agree with is
  * evidence.
  *
- * One caveat worth stating rather than hiding. The suite does not yet partition
- * its cases by role, so it earns **one** level and all three numbers below are
- * checked against it. The separate evidence for the first two is elsewhere and
- * is run the same way: `pnpm probe` exports a real library and `pkm-check`
- * validates it, and `pnpm foreign` takes a stranger's library out and back and
- * counts what failed to return. Until the suite splits by role, those two
- * scripts are the reason `produce` and `consume` are not merely copies of a
- * number earned somewhere else.
+ * Each number is checked against the cases that are evidence about that role,
+ * not against one number copied three times — a tool that writes a good file and
+ * cannot read one has earned exactly one of these, and should not be able to say
+ * otherwise. Two more scripts measure the ends directly: `pnpm probe` exports a
+ * real library for `pkm-check` to validate, and `pnpm foreign` takes a
+ * stranger's library out and back and counts what failed to return.
  */
 export const CONFORMANCE = {
   format: "pkm-interchange/0",

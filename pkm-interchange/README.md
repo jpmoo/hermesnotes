@@ -32,7 +32,7 @@ already runs**, because all of them speak the same small vocabulary.
 That is the thing that has never existed here. Today, a satellite app has to be
 written against one specific host's API, so it gets written once, for one app,
 by that app's author. There is no reason for that except the absence of a shared
-way to ask "what have you got and what does it mean".
+way to ask "what have you got, and what does it mean?"
 
 ### Agents work with your app without anybody writing an integration
 
@@ -74,9 +74,9 @@ what yours means.
 ### Your users' data outlives your app
 
 Weekend projects stop being maintained. That is fine and normal, and it is
-usually where somebody's two years of notes go to die — exported as Markdown,
-which keeps the words and loses which field was the due date, which board
-position was a judgment, and which task was supposed to repeat.
+usually the moment somebody's two years of notes go to die — exported as
+Markdown, which keeps the words and loses which field was the due date, which
+board position was a judgment, and which task was supposed to repeat.
 
 An export in this format keeps the meaning, so the next tool can do something
 with it beyond displaying paragraphs.
@@ -122,7 +122,7 @@ Two rules everything else follows from, both worth reading twice:
    cannot tell by looking.
 
 The full specification is [`AGENTS.md`](AGENTS.md). It is written to be handed to
-a coding agent, and it is about twenty minutes to read yourself.
+a coding agent, and it takes about twenty minutes to read yourself.
 
 ---
 
@@ -139,9 +139,9 @@ rule, with its occurrences pointing at it.
 That is not tidiness. A rule that advances from the *schedule* is a set
 generator: give it a start and it enumerates forever. A rule that advances from
 *completion* is a state machine waiting on something that has not happened, so
-only one future occurrence is ever knowable. They are different computations, and
+only one future occurrence is ever knowable. They are different computations, so
 a format that stores both as a value lets a consumer import one as the other —
-which looks right and drifts, and the user finds out in March.
+and nothing in the imported data shows that it happened.
 
 Monthly rules must also say `byMonthDay` and `monthEnd`. A rule on the 31st that
 clamps to 28 February must give 31 March next, and that is only computable if
@@ -149,11 +149,12 @@ something remembers the 31.
 
 ### Placement is either a judgment or furniture, and only you know which
 
-Where a card sits on a canvas is decoration. Where it sits in an Eisenhower
-matrix is a decision somebody made, stored as a position. A consumer cannot tell
-by looking, so `placement.semantic` says which — and semantic placement uses
-**named regions, never coordinates**, because `urgent-important` survives being
-opened in a tool that draws no grid and `(340, 120)` does not.
+In storage the two cases are identical: an object holding a position in a
+collection. Nothing about the position itself says whether somebody decided it or
+whether it is where the card happened to land, so `placement.semantic` says
+which — and semantic placement uses **named regions, never coordinates**, because
+`urgent-important` survives being opened in a tool that draws no grid and
+`(340, 120)` does not.
 
 ### A link is a link
 
@@ -193,7 +194,7 @@ not is the mechanism working, not an admission of failure.
 | **4 · Operable** | a live surface | patch semantics, capability discovery, a change feed | other apps and agents can *work* in your app |
 
 They are earned **per role** — producing, consuming, operating — because those
-are different work. Most apps in this genre can write a file and cannot read one.
+are different jobs. Most apps in this genre can write a file and cannot read one.
 `produce: 2, consume: 1, operate: 0` is a normal and useful thing to say.
 
 ### Level 0 — one afternoon
@@ -208,13 +209,14 @@ as long as they are unique within the export; nobody is allowed to parse them.
       "fields": [
         { "key": "what", "kind": "text" },
         { "key": "deadline", "kind": "date" },
+        { "key": "state", "kind": "enum", "options": ["open", "shipped", "dropped"] },
         { "key": "tags_i_use", "kind": "text" }
       ] }
   ],
   "objects": [
     { "id": "o_1", "type": "t_thing",
       "properties": { "what": "Ring the roofer", "deadline": "2026-09-01",
-                      "tags_i_use": "house" },
+                      "state": "open", "tags_i_use": "house" },
       "created": "2026-08-01T09:00:00Z", "updated": "2026-08-20T11:00:00Z" }
   ]
 }
@@ -234,14 +236,15 @@ than one value, say so.** One task in two projects, one note citing four sources
 ```
 
 It is checked in both directions — a `many` field holds a list, a field without
-it does not — so a producer that stores every reference as a one-element array
-and declares none of them has told consumers nothing.
+it does not — so wrapping every reference in a one-element array and declaring
+no `many` fields is not a shortcut past the question. It fails, and it tells a
+consumer nothing either way.
 
 Then ask where that leaves you — see [Checking yourself](#checking-yourself).
 
 ### Level 1 — the one to do even if you do nothing else
 
-Add `profiles` to the types that are one of the four things a stranger can
+Add `profiles` to any type that is one of the four things a stranger can
 recognise: `task`, `event`, `contact`, `note`.
 
 ```json
@@ -356,16 +359,24 @@ Nothing to install, nothing to write. It answers the question people actually
 arrive with:
 
 ```
-  ok    well-formed              no rule broken
-  ok    has something in it      1 type(s), 1 object(s)
-  FAIL  types say what they are  none — a consumer has to guess which
-                                 field is a due date
+my-export.json
+
+  ok    well-formed
+        no rule broken
+  ok    has something in it
+        1 type(s), 1 object(s)
+  FAIL  types say what they are
+        none — a consumer has to guess which field is a due date
+  FAIL  says what it could not express
+        nothing reported
 
   produce: level 0
+  consume and operate are not visible in a file — see --url or the suite
 
-Next: Declare a profile on at least one type — task, event, contact or
-note — mapping your own field names onto it. That is level 1, and it is
-the rung that makes agents and other apps able to read your data.
+Next: Declare a profile on at least one type — `task`, `event`, `contact`
+or `note` — mapping your own field names onto it. That is level 1, and it
+is the rung that makes agents and other apps able to read your data. See
+"Level 1" in the README.
 ```
 
 A rung, and one thing to do to reach the next. It scores **producing** only,
@@ -400,11 +411,11 @@ there is nowhere over a network to send one.
 npx pkm-check --self       # 66 cases, four levels, against a reference implementation
 ```
 
-To measure **your** app, export ten operations and hand them to the runner. This
-is an in-process check, so it wants your app to be JavaScript — if it is not, the
-fixtures are plain JSON and `fixtures/README.md` describes the case grammar, so a
-runner in your own language is a couple of hundred lines and a genuinely useful
-thing to contribute back:
+To measure **your** app, implement the ten operations below and hand them to the
+runner. This is an in-process check, so it wants your app to be JavaScript — if
+it is not, the fixtures are plain JSON and `fixtures/README.md` describes the
+case grammar, so a runner in your own language is a couple of hundred lines and
+a genuinely useful thing to contribute back:
 
 ```js
 import { runSuites, levelsFrom } from "pkm-check/check/src/runner.js";

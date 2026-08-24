@@ -1,17 +1,8 @@
-# pkm-check
+# pkm-check — the runner
 
-Runs the fixtures against an implementation.
-
-```bash
-node src/cli.js --self          # the fixtures against the reference adapter
-node src/mutants.js             # ten wrong implementations, each of which must fail
-node src/cli.js ../example/library.json
-```
-
-Zero dependencies, Node 22, plain ES modules — so it can be run by anyone
-holding a checkout without installing anything, and lifted out of this repo
-whole when it stops being a thing we are playing with. It is deliberately not a
-pnpm workspace member: nothing about Hermes' build or deploy should depend on it.
+Implementation notes. For what the format is and how to make an app speak it,
+read [../README.md](../README.md); for the specification itself,
+[../AGENTS.md](../AGENTS.md).
 
 ## How an implementation plugs in
 

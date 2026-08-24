@@ -24,6 +24,7 @@ import {
 } from "@hermes/shared";
 import { fromInterchange } from "./src/import.js";
 import { toInterchange } from "./src/map.js";
+import { CONFORMANCE } from "./src/conformance.js";
 import { validateEnvelope } from "./src/validate.js";
 
 type Type = { propertySchema?: PropertySchema; fields?: unknown[]; profiles?: Record<string, unknown> };
@@ -69,6 +70,15 @@ function roundtrip(envelope: Record<string, unknown>) {
 }
 
 export const hermesAdapter = {
+  /**
+   * What Hermes says it does, so the suite asks it nothing else.
+   *
+   * A tool that never set out to do recurrence should not be measured on
+   * recurrence — being dinged for it would make both the level and the manifest
+   * worthless. Read from CONFORMANCE rather than restated, because two lists of
+   * what Hermes supports would eventually disagree.
+   */
+  conformance: { profiles: CONFORMANCE.profiles, features: CONFORMANCE.features },
   validate: validateEnvelope,
 
   /** The same applyPatch the block route uses. */

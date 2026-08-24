@@ -2,6 +2,11 @@
   "suite": "placement",
   "level": 2,
   "about": "Which placement survives an import and which may be thrown away. A consumer cannot tell by looking at the collection kind, so the producer declares it.",
+  "requires": {
+    "features": [
+      "placement"
+    ]
+  },
   "cases": [
     {
       "id": "placement/semantic-must-survive",

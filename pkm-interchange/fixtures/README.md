@@ -32,6 +32,12 @@ runner can act on it.
 - `of` — which part of the result `expect.result` is about: `envelope`,
   `object` or `collection`. Inferred when absent, from what `given` holds. Say it
   outright whenever `given` holds more than one thing.
+- `requires` — the profiles or features this case is about, as
+  `{ "features": ["series"] }`. An implementation that did not declare them is
+  not asked: a kanban with no recurrence should be measured on boards and told
+  nothing about repeating tasks. Settable on a whole suite. It does **not** cover
+  the rules of the road — round-trip, valid envelopes, partial writes that do not
+  destroy are obligations of the level rather than features to opt into.
 - `simulated` — the expected answer depends on the consumer *lacking* something.
   A real tool that has the thing cannot answer, so the case is skipped as not
   applicable rather than failed. Only for cases where the lack drives the

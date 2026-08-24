@@ -235,6 +235,25 @@ const ROLES = {
  * being quiet.
  */
 function applicable(adapter, c) {
+  // A feature nobody claimed is not a feature anybody failed. A kanban that
+  // declares `placement` and not `series` should be measured on boards and asked
+  // nothing at all about recurrence — being dinged for a thing it never set out
+  // to do would make the level meaningless and the manifest pointless.
+  //
+  // This is what `conformance.profiles` and `conformance.features` are *for*.
+  // Declaring narrowly is the mechanism working.
+  //
+  // It does not extend to the rules of the road. Round-trip, valid envelopes,
+  // partial writes that do not destroy — those are obligations of the level, not
+  // features to opt into, and nothing scopes them away.
+  const need = c.requires;
+  if (need) {
+    const has = adapter.conformance ?? {};
+    const missing =
+      (need.features ?? []).some((f) => !(has.features ?? []).includes(f)) ||
+      (need.profiles ?? []).some((p) => !(has.profiles ?? []).includes(p));
+    if (missing) return false;
+  }
   if (!c.simulated) return true;
   return (adapter.simulates ?? []).includes("*");
 }
@@ -244,13 +263,15 @@ export function runSuites(adapter, dir) {
   const results = [];
   for (const file of files) {
     const suite = JSON.parse(readFileSync(join(dir, file), "utf8"));
+    // A suite may scope itself; a case may scope itself more narrowly still.
     const byId = new Map(suite.cases.map((c) => [c.id, c]));
     for (const c of suite.cases) {
-      if (!applicable(adapter, c)) {
+      if (!applicable(adapter, { ...c, requires: c.requires ?? suite.requires })) {
           results.push({
           suite: suite.suite,
           level: c.level ?? suite.level,
           roles: c.roles ?? ROLES[c.op] ?? [],
+          requires: c.requires ?? suite.requires,
           ...c,
           na: true,
           pass: false,
@@ -267,6 +288,7 @@ export function runSuites(adapter, dir) {
         suite: suite.suite,
         level: c.level ?? suite.level,
         roles: c.roles ?? ROLES[c.op] ?? [],
+        requires: c.requires ?? suite.requires,
         ...c,
         ...outcome,
       });

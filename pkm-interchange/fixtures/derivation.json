@@ -2,6 +2,11 @@
   "suite": "derivation",
   "level": 2,
   "about": "Collections whose membership is computed rather than stated. The failure this suite exists to prevent is a live query being silently frozen into stale facts.",
+  "requires": {
+    "features": [
+      "derivations"
+    ]
+  },
   "cases": [
     {
       "id": "derivation/query-members-are-not-authoritative",

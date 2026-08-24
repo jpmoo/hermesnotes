@@ -2,6 +2,11 @@
   "suite": "inline",
   "level": 2,
   "about": "References written inside prose. In a knowledge base most of the graph lives in the writing rather than in the schema, and a format that only models declared reference fields cannot see it. The rule is that prose stays opaque and its edges are mirrored into relations, so a consumer that cannot read your dialect can still hold your graph — and knows what it is about to break.",
+  "requires": {
+    "features": [
+      "relations"
+    ]
+  },
   "cases": [
     {
       "id": "inline/mirrored-edge-survives-prose-blindness",

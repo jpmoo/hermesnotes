@@ -278,6 +278,9 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
       notes: z.string().optional(),
       available_date: z.string().optional(),
       due_date: z.string().optional(),
+      /** The same two in the words the task profile uses. */
+      start: z.string().optional(),
+      due: z.string().optional(),
       status: z.string().optional(),
       project: z.string().optional(),
       projects: z.array(z.string()).optional(),
@@ -291,10 +294,12 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
           throw new Error("The task type has no long-text field, so there's nowhere to put notes.");
         properties[ctx.notesKey] = a.notes;
       }
-      if (a.available_date || a.due_date)
+      const availableOn = a.available_date ?? (a as { start?: string }).start;
+      const dueOn = a.due_date ?? (a as { due?: string }).due;
+      if (availableOn || dueOn)
         properties[ctx.spanKey] = {
-          ...(a.available_date ? { start: a.available_date } : {}),
-          ...(a.due_date ? { end: a.due_date } : {}),
+          ...(availableOn ? { start: availableOn } : {}),
+          ...(dueOn ? { end: dueOn } : {}),
         };
       if (a.status) {
         const status = resolveStatus(ctx, a.status);
@@ -527,6 +532,11 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
       status: z.string().optional(),
       available_date: z.string().optional(),
       due_date: z.string().optional(),
+      // The same two, in the words the task profile uses. A caller that knows
+      // the shared vocabulary and nothing about Hermes should not have to guess
+      // that "due" is spelled "due_date" here.
+      start: z.string().optional(),
+      due: z.string().optional(),
       add_tags: z.array(z.string()).optional(),
       remove_tags: z.array(z.string()).optional(),
       add_projects: z.array(z.string()).optional(),
@@ -554,10 +564,12 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
         p[ctx.statusKey] = status;
         changed.push(`status → ${status}`);
       }
-      if (a.available_date !== undefined || a.due_date !== undefined) {
+      const availableOn = a.available_date ?? (a as { start?: string }).start;
+      const dueOn = a.due_date ?? (a as { due?: string }).due;
+      if (availableOn !== undefined || dueOn !== undefined) {
         const span = { ...((p[ctx.spanKey] ?? {}) as { start?: string; end?: string }) };
-        if (a.available_date !== undefined) span.start = a.available_date || undefined;
-        if (a.due_date !== undefined) span.end = a.due_date || undefined;
+        if (availableOn !== undefined) span.start = availableOn || undefined;
+        if (dueOn !== undefined) span.end = dueOn || undefined;
         p[ctx.spanKey] = span;
         changed.push("schedule");
       }
@@ -871,8 +883,10 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
   tool(
     "block_get",
     "Read one block or collection by id (from search): content, properties, tags, and " +
-      "containing collections. Collections also list their members.",
-    { id: z.string().uuid() },
+      "containing collections. Collections also list their members. " +
+      'Pass as:"interchange" to get the pkm-interchange object instead of prose — readable by ' +
+      "anything that knows the format and nothing about Hermes.",
+    { id: z.string().uuid(), as: z.enum(["prose", "interchange"]).optional() },
     run(async (a) => {
       const b = await api.get<{
         id: string;
@@ -887,6 +901,31 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
         tags: string[];
         inCollections: { id: string; label: string }[];
       }>(`/blocks/${a.id}/info`);
+
+      if ((a as { as?: string }).as === "interchange") {
+        const types = await api.get<
+          { id: string; name: string; isText: boolean; propertySchema: PropertySchema | null }[]
+        >("/block-types");
+        const { envelope } = toInterchange({
+          types: types.map((t) => ({ ...t, propertySchema: t.propertySchema ?? null })),
+          blocks: [
+            {
+              id: b.id,
+              blockTypeId: b.blockTypeId,
+              collectionKind: b.collectionKind,
+              content: b.content,
+              properties: b.properties ?? {},
+              archivedAt: null,
+              createdAt: b.createdAt,
+              updatedAt: b.updatedAt,
+              tags: info.tags,
+            },
+          ],
+          memberships: [],
+        });
+        const [only] = (envelope as { objects: unknown[] }).objects;
+        return JSON.stringify(only ?? null, null, 2);
+      }
 
       const lines: string[] = [];
       const title = typeof b.properties?.title === "string" ? b.properties.title : "";
@@ -940,6 +979,10 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
       title: z.string().optional(),
       content: z.string().optional(),
       properties: z.record(z.unknown()).optional(),
+      // Removing a value has to be sayable and has to be said out loud. Making
+      // an absent key mean delete would collide with the shallow merge above,
+      // which is the whole point of the merge.
+      unset: z.array(z.string()).optional(),
       add_tags: z.array(z.string()).optional(),
       remove_tags: z.array(z.string()).optional(),
     },
@@ -996,7 +1039,13 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
           Object.assign(p, a.properties);
           changed.push(...Object.keys(a.properties));
         }
-        if (a.title !== undefined || a.properties) body.properties = p;
+        for (const k of (a as { unset?: string[] }).unset ?? []) {
+          delete p[k];
+          changed.push(`-${k}`);
+        }
+        if (a.title !== undefined || a.properties || (a as { unset?: string[] }).unset?.length) {
+          body.properties = p;
+        }
         if (a.content !== undefined) {
           body.content = a.content;
           changed.push("content");
@@ -1140,10 +1189,29 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
     }),
   );
 
-  tool("list_types", "List the block types available (name, and whether it's a plain-text type).", {}, run(async () => {
-    const types = await getTypes();
-    return types.length ? types.map((t) => `- ${t.name}${t.isText ? " (text)" : ""}`).join("\n") : "No types.";
-  }));
+  tool(
+    "list_types",
+    "List the block types available (name, and whether it's a plain-text type). " +
+      'Pass as:"interchange" for the pkm-interchange form — fields with value kinds, and the ' +
+      "profiles each type declares — which is how to learn which field carries a due date or a " +
+      "completion state without knowing what this account calls them.",
+    { as: z.enum(["prose", "interchange"]).optional() },
+    run(async (a: { as?: string }) => {
+      const types = await getTypes();
+      if (a.as === "interchange") {
+        const full = await api.get<
+          { id: string; name: string; isText: boolean; propertySchema: PropertySchema | null }[]
+        >("/block-types");
+        const { envelope } = toInterchange({
+          types: full.map((t) => ({ ...t, propertySchema: t.propertySchema ?? null })),
+          blocks: [],
+          memberships: [],
+        });
+        return JSON.stringify((envelope as { types: unknown[] }).types, null, 2);
+      }
+      return types.length ? types.map((t) => `- ${t.name}${t.isText ? " (text)" : ""}`).join("\n") : "No types.";
+    }),
+  );
 
   tool(
     "block_create",

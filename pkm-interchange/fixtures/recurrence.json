@@ -2,6 +2,11 @@
   "suite": "recurrence",
   "level": 1,
   "about": "Next-occurrence computation. Every case gives a rule, a completion event, and the expected next instance. These are the cases where real implementations disagree today.",
+  "requires": {
+    "features": [
+      "series"
+    ]
+  },
   "cases": [
     {
       "id": "recurrence/monthly-31st-skip",

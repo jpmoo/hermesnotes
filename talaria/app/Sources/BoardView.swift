@@ -142,6 +142,8 @@ private func acceptDrop(_ providers: [NSItemProvider], into region: Int?, model:
 
 struct BoardView: View {
     @ObservedObject var model: BoardModel
+    /// A board left open is a photograph unless something says the mirror moved.
+    @State private var watch: MirrorWatch?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -181,6 +183,19 @@ struct BoardView: View {
                     .padding(.horizontal, 12).padding(.vertical, 6)
             }
         }
+        // A board left open showed whatever the mirror held when it was opened,
+        // with nothing to say the picture had aged. That reads as Talaria having
+        // stopped syncing, and the sync is usually fine — the window simply
+        // never asked again.
+        .onAppear {
+            let w = MirrorWatch { model.load() }
+            w.start()
+            watch = w
+        }
+        .onDisappear {
+            watch?.stop()
+            watch = nil
+        }
     }
 
     private var header: some View {
@@ -218,7 +233,12 @@ struct BoardView: View {
                 .buttonStyle(.borderless)
                 .help("Open this collection in Hermes")
             }
-            Button { model.load() } label: { Image(systemName: "arrow.clockwise") }
+            Button {
+                model.load()
+                // Reloading by hand is also "I have seen it": without this the
+                // watcher would notice the same move a moment later and do it again.
+                watch?.markSeen()
+            } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
                 .help("Refresh from the mirror")
         }

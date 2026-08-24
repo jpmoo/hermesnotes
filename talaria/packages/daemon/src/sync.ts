@@ -37,6 +37,8 @@ const SEAM = "seam.version";
 const PAYLOAD = "sync.payloadVersion";
 
 const CURSOR = "sync.cursor";
+/** The local day the saved queries were last asked on. */
+const QUERY_DAY = "sync.queryDay";
 const LAST_OK = "sync.lastSuccessAt";
 const FIRST_DONE = "sync.baselineDoneAt";
 
@@ -172,6 +174,18 @@ export class Sync {
   }
 
   /**
+   * Has the local day rolled since the queries were last run?
+   *
+   * Local, not UTC: a saved query's "today" is the reader's today, and a mirror
+   * that turned over at the wrong hour would be wrong for most of a working day
+   * rather than briefly.
+   */
+  private dayTurned(): boolean {
+    const today = new Date().toLocaleDateString("en-CA");
+    return this.mirror.get(QUERY_DAY) !== today;
+  }
+
+  /**
    * Refresh the cached match set for every smart collection.
    *
    * A smart collection's query is used twice: to drop members that no longer
@@ -199,6 +213,9 @@ export class Sync {
       try {
         const matched = await this.hermes.queryMatches(q);
         this.mirror.set(`query.${row.id}`, JSON.stringify(matched.map((b) => b.id)));
+        // Stamped per answer rather than once at the end: a run that fails
+        // halfway must not claim the whole day's questions were asked.
+        this.mirror.set(QUERY_DAY, new Date().toLocaleDateString("en-CA"));
       } catch {
         // Keep the last answer. A stale match set is a far better board than no
         // board, and the freshness stamp already says how old everything is.
@@ -265,7 +282,14 @@ export class Sync {
         // so a collection whose answer had never been fetched stayed empty for
         // as long as nothing else in the account moved — which for a smart list
         // is the whole of its contents.
-        await this.refreshQueries({ onlyMissing: true });
+        //
+        // And re-run all of them when the day has turned. A saved query is
+        // usually about dates — "due through tomorrow", "overdue", "this week" —
+        // so its answer expires at local midnight whether or not a single block
+        // moved. Refreshing only on change meant a board could hold yesterday's
+        // answer all of today, which reads as Talaria having stopped syncing
+        // when the sync is perfectly current and the question is simply old.
+        await this.refreshQueries({ onlyMissing: !this.dayTurned() });
         this.mirror.set(CURSOR, String(since));
         this.mirror.set(LAST_OK, new Date().toISOString());
         return { state: "ok", changed: 0, walked: false };

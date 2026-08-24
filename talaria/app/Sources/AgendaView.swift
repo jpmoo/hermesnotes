@@ -86,6 +86,8 @@ final class AgendaModel: ObservableObject {
 
 struct AgendaView: View {
     @ObservedObject var model: AgendaModel
+    /// Same reason as the board: an agenda left open stops being today's.
+    @State private var watch: MirrorWatch?
     /// Where a feed event goes when clicked. A feed event is not a block and
     /// has no address of its own, so it opens the calendar it belongs to —
     /// which is where you would have gone looking for it anyway.
@@ -118,7 +120,16 @@ struct AgendaView: View {
                 }
             }
         }
-        .onAppear { model.load() }
+        .onAppear {
+            model.load()
+            let w = MirrorWatch { model.load() }
+            w.start()
+            watch = w
+        }
+        .onDisappear {
+            watch?.stop()
+            watch = nil
+        }
     }
 
     /// Which types show. The pills persist, because a calendar you have to

@@ -17,7 +17,8 @@
     "db:generate": "pnpm --filter @hermes/db generate",
     "db:migrate": "pnpm --filter @hermes/db migrate",
     "lint": "pnpm -r lint",
-    "series:backfill": "pnpm --filter @hermes/db series:backfill"
+    "series:backfill": "pnpm --filter @hermes/db series:backfill",
+    "check": "pnpm --filter @hermes/interchange check"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

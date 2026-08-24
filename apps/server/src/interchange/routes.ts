@@ -23,6 +23,18 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
    * write to learn whether it is supported has already done the damage if it
    * isn't.
    */
+  //
+  // It is safe to leave open only because CONFORMANCE is a constant. It says
+  // what this build implements and never touches the database, so
+  // `profiles: ["task", "note"]` is a fact about the software rather than a
+  // statement that this account keeps tasks and notes. It also gives away no
+  // fingerprint the site does not: the web app is served at this origin and
+  // announces itself to anyone who loads the page.
+  //
+  // If it ever becomes computed — the account's real types, the collections it
+  // holds — it stops being safe and has to move behind `authenticate`. That is
+  // the line, and it is here rather than in a commit message because this is
+  // where somebody would cross it.
   app.get("/conformance", async () => CONFORMANCE);
 
   app.register(async (guarded) => {

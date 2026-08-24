@@ -154,7 +154,9 @@ async function provisionReviewTask(userId: string, wr: WeeklyReview, tz: string 
     // Re-point the live task at the new schedule; keep its status/progress.
     const props = { ...((active.properties ?? {}) as Record<string, unknown>) };
     props[spanKey] = span;
-    props[recKey] = { ...rec, n: (props[recKey] as { n?: number })?.n ?? 1 };
+    // Carried only where one already exists: nothing writes a fresh `n`.
+    const hadN = (props[recKey] as { n?: number } | undefined)?.n;
+    props[recKey] = { ...rec, ...(hadN !== undefined ? { n: hadN } : {}) };
     props.weekly_review = true;
     if (projRefKey) props[projRefKey] = wr.project;
     const embedSource = computeEmbedSource({ isText: task.isText, propertySchema: schema }, { properties: props });

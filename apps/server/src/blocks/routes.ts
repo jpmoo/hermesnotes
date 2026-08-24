@@ -263,7 +263,12 @@ async function spawnRecurrence(
     [spanField.key]: next,
     [recField.key]: {
       ...rec,
-      n: currentN + 1,
+      // `n` is not written any more. It was an occurrence counter riding on a
+      // rule — instance state in a rule object, which every site that copied the
+      // rule then had to nurse — and the series can be counted. Old rules keep
+      // theirs and it is still read as a floor, so a series with history behind
+      // it does not restart at one.
+      ...(rec.n !== undefined ? { n: currentN + 1 } : {}),
       // Pin the day a monthly or yearly series recurs on, from the occurrence
       // being completed, if nobody has said yet. A rule written before this
       // existed reads its day off whichever occurrence is in hand — and once a

@@ -52,6 +52,9 @@ export function toCanonicalRecurrence(
         : rec.end.type === "on"
           ? { kind: "on", date: rec.end.date }
           : { kind: "never" },
+    // Null on anything written since Hermes stopped counting occurrences on the
+    // rule. The number lives with the series now, which this mirror does not
+    // carry — so the honest answer here is "not known" rather than a stale one.
     occurrence: rec.n ?? null,
     expressibleAsRRULE: anchor === "schedule",
   };

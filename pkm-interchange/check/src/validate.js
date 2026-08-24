@@ -77,6 +77,28 @@ export function validate(envelope) {
     }
   });
 
+  // A profile is the whole substance of level 1: it is the producer saying which
+  // of their fields is the due date. A mapping that names a field the type does
+  // not declare says it and delivers nothing — the consumer that trusts the
+  // declaration reads `undefined` and has no way to tell that from a task with
+  // no due date. Checked by shape rather than by key name, so it asks exactly
+  // what a reader will go on to dereference: a string is a field key (or the one
+  // reserved body slot), `{field}` names one, and anything else — a list of
+  // complete values — is not a reference at all. Only the v0 vocabulary, since
+  // a profile nobody standardised is carried and not interpreted.
+  (envelope.types ?? []).forEach((t, i) => {
+    const declared = new Set((t.fields ?? []).map((f) => f.key));
+    for (const [profile, map] of Object.entries(t.profiles ?? {})) {
+      if (!V0_PROFILES.includes(profile) || !map || typeof map !== "object") continue;
+      for (const [key, spec] of Object.entries(map)) {
+        const named =
+          typeof spec === "string" ? spec : spec && typeof spec === "object" ? spec.field : undefined;
+        if (typeof named !== "string" || named === "content") continue;
+        if (!declared.has(named)) fail("profile.field-not-declared", `types[${i}].profiles.${profile}.${key}`);
+      }
+    }
+  });
+
   // A declared cardinality has to bite both ways or it is a hint rather than a
   // declaration: a `many` field holds a list, a single one does not. A producer
   // that stores every reference as a one-element array and declares none of them

@@ -46,7 +46,7 @@ interface Env {
     bindings?: string[];
     features?: string[];
   };
-  types?: { id?: string; fields?: Field[] }[];
+  types?: { id?: string; fields?: Field[]; profiles?: Record<string, Record<string, unknown>> }[];
   objects?: { id?: string; type?: string; properties?: Record<string, unknown>; suggests?: string }[];
   collections?: {
     placement?: { semantic?: boolean; regions?: string[] };
@@ -66,6 +66,35 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
   if (typeof e.format === "string" && !/^pkm-interchange\/\d+$/.test(e.format)) {
     fail("envelope.format", "format");
   }
+
+  // A profile mapping has to land on a field the type declares. Claiming the
+  // task profile and pointing `due` at nothing is the one way to hold level 1
+  // while providing none of it, and it is invisible from anywhere else: the
+  // envelope is well-formed and the profile name is spelled right.
+  //
+  // Not every entry in a mapping is a field name. `completeValues` is a list of
+  // values, a compound field is named through `{field, part}` and the rule
+  // belongs to `field`, and `content` is the reserved body slot rather than a
+  // property. Profiles outside the v0 vocabulary are carried uninterpreted, so
+  // their mappings are nobody's business here.
+  (e.types ?? []).forEach((t, i) => {
+    const declared = new Set((t.fields ?? []).map((f) => f.key));
+    for (const [profile, map] of Object.entries(t.profiles ?? {})) {
+      if (!PROFILES.includes(profile) || map === null || typeof map !== "object") continue;
+      for (const [key, spec] of Object.entries(map)) {
+        const named =
+          typeof spec === "string"
+            ? spec
+            : spec !== null && typeof spec === "object"
+              ? (spec as { field?: unknown }).field
+              : undefined;
+        if (typeof named !== "string" || named === "content") continue;
+        if (!declared.has(named)) {
+          fail("profile.field-not-declared", `types[${i}].profiles.${profile}.${key}`);
+        }
+      }
+    }
+  });
 
   // Cardinality is a declaration, so it has to bite in both directions.
   const typeById = new Map((e.types ?? []).map((t) => [t.id, t]));

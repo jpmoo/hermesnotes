@@ -65,6 +65,15 @@ export function toInterchange(input: ExportInput): {
   const types = input.types.map((t) => {
     const schema = t.propertySchema;
     const fields = (schema?.fields ?? []).flatMap((f) => mapField(f, note));
+    // Hermes keeps `title` on every block rather than in a type's field list,
+    // and every type but a text one declares it in the schema anyway. A text
+    // type's schema is the body alone, so the note profile derived below mapped
+    // `title` onto a field this export never declared — a mapping that reads as
+    // a promise and hands back nothing. The property is genuinely on the
+    // objects; what was missing was the type saying so.
+    if (t.isText && !fields.some((f) => f.key === "title")) {
+      fields.unshift({ key: "title", kind: "text" });
+    }
     const declared = profilesOf(schema, { isText: t.isText });
     const profiles: Record<string, unknown> = {};
     for (const p of declared) {

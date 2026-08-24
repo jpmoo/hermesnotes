@@ -191,6 +191,94 @@
         "task"
       ],
       "why": "Profiles outside the v0 vocabulary are ignored for consumption but must survive a round-trip. A producer experimenting with a habit profile loses nothing by declaring it, which is how a vocabulary grows without a committee."
+    },
+    {
+      "id": "profile/mapping-names-a-real-field",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "type": {
+          "id": "t_errand",
+          "name": "Errand",
+          "fields": [
+            {
+              "key": "what",
+              "kind": "text"
+            },
+            {
+              "key": "by",
+              "kind": "date"
+            }
+          ],
+          "profiles": {
+            "task": {
+              "title": "what",
+              "due": "by",
+              "status": "state",
+              "completeValues": [
+                "sorted"
+              ]
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "profile.field-not-declared"
+          }
+        ]
+      },
+      "why": "A profile is the producer saying which of their fields is the due date, and it is the whole substance of level 1. Mapping `status` onto a field the type never declares reads as a declaration and delivers nothing: the consumer that trusts it gets undefined and cannot tell that from an errand nobody has finished. Caught here because every other check would pass — the export is well-formed, the profile is spelled correctly, and the level is claimed."
+    },
+    {
+      "id": "profile/a-mapping-is-not-always-a-field",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "type": {
+          "id": "t_page",
+          "name": "Page",
+          "fields": [
+            {
+              "key": "heading",
+              "kind": "text"
+            },
+            {
+              "key": "window",
+              "kind": "datespan"
+            }
+          ],
+          "profiles": {
+            "task": {
+              "title": "heading",
+              "start": {
+                "field": "window",
+                "part": "start"
+              },
+              "due": {
+                "field": "window",
+                "part": "end"
+              },
+              "completeValues": [
+                "filed"
+              ]
+            },
+            "note": {
+              "title": "heading",
+              "body": "content"
+            },
+            "habit": {
+              "streak": "days_running"
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": true
+      },
+      "why": "The companion to the case above, and the reason it is safe to run. Three things in a profile are not field keys: a list of complete values, the halves of a compound field named through `{field, part}`, and `content` — the one reserved slot outside the property bag. A profile nobody standardised is carried and not interpreted, so `habit` naming a field this type does not have is not an error either. A rule that fired on any of these would be one producers learn to ignore."
     }
   ]
 }

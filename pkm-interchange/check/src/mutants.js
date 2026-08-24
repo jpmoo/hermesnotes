@@ -308,6 +308,18 @@ const MUTANTS = [
     } }),
   },
   {
+    name: "takes a profile's word for it",
+    caught: "profile/mapping-names-a-real-field",
+    // The shape of every level-1 implementation that reads through a mapping
+    // without ever asking whether the mapping lands: the export is well-formed,
+    // the profile is spelled correctly, and the due date is undefined.
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      const kept = got.errors.filter((x) => x.code !== "profile.field-not-declared");
+      return { valid: kept.length === 0, errors: kept };
+    } }),
+  },
+  {
     name: "accepts a semantic placement given as coordinates",
     caught: "placement/semantic-requires-named-regions",
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),

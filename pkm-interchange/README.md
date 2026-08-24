@@ -254,6 +254,11 @@ recognise: `task`, `event`, `contact`, `note`.
 }
 ```
 
+A mapping has to land: whatever field it names must be one the type declares.
+Pointing `due` at a field that does not exist reads as a promise and hands a
+consumer back nothing, and it is the one way to hold level 1 while providing
+none of it — so the checker asks.
+
 Some real shapes you might have:
 
 **One field holding both ends of a span.** Map the halves:

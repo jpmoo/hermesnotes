@@ -107,20 +107,18 @@ without matching an error message.
 
 | code | rule |
 |---|---|
+| `envelope.format` | `format` present but not `pkm-interchange/<n>` |
+| `value.cardinality` | a `many` field holding a scalar, or a single field holding a list |
+| `profile.field-not-declared` | a v0 profile mapping onto a field its type hasn't got |
+| `inline.field-not-declared` | an inline edge names a field its type hasn't got |
+| `relation.no-target` | an edge with no `to` |
+| `stub.suggests-not-a-profile` | a stub's `suggests` naming a type id rather than a profile |
 | `placement.coordinates-not-semantic` | semantic placement must name regions |
 | `series.completion-horizon` | `horizon` must be 1 when `anchor` is `completion` |
 | `series.completion-byweekday` | `byWeekday` is meaningless with `anchor: completion` |
 | `series.month-end-required` | monthly and yearly rules must declare `monthEnd` |
-| `conformance.undeclared-feature` | the data uses a feature the manifest omits |
-| `inline.field-not-declared` | an inline edge names a field its type hasn't got |
-| `relation.no-target` | an edge with no `to` |
-| `stub.suggests-not-a-profile` | a stub's `suggests` naming a type id rather than a profile |
+| `series.month-day-required` | a monthly or yearly rule with no `byMonthDay` |
 | `changes.child-op` | a child row's own operation reported as the object's |
 | `conformance.missing-roles` | a level claimed without saying for which role |
 | `conformance.binding-required` | `operate` claimed with no live binding |
-
-## Error codes, continued
-
-| code | rule |
-|---|---|
-| `series.month-day-required` | a monthly or yearly rule with no `byMonthDay` |
+| `conformance.undeclared-feature` | the data uses a feature the manifest omits |

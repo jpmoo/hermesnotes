@@ -159,6 +159,10 @@ v0 profiles: `task`, `event`, `contact`, `note`.
 
 A type may declare several. A type may declare none, in which case consumers can still read its fields generically and must not guess.
 
+**A mapping must land.** Wherever a v0 profile names one of the producer's fields, that field has to be declared on the type. A mapping onto a field that does not exist reads as a declaration and delivers nothing: the consumer that trusts it gets `undefined` and cannot tell that from a task with no due date. It is the one way to claim level 1 while providing none of it, and nothing else in an export gives it away — the document is well-formed and the profile is spelled correctly.
+
+Three things inside a profile are not field names, and none of them is checked this way: a list of values such as `completeValues`; the halves of a compound field, named as `{ "field": "dates", "part": "start" }`, where the rule applies to `field`; and `content`, the one reserved slot outside the property bag. Profiles outside the v0 vocabulary are carried and not interpreted, so their mappings are not checked either.
+
 → `fixtures/profile.json`
 
 ---

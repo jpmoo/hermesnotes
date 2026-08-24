@@ -7,8 +7,9 @@ format your app can read and write, plus a checker that tells you how far you
 have got.
 
 ```bash
-npx pkm-check my-export.json     # is this valid?
-npx pkm-check --self             # the whole suite, against a reference implementation
+npx pkm-check my-export.json                  # where do I stand, and what next?
+npx pkm-check --url https://my-app/api        # check a running server, read-only
+npx pkm-check --self                          # the whole suite, against a reference
 ```
 
 ---
@@ -125,6 +126,58 @@ a coding agent, and it is about twenty minutes to read yourself.
 
 ---
 
+## What it models, and the four decisions that will surprise you
+
+Types and objects are the easy part. Four things in here are opinionated, and
+they are the four an exporter runs into without warning.
+
+### Recurrence is an object, not a field
+
+A repeating task is not a task with a `repeat` property. It is a **series** — one
+rule, with its occurrences pointing at it.
+
+That is not tidiness. A rule that advances from the *schedule* is a set
+generator: give it a start and it enumerates forever. A rule that advances from
+*completion* is a state machine waiting on something that has not happened, so
+only one future occurrence is ever knowable. They are different computations, and
+a format that stores both as a value lets a consumer import one as the other —
+which looks right and drifts, and the user finds out in March.
+
+Monthly rules must also say `byMonthDay` and `monthEnd`. A rule on the 31st that
+clamps to 28 February must give 31 March next, and that is only computable if
+something remembers the 31.
+
+### Placement is either a judgment or furniture, and only you know which
+
+Where a card sits on a canvas is decoration. Where it sits in an Eisenhower
+matrix is a decision somebody made, stored as a position. A consumer cannot tell
+by looking, so `placement.semantic` says which — and semantic placement uses
+**named regions, never coordinates**, because `urgent-important` survives being
+opened in a tool that draws no grid and `(340, 120)` does not.
+
+### A link is a link
+
+`{ from, to }`, and `to` is required. Everything a reader might go on to ask —
+what kind of thing is it, does it still exist, what is it called — is a question
+about the far end and belongs to the far end. A copy of the target's type on the
+edge falsifies itself the moment the target is retyped.
+
+A name written before the thing exists is not a link with a piece missing. It is
+a link to a **stub**: a real object with a real id, a name, and no type yet. When
+the stub becomes real it keeps its id, so every link already points at the right
+thing and nothing has to be rewritten.
+
+### Prose is opaque, and its links are mirrored
+
+Most of the graph in a knowledge base is inside the writing — `[[wikilinks]]`,
+`@names`, whatever your editor does. The format standardises **no markup
+dialect**: yours comes back exactly as you wrote it. But every reference inside
+prose is also stated in `relations`, so a consumer that cannot parse your dialect
+still holds your graph, and one that is about to rewrite your prose can tell what
+it is about to break.
+
+---
+
 ## Getting there, in the order that pays
 
 Levels are a ladder. Each rung is a claim a checker can verify — and one you can
@@ -184,11 +237,7 @@ It is checked in both directions — a `many` field holds a list, a field withou
 it does not — so a producer that stores every reference as a one-element array
 and declares none of them has told consumers nothing.
 
-Check it:
-
-```bash
-npx pkm-check my-export.json
-```
+Then ask where that leaves you — see [Checking yourself](#checking-yourself).
 
 ### Level 1 — the one to do even if you do nothing else
 
@@ -373,6 +422,13 @@ console.log(byLevel);   // { 1: { passed: 20, failed: 3, na: 0 }, ... }
 Leave off anything you have not built. **Missing counts as failing**, deliberately:
 to somebody deciding whether to trust their notes to your app, "we have not built
 that" and "we built it wrong" are the same news.
+
+Some cases come back **n/a** rather than passing or failing. Those are the ones
+that ask a consumer to behave as though it lacked something — no board, no query
+engine, no prose — which a reference implementation can pretend and a real one
+cannot. Asking an app with a matrix view to answer as though it had none tests
+nothing about that app. They are counted separately and reported next to the
+level, because an applicability rule is also the obvious way to dodge a suite.
 
 The operations are described in [`fixtures/README.md`](fixtures/README.md). Each
 case carries a `why` explaining the failure it exists to prevent — when one goes

@@ -1,4 +1,4 @@
-import { inlineMentions, profilesOf, type FieldDef, type PropertySchema } from "@hermes/shared";
+import { inlineMentions, profilesOf, recurrenceSchema, type FieldDef, type PropertySchema } from "@hermes/shared";
 import { CARRY_KEY } from "./import.js";
 import type { Finding, HermesBlock, HermesMembership, HermesSeries, HermesType } from "./types.js";
 
@@ -117,8 +117,19 @@ export function toInterchange(input: ExportInput): {
       // but the export, so the export is where a disagreement has to surface.
       if (f.type === "recurrence" && v && b.seriesId) {
         const linked = (input.seriesRows ?? []).find((x) => x.id === b.seriesId)?.rule;
-        const { n: _n, ...onBlock } = v as Record<string, unknown>;
-        if (linked && JSON.stringify(linked) !== JSON.stringify(onBlock)) {
+        // Both sides through the same parse before comparing. One copy was
+        // written raw and the other parsed, so the parsed one carries schema
+        // defaults the raw one never had — and a comparison of the two called
+        // that a disagreement. It fired on the first task to be rewritten after
+        // the sync shipped, which is a detector crying wolf, which is the one
+        // thing a detector must not do.
+        const same = (x: unknown) => {
+          const p = recurrenceSchema.safeParse(x);
+          if (!p.success) return null;
+          const { n: _n, ...rule } = p.data;
+          return JSON.stringify(Object.entries(rule).sort());
+        };
+        if (linked && same(linked) !== null && same(linked) !== same(v)) {
           note(
             "series.rule-diverged",
             "hermes",

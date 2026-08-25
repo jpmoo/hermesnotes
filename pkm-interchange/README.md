@@ -143,6 +143,8 @@ Two rules everything else follows from, both worth reading twice:
 1. **The data declares its own meaning.** A consumer must never need to know what your types are called. `if (type.name === "Task")` is a bug — in your code and in this format.
 2. **A view never smuggles in meaning.** Where something sits on a canvas is not knowledge. Where it sits in an Eisenhower matrix is. You say which; a consumer cannot tell by looking.
 
+Want to see it move rather than read about it? `npx pkm-check` aside, `node walkthrough.mjs` in this folder runs a producer and a consumer against each other and prints every request and response between them — first contact to marking a task done, five requests, nothing illustrative.
+
 The full specification is [`AGENTS.md`](AGENTS.md). It is written to be handed to a coding agent, and it takes about twenty minutes to read yourself.
 
 ---

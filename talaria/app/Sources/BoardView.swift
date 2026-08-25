@@ -154,8 +154,7 @@ struct BoardView: View {
                     // Scoped to this collection: its members laid out by day,
                     // and none of the subscribed feeds. A collection shows what
                     // is in it, and nothing puts a third party's calendar in it.
-                    AgendaView(model: model.agenda, collectionURL: board.url)
-                        .onAppear { model.agenda.collection = board.id }
+                    AgendaView(model: model.agenda, collectionURL: board.url, collection: board.id)
                 } else if board.table, !board.columns.isEmpty {
                     table(board)
                 } else if board.rollup {

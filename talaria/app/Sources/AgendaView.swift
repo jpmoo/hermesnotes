@@ -21,8 +21,9 @@ final class AgendaModel: ObservableObject {
     @Published var error: String?
     @Published var busy = false
 
-    /// The collection this agenda is scoped to, if it is a collection's own
-    /// view rather than the agenda proper. Set once, before the first load.
+    /// The collection this agenda is scoped to. Set by the view before its
+    /// first load, and never after — the fetch reads it on the main actor and
+    /// then goes away with a copy.
     var collection: String?
 
     /// The day being looked at. Always a date, never an offset, so the view
@@ -99,6 +100,19 @@ struct AgendaView: View {
     /// has no address of its own, so it opens the calendar it belongs to —
     /// which is where you would have gone looking for it anyway.
     var collectionURL: String?
+    /// Scope: this agenda is one collection's own view rather than the agenda
+    /// proper, so it shows that collection's members and no subscribed feeds.
+    ///
+    /// A property set before the first load, not something assigned from the
+    /// outside afterwards. It was an `.onAppear` on the caller's side, which
+    /// fires after this view's own — so the first request went out unscoped and
+    /// came back with every feed event in the account, which is precisely the
+    /// thing it was added to prevent.
+    ///
+    /// Not optional. This view has exactly one use — a calendar collection —
+    /// and an agenda over everything is not something it is ever asked for, so
+    /// forgetting the scope should not be sayable rather than merely wrong.
+    let collection: String
 
     var body: some View {
         VStack(spacing: 0) {
@@ -128,6 +142,7 @@ struct AgendaView: View {
             }
         }
         .onAppear {
+            model.collection = collection
             model.load()
             let w = MirrorWatch { model.load() }
             w.start()

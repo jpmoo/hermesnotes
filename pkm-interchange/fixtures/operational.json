@@ -374,6 +374,55 @@
         ]
       },
       "why": "Claiming to be operable while offering nothing to operate is the manifest describing an aspiration again. Operating means something can write to you and follow you, and that needs a binding that is not a file on disk."
+    },
+    {
+      "id": "operational/a-narrowed-read-carries-its-types",
+      "level": 4,
+      "op": "validate",
+      "given": {
+        "types": [
+          {
+            "id": "t_task",
+            "name": "Task",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              }
+            ],
+            "profiles": {
+              "task": {
+                "title": "title"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Ring the roofer"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_recipe",
+            "properties": {
+              "title": "Soda bread"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "object.type-not-declared"
+          }
+        ]
+      },
+      "why": "A read narrowed by profile or by cursor answers with a subset, and this is the subset that filtered the types and forgot the objects still point at them. o_2 arrives as a bag of keys with nothing to say which one is a title — worse than being left out, because it looks like data. Narrowing is permission to send fewer objects, never permission to send objects nobody can read."
     }
   ]
 }

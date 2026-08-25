@@ -48,3 +48,8 @@ export interface HermesSeries {
   id: string;
   rule: Record<string, unknown>;
 }
+
+/** Change-log rows behind a `?since=` answer, before they become `changes`. */
+export interface Delta {
+  rows: { blockId: string; op: string; seq: number }[];
+}

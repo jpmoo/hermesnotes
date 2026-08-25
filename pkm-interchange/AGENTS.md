@@ -401,6 +401,82 @@ how they are carried, which is why this is a *binding* rather than a second
 format. `bindings` in the manifest names the ones you offer: `file`, `http`,
 `mcp`, or whatever comes next.
 
+### Reading
+
+A read returns an **envelope** — the same document a file export carries, over
+the wire. Not a bare array of objects, not a page of rows in the producer's own
+shape. This is what makes `bindings` a claim worth reading: a client that knows
+the format knows what it is getting back before it asks.
+
+```
+GET <base>/interchange
+GET <base>/interchange?since=<cursor>
+GET <base>/interchange?profile=task
+```
+
+Two narrowings in v0, both optional, both refinements of the same document.
+A producer that supports neither still conforms; it simply answers the whole
+library every time, which is fine at small sizes and nothing else.
+
+#### `cursor` — where you are now
+
+Every read carries a top-level `cursor`: an opaque string naming the point the
+answer was taken at. Hand it back as `since` to ask what has happened.
+
+```json
+{ "format": "pkm-interchange/0", "cursor": "976", "types": [ ... ], "objects": [ ... ] }
+```
+
+**Opaque.** Not a timestamp to compare, not an integer to add to. It is a
+sequence number in one producer and a hash in the next, and a client that parses
+one has bound itself to that producer as surely as if it had called a private
+route.
+
+#### `since` — what changed
+
+The answer is an envelope holding only what moved, plus a `changes` array saying
+what happened to each:
+
+```json
+{
+  "cursor": "1013",
+  "objects": [ { "id": "o_1", ... } ],
+  "changes": [
+    { "seq": 1004, "object": "o_1", "op": "update", "cause": "membership" },
+    { "seq": 1011, "object": "o_7", "op": "delete" }
+  ]
+}
+```
+
+**Deletions MUST appear in `changes`.** An object that is simply absent from a
+delta is indistinguishable from one that did not change, and a follower has no
+way to tell those apart — diffing the whole library to find out is exactly what
+a delta exists to avoid.
+
+**A producer that cannot answer the question MUST say so, not answer it badly.**
+Change logs get pruned, and a client that has been away longer than the log is
+kept is one the delta cannot catch up. Answer `410 Gone` — or the binding's
+equivalent — so the client re-reads in full. Silently returning the changes you
+still happen to hold produces a follower that is quietly missing objects and has
+nothing to tell it so, which is the worst of the three outcomes and the one that
+looks like success.
+
+#### `profile` — what kind
+
+`?profile=task` narrows to objects whose type declares that profile. A kanban
+asks for tasks and does not carry a library of recipes around.
+
+**A narrowed answer is still a whole envelope.** Every type an included object
+points at travels with it, whether or not that type matched — an object whose
+type is missing cannot be read at all, and narrowing that produces unreadable
+objects has saved bandwidth by destroying the thing it was carrying. The general
+rule, which holds for every read: **an object's `type` MUST name a type declared
+in the same document.**
+
+A producer may return more than was asked for. Narrowing is permission to send
+less, never an obligation, and a producer that finds filtering expensive should
+send everything rather than get it wrong.
+
 ### Partial writes
 
 ```json

@@ -1,7 +1,8 @@
-import { blockTypes, blocks, memberships, series } from "@hermes/db";
-import { CONFORMANCE, toInterchange } from "@hermes/interchange";
-import { and, eq } from "drizzle-orm";
+import { blockTypes, blocks, changes, memberships, series } from "@hermes/db";
+import { CONFORMANCE, narrow, toInterchange } from "@hermes/interchange";
+import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { db } from "../db.js";
 
@@ -48,8 +49,47 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
      * rather than leaving a reader to notice the absence. An export that reports
      * nothing is claiming to have lost nothing.
      */
-    guarded.get("/interchange", async (req) => {
+    guarded.get("/interchange", async (req, reply) => {
       const userId = requireUser(req);
+      const q = z
+        .object({ since: z.string().optional(), profile: z.string().optional() })
+        .parse(req.query);
+
+      // Where this answer was taken. The change log's high-water mark, so it
+      // moves exactly when something moved. Opaque to the caller by contract —
+      // it is a sequence number here and has no business being one anywhere
+      // else.
+      const [head] = await db
+        .select({
+          seq: sql<string | null>`pg_sequence_last_value(pg_get_serial_sequence('changes', 'seq')::regclass)`,
+          oldest: sql<string | null>`MIN(${changes.seq})`,
+        })
+        .from(changes);
+      const cursor = String(head?.seq == null ? 0 : Number(head.seq));
+
+      let delta: { rows: { blockId: string; op: string; seq: number }[] } | null = null;
+      if (q.since !== undefined) {
+        const since = Number(q.since);
+        if (!Number.isFinite(since) || since < 0) {
+          return reply.code(400).send({ error: "since must be a cursor from a previous read" });
+        }
+        // Rows age out at seven days. A caller from before the oldest one we
+        // still hold cannot be caught up by a delta, and the one thing we must
+        // not do is answer with the part we happen to have — that produces a
+        // follower quietly missing objects with nothing to tell it so.
+        const oldest = head?.oldest == null ? null : Number(head.oldest);
+        const pruned = oldest === null ? since < Number(cursor) : since + 1 < oldest;
+        if (pruned) {
+          return reply
+            .code(410)
+            .send({ error: "that cursor is older than the change log. Read again without `since`." });
+        }
+        const rows = await db
+          .select({ blockId: changes.blockId, op: changes.op, seq: changes.seq })
+          .from(changes)
+          .where(and(eq(changes.ownerId, userId), gt(changes.seq, since)));
+        delta = { rows };
+      }
       const types = await db
         .select({
           id: blockTypes.id,
@@ -108,7 +148,8 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         seriesRows,
         producer: { name: "hermes", version: "2.0.0" },
       });
-      return { ...envelope, findings };
+
+      return { ...narrow(envelope, delta, q.profile), cursor, findings };
     });
   });
 }

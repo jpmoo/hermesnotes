@@ -99,6 +99,23 @@ export function validate(envelope) {
     }
   });
 
+  // An object's type has to be in the same document as the object.
+  //
+  // Free when a producer dumps its whole library, and the reason narrowing is
+  // safe: `?profile=task` and `?since=` both answer with a subset, and a subset
+  // that kept the objects and dropped their types is bytes nobody can read. The
+  // guard is that the envelope declares types at all — a fixture handing over
+  // one object and no type table is a fragment, not a producer claiming this
+  // object's type does not exist.
+  {
+    const declared = new Set((envelope.types ?? []).map((t) => t.id));
+    if (declared.size) {
+      (envelope.objects ?? []).forEach((o, i) => {
+        if (o.type && !declared.has(o.type)) fail("object.type-not-declared", `objects[${i}].type`);
+      });
+    }
+  }
+
   // A declared cardinality has to bite both ways or it is a hint rather than a
   // declaration: a `many` field holds a list, a single one does not. A producer
   // that stores every reference as a one-element array and declares none of them

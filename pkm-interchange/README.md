@@ -344,8 +344,9 @@ Say `"full"` when you kept everything, and mean it. A tool that reports reduced 
 
 ### Level 4 — if you have an API
 
-Three things, all small, all covered in `AGENTS.md`:
+Four things, all small, all covered in `AGENTS.md`:
 
+- **Reads answer with an envelope** — the same document a file carries, so a client knows the shape before it asks. Optionally narrowed: `?profile=task` for one kind of thing, `?since=<cursor>` for what has moved. Narrowing is permission to send less, never permission to send objects nobody can read — the types always travel.
 - **Partial writes** — `set` and `unset`, and nothing you were not told about changes.
 - **Capabilities on request** — a client should be able to ask what you support *before* it writes, not discover by trying.
 - **A change feed** where `op` describes the object, not the row that moved in your storage. A membership or a tag going away is an *update* to the object that had it. Get this wrong and dragging a card between two columns announces the card as deleted.

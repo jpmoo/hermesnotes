@@ -320,6 +320,18 @@ const MUTANTS = [
     } }),
   },
   {
+    name: "narrows a read by filtering types and objects separately",
+    caught: "operational/a-narrowed-read-carries-its-types",
+    // The obvious way to implement `?profile=task`: filter the types, filter
+    // the objects, ship both. Correct until an object survives whose type did
+    // not, which is every object the narrowing was meant to exclude.
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      const kept = got.errors.filter((x) => x.code !== "object.type-not-declared");
+      return { valid: kept.length === 0, errors: kept };
+    } }),
+  },
+  {
     name: "accepts a semantic placement given as coordinates",
     caught: "placement/semantic-requires-named-regions",
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),

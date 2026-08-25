@@ -96,6 +96,19 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
     }
   });
 
+  // An object's type has to travel with the object. Narrowing a read — by
+  // profile, or to what changed since a cursor — answers with a subset, and a
+  // subset holding objects whose types were filtered out is unreadable. Guarded
+  // on the envelope declaring types at all, so a fragment is not accused.
+  {
+    const declaredTypes = new Set((e.types ?? []).map((t) => t.id));
+    if (declaredTypes.size) {
+      (e.objects ?? []).forEach((o, i) => {
+        if (o.type && !declaredTypes.has(o.type)) fail("object.type-not-declared", `objects[${i}].type`);
+      });
+    }
+  }
+
   // Cardinality is a declaration, so it has to bite in both directions.
   const typeById = new Map((e.types ?? []).map((t) => [t.id, t]));
   (e.objects ?? []).forEach((o, i) => {

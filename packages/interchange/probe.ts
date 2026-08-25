@@ -30,6 +30,10 @@ for (const f of findings) {
 }
 const out = process.argv[2];
 if (out) {
-  writeFileSync(out, JSON.stringify(envelope, null, 2));
+  // `findings` travels with it, exactly as `GET /interchange` returns it. The
+  // file used to carry the envelope alone while the findings went to this
+  // console, so the artifact scored worse than the endpoint it stands in for —
+  // an export that reports nothing is claiming to have lost nothing.
+  writeFileSync(out, JSON.stringify({ ...envelope, findings }, null, 2));
   console.log(`written to ${out}`);
 }

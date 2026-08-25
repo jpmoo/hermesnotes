@@ -5,12 +5,16 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts", "./*": "./src/*" },
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json --noEmit",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "stranger": "tsx stranger.ts"
   },
   "dependencies": {
     "@hermes/shared": "workspace:*",
@@ -19,5 +23,8 @@
     "tsx": "^4.19.2",
     "zod": "^3.23.8"
   },
-  "devDependencies": { "@types/node": "^22.9.0", "typescript": "^5.6.3" }
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  }
 }

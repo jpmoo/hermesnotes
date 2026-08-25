@@ -102,10 +102,30 @@ export class Interchange {
    * something that draws no grid; `(340, 120)` is a fact about one renderer at
    * one zoom level, and the format will not carry it for exactly that reason.
    */
-  place(collection: string, object: string, region: string | null): Promise<WriteAnswer> {
-    return this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, {
-      region,
-    });
+  async place(collection: string, object: string, region: string | null): Promise<WriteAnswer> {
+    return this.answered(() =>
+      this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, { region }),
+    );
+  }
+
+  /**
+   * A refused write is an answer, not a fault.
+   *
+   * "That region is not on this board" and "the network is down" call for
+   * completely different things — re-read and tell the user, versus wait — and a
+   * client that raises both as exceptions has thrown away the distinction its
+   * caller most needs. Refusals come back as data; only the unreachable throws.
+   */
+  private async answered(call: () => Promise<WriteAnswer>): Promise<WriteAnswer> {
+    try {
+      return await call();
+    } catch (err) {
+      if (err instanceof OfflineError || err instanceof GoneError) throw err;
+      const m = /^(4\d\d) (\{.*\})$/s.exec((err as Error).message);
+      if (!m) throw err;
+      const body = JSON.parse(m[2]!) as WriteAnswer;
+      return { ...body, ok: false, conflict: m[1] === "409" || body.conflict };
+    }
   }
 
   /**
@@ -120,15 +140,6 @@ export class Interchange {
     id: string,
     change: { set?: Record<string, unknown>; unset?: string[]; version: number },
   ): Promise<WriteAnswer> {
-    try {
-      return await this.req<WriteAnswer>("PATCH", `/interchange/objects/${id}`, change);
-    } catch (err) {
-      // A refused stale write is an answer, not a fault. The queue needs to tell
-      // it apart from "the network is down" to decide between re-reading and
-      // waiting, so it arrives as data rather than as a throw.
-      const m = /^409 (.*)$/.exec((err as Error).message);
-      if (m) return { ok: false, conflict: true, reports: ["version.stale"] };
-      throw err;
-    }
+    return this.answered(() => this.req<WriteAnswer>("PATCH", `/interchange/objects/${id}`, change));
   }
 }

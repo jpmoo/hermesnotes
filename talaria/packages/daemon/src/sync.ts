@@ -110,15 +110,21 @@ export class Sync {
       { collectionId: string; position: string | null; region: string | null; context: unknown; hidden: boolean }[]
     >();
     for (const c of env.collections ?? []) {
+      // A grid is drawn left to right, so everything that renders one counts in
+      // cells. The format says names, because a cell is a fact about a renderer.
+      // Both are kept: the name as it arrived, and the index this app draws
+      // with — translated here, once, rather than in every view.
+      const names = c.placement?.regions ?? [];
       for (const m of c.members ?? []) {
         if (!m.object) continue;
+        const index = m.region ? names.indexOf(m.region) : -1;
         byObject.set(m.object, [
           ...(byObject.get(m.object) ?? []),
           {
             collectionId: c.id,
             position: m.position ?? null,
             region: m.region ?? null,
-            context: m.context ?? {},
+            context: index >= 0 ? { ...(m.context ?? {}), region: index } : (m.context ?? {}),
             hidden: false,
           },
         ]);

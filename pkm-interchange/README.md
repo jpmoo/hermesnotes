@@ -143,8 +143,6 @@ Two rules everything else follows from, both worth reading twice:
 1. **The data declares its own meaning.** A consumer must never need to know what your types are called. `if (type.name === "Task")` is a bug — in your code and in this format.
 2. **A view never smuggles in meaning.** Where something sits on a canvas is not knowledge. Where it sits in an Eisenhower matrix is. You say which; a consumer cannot tell by looking.
 
-Want to see it move rather than read about it? `npx pkm-check` aside, `node walkthrough.mjs` in this folder runs a producer and a consumer against each other and prints every request and response between them — first contact to marking a task done, five requests, nothing illustrative.
-
 The full specification is [`AGENTS.md`](AGENTS.md). It is written to be handed to a coding agent, and it takes about twenty minutes to read yourself.
 
 ---
@@ -186,6 +184,109 @@ Only the top rung has a counterpart that answers, and only there does a consumer
 - **You receive** the capabilities, the data, an answer for each write saying whether all of it landed, and a feed of what has changed since you last looked.
 
 Same vocabulary as the file. Types, objects, profiles, placement, series, relations are the same words over HTTP or MCP as they are on disk — which is why level 4 is a *binding* and not a second format.
+
+---
+
+## A round trip, end to end
+
+One producer, one consumer, five requests. The producer calls its things **Chores**: the title lives in `what`, the due date in `by`, and it considers `sorted` and `abandoned` to be finished. The consumer has never heard of any of that and never will.
+
+Everything below is a transcript. `node walkthrough.mjs` in this folder runs it against a real server, so it cannot quietly stop being true.
+
+### 1 · Ask what it can do
+
+```
+GET /conformance
+```
+```json
+{ "produce": 4, "consume": 0, "operate": 4,
+  "bindings": ["http"], "profiles": ["task"], "features": [] }
+```
+
+No credentials, deliberately. Deciding whether you can talk to something at all should not require an account — and an agent that has to attempt a write to learn whether writes exist has already done the damage if they do not.
+
+`profiles: ["task"]` is the go/no-go. If it said `["contact"]` you would stop: this is an address book and you are a to-do list.
+
+### 2 · Ask for the tasks
+
+```
+GET /interchange?profile=task
+```
+```json
+{ "cursor": "40",
+  "types":   [ { "id": "chore", "profiles": { "task": { ... } } } ],
+  "objects": [ { "id": "o_7", "type": "chore", "version": 2,
+                 "properties": { "what": "Bleed the radiators", "by": "2026-09-01",
+                                 "state": "open", "faff": 7 } } ] }
+```
+
+Narrowing is permission to send less, never an obligation — a producer that finds filtering expensive should send everything rather than get it wrong. What it may **not** do is drop the types: an object whose type did not travel cannot be read at all, so the format makes that a rule rather than a courtesy.
+
+Two things to notice in that payload. `version: 2`, which you will need to write. And `faff`, which is none of your business and is about to matter.
+
+### 3 · Read it — no request, just arithmetic
+
+```
+profiles.task.title  = "what"   →  properties.what  = "Bleed the radiators"
+profiles.task.due    = "by"     →  properties.by    = "2026-09-01"
+profiles.task.status = "state"  →  properties.state = "open"
+completeValues       = ["sorted", "abandoned"]
+```
+
+Is it done? **No** — `"open"` is not in that list.
+
+Two hops: the profile says which key, then you look under that key. That is the entire mechanism. Notice what never happened — nobody read the type's *name*, and nobody guessed that a field called `by` might be a date. Both would have worked here and both are bugs, because the next producer calls it `d2`.
+
+### 4 · Mark it done
+
+```
+PATCH /interchange/objects/o_7
+```
+```json
+{ "set": { "state": "sorted" }, "version": 2 }
+```
+```json
+{ "ok": true, "fidelity": "full", "reports": [], "cursor": "41",
+  "object": { "version": 3,
+              "properties": { "state": "sorted", "faff": 7,
+                              "finished_on": "2026-08-25", ... } } }
+```
+
+Which value means *done* was the producer's to say, and it said so in `completeValues`. You took the first.
+
+Two keys and no third: **`faff` is still 7.** A field this consumer knows nothing about, never mentioned, untouched. That is the round-trip rule at write time, and it is the half everybody skips — a tool can be scrupulous about an export and still destroy a field the moment an agent changes a title.
+
+And `finished_on` appeared, which the producer stamped and nobody asked for. That is why a write answers with the object: apply what came back and you hold what the producer holds, side effects included.
+
+### 5 · Try again with the version you started from
+
+```json
+{ "set": { "state": "open" }, "version": 2 }
+```
+```json
+{ "ok": false, "conflict": true, "reports": ["version.stale"] }
+```
+
+Refused, not merged. Merging looks helpful and is how one client's edit silently reverts another's, with the writer told it landed.
+
+### 6 · Catch up
+
+```
+GET /interchange?since=40
+```
+```json
+{ "cursor": "41",
+  "changes": [ { "object": "o_7", "op": "update" } ],
+  "objects": [ { "id": "o_7", "version": 3, ... } ] }
+```
+
+Here you meet your own write coming back, and the tempting optimisation is to filter it out — *skip the changes I caused*. Don't. Look at what rode along with it: `finished_on`, which you never sent. In a real library the same write would also have created **the next occurrence of a repeating task** — a new object, attributed to you.
+
+The echo is not noise about something you already know. It is the producer telling you what actually happened, and the answer is to make it harmless rather than absent: you already hold version 3 from step 4, so applying it changes nothing.
+
+---
+
+Five requests. The consumer never learned what a Chore is, and at no point needed to.
 
 ---
 

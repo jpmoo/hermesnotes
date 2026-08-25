@@ -368,8 +368,14 @@ try {
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/\/\/.*$/gm, "");
   const ALLOWED: Record<string, string> = {
-    assistant: "the chat surface — a Hermes feature, not library data",
-    assistantConfirm: "the chat surface",
+    // Deliberate, and decided rather than left. Hermes owns the model, so
+    // Hermes runs the loop — and the loop is already over the same tool
+    // registry the MCP endpoint serves, so there is no second implementation to
+    // drift. Moving the chat onto MCP proper would mean Talaria holding an
+    // inference endpoint of its own, which buys a chat that works against any
+    // producer and costs a second place to configure a model. Not today.
+    assistant: "the chat — Hermes owns the model, so Hermes runs the loop",
+    assistantConfirm: "the chat — the pending-call flow is server-side state",
     queryMatches: "LIMITS: `derivations` names the feature and not the query",
     createBlock: "LIMITS: there is no create",
     blockTags: "LIMITS: there is no tag write",

@@ -15,6 +15,8 @@ export interface HermesBlock {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Hermes' optimistic-concurrency counter. Travels so a reader can write back. */
+  version?: number;
   tags?: string[];
   /** The series this block is an occurrence of, if it is one. */
   seriesId?: string | null;

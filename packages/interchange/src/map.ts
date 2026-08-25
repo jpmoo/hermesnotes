@@ -172,6 +172,10 @@ export function toInterchange(input: ExportInput): {
       archived: b.archivedAt !== null,
       created: b.createdAt,
       updated: b.updatedAt,
+      // A patch must carry the version it expects, and until this was here the
+      // only way to obtain one was a Hermes route — so the binding demanded a
+      // number it refused to issue, and no client could write through it safely.
+      ...(b.version === undefined ? {} : { version: b.version }),
     };
   });
 

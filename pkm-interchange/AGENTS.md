@@ -497,6 +497,69 @@ If you version objects, a patch may carry `version`, and a stale one **MUST** be
 refused rather than merged. Merging looks helpful and is how one client's edit
 silently reverts another's, with the writer told it landed.
 
+### A follower that also writes
+
+Anything that mirrors you and changes you will meet its own writes coming back
+down the feed. That is not a flaw in the feed; a change happened and the feed's
+job is to say so. But a naive follower re-applies its own work forever, and the
+obvious fix — *skip the changes I caused* — is a trap. Four rules make the echo
+harmless instead, and they are cheaper than the trap.
+
+#### Objects carry `version`
+
+If you version objects, **a read MUST carry the version with each object**, not
+just accept one on a write. A producer that demands `version` on a patch and
+never issues one has made safe writing impossible through its own binding: the
+only way to get the number is a private route, which is the thing a binding
+exists to remove.
+
+Opaque, like a cursor. Compare it for equality; do not parse it or order it.
+
+#### A write answers with the result
+
+```json
+{ "ok": true, "fidelity": "full", "reports": [],
+  "cursor": "1014", "object": { "id": "o_1", "version": 8, ... } }
+```
+
+The write is also a read. A client that applies the returned object holds
+exactly what the producer holds — **including whatever the producer did that the
+client did not ask for**, which is the part that makes this the load-bearing
+rule rather than a convenience.
+
+`cursor` is where the write landed, for a client that wants to know whether a
+row it later sees is its own.
+
+#### Applying a change twice MUST be a no-op
+
+An obligation on the consumer, and what makes any feed safe to follow. Versions
+give you this for free: the echo carries the version you already have, so there
+is nothing to do. Without it you compare content, which is slower and correct.
+
+#### A creating client MAY choose the id
+
+Ids are opaque to *consumers*, not unassignable by them. A client that names the
+object it is creating gets idempotent creation: a retry after a timeout, and the
+echo of its own create, both land on the id it already has instead of producing a
+second object.
+
+A producer that cannot honour a supplied id **MUST say so** rather than silently
+assigning its own, because a client that believes it chose the id and did not
+will duplicate every object it creates while offline.
+
+#### On `origin`
+
+A change row **MAY** name what caused it. It is useful for a human reading a log
+and for a client that wants to know its write landed.
+
+**It MUST NOT be used to decide whether to apply a change.** A write is not the
+only thing a write does. In the reference implementation, completing a task
+stamps a completion time the client never sent and spawns the next occurrence of
+its series — a *new object*, on the same write. A follower skipping "its own"
+changes discards the timestamp and never learns the next task exists. The echo
+is not noise about something you already know; it is the producer telling you
+what actually happened.
+
 ### Every write answers for itself
 
 ```json

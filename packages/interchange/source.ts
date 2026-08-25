@@ -47,7 +47,7 @@ async function fromPostgres(url: string): Promise<Library> {
       SELECT id, name, is_text, property_schema FROM block_types WHERE owner_id = ${id}`;
     const blocks = await sql<Record<string, unknown>[]>`
       SELECT id, block_type_id, collection_kind, content, properties, archived_at,
-             created_at, updated_at, series_id
+             created_at, updated_at, series_id, version
         FROM blocks WHERE owner_id = ${id}`;
     const mem = await sql<Record<string, unknown>[]>`
       SELECT m.collection_id, m.block_id, m.position, m.context
@@ -73,6 +73,7 @@ async function fromPostgres(url: string): Promise<Library> {
         createdAt: new Date(b.created_at as string).toISOString(),
         updatedAt: new Date(b.updated_at as string).toISOString(),
         seriesId: (b.series_id as string) ?? null,
+        version: b.version === undefined ? undefined : Number(b.version),
       })),
       memberships: mem.map((m) => ({
         collectionId: String(m.collection_id),

@@ -28,7 +28,13 @@ const TYPE: Record<string, string> = {
   attachment: "attachments",
 };
 
-const OBJECT_KEYS = new Set(["id", "type", "properties", "content", "tags", "archived", "created", "updated"]);
+// `version` is here because it is a real field, not an annotation. Left out, it
+// arrived as something Hermes had no column for, rode back out in the carried
+// bag, and landed in a different place in the object — nothing lost, and a
+// round-trip diff of 1621 lines saying so.
+const OBJECT_KEYS = new Set([
+  "id", "type", "properties", "content", "tags", "archived", "created", "updated", "version",
+]);
 const ENVELOPE_KEYS = new Set([
   "format", "producer", "conformance", "types", "objects", "collections", "series", "relations",
 ]);
@@ -150,6 +156,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       archivedAt: o.archived === true ? new Date(0).toISOString() : null,
       createdAt: String(o.created ?? new Date(0).toISOString()),
       updatedAt: String(o.updated ?? new Date(0).toISOString()),
+      ...(typeof o.version === "number" ? { version: o.version } : {}),
       tags: Array.isArray(o.tags) ? (o.tags as string[]) : [],
     };
   });

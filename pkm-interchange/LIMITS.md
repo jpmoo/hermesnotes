@@ -58,6 +58,20 @@ subscription does.
 **Probably correct as-is.** Noted because a consumer that renders a calendar has
 to get them from somewhere, and today that is a Hermes route.
 
+### A write costs a full export
+
+**Needed for:** the write answer carrying the resulting object.
+
+**What happens now:** `PATCH /interchange/objects/:id` reads the whole library
+back to find one object, because the exporter derives relations and resolves
+inline mentions across the entire set — running it on one block would resolve a
+mention against a library of one and mint a stub with a fresh id.
+
+**Why it is tolerable:** 111 objects, milliseconds, and correctness over
+micro-optimisation. It will not stay tolerable. The fix is an exporter that can
+take the whole set for context and emit a subset, which is the same shape
+`narrow` wants and should replace it.
+
 ---
 
 ## Closed

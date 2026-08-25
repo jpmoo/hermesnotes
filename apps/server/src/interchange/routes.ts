@@ -111,6 +111,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           createdAt: blocks.createdAt,
           updatedAt: blocks.updatedAt,
           seriesId: blocks.seriesId,
+          version: blocks.version,
         })
         .from(blocks)
         .where(eq(blocks.ownerId, userId));
@@ -150,6 +151,63 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       });
 
       return { ...narrow(envelope, delta, q.profile), cursor, findings };
+    });
+
+    /**
+     * A partial write, in the format's words.
+     *
+     * Deliberately a translation layer over Hermes' own write rather than a
+     * second implementation of it. Completing a task stamps a completion time,
+     * keeps the series in step and spawns the next occurrence — 125 lines of
+     * consequence that a binding has no business owning a copy of. So the
+     * vocabulary is translated in, Hermes' handler does the work, and the answer
+     * is translated back out. A binding that grows its own business logic is two
+     * apps in one process waiting to disagree.
+     */
+    guarded.patch("/interchange/objects/:id", async (req, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      const body = z
+        .object({
+          set: z.record(z.unknown()).optional(),
+          unset: z.array(z.string()).optional(),
+          version: z.number().int(),
+        })
+        .parse(req.body);
+
+      const wrote = await app.inject({
+        method: "PATCH",
+        url: `/blocks/${id}`,
+        headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+        payload: { patch: { set: body.set, unset: body.unset }, version: body.version },
+      });
+
+      if (wrote.statusCode === 409) {
+        // Refused, not merged. The one answer a stale patch is allowed.
+        return reply.code(409).send({ ok: false, conflict: true, reports: ["version.stale"] });
+      }
+      if (wrote.statusCode >= 400) {
+        return reply.code(wrote.statusCode).send({ ok: false, reports: ["write.refused"] });
+      }
+
+      // Read back through the same path a reader would use, so the object in
+      // this answer is the object the next `?since=` will carry — including
+      // whatever the write did that the caller never asked for.
+      const after = await app.inject({
+        method: "GET",
+        url: "/interchange",
+        headers: { authorization: req.headers.authorization ?? "" },
+      });
+      const env = after.json() as { cursor?: string; objects?: { id: string }[] };
+      const object = (env.objects ?? []).find((o) => o.id === id);
+
+      // `full`, and meant. Hermes stores a property bag, so the values in a
+      // patch are kept exactly as they arrived whether or not the type declares
+      // them — there is nothing here that was lost. The export's own findings
+      // are about the library, not about this write, and folding them in would
+      // mean answering "reduced" to everything: a field that is always set
+      // carries no information, and the one write that really did lose
+      // something would arrive looking like all the others.
+      return { ok: true, fidelity: "full", reports: [], cursor: env.cursor, object };
     });
   });
 }

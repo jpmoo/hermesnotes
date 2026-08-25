@@ -4,6 +4,9 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   fieldFor,
+  regionLabel,
+  regionName,
+  type Region,
   isComplete,
   optionLabel,
   read,
@@ -109,6 +112,7 @@ export function buildServer(deps: {
       const row = JSON.parse(raw);
       return toCanonical(row, row.type ? idx.get(row.type) : undefined, {
         appOrigin: config.origin,
+        collectionKind: row.collectionKind ?? null,
       });
     });
   };
@@ -278,7 +282,11 @@ export function buildServer(deps: {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const raw = mirror.rawBlock(id);
     if (!raw) return reply.code(404).send({ error: "no such collection in the mirror" });
-    const row = JSON.parse(raw) as { properties: Record<string, unknown>; collectionKind: string | null };
+    const row = JSON.parse(raw) as {
+      properties: Record<string, unknown>;
+      collectionKind: string | null;
+      placement?: { regions?: Region[] };
+    };
     if (!row.collectionKind) {
       return reply.code(400).send({ error: "that block isn't a collection" });
     }
@@ -297,11 +305,17 @@ export function buildServer(deps: {
     const props = row.properties ?? {};
     const cols = gridded ? Math.min(6, Math.max(1, Number(props.matrix_cols) || 2)) : 1;
     const rows = gridded ? Math.min(6, Math.max(1, Number(props.matrix_rows) || 2)) : 0;
-    const defs = Array.isArray(props.matrix_regions) ? (props.matrix_regions as Record<string, unknown>[]) : [];
+    // Region names and labels come from the collection's declared placement,
+    // which is where the format keeps them. They used to be read off Hermes'
+    // `matrix_regions`, which does not survive an export — so a real board
+    // arrived with four regions called "Region 1" through "Region 4", matched
+    // correctly against every card and rendered as nothing anybody had written.
+    const declared = (row.placement?.regions ?? []) as Region[];
     const regions = Array.from({ length: cols * rows }, (_, i) => ({
       index: i,
-      title: String(defs[i]?.title ?? "") || `Region ${i + 1}`,
-      color: (defs[i]?.color as string | null) ?? null,
+      name: declared[i] ? regionName(declared[i]!) : `region-${i}`,
+      title: declared[i] ? regionLabel(declared[i]!) : `Region ${i + 1}`,
+      color: null,
     }));
 
     // A smart matrix drops members its query no longer matches — a task that
@@ -442,6 +456,7 @@ export function buildServer(deps: {
       const block = JSON.parse(m.raw);
       const c = toCanonical(block, block.type ? idx.get(block.type) : undefined, {
         appOrigin: config.origin,
+        collectionKind: block.collectionKind ?? null,
       });
       if (c.archivedAt) continue;
       if (isSmart && !matching!.has(c.id)) continue;
@@ -491,6 +506,7 @@ export function buildServer(deps: {
         const b = JSON.parse(r);
         const c = toCanonical(b, b.type ? idx.get(b.type) : undefined, {
           appOrigin: config.origin,
+          collectionKind: b.collectionKind ?? null,
         });
         if (c.archivedAt) continue;
         drawer.push({
@@ -667,6 +683,7 @@ export function buildServer(deps: {
         const b = JSON.parse(raw);
         const c = toCanonical(b, b.type ? idx.get(b.type) : undefined, {
           appOrigin: config.origin,
+          collectionKind: b.collectionKind ?? null,
         });
         for (const link of c.links) {
           // Only between two things actually on this canvas: an arrow to

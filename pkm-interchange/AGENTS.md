@@ -259,6 +259,16 @@ A collection is a container with members. Its `kind` is a hint about rendering. 
 
 Semantic placement uses **named regions, never coordinates**. `"urgent-important"` survives being opened in a tool that draws no grid. `(340, 120)` does not.
 
+A region is a string, or an object when the name a machine matches on is not the words a person reads:
+
+```json
+"regions": ["do", { "name": "delegate-wait", "label": "Delegate & Wait" }]
+```
+
+`name` is an identifier — it is what a member's `region` matches and what a write names, so it must not change when somebody edits the wording. `label` is for display and carries no meaning. A bare string is both at once, which is right whenever the two agree.
+
+The distinction is not fussiness. Producers derive the name from the label — slugging "Delegate & Wait" into `delegate-wait` is the obvious implementation — and a format with nowhere to put the label makes that derivation lossy: the board arrives with regions a consumer can match on and cannot render, so it draws "Region 3" over somebody's own words.
+
 `position` is an opaque ordering token. Compare byte-wise; do not parse it as a number.
 
 A member is an object — `{ "object": "o_412", … }`. A bare id is legal shorthand for one with nothing else to say, and expanding it to the object form is **not** a fidelity loss. This is the one place the format has two spellings for one thing, and saying so is cheaper than leaving every implementer to discover that their round-trip does not compare equal.

@@ -241,7 +241,7 @@ export function toInterchange(input: ExportInput): {
       name: String(props.title ?? "Untitled"),
       kind,
       ...(Object.keys(carried).length ? { properties: carried } : {}),
-      placement: gridded ? { semantic: true, regions: regionNames } : { semantic: false },
+      placement: gridded ? { semantic: true, regions: regionsOf(props) } : { semantic: false },
       membership: smart
         ? { mode: "query", materialized: false, query: props.filter_query ?? null }
         : { mode: "explicit" },
@@ -475,10 +475,30 @@ function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string)
  * Two implementations of this would drift the first time a region was renamed.
  */
 export function regionNamesOf(properties: Record<string, unknown>): string[] {
+  return regionsOf(properties).map((r) => (typeof r === "string" ? r : r.name));
+}
+
+/**
+ * A matrix's regions as the format carries them.
+ *
+ * An object when the name and the label differ, a bare string when they agree.
+ * The name is derived from the label by slugging, which makes the derivation
+ * lossy in exactly the case that matters — "Delegate & Wait" becomes
+ * `delegate-wait` and there is no way back — so both travel. A board whose
+ * regions a consumer can match on and cannot render draws "Region 3" over
+ * somebody's own words, which is what this did until a real one arrived.
+ */
+export function regionsOf(
+  properties: Record<string, unknown>,
+): (string | { name: string; label: string })[] {
   const regions = Array.isArray(properties.matrix_regions)
     ? (properties.matrix_regions as { title?: string }[])
     : [];
-  return regions.map((r, i) => slug(r.title) || `region-${i}`);
+  return regions.map((r, i) => {
+    const name = slug(r.title) || `region-${i}`;
+    const label = (r.title ?? "").trim();
+    return label && label !== name ? { name, label } : name;
+  });
 }
 
 /** A region title as a name that survives being read somewhere with no grid. */

@@ -49,7 +49,7 @@ interface Env {
   types?: { id?: string; fields?: Field[]; profiles?: Record<string, Record<string, unknown>> }[];
   objects?: { id?: string; type?: string; properties?: Record<string, unknown>; suggests?: string }[];
   collections?: {
-    placement?: { semantic?: boolean; regions?: string[] };
+    placement?: { semantic?: boolean; regions?: (string | { name?: string; label?: string })[] };
     membership?: { mode?: string };
     members?: unknown[];
   }[];
@@ -124,7 +124,12 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
 
   (e.collections ?? []).forEach((c, i) => {
     if (c.placement?.semantic !== true) return;
-    const named = Array.isArray(c.placement.regions) && c.placement.regions.length > 0;
+    const named =
+      Array.isArray(c.placement.regions) &&
+      c.placement.regions.length > 0 &&
+      c.placement.regions.every(
+        (r) => typeof r === "string" || typeof (r as { name?: unknown })?.name === "string",
+      );
     const positioned = (c.members ?? []).some(
       (m) => m !== null && typeof m === "object" && "context" in m && !("region" in m),
     );

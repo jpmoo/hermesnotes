@@ -35,7 +35,12 @@ export function validate(envelope) {
   (envelope.collections ?? []).forEach((c, i) => {
     const at = `collections[${i}]`;
     if (c.placement?.semantic === true) {
-      const named = Array.isArray(c.placement.regions) && c.placement.regions.length > 0;
+      // A region is a name, or an object carrying the name and the words a
+      // person reads. Either is named; neither is a coordinate.
+      const named =
+        Array.isArray(c.placement.regions) &&
+        c.placement.regions.length > 0 &&
+        c.placement.regions.every((r) => typeof r === "string" || typeof r?.name === "string");
       const positioned = (c.members ?? []).some((m) => m && typeof m === "object" && m.context && !m.region);
       // A coordinate means nothing outside the grid that produced it — the same
       // point is a different judgment at another zoom level. A region name opens

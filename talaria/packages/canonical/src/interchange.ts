@@ -46,12 +46,26 @@ export interface InterchangeObject {
   [key: string]: unknown;
 }
 
+/**
+ * A region is a name, or a name and the words a person reads.
+ *
+ * The name is what a member matches on and what a write names; the label is for
+ * display and carries no meaning. A bare string is both at once, which is right
+ * whenever the two agree — and wrong the moment somebody writes "Delegate &
+ * Wait", which slugs to something no reader should ever be shown.
+ */
+export type Region = string | { name: string; label?: string };
+
+export const regionName = (r: Region): string => (typeof r === "string" ? r : r.name);
+export const regionLabel = (r: Region): string =>
+  typeof r === "string" ? r : (r.label ?? r.name);
+
 export interface InterchangeCollection {
   id: string;
   name?: string;
   kind?: string;
   properties?: Record<string, unknown>;
-  placement?: { semantic?: boolean; regions?: string[] };
+  placement?: { semantic?: boolean; regions?: Region[] };
   membership?: { mode?: string; materialized?: boolean; query?: unknown };
   members?: { object?: string; position?: string; region?: string; context?: Record<string, unknown> }[];
 }

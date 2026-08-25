@@ -1,4 +1,5 @@
 import {
+  regionName,
   seriesByObject,
   toCanonical,
   type Envelope,
@@ -128,7 +129,7 @@ export class Sync {
       // cells. The format says names, because a cell is a fact about a renderer.
       // Both are kept: the name as it arrived, and the index this app draws
       // with — translated here, once, rather than in every view.
-      const names = c.placement?.regions ?? [];
+      const names = (c.placement?.regions ?? []).map(regionName);
       for (const m of c.members ?? []) {
         if (!m.object) continue;
         const index = m.region ? names.indexOf(m.region) : -1;

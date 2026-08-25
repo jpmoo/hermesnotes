@@ -79,7 +79,7 @@ const BOARD = {
   name: "The Wall",
   kind: "matrix",
   properties: { description: "Where chores go" },
-  placement: { semantic: true, regions: ["now", "soon", "someday"] },
+  placement: { semantic: true, regions: ["now", { name: "soon", label: "Fairly Soon" }, "someday"] },
   membership: { mode: "explicit" },
   members: [
     { object: "c1", region: "now", position: "a0" },
@@ -235,6 +235,22 @@ try {
 
   const w1 = canonical("w1");
   check("a type declaring nothing is not guessed into a task", w1?.kind !== "task", String(w1?.kind));
+
+  // The board itself, as a thing the app can list. This is the check that was
+  // missing when `/boards` went empty: every collection was mirrored correctly
+  // and canonicalised with `collectionKind: null`, so nothing downstream could
+  // tell a board from a chore.
+  const b1 = canonical("b1");
+  check("the board is mirrored as an object", b1 !== null);
+  check("and still knows it is a board", b1?.collectionKind === "matrix", String(b1?.collectionKind));
+  check("with the producer's name for it", b1?.title === "The Wall", String(b1?.title));
+
+  const stored = JSON.parse(mirror.rawBlock("b1")!) as { placement?: { regions?: unknown[] } };
+  check("the declared regions travelled", (stored.placement?.regions ?? []).length === 3);
+  check(
+    "a labelled region kept both halves",
+    JSON.stringify(stored.placement?.regions?.[1]) === JSON.stringify({ name: "soon", label: "Fairly Soon" }),
+  );
 
   check("the board is on the wall", mirror.isMember("b1", "c1"));
   check("and it knows which region", mirror.regionOf("b1", "c1") !== null, String(mirror.regionOf("b1", "c1")));

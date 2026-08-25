@@ -89,7 +89,7 @@ const BOARD = {
   name: "The Wall",
   kind: "matrix",
   properties: { description: "Where chores go" },
-  placement: { semantic: true, regions: ["now", { name: "soon", label: "Fairly Soon", color: "#5fa4b5" }, "someday"] },
+  placement: { semantic: true, regions: ["now", { name: "soon", label: "Fairly Soon", "stranger:color": "#5fa4b5" }, "someday"] },
   membership: { mode: "explicit" },
   // colour is the producer's own key; the format does not name it
 
@@ -264,8 +264,8 @@ try {
     (stored.placement?.regions?.[1] as { name: string; label: string })?.label === "Fairly Soon",
   );
   check(
-    "and a colour the format never named",
-    (stored.placement?.regions?.[1] as { color?: string })?.color === "#5fa4b5",
+    "and a colour under the stranger's own prefix",
+    (stored.placement?.regions?.[1] as Record<string, unknown>)?.["stranger:color"] === "#5fa4b5",
   );
 
   const smart = JSON.parse(mirror.rawBlock("s2")!) as { membership?: { mode?: string; query?: unknown } };

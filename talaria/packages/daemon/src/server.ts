@@ -316,10 +316,12 @@ export function buildServer(deps: {
       index: i,
       name: declared[i] ? regionName(declared[i]!) : `region-${i}`,
       title: declared[i] ? regionLabel(declared[i]!) : `Region ${i + 1}`,
-      // The format does not name a colour and does not need to: the region
-      // object is open, so a producer that colours its quadrants says so under
-      // its own key and it arrives here untouched.
-      color: (declared[i] as { color?: string } | undefined)?.color ?? null,
+      // Deliberately Hermes-specific, and the only such thing in this file.
+      // The format does not name a colour and should not: a prefixed key is one
+      // producer's word, so nothing generic can read it. Talaria chooses to know
+      // this one so a Hermes board looks like itself — decoration only, and
+      // nothing anywhere depends on it being there.
+      color: (declared[i] as Record<string, unknown> | undefined)?.["hermes:color"] ?? null,
     }));
 
     // A smart matrix drops members its query no longer matches — a task that

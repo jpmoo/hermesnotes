@@ -490,7 +490,7 @@ export function regionNamesOf(properties: Record<string, unknown>): string[] {
  */
 export function regionsOf(
   properties: Record<string, unknown>,
-): (string | { name: string; label: string })[] {
+): (string | { name: string; label?: string; [key: string]: unknown })[] {
   const regions = Array.isArray(properties.matrix_regions)
     ? (properties.matrix_regions as { title?: string }[])
     : [];
@@ -502,8 +502,16 @@ export function regionsOf(
     // `matrix_regions` to build this list and dropping the remainder destroyed
     // it, which is the round-trip rule broken by the very code that publishes
     // the region. Open, like every other object here.
+    // Under Hermes' own prefix, because these are Hermes' words. Unprefixed
+    // keys belong to the format, and a producer that spends `color` before the
+    // format has an opinion about it is one that will be wrong later in a way
+    // no validator can see.
     const { title: _title, ...rest } = r as Record<string, unknown>;
-    const extra = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== null && v !== undefined));
+    const extra = Object.fromEntries(
+      Object.entries(rest)
+        .filter(([, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => [k.includes(":") ? k : `hermes:${k}`, v]),
+    );
     if (!label || label === name) return Object.keys(extra).length ? { name, ...extra } : name;
     return { name, label, ...extra };
   });

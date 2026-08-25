@@ -109,6 +109,24 @@ other direction.
 is one of the most portable ideas in this genre and one of the least sayable
 here.
 
+### An object has no address
+
+**Needed for:** clicking anything in Talaria.
+
+**What the format has:** an `id`, opaque and unique within the export, and no
+way at all to say where a human can go to see the thing.
+
+**What Talaria does:** builds the URL itself — `{origin}/block/{id}`, or
+`/collections/{id}` for a collection. That is Hermes' routing scheme, hardcoded
+in the one place it could not be avoided, and it would send a person nowhere
+against any other producer.
+
+**Why it is worth specifying.** "Open this where it lives" is close to universal
+and there is nothing to argue about: a producer knows its own URLs and nobody
+else can guess them. A `url` on an object, or a template in `producer`, would
+close it. Note the id must stay opaque either way — an address a producer hands
+you is not a licence to construct another one.
+
 ---
 
 ## Closed

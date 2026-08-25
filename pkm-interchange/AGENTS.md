@@ -91,6 +91,22 @@ Every top-level array is optional. An export containing only `types` and `object
 
 Every object, type, collection, and series has an `id`: a string, unique within the export, opaque to consumers. Do not parse it. Do not assume it is a UUID. Do not assume it is stable across exports from the same producer unless the producer sets `"stableIds": true` in `producer`.
 
+## Whose name is that key?
+
+Structural objects here are open — a type, a field, a collection, a region, a member, the envelope itself. A producer may hang whatever it likes on them and it travels untouched.
+
+**Unprefixed keys belong to the format. A producer's own go under a prefix it controls.**
+
+```json
+{ "name": "delegate-wait", "label": "Delegate & Wait", "hermes:color": "#5fa4b5" }
+```
+
+Without this, two producers write `color` meaning different things and a consumer cannot tell which it is holding; worse, a later version of the format standardises `color` and every producer that got there first is now wrong in a way no validator can see. A prefix costs seven characters and makes both impossible.
+
+This is about *structural* keys. An object's `properties` are keyed by the producer's own declared fields and are not in this namespace — `properties.deadline` is data, not an extension.
+
+A consumer preserves prefixed and unprefixed keys alike; the round-trip rule does not care whose they are. What the prefix buys is the ability to know, and to write your own without asking anyone.
+
 ## Unknown fields
 
 **Any property a consumer does not recognise MUST survive a round-trip byte-identical.**

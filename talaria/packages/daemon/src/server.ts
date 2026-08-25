@@ -286,6 +286,7 @@ export function buildServer(deps: {
       properties: Record<string, unknown>;
       collectionKind: string | null;
       placement?: { regions?: Region[] };
+      membership?: { mode?: string; query?: unknown };
     };
     if (!row.collectionKind) {
       return reply.code(400).send({ error: "that block isn't a collection" });
@@ -315,7 +316,10 @@ export function buildServer(deps: {
       index: i,
       name: declared[i] ? regionName(declared[i]!) : `region-${i}`,
       title: declared[i] ? regionLabel(declared[i]!) : `Region ${i + 1}`,
-      color: null,
+      // The format does not name a colour and does not need to: the region
+      // object is open, so a producer that colours its quadrants says so under
+      // its own key and it arrives here untouched.
+      color: (declared[i] as { color?: string } | undefined)?.color ?? null,
     }));
 
     // A smart matrix drops members its query no longer matches — a task that
@@ -443,9 +447,15 @@ export function buildServer(deps: {
     // What makes a collection smart is the mode it was put in, not the presence
     // of a saved query — a manual collection can carry one from before it was
     // switched back, and reading that as smart hid every card someone had
-    // placed by hand. This is the web app's own test, and the two surfaces
-    // showing different contents for the same board is the whole thing to avoid.
-    const isSmart = props.membership_mode === "smart" && matching !== null;
+    // placed by hand.
+    //
+    // The mode is on `membership` now. It used to be `properties.membership_mode`,
+    // and reading the old place found nothing, so every board answered "not
+    // smart" and stopped intersecting with its query — which is why cards whose
+    // dates had fallen out of range went on being shown. Nothing failed. The
+    // filtering just quietly stopped happening, which is the shape of every
+    // vocabulary change that is read by the wrong name.
+    const isSmart = row.membership?.mode === "query" && matching !== null;
 
     const idx = types();
     const placed = new Set<string>();

@@ -497,7 +497,15 @@ export function regionsOf(
   return regions.map((r, i) => {
     const name = slug(r.title) || `region-${i}`;
     const label = (r.title ?? "").trim();
-    return label && label !== name ? { name, label } : name;
+    // Everything else the producer hung on this region rides along. A colour is
+    // the obvious one and the format has no business naming it — but consuming
+    // `matrix_regions` to build this list and dropping the remainder destroyed
+    // it, which is the round-trip rule broken by the very code that publishes
+    // the region. Open, like every other object here.
+    const { title: _title, ...rest } = r as Record<string, unknown>;
+    const extra = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== null && v !== undefined));
+    if (!label || label === name) return Object.keys(extra).length ? { name, ...extra } : name;
+    return { name, label, ...extra };
   });
 }
 

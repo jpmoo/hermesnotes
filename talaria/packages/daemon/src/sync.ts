@@ -284,9 +284,16 @@ export class Sync {
         id: string;
         collectionKind?: string | null;
         properties?: Record<string, unknown>;
+        membership?: { mode?: string; query?: unknown };
       };
       if (!row.collectionKind) continue;
-      const q = row.properties?.filter_query;
+      // The query is on `membership`, which is where the format keeps it. It
+      // used to be `properties.filter_query`, Hermes' own name for the same
+      // thing, and reading the old place silently found nothing: every saved
+      // query stopped being asked, the cached match sets went stale, and the
+      // boards kept showing tasks whose dates had fallen out of range. Nothing
+      // failed — it just quietly stopped filtering.
+      const q = row.membership?.query ?? row.properties?.filter_query;
       if (!q) continue;
       if (opts.onlyMissing && this.mirror.get(`query.${row.id}`) !== null) continue;
       try {

@@ -267,6 +267,8 @@ A region is a string, or an object when the name a machine matches on is not the
 
 `name` is an identifier — it is what a member's `region` matches and what a write names, so it must not change when somebody edits the wording. `label` is for display and carries no meaning. A bare string is both at once, which is right whenever the two agree.
 
+The object is **open**, like everything else here. A producer that colours its regions says so under its own key and the colour travels untouched; the format does not name it, because what colour a quadrant is drawn in is not something another tool needs to agree about. Consuming a producer's region definitions to build this list and dropping whatever else was on them is the round-trip rule broken by the code that publishes the region.
+
 The distinction is not fussiness. Producers derive the name from the label — slugging "Delegate & Wait" into `delegate-wait` is the obvious implementation — and a format with nowhere to put the label makes that derivation lossy: the board arrives with regions a consumer can match on and cannot render, so it draws "Region 3" over somebody's own words.
 
 `position` is an opaque ordering token. Compare byte-wise; do not parse it as a number.

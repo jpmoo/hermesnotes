@@ -74,13 +74,25 @@ const OBJECTS = [
   },
 ];
 
+/** A smart list: its membership is computed, and it says so. */
+const SMART = {
+  id: "s2",
+  name: "Anything Open",
+  kind: "list",
+  properties: {},
+  membership: { mode: "query", materialized: false, query: { kind: "state", is: "open" } },
+  members: [],
+};
+
 const BOARD = {
   id: "b1",
   name: "The Wall",
   kind: "matrix",
   properties: { description: "Where chores go" },
-  placement: { semantic: true, regions: ["now", { name: "soon", label: "Fairly Soon" }, "someday"] },
+  placement: { semantic: true, regions: ["now", { name: "soon", label: "Fairly Soon", color: "#5fa4b5" }, "someday"] },
   membership: { mode: "explicit" },
+  // colour is the producer's own key; the format does not name it
+
   members: [
     { object: "c1", region: "now", position: "a0" },
     { object: "c2", region: "someday", position: "a1" },
@@ -106,7 +118,7 @@ const envelope = (only?: Set<string>, changes?: typeof log) => ({
   cursor: String(cursor),
   types: TYPES,
   objects: only ? objects.filter((o) => only.has(o.id)) : objects,
-  collections: [board],
+  collections: [board, SMART],
   ...(changes ? { changes: changes.map((c) => ({ object: c.object, op: c.op })) } : {}),
   findings: [],
 });
@@ -249,8 +261,16 @@ try {
   check("the declared regions travelled", (stored.placement?.regions ?? []).length === 3);
   check(
     "a labelled region kept both halves",
-    JSON.stringify(stored.placement?.regions?.[1]) === JSON.stringify({ name: "soon", label: "Fairly Soon" }),
+    (stored.placement?.regions?.[1] as { name: string; label: string })?.label === "Fairly Soon",
   );
+  check(
+    "and a colour the format never named",
+    (stored.placement?.regions?.[1] as { color?: string })?.color === "#5fa4b5",
+  );
+
+  const smart = JSON.parse(mirror.rawBlock("s2")!) as { membership?: { mode?: string; query?: unknown } };
+  check("a computed membership says it is computed", smart.membership?.mode === "query");
+  check("and carries the query that computes it", smart.membership?.query !== undefined);
 
   check("the board is on the wall", mirror.isMember("b1", "c1"));
   check("and it knows which region", mirror.regionOf("b1", "c1") !== null, String(mirror.regionOf("b1", "c1")));

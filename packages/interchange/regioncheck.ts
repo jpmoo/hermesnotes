@@ -23,7 +23,12 @@ const props = {
   // "do" is already its own name; "Do" is not — a capital is something somebody
   // typed, and the bare-string form is only right when there is genuinely
   // nothing the name loses.
-  matrix_regions: [{ title: "do" }, { title: "Delegate & Wait" }, { title: "" }, { title: "Defer" }],
+  matrix_regions: [
+    { title: "do" },
+    { title: "Delegate & Wait", color: "#5fa4b5" },
+    { title: "" },
+    { title: "Defer", color: null },
+  ],
 };
 const r = regionsOf(props);
 console.log(`  ${JSON.stringify(r)}\n`);
@@ -44,6 +49,15 @@ check(
   "the names are unchanged by any of it",
   JSON.stringify(regionNamesOf(props)) === JSON.stringify(["do", "delegate-wait", "region-2", "defer"]),
 );
+check(
+  "a colour rides along under the producer's own key",
+  (r[1] as { color?: string }).color === "#5fa4b5",
+);
+check(
+  "a colour on a region that would otherwise be a bare string still forces the object form",
+  typeof regionsOf({ matrix_regions: [{ title: "do", color: "#fff" }] })[0] === "object",
+);
+check("a null colour is not a colour", (r[3] as { color?: string }).color === undefined);
 check("a board with no regions invents none", regionsOf({}).length === 0);
 
 console.log(bad ? `\n${bad} failed` : "\nall good");

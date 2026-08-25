@@ -295,8 +295,19 @@ try {
   const stale = await ix.patch("c1", { set: { state: "open" }, version: 3 });
   check("a stale write is refused, not merged", stale.ok === false && stale.conflict === true);
 
-  const moved = await ix.place("b1", "c2", "now");
-  check("a card moves to a named region", moved.ok === true);
+  // The translation the app actually performs: a person points at a cell, and
+  // what goes over the wire is the board's name for it. Both spellings, because
+  // a labelled region is an object and an unlabelled one is a string — and the
+  // two call sites that did this by hand both cast the list to `string[]` and
+  // sent the whole object, so every drag into a labelled region was refused.
+  const { regionNameAt } = await import("./src/interchange.js");
+  const boardRow = JSON.parse(mirror.rawBlock("b1")!) as Parameters<typeof regionNameAt>[0];
+  check("cell 0 resolves to the name of a labelled region", regionNameAt(boardRow, 0) === "now");
+  check("cell 2 resolves to the name of a bare one", regionNameAt(boardRow, 2) === "someday");
+  check("a cell nobody declared resolves to nothing", regionNameAt(boardRow, 9) === null);
+
+  const moved = await ix.place("b1", "c2", regionNameAt(boardRow, 0));
+  check("a card moves to the region that cell names", moved.ok === true);
   const nowhere = await ix.place("b1", "c2", "urgent-important");
   check("a region the board never declared is refused", nowhere.ok === false);
 

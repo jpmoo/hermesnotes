@@ -1,4 +1,4 @@
-import { blockTypes, blocks, changes, memberships, series } from "@hermes/db";
+import { blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
 import { CONFORMANCE, narrow, regionNamesOf, toInterchange } from "@hermes/interchange";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
@@ -150,6 +150,21 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         .from(blocks)
         .where(eq(blocks.ownerId, userId));
 
+      // Tags. The exporter has always known how to emit these and this query
+      // never fetched them, so every export went out with none — a whole
+      // dimension of somebody's filing, silently absent, in a format that has a
+      // field for it. Nothing reported it because nothing was wrong: the rows
+      // simply said they had no tags.
+      const tagRows = await db
+        .select({ blockId: blockTags.blockId, name: tags.name })
+        .from(blockTags)
+        .innerJoin(tags, eq(tags.id, blockTags.tagId))
+        .innerJoin(blocks, eq(blocks.id, blockTags.blockId))
+        .where(and(eq(blocks.ownerId, userId), eq(tags.ownerId, userId)))
+        .orderBy(tags.name);
+      const tagsByBlock = new Map<string, string[]>();
+      for (const t of tagRows) tagsByBlock.set(t.blockId, [...(tagsByBlock.get(t.blockId) ?? []), t.name]);
+
       const seriesRows = await db
         .select({ id: series.id, rule: series.rule })
         .from(series)
@@ -173,6 +188,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           archivedAt: b.archivedAt ? b.archivedAt.toISOString() : null,
           createdAt: b.createdAt.toISOString(),
           updatedAt: b.updatedAt.toISOString(),
+          tags: tagsByBlock.get(b.id) ?? [],
         })),
         memberships: mem.map((m) => ({
           collectionId: m.collectionId,

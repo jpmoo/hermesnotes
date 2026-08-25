@@ -16,7 +16,7 @@ import {
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
-import type { Interchange } from "./interchange.js";
+import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
 import { applyRegionActions, Queue, type Intent } from "./queue.js";
 import { describe, freshnessOf } from "./staleness.js";
@@ -1088,6 +1088,8 @@ export function buildServer(deps: {
       // Asked before the local placement below, which would otherwise make
       // every card look like an existing member.
       const join = !mirror.isMember(body.collectionId, body.blockId);
+      const boardRaw = mirror.rawBlock(body.collectionId);
+      const boardRow = boardRaw ? JSON.parse(boardRaw) : null;
       intent = {
         kind: "move",
         collectionId: body.collectionId,
@@ -1100,7 +1102,12 @@ export function buildServer(deps: {
       // Show the card in its new cell straight away. The sync loop will confirm
       // it, and a drag that snapped back while the request was in flight would
       // read as the drag having failed.
-      mirror.placeLocally(body.collectionId, body.blockId, body.region);
+      mirror.placeLocally(
+        body.collectionId,
+        body.blockId,
+        body.region,
+        body.region === null ? null : regionNameAt(boardRow, body.region),
+      );
     } else {
       intent = { kind: "append", date: body.date, text: body.text };
     }
@@ -1114,6 +1121,22 @@ export function buildServer(deps: {
       return { applied: true, ...applied };
     } catch (err) {
       if (!(err instanceof OfflineError)) {
+        // A refused write has to undo the optimistic placement, or the mirror
+        // keeps a move the producer never accepted. Nothing would correct it: a
+        // delta only carries objects that changed, and on the far side nothing
+        // did — so the card sits in the wrong cell until the next full read,
+        // which may be never. Two stores quietly disagreeing, with the person
+        // who moved it told nothing, is the exact failure this format exists to
+        // make impossible, and it was happening inside the client.
+        if (intent.kind === "move") {
+          const raw = mirror.rawBlock(intent.collectionId);
+          mirror.placeLocally(
+            intent.collectionId,
+            intent.blockId,
+            intent.fromRegion,
+            intent.fromRegion === null ? null : regionNameAt(raw ? JSON.parse(raw) : null, intent.fromRegion),
+          );
+        }
         if (err instanceof HermesError) return reply.code(err.status).send({ error: err.message });
         throw err;
       }
@@ -1143,13 +1166,10 @@ export function buildServer(deps: {
       // A region name, through the binding. Which cell that is on the grid is
       // this producer's business and stops at its edge.
       const board = mirror.rawBlock(intent.collectionId);
-      const names = board
-        ? ((JSON.parse(board) as { placement?: { regions?: string[] } }).placement?.regions ?? [])
-        : [];
       const answer = await ix.place(
         intent.collectionId,
         intent.blockId,
-        intent.region === null ? null : (names[intent.region] ?? null),
+        intent.region === null ? null : regionNameAt(board ? JSON.parse(board) : null, intent.region),
       );
       if (!answer.ok) throw new HermesError(400, "that region is not on this board");
       // What the region does to what lands in it — the tag, and the status if

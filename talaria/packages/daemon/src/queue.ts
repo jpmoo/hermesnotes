@@ -1,6 +1,6 @@
 import { isComplete, type InterchangeObject, type InterchangeType } from "@talaria/canonical";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
-import type { Interchange } from "./interchange.js";
+import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror, QueuedIntent } from "./mirror.js";
 
 /**
@@ -173,9 +173,7 @@ export class Queue {
    */
   private regionName(collectionId: string, index: number): string | null {
     const raw = this.mirror.rawBlock(collectionId);
-    if (!raw) return null;
-    const board = JSON.parse(raw) as { placement?: { regions?: string[] } };
-    return board.placement?.regions?.[index] ?? null;
+    return raw ? regionNameAt(JSON.parse(raw), index) : null;
   }
 
   private typeFor(typeId: string | null): InterchangeType | undefined {

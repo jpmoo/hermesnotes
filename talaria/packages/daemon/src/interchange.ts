@@ -81,6 +81,28 @@ export function discrepancies(said: Conformance, env: Record<string, unknown>): 
   return out;
 }
 
+/**
+ * What a board calls the region at a given index.
+ *
+ * The app counts cells, because a grid is drawn left to right and somebody
+ * dragging a card is pointing at a square. The binding carries names, because a
+ * square is a fact about one renderer. This is the only place the two meet.
+ *
+ * One implementation, exported, because there were two — both of which cast the
+ * region list to `string[]` and indexed straight into it. That was true until a
+ * region grew a label, and then a move sent the whole object where a name
+ * belonged and every drag was refused. The cast is what silenced the compiler,
+ * so the cast is gone.
+ */
+export function regionNameAt(
+  board: { placement?: { regions?: (string | { name?: string })[] } } | null,
+  index: number,
+): string | null {
+  const r = board?.placement?.regions?.[index];
+  if (typeof r === "string") return r;
+  return typeof r?.name === "string" ? r.name : null;
+}
+
 export class Interchange {
   constructor(
     private base: string,

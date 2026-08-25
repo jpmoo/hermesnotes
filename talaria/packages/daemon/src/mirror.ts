@@ -241,15 +241,24 @@ export class Mirror {
    * A card from the drawer has no membership row yet, so this inserts one:
    * dragging it into a region is the moment it joins the collection.
    */
-  placeLocally(collectionId: string, blockId: string, region: number | null): void {
+  /**
+   * Move a card locally, before the producer has been told.
+   *
+   * `region` here is the index the grid draws with; `name` is what the board
+   * publishes. Both are written, because a row holding an index that says one
+   * cell and a name that says another is a row that will be read both ways by
+   * different callers — which it was, and the name went stale on every drag.
+   */
+  placeLocally(collectionId: string, blockId: string, region: number | null, name: string | null = null): void {
     const ctx = JSON.stringify(region === null ? {} : { region });
     this.db
       .prepare(
         `INSERT INTO memberships (collection_id, block_id, position, region, context, hidden)
-         VALUES (?, ?, NULL, NULL, ?, 0)
-         ON CONFLICT(collection_id, block_id) DO UPDATE SET context = excluded.context`,
+         VALUES (?, ?, NULL, ?, ?, 0)
+         ON CONFLICT(collection_id, block_id) DO UPDATE SET
+           context = excluded.context, region = excluded.region`,
       )
-      .run(collectionId, blockId, ctx);
+      .run(collectionId, blockId, name, ctx);
   }
 
   /** Whether this block is already a member of that collection. */

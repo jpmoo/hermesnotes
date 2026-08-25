@@ -671,6 +671,9 @@ struct CanvasBoard: View {
                 centre(in: geo.size)
                 // Only while a canvas is on screen: a monitor left running
                 // would eat scrolling everywhere else in the app.
+                scrollPan.shouldPan = { [weak scrollPanBox] in
+                    !(scrollPanBox?.overScrollableNote ?? false)
+                }
                 scrollPan.start { dx, dy in
                     offset.width += dx
                     offset.height += dy
@@ -887,6 +890,10 @@ struct CanvasBoard: View {
                         .padding(8)
                 }
                 .frame(width: note.w, height: note.h)
+                // Let the note keep the scroll while the pointer is on it. The
+                // hit-testing is SwiftUI's, which beats working out where a note
+                // landed after a pan and a zoom.
+                .onHover { scrollPanBox.overScrollableNote = $0 }
                 .background(RoundedRectangle(cornerRadius: 5)
                     .fill(note.color.flatMap { Color(hex: $0) } ?? Theme.postit))
                 .overlay(RoundedRectangle(cornerRadius: 5)
@@ -972,9 +979,21 @@ struct CanvasBoard: View {
 final class ScrollPan {
     private var monitor: Any?
 
+    /// Whether a scroll right now should pan the canvas.
+    ///
+    /// Read live rather than captured, because the thing that knows the answer
+    /// is a SwiftUI view and those are values — a flag captured when the monitor
+    /// started would answer for the moment the canvas appeared, forever.
+    var shouldPan: () -> Bool = { true }
+
     func start(onScroll: @escaping (CGFloat, CGFloat) -> Void) {
         stop()
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            // Not everything on a canvas wants to be panned over. A sticky note
+            // holds as much as somebody typed and scrolls inside itself, and
+            // this monitor swallowed every scroll on the surface — so a note
+            // taller than its own frame could be looked at and never read.
+            guard self?.shouldPan() ?? true else { return event }
             // Precise deltas come from a trackpad and are already in points; a
             // mouse wheel reports lines, which needs a multiplier or the canvas
             // barely moves.
@@ -1149,4 +1168,10 @@ private struct EdgeShape: View {
 @MainActor
 final class ScrollPanBox: ObservableObject {
     let pan = ScrollPan()
+
+    /// Set by whichever sticky note the pointer is over, cleared when it leaves.
+    /// Deliberately not `@Published`: it is read by an event monitor rather than
+    /// drawn, and republishing the whole canvas on every hover would be a lot of
+    /// redrawing to decide where a scroll should go.
+    var overScrollableNote = false
 }

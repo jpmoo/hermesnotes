@@ -17,6 +17,40 @@ import { db } from "../db.js";
  * rule exists to catch, and it caught its own author.
  */
 export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
+  // Where this plugin was mounted. The writes below delegate to Hermes' own
+  // handlers through `app.inject`, which goes through the whole routing table —
+  // prefix included — so a bare `/blocks/:id` matches nothing and answers 404.
+  // It did, live, while every read passed: the refusal paths never reach the
+  // inject, so both write routes looked healthy right up until one was asked to
+  // work. Read from the instance rather than written down, so remounting the
+  // API somewhere else does not quietly break writing again.
+  const mount = app.prefix ?? "";
+
+  /**
+   * The delegates have to exist, and this is the only place that can tell.
+   *
+   * A binding that translates into another route is one typo away from
+   * answering 404 to every write while every read stays green — the refusal
+   * paths short-circuit before they delegate, so the routes look healthy until
+   * somebody asks one to work. That is a boot-time fact, so it is checked at
+   * boot rather than discovered by a client.
+   */
+  app.addHook("onReady", async () => {
+    const needed: [string, string][] = [
+      ["PATCH", `${mount}/blocks/:id`],
+      ["GET", `${mount}/interchange`],
+      ["PATCH", `${mount}/collections/:id/members/:blockId`],
+    ];
+    const missing = needed.filter(([method, url]) => !app.hasRoute({ method: method as "GET", url }));
+    if (missing.length) {
+      throw new Error(
+        `the interchange binding delegates to routes that do not exist: ${missing
+          .map(([m, u]) => `${m} ${u}`)
+          .join(", ")}`,
+      );
+    }
+  });
+
   /**
    * Unauthenticated on purpose: it says what the software can do, not what any
    * account holds. A client deciding whether it can talk to this server at all
@@ -176,7 +210,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
 
       const wrote = await app.inject({
         method: "PATCH",
-        url: `/blocks/${id}`,
+        url: `${mount}/blocks/${id}`,
         headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
         payload: { patch: { set: body.set, unset: body.unset }, version: body.version },
       });
@@ -194,7 +228,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       // whatever the write did that the caller never asked for.
       const after = await app.inject({
         method: "GET",
-        url: "/interchange",
+        url: `${mount}/interchange`,
         headers: { authorization: req.headers.authorization ?? "" },
       });
       const env = after.json() as { cursor?: string; objects?: { id: string }[] };
@@ -252,7 +286,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
 
       const wrote = await app.inject({
         method: "PATCH",
-        url: `/collections/${collection}/members/${object}`,
+        url: `${mount}/collections/${collection}/members/${object}`,
         headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
         // Null overwrites where an empty object would merge, so "nowhere in
         // particular" has to be said explicitly or the card never leaves.

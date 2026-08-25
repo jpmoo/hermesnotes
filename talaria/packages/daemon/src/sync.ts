@@ -7,7 +7,7 @@ import {
   type Series,
 } from "@talaria/canonical";
 import type { Hermes } from "./hermes.js";
-import { GoneError, OfflineError, type Interchange } from "./interchange.js";
+import { discrepancies, GoneError, OfflineError, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
 
 /**
@@ -40,6 +40,8 @@ const SEAM_VERSION = "6-interchange";
 const SEAM = "seam.version";
 
 const CURSOR = "sync.cursor";
+/** What the producer promised and did not deliver, as of the last full read. */
+const MISMATCH = "sync.mismatch";
 /** The local day the saved queries were last asked on. */
 const QUERY_DAY = "sync.queryDay";
 const LAST_OK = "sync.lastSuccessAt";
@@ -70,6 +72,18 @@ export class Sync {
 
   get lastSuccessAt(): string | null {
     return this.mirror.get(LAST_OK);
+  }
+
+  /**
+   * Where the producer's answers stopped matching its manifest.
+   *
+   * Surfaced rather than absorbed. A daemon that silently copes with a surface
+   * older than its claim is one that copes for months while somebody wonders
+   * why ticking a task never sticks.
+   */
+  get mismatch(): { code: string; detail: string }[] {
+    const raw = this.mirror.get(MISMATCH);
+    return raw ? (JSON.parse(raw) as { code: string; detail: string }[]) : [];
   }
 
   /**
@@ -191,6 +205,15 @@ export class Sync {
   async baseline(): Promise<SyncOutcome> {
     try {
       const env = (await this.ix.read()) as Envelope;
+
+      // Asked once per full read, not per tick: a manifest is a build constant
+      // and does not move between polls, and the answers it is held against are
+      // the ones a full read just produced.
+      const said = await this.ix.conformance().catch(() => null);
+      const gaps = said ? discrepancies(said, env as Record<string, unknown>) : [];
+      this.mirror.set(MISMATCH, gaps.length ? JSON.stringify(gaps) : null);
+      for (const g of gaps) console.error(`[talaria] ${g.code}: ${g.detail}`);
+
       this.storeTypes(env);
       const total = this.store(env);
 

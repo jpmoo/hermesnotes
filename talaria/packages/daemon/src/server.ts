@@ -123,6 +123,10 @@ export function buildServer(deps: {
       blocks: mirror.count(),
       queued: mirror.pending().length,
       parked: mirror.pending().filter((q) => q.parkedReason).length,
+      // What the producer promised and its answers did not keep. Empty is the
+      // normal case and the reason this is worth reporting at all: something
+      // here means the far end is older than the manifest it is serving.
+      mismatch: sync.mismatch,
       origin: config.origin,
       socket: deps.socketPath,
     };

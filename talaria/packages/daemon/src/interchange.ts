@@ -33,6 +33,54 @@ export interface WriteAnswer {
   object?: Record<string, unknown>;
 }
 
+/** A promise the producer made that its answers do not keep. */
+export interface Discrepancy {
+  code: string;
+  detail: string;
+}
+
+/**
+ * Hold what a producer claimed against what it actually sent.
+ *
+ * The format asks a producer to fail loudly. This is the same rule pointed the
+ * other way: a consumer that quietly copes with a surface not matching its
+ * manifest is one that will keep coping, for months, while somebody wonders why
+ * completing a task never sticks.
+ *
+ * The case this exists for is version skew, which no manifest can catch on its
+ * own — `conformance` is compiled into the software and describes what the
+ * build implements, so a deployment running last week's code claims everything
+ * this week's code does. Only the answers can tell you.
+ */
+export function discrepancies(said: Conformance, env: Record<string, unknown>): Discrepancy[] {
+  const out: Discrepancy[] = [];
+  const objects = (env.objects ?? []) as { version?: number }[];
+  const operates = (said.operate ?? 0) >= 4;
+
+  if (operates && env.cursor === undefined) {
+    out.push({
+      code: "read.no-cursor",
+      detail:
+        "It claims a live surface and its reads carry no cursor, so there is no way to ask what has changed. Everything still works by reading the whole library every time, which is the difference between a sync and a download.",
+    });
+  }
+  if (operates && objects.length && objects.every((o) => o.version === undefined)) {
+    out.push({
+      code: "read.no-version",
+      detail:
+        "It claims a live surface and its objects carry no version. A patch must present the version it expects, so nothing here can be written back safely — every write will be refused or, worse, accepted against state it never saw.",
+    });
+  }
+  if ((said.produce ?? 0) >= 3 && env.findings === undefined && env.reports === undefined) {
+    out.push({
+      code: "read.no-reports",
+      detail:
+        "It claims to report what it could not express, and this answer reports nothing at all — not an empty list, no key. An export that says nothing is claiming to have lost nothing.",
+    });
+  }
+  return out;
+}
+
 export class Interchange {
   constructor(
     private base: string,

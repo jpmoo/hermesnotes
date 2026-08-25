@@ -278,6 +278,26 @@ try {
   check("a pruned cursor re-reads everything", rescued.state === "ok" && rescued.walked === true);
   check("and the library is whole again", canonical("c1") !== null);
 
+  // ---- a producer whose claim outruns its answers -------------------------
+  //
+  // The case no manifest catches on its own. `conformance` is compiled into the
+  // software, so a deployment running last week's code claims everything this
+  // week's code does — and a consumer that quietly copes will cope for months
+  // while somebody wonders why completing a task never sticks.
+  const { discrepancies } = await import("./src/interchange.js");
+  const overclaim = { produce: 4, consume: 4, operate: 4, bindings: ["http"] };
+  const behind = { objects: [{ id: "x" }, { id: "y" }], types: [] };
+  const gaps = discrepancies(overclaim, behind);
+  check("an overclaiming producer is caught", gaps.length === 3, gaps.map((g) => g.code).join(", "));
+  check("no cursor is noticed", gaps.some((g) => g.code === "read.no-cursor"));
+  check("no version is noticed", gaps.some((g) => g.code === "read.no-version"));
+  check("silence about findings is noticed", gaps.some((g) => g.code === "read.no-reports"));
+  check(
+    "an honest producer raises nothing",
+    discrepancies(overclaim, envelope() as unknown as Record<string, unknown>).length === 0,
+  );
+  check("what this stranger served is clean", sync.mismatch.length === 0, JSON.stringify(sync.mismatch));
+
   console.log(bad ? `\n${bad} failed` : "\nall good — Talaria read a stranger");
 } finally {
   mirror.close();

@@ -305,9 +305,14 @@ enum Daemon {
         let days: [AgendaDay]
     }
 
-    static func agenda(days: Int, date: String? = nil) throws -> Agenda {
+    /// - Parameter collection: scope to one collection's members. A calendar
+    ///   collection is a view of what is in it, so it shows those and no
+    ///   subscribed feeds — those belong to the agenda, which is a view over
+    ///   everything.
+    static func agenda(days: Int, date: String? = nil, collection: String? = nil) throws -> Agenda {
         var path = "/agenda?days=\(days)"
         if let date { path += "&date=\(date)" }
+        if let collection { path += "&collection=\(collection)" }
         return try JSONDecoder().decode(Envelope<Agenda>.self, from: get(path)).data
     }
 

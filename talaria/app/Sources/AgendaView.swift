@@ -21,6 +21,10 @@ final class AgendaModel: ObservableObject {
     @Published var error: String?
     @Published var busy = false
 
+    /// The collection this agenda is scoped to, if it is a collection's own
+    /// view rather than the agenda proper. Set once, before the first load.
+    var collection: String?
+
     /// The day being looked at. Always a date, never an offset, so the view
     /// doesn't quietly drift if the panel is left open past midnight.
     @Published var date: String = AgendaModel.todayISO()
@@ -66,9 +70,12 @@ final class AgendaModel: ObservableObject {
 
     func load() {
         busy = true
+        // Read on the main actor, before the detached task: the property lives
+        // here and the fetch does not.
+        let scope = collection
         Task.detached(priority: .userInitiated) { [self] in
             do {
-                let a = try Daemon.agenda(days: 45)
+                let a = try Daemon.agenda(days: 45, collection: scope)
                 await MainActor.run {
                     self.days = a.days
                     self.types = a.types

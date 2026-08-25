@@ -798,10 +798,12 @@ export function buildServer(deps: {
    * yesterday's copy of the calendar beats an empty one.
    */
   app.get("/agenda", async (req) => {
-    const { days, date } = z
+    const { days, date, collection } = z
       .object({
         days: z.coerce.number().int().min(1).max(60).optional(),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        /** Scope to one collection: its members, laid out by day. */
+        collection: z.string().uuid().optional(),
       })
       .parse(req.query);
     const span = days ?? 14;
@@ -816,13 +818,22 @@ export function buildServer(deps: {
 
     let feed: unknown[] = [];
     let feedStale = false;
+    // A collection shows what is in it, and a subscribed calendar is not in it.
+    // Feed events are a third party's, they are not blocks, and no membership
+    // names them — so a collection view carrying them is showing things that
+    // are not its contents. They belong to the agenda, which is a view over
+    // everything and says so.
+    //
+    // It also means this path asks Hermes nothing: scoped to a collection, the
+    // whole answer comes from the mirror, which the binding fills.
     try {
+      if (collection) throw new OfflineError("scoped to a collection");
       const got = await hermes.feedEvents(start, end);
       feed = got.events;
       feedStale = got.stale;
       mirror.set(`feed.${start}.${end}`, JSON.stringify(feed));
     } catch {
-      const cached = mirror.get(`feed.${start}.${end}`);
+      const cached = collection ? null : mirror.get(`feed.${start}.${end}`);
       if (cached) {
         feed = JSON.parse(cached) as unknown[];
         // Served from the last copy, which is worth saying: an agenda missing
@@ -832,7 +843,23 @@ export function buildServer(deps: {
     }
 
     const idx = types();
-    const blocks = canon(mirror.search({ limit: 500 })).filter((b) => !b.archivedAt && !b.collectionKind);
+    // Scoped to a collection: exactly its members. A smart one is whatever its
+    // query answered, an explicit one is what was put in it — the same two
+    // answers the board view uses, so a calendar and a list of the same
+    // collection cannot disagree about what is in it.
+    let scope: Set<string> | null = null;
+    if (collection) {
+      const raw = mirror.rawBlock(collection);
+      const board = raw ? (JSON.parse(raw) as { membership?: { mode?: string } }) : null;
+      const cachedIds = mirror.get(`query.${collection}`);
+      scope =
+        board?.membership?.mode === "query" && cachedIds
+          ? new Set(JSON.parse(cachedIds) as string[])
+          : new Set(mirror.membersOf(collection).map((m) => (JSON.parse(m.raw) as { id: string }).id));
+    }
+    const blocks = canon(mirror.search({ limit: 500 })).filter(
+      (b) => !b.archivedAt && !b.collectionKind && (scope === null || scope.has(b.id)),
+    );
     const typeNames = new Set<string>();
     const feedsSeen = new Map<string, { id: string; name: string; color: string }>();
 

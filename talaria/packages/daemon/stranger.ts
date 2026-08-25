@@ -89,7 +89,7 @@ const BOARD = {
   name: "The Wall",
   kind: "matrix",
   properties: { description: "Where chores go" },
-  placement: { semantic: true, regions: ["now", { name: "soon", label: "Fairly Soon", "stranger:color": "#5fa4b5" }, "someday"] },
+  placement: { semantic: true, regions: [{ name: "now", label: "Now", "stranger:tag": "urgent", "stranger:tagOnEnter": true }, { name: "soon", label: "Fairly Soon", "stranger:color": "#5fa4b5" }, "someday"] },
   membership: { mode: "explicit" },
   // colour is the producer's own key; the format does not name it
 
@@ -170,7 +170,11 @@ const server = createServer((req, res) => {
   const place = /^\/interchange\/collections\/([^/]+)\/members\/([^/]+)$/.exec(url.pathname);
   if (place && req.method === "PATCH") {
     void read().then((body) => {
-      if (body.region !== null && !board.placement.regions.includes(body.region)) {
+      // Both spellings, because the board declares both. A producer that only
+      // matched bare strings would refuse every move into a region it had
+      // bothered to give a label to — which is to say, the nice ones.
+      const names = board.placement.regions.map((r) => (typeof r === "string" ? r : r.name));
+      if (body.region !== null && !names.includes(body.region)) {
         return send(400, { ok: false, reports: ["placement.region-not-declared"] });
       }
       const m = board.members.find((x) => x.object === place[2]);
@@ -262,6 +266,10 @@ try {
   check(
     "a labelled region kept both halves",
     (stored.placement?.regions?.[1] as { name: string; label: string })?.label === "Fairly Soon",
+  );
+  check(
+    "a region's own behaviour travelled too",
+    (stored.placement?.regions?.[0] as Record<string, unknown>)?.["stranger:tag"] === "urgent",
   );
   check(
     "and a colour under the stranger's own prefix",

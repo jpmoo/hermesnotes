@@ -77,17 +77,29 @@ export async function applyRegionActions(
 ): Promise<void> {
   const raw = mirror.rawBlock(intent.collectionId);
   if (!raw) return;
-  const props = (JSON.parse(raw) as { properties?: Record<string, unknown> }).properties ?? {};
-  const defs = Array.isArray(props.matrix_regions) ? (props.matrix_regions as Record<string, unknown>[]) : [];
-  const entering = intent.region === null ? undefined : defs[intent.region];
-  const leaving = intent.fromRegion === null ? undefined : defs[intent.fromRegion];
+  // What a region *does* to what lands in it lives on the declared placement
+  // now, under the producer's own prefix. It used to be read off
+  // `properties.matrix_regions`, which an export does not carry — so this had
+  // been quietly doing nothing since Talaria moved onto the binding: cards
+  // moved, boards recorded the arrangement, and none of the tagging that makes
+  // the arrangement mean anything happened.
+  const declared = ((JSON.parse(raw) as { placement?: { regions?: unknown[] } }).placement?.regions ??
+    []) as (string | Record<string, unknown>)[];
+  const at = (i: number | null): Record<string, unknown> | undefined => {
+    if (i === null) return undefined;
+    const r = declared[i];
+    return typeof r === "object" && r !== null ? r : undefined;
+  };
+  const entering = at(intent.region);
+  const leaving = at(intent.fromRegion);
+  const key = (r: Record<string, unknown> | undefined, k: string) => r?.[`hermes:${k}`];
 
-  const addTag = typeof entering?.tag === "string" && entering.tag && entering.tagOnEnter !== false
-    ? String(entering.tag)
-    : null;
-  const dropTag = typeof leaving?.tag === "string" && leaving.tag && leaving.tagOffLeave === true
-    ? String(leaving.tag)
-    : null;
+  const enterTag = key(entering, "tag");
+  const leaveTag = key(leaving, "tag");
+  const addTag =
+    typeof enterTag === "string" && enterTag && key(entering, "tagOnEnter") !== false ? enterTag : null;
+  const dropTag =
+    typeof leaveTag === "string" && leaveTag && key(leaving, "tagOffLeave") === true ? leaveTag : null;
 
   if (addTag || dropTag) {
     try {
@@ -103,7 +115,8 @@ export async function applyRegionActions(
     }
   }
 
-  const wantStatus = typeof entering?.enterStatus === "string" ? String(entering.enterStatus) : "";
+  const enterStatus = key(entering, "enterStatus");
+  const wantStatus = typeof enterStatus === "string" ? enterStatus : "";
   if (!wantStatus) return;
   const blockRaw = mirror.rawBlock(intent.blockId);
   if (!blockRaw) return;

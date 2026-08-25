@@ -37,7 +37,12 @@ import type { Mirror } from "./mirror.js";
  * for blocks that hadn't happened to change since. So the version travels with
  * the mirror, and disagreeing with it forces a full re-walk.
  */
-const SEAM_VERSION = "6-interchange";
+// Bumped whenever the seam changes how it derives what the mirror stores — and
+// also when the *producer* changes what it sends, because a cursor reports
+// objects that moved and says nothing about a library that is now described
+// differently. A collection nobody edited is never re-read, so a board would
+// have kept its old region list forever.
+const SEAM_VERSION = "7-regions";
 const SEAM = "seam.version";
 
 const CURSOR = "sync.cursor";

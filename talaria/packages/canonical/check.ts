@@ -1,122 +1,85 @@
-import { toCanonical, kindOf, resolveKind, type HermesTypeRow, type HermesBlockRow } from "./src/index.js";
+/**
+ * Does the seam read a real envelope?
+ *
+ * The port's whole claim is that Talaria can read a library through the format
+ * without knowing whose it is. The way to check that is to hand it an envelope
+ * and see whether the answers are the same ones it used to get from Hermes'
+ * private routes — so this runs the real export through and counts what came
+ * out, rather than asserting against a fixture nobody's data resembles.
+ */
+import { readFileSync } from "node:fs";
+import { kindOf, profilesOf, seriesByObject, toCanonical } from "./src/index.js";
+import type { Envelope, InterchangeType, Series } from "./src/index.js";
 
-const taskSchema = {
-  fields: [
-    { key: "title", type: "text", order: 0, includeEmbed: true },
-    { key: "description", type: "longtext", order: 1, includeEmbed: true },
-    { key: "schedule", type: "datespan", order: 2, includeEmbed: false, startLabel: "Available", endLabel: "Due" },
-    { key: "recurrence", type: "recurrence", order: 4, includeEmbed: false },
-    { key: "project", type: "reference", order: 5, includeEmbed: false },
-    { key: "status", type: "status", order: 6, includeEmbed: false,
-      options: ["not_done", "done"], optionLabels: { not_done: "Not done" } },
-  ],
-  status_field: "status",
-  complete_values: ["done"],
-  default_value: "not_done",
-} as never;
+const env = JSON.parse(readFileSync(process.argv[2] ?? "/tmp/hermes-export.json", "utf8")) as Envelope;
+const types = new Map<string, InterchangeType>((env.types ?? []).map((t) => [t.id, t]));
+const series = seriesByObject(env.series as Series[] | undefined);
 
-const personSchema = {
-  fields: [
-    { key: "title", type: "text", order: 0, includeEmbed: true },
-    { key: "role", type: "text", order: 1, includeEmbed: true },
-    { key: "organization", type: "reference", order: 3, includeEmbed: false },
-  ],
-} as never;
+let bad = 0;
+const check = (name: string, ok: boolean, detail = "") => {
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${name}${detail ? `   ${detail}` : ""}`);
+  if (!ok) bad += 1;
+};
 
-const types: HermesTypeRow[] = [
-  { id: "t-task", name: "Task", propertySchema: taskSchema, isText: false, builtin: true },
-  { id: "t-todo", name: "Todo", propertySchema: taskSchema, isText: false, builtin: false },
-  { id: "t-person", name: "Contact", propertySchema: personSchema, isText: false, builtin: false },
-  { id: "t-text", name: "text", propertySchema: null, isText: true, builtin: true },
-];
-
-const base = { collectionKind: null, version: 3, archivedAt: null,
-  createdAt: "2026-08-01T00:00:00Z", updatedAt: "2026-08-20T00:00:00Z", tags: [] as string[] };
-
-const rows: [string, HermesBlockRow, string][] = [
-  ["seeded Task", { ...base, id: "b1", blockTypeId: "t-task", content: null, tags: ["work"],
-    properties: { title: "Write up |048dd1db-1111-4111-8111-111111111111 for [Board](block:048dd1db-2222-4222-8222-222222222222)",
-      description: "some notes", status: "done", done_at: "2026-08-19T10:00:00Z",
-      schedule: { start: "2026-08-22", end: "2026-08-25T14:30" },
-      recurrence: { frequency: "weekly", interval: 1, weekdays: [3], end: { type: "after", count: 5 }, completeFrom: "completed", n: 3 },
-      project: "048dd1db-3333-4333-8333-333333333333" } }, "t-task"],
-  ["renamed type (not builtin)", { ...base, id: "b2", blockTypeId: "t-todo", content: null,
-    properties: { title: "Renamed but still a task", status: "not_done" } }, "t-todo"],
-  ["person-shaped custom type", { ...base, id: "b3", blockTypeId: "t-person", content: null,
-    properties: { title: "Adish", role: "Director", organization: "048dd1db-4444-4444-8444-444444444444" } }, "t-person"],
-  ["daily note", { ...base, id: "b4", blockTypeId: "t-text", content: "# Thursday\n\n- [ ] call the roofer",
-    properties: { today_note: "2026-08-22" } }, "t-text"],
-  ["plain text block", { ...base, id: "b5", blockTypeId: "t-text", content: "## Meeting notes\nlots of detail", properties: {} }, "t-text"],
-];
-
-for (const [label, row, typeId] of rows) {
-  const c = toCanonical(row, types.find((t) => t.id === typeId), { appOrigin: "https://app.example/hermesnotes" });
-  console.log(`\n── ${label}`);
-  console.log(JSON.stringify({
-    kind: c.kind, title: c.title, done: c.completion?.done, label: c.completion?.label,
-    schedule: c.schedule && { start: c.schedule.start, end: c.schedule.end, endLabel: c.schedule.endLabel },
-    recurrence: c.recurrence && { seriesId: c.recurrence.seriesId, anchor: c.recurrence.anchor,
-      occurrence: c.recurrence.occurrence, rrule: c.recurrence.expressibleAsRRULE },
-    links: c.links, isDailyNote: c.isDailyNote, noteDate: c.noteDate, url: c.url, appUrl: c.appUrl,
-  }, null, 1));
+console.log(`${(env.types ?? []).length} types, ${(env.objects ?? []).length} objects\n`);
+for (const t of env.types ?? []) {
+  const declared = profilesOf(t);
+  console.log(`  ${(t.name ?? t.id).padEnd(14)} ${kindOf(t).padEnd(13)} profiles: ${declared.join(", ") || "(none)"}`);
 }
-// Completability is a fact about the type, not about the value: a task with no
-// status set yet is still a task you can finish.
-console.log("\n── completable");
-const noStatusYet = { ...base, id: "b9", blockTypeId: "t-task", content: null, properties: { title: "Never touched" } };
-const asTask = toCanonical(noStatusYet, types.find((t) => t.id === "t-task"), { appOrigin: "https://x" });
-console.log("task with no status value ->", asTask.completable, "(completion:", asTask.completion, ")");
-const person = toCanonical(
-  { ...base, id: "b10", blockTypeId: "t-person", content: null, properties: { title: "Someone" } },
-  types.find((t) => t.id === "t-person"), { appOrigin: "https://x" });
-console.log("a person                  ->", person.completable);
+console.log();
 
-console.log("\n── kind fallbacks");
-// The real case this got wrong: Hermes' seeding migrations skip any user who
-// already made a type of that name, so a hand-made Project is user data with
-// builtin=false and a shape that says nothing in particular.
-const userProject = { fields: [
-  { key: "title", type: "text", order: 0, includeEmbed: true },
-  { key: "description", type: "longtext", order: 1, includeEmbed: true },
-  { key: "phase", type: "select", order: 2, includeEmbed: false, options: ["active", "done"] },
-] } as never;
-console.log("user-made Project ->", kindOf("Project", userProject, { builtin: false }));
-// ...but structure still outranks the name where it is decisive.
-const projectShapedTask = { fields: [
-  { key: "title", type: "text", order: 0, includeEmbed: true },
-  { key: "status", type: "status", order: 1, includeEmbed: false, options: ["open", "shipped"] },
-], status_field: "status", complete_values: ["shipped"] } as never;
-console.log("a 'Project' that completes ->", kindOf("Project", projectShapedTask, { builtin: false }));
-// A project with dates must not read as an event.
-const datedProject = { fields: [
-  { key: "title", type: "text", order: 0, includeEmbed: true },
-  { key: "run", type: "datespan", order: 1, includeEmbed: false },
-] } as never;
-console.log("a Project with a datespan ->", kindOf("Project", datedProject, { builtin: false }));
-console.log("collection      →", kindOf("list", null, { collectionKind: "list" }));
-console.log("unknown shape   →", kindOf("Bookmark", { fields: [{ key: "title", type: "text", order: 0, includeEmbed: true }] } as never, {}));
-console.log("event-shaped    →", kindOf("Gig", { fields: [{ key: "when", type: "datespan", order: 0, includeEmbed: false }] } as never, {}));
-
-// Declared beats derived. The point of the whole exercise: a type that says what
-// it is settles the question, and an answer nobody gave says so.
-console.log("\n-- declared vs derived --");
-const show = (label: string, r: { kind: string; derived: boolean }) =>
-  console.log(`  ${label.padEnd(34)} ${r.kind.padEnd(13)} ${r.derived ? "derived (a guess)" : "declared"}`);
-
-show(
-  "Initiatives, declares project",
-  resolveKind("Initiatives", {
-    fields: [{ key: "title", type: "text", order: 0, includeEmbed: true }],
-    profiles: { project: { title: "title" } },
-  } as never, {}),
+const all = (env.objects ?? []).map((o) =>
+  toCanonical(o, o.type ? types.get(o.type) : undefined, {
+    appOrigin: "https://example/app",
+    series: series.get(o.id) ?? null,
+  }),
 );
-show("a Project with a datespan", resolveKind("Project", datedProject as never, {}));
-show(
-  "Errand, declares task, no status field",
-  resolveKind("Errand", {
-    fields: [{ key: "what", type: "text", order: 0, includeEmbed: true }],
-    profiles: { task: { title: "what", status: "state", completeValues: ["sorted"] } },
-  } as never, {}),
+
+const titled = all.filter((c) => c.title && c.title !== "Untitled").length;
+check("every object got a title", titled === all.length, `${titled}/${all.length}`);
+
+const tasks = all.filter((c) => c.kind === "task");
+check("tasks were recognised", tasks.length > 0, `${tasks.length}`);
+check(
+  "every task can be completed",
+  tasks.every((c) => c.completable),
+  `${tasks.filter((c) => c.completable).length}/${tasks.length}`,
 );
-show("status_field, nobody declared it", resolveKind("Chore", taskSchema as never, {}));
-show("nothing to go on", resolveKind("Bookmark", { fields: [] } as never, {}));
+check(
+  "completion was read through the profile",
+  tasks.every((c) => c.completion !== null),
+  `${tasks.filter((c) => c.completion).length}/${tasks.length} carry a status`,
+);
+const done = tasks.filter((c) => c.completion?.done).length;
+check("some are done and some are not", done > 0 && done < tasks.length, `${done} done`);
+
+const scheduled = all.filter((c) => c.schedule);
+check("dates were found", scheduled.length > 0, `${scheduled.length} scheduled`);
+const labelled = scheduled.filter((c) => c.schedule?.startLabel || c.schedule?.endLabel);
+check("the producer's own date labels came through", labelled.length > 0, `${labelled.length} labelled`);
+
+const notes = all.filter((c) => c.kind === "note");
+check("notes were recognised", notes.length > 0, `${notes.length}`);
+check(
+  "notes have a body",
+  notes.filter((c) => c.body).length > 0,
+  `${notes.filter((c) => c.body).length}/${notes.length}`,
+);
+
+check("links were derived", all.some((c) => c.links.length > 0), `${all.reduce((n, c) => n + c.links.length, 0)} links`);
+check("versions travelled", all.every((c) => typeof c.version === "number"));
+
+// The one thing nothing may do. Comments stripped first: the modules explain
+// what they used to read, and a check that cannot tell prose from code would
+// have to be satisfied by deleting the explanation.
+const code = ["map.ts", "kind.ts", "interchange.ts", "recurrence.ts"]
+  .map((f) => readFileSync(new URL(`./src/${f}`, import.meta.url), "utf8"))
+  .join("\n")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/\/\/.*$/gm, "");
+for (const word of ["status_field", "complete_values", "propertySchema", "blockTypeId", "@hermes/"]) {
+  check(`the seam never reads ${word}`, !code.includes(word));
+}
+
+console.log(bad ? `\n${bad} failed` : "\nall good");
+process.exit(bad ? 1 : 0);

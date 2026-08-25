@@ -1,30 +1,25 @@
-import { bodyFieldKey, dayOf, isComplete, optionLabel, type PropertySchema } from "@hermes/shared";
+import {
+  completable as completableType,
+  fieldFor,
+  isComplete,
+  optionLabel,
+  read,
+  type InterchangeObject,
+  type InterchangeType,
+} from "./interchange.js";
 import { kindOf } from "./kind.js";
-import { toCanonicalRecurrence } from "./recurrence.js";
+import { toCanonicalRecurrence, type Series } from "./recurrence.js";
 import type { CanonicalBlock, CanonicalLink, CanonicalSpan, CanonicalWhen } from "./types.js";
 
-/** A block as `/sync/blocks` hands it over. The only Hermes shape in this package. */
-export interface HermesBlockRow {
-  id: string;
-  blockTypeId: string | null;
-  collectionKind: string | null;
-  content: string | null;
-  properties: Record<string, unknown>;
-  version: number;
-  archivedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  tags: string[];
-}
-
-/** A block type as `/block-types` hands it over. */
-export interface HermesTypeRow {
-  id: string;
-  name: string;
-  propertySchema: PropertySchema | null;
-  isText: boolean;
-  builtin: boolean;
-}
+/**
+ * The seam now takes `pkm-interchange/0` and nothing else.
+ *
+ * It used to take a Hermes block and a Hermes type, and read meaning out of
+ * `status_field`, `bodyFieldKey` and a field whose `type` was `"recurrence"` —
+ * all of them Hermes' private words for things. Everything downstream already
+ * spoke the canonical shape, so this was the only place that had to change for
+ * Talaria to stop being a Hermes satellite.
+ */
 
 /**
  * The scheme the app bundle claims. Not `hermes`: that is another tool on this
@@ -56,13 +51,13 @@ function readable(raw: string): string {
 
 /** Every block this one points at, by whatever route. */
 function linksOf(
-  schema: PropertySchema | null | undefined,
+  type: InterchangeType | undefined,
   props: Record<string, unknown>,
   text: string,
 ): CanonicalLink[] {
   const seen = new Map<string, CanonicalLink>();
-  for (const f of schema?.fields ?? []) {
-    if (f.type !== "reference") continue;
+  for (const f of type?.fields ?? []) {
+    if (f.kind !== "reference") continue;
     const v = props[f.key];
     for (const id of Array.isArray(v) ? v : [v]) {
       if (typeof id === "string" && id) seen.set(id, { id, role: f.key });
@@ -81,63 +76,81 @@ function linksOf(
   return [...seen.values()];
 }
 
+/** `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`, per the format. Anything else is not a date. */
 function whenOf(v: unknown): CanonicalWhen | null {
-  if (typeof v !== "string" || !v) return null;
-  const day = dayOf(v);
-  if (!day) return null;
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(v)) return null;
   return { value: v, allDay: !v.includes("T") };
 }
 
-/** The type's dated field, preferring a span over a single point. */
-function scheduleOf(
-  schema: PropertySchema | null | undefined,
-  props: Record<string, unknown>,
-): CanonicalSpan | null {
-  const fields = schema?.fields ?? [];
-  const span = fields.find((f) => f.type === "datespan");
+/**
+ * When this thing happens.
+ *
+ * Declared first: `start` and `due` on the task profile, `start`/`end` on the
+ * event profile. The producer has already said which of its fields those are,
+ * and one producer's single datespan is both halves — so the mapping is asked
+ * rather than the field list guessed at.
+ *
+ * The guess below it is for types that declared nothing, which is most of a real
+ * library. It is a consumer's own heuristic over what it was given, and being
+ * wrong about it costs a date on a card rather than anything structural.
+ */
+function scheduleOf(type: InterchangeType | undefined, object: InterchangeObject): CanonicalSpan | null {
+  for (const profile of ["task", "event"] as const) {
+    const startKey = profile === "task" ? "start" : "start";
+    const endKey = profile === "task" ? "due" : "end";
+    const start = whenOf(read(type, object, startKey, profile));
+    const end = whenOf(read(type, object, endKey, profile));
+    if (!start && !end) continue;
+    const sf = fieldFor(type, startKey, profile);
+    const ef = fieldFor(type, endKey, profile);
+    // One compound field mapped twice: its own two labels are the right words.
+    const compound = sf && ef && sf.key === ef.key ? sf : null;
+    return {
+      start,
+      end,
+      startLabel: compound?.startLabel ?? sf?.label ?? null,
+      endLabel: compound?.endLabel ?? ef?.label ?? null,
+    };
+  }
+
+  const props = object.properties ?? {};
+  const fields = type?.fields ?? [];
+  const span = fields.find((f) => f.kind === "datespan");
   if (span) {
     const v = (props[span.key] ?? {}) as { start?: unknown; end?: unknown };
     const start = whenOf(v.start);
     const end = whenOf(v.end);
     if (!start && !end) return null;
-    return {
-      start,
-      end,
-      startLabel: span.startLabel ?? null,
-      endLabel: span.endLabel ?? null,
-    };
+    return { start, end, startLabel: span.startLabel ?? null, endLabel: span.endLabel ?? null };
   }
-  const point = fields.find((f) => f.type === "datetime" || f.type === "date");
+  const point = fields.find((f) => f.kind === "datetime" || f.kind === "date");
   if (!point) return null;
   const at = whenOf(props[point.key]);
   return at ? { start: at, end: null, startLabel: point.label ?? null, endLabel: null } : null;
 }
 
 /**
- * A Hermes block as the canonical object. The one translation in the system:
- * nothing downstream of this function should ever hold a raw payload.
+ * An interchange object as the canonical object. The one translation in the
+ * system: nothing downstream of this function should ever hold a payload.
  */
 export function toCanonical(
-  row: HermesBlockRow,
-  type: HermesTypeRow | undefined,
-  opts: { appOrigin: string },
+  object: InterchangeObject,
+  type: InterchangeType | undefined,
+  opts: { appOrigin: string; collectionKind?: string | null; series?: Series | null },
 ): CanonicalBlock {
-  const props = row.properties ?? {};
-  const schema = type?.propertySchema ?? null;
-  const isText = type?.isText ?? false;
+  const props = object.properties ?? {};
+  const collectionKind = opts.collectionKind ?? null;
 
+  // Hermes' word for "this note is the daily note for that day". Not a format
+  // concept, so it reads as an unrecognised property — which is exactly what the
+  // round-trip rule protects, and it is legible enough to use.
   const noteDate = typeof props.today_note === "string" ? props.today_note : null;
 
-  const rawTitle = typeof props.title === "string" ? props.title : "";
-  const bodyKey = bodyFieldKey(schema);
-  const rawBody = isText
-    ? (row.content ?? "")
-    : bodyKey && typeof props[bodyKey] === "string"
-      ? (props[bodyKey] as string)
-      : "";
+  const rawTitle = String(read(type, object, "title", "note") ?? read(type, object, "title", "task") ?? props.title ?? "");
+  const rawBody = String(read(type, object, "body", "note") ?? object.content ?? "");
 
-  // A text block usually carries no title, so its first non-empty line stands in
-  // — the same thing a reader does when glancing at it.
+  // A note usually carries no title of its own, so its first non-empty line
+  // stands in — the same thing a reader does when glancing at it.
   const firstLine = (rawBody.split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "");
   const title =
     readable(rawTitle) ||
@@ -145,55 +158,44 @@ export function toCanonical(
     readable(firstLine) ||
     "Untitled";
 
-  const statusKey = schema?.status_field ?? null;
-  const statusField = statusKey ? (schema?.fields ?? []).find((f) => f.key === statusKey) : null;
-  const statusValue = statusKey ? props[statusKey] : null;
+  const statusValue = read(type, object, "status", "task");
   const completion =
-    schema && statusField && typeof statusValue === "string"
+    typeof statusValue === "string"
       ? {
           status: statusValue,
-          label: optionLabel(statusField, statusValue),
-          done: isComplete(schema, props),
+          label: optionLabel(fieldFor(type, "status", "task"), statusValue),
+          done: isComplete(type, object),
+          // Not a format concept either. Producers that stamp one are common and
+          // it is only ever displayed, so an absent one costs a line of detail.
           doneAt: typeof props.done_at === "string" ? props.done_at : null,
         }
       : null;
 
-  const recField = (schema?.fields ?? []).find((f) => f.type === "recurrence");
-  const completable = Boolean(schema?.status_field && schema.complete_values?.length);
-
   return {
-    id: row.id,
-    kind: kindOf(type?.name ?? null, schema, {
-      builtin: type?.builtin,
-      isText,
-      collectionKind: row.collectionKind,
-    }),
-    typeId: row.blockTypeId,
-    typeName: row.collectionKind ?? type?.name ?? "unknown",
+    id: object.id,
+    kind: kindOf(type, { collectionKind }),
+    typeId: object.type ?? null,
+    typeName: collectionKind ?? type?.name ?? "unknown",
     title,
     body: rawBody ? rawBody : null,
     completion,
-    completable,
-    schedule: scheduleOf(schema, props),
-    recurrence: recField
-      ? toCanonicalRecurrence(props[recField.key], {
-          typeId: row.blockTypeId,
-          title,
-          seriesId: (row as { seriesId?: string | null }).seriesId ?? null,
-        })
-      : null,
-    tags: row.tags ?? [],
-    links: linksOf(schema, props, `${rawTitle}\n${rawBody}`),
+    completable: completableType(type),
+    schedule: scheduleOf(type, object),
+    // The format holds recurrence as a series the object points at, so there is
+    // nothing to synthesize any more: the producer already said which occurrences
+    // belong together, which is the thing Hermes could not say and this seam
+    // used to invent.
+    recurrence: toCanonicalRecurrence(opts.series ?? null),
+    tags: object.tags ?? [],
+    links: linksOf(type, props, `${rawTitle}\n${rawBody}`),
     isDailyNote: noteDate !== null,
     noteDate,
-    collectionKind: row.collectionKind,
-    archivedAt: row.archivedAt,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    version: row.version,
-    // A collection is a block, but the web app routes to it differently, and a
-    // Spotlight hit that opens an error page is worse than no hit at all.
-    url: `${opts.appOrigin.replace(/\/$/, "")}/${row.collectionKind ? "collections" : "block"}/${row.id}`,
-    appUrl: `${URL_SCHEME}://${row.collectionKind ? "collection" : "block"}/${row.id}`,
+    collectionKind,
+    archivedAt: object.archived ? (object.updated ?? null) : null,
+    createdAt: String(object.created ?? ""),
+    updatedAt: String(object.updated ?? ""),
+    version: object.version ?? 0,
+    url: `${opts.appOrigin.replace(/\/$/, "")}/${collectionKind ? "collections" : "block"}/${object.id}`,
+    appUrl: `${URL_SCHEME}://${collectionKind ? "collection" : "block"}/${object.id}`,
   };
 }

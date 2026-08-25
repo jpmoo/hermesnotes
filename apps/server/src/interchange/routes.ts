@@ -1,5 +1,5 @@
 import { blockTypes, blocks, changes, memberships, series } from "@hermes/db";
-import { CONFORMANCE, narrow, toInterchange } from "@hermes/interchange";
+import { CONFORMANCE, narrow, regionNamesOf, toInterchange } from "@hermes/interchange";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
@@ -208,6 +208,60 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       // carries no information, and the one write that really did lose
       // something would arrive looking like all the others.
       return { ok: true, fidelity: "full", reports: [], cursor: env.cursor, object };
+    });
+
+    /**
+     * Move a card to a named region.
+     *
+     * Where something sits is not one of its properties — it belongs to the
+     * collection, which is where a read carries it — so it is written here
+     * rather than through a patch.
+     *
+     * The name is the whole point. Hermes stores a region as an index into a
+     * grid, which means nothing to a tool that draws no grid, so the export
+     * publishes slugs and this reverses them with the same function. A name the
+     * collection never declared is refused rather than stored: an index nothing
+     * renders is a card that has silently vanished from the board.
+     */
+    guarded.patch("/interchange/collections/:collection/members/:object", async (req, reply) => {
+      const userId = requireUser(req);
+      const { collection, object } = z
+        .object({ collection: z.string().uuid(), object: z.string().uuid() })
+        .parse(req.params);
+      const body = z.object({ region: z.string().nullable() }).parse(req.body);
+
+      const [board] = await db
+        .select({ properties: blocks.properties, kind: blocks.collectionKind })
+        .from(blocks)
+        .where(and(eq(blocks.id, collection), eq(blocks.ownerId, userId)))
+        .limit(1);
+      if (!board) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
+
+      const names = regionNamesOf((board.properties ?? {}) as Record<string, unknown>);
+      let index: number | null = null;
+      if (body.region !== null) {
+        index = names.indexOf(body.region);
+        if (index < 0) {
+          return reply.code(400).send({
+            ok: false,
+            reports: ["placement.region-not-declared"],
+            error: `this collection declares ${names.length ? names.join(", ") : "no regions"}`,
+          });
+        }
+      }
+
+      const wrote = await app.inject({
+        method: "PATCH",
+        url: `/collections/${collection}/members/${object}`,
+        headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+        // Null overwrites where an empty object would merge, so "nowhere in
+        // particular" has to be said explicitly or the card never leaves.
+        payload: { context: index === null ? null : { region: index } },
+      });
+      if (wrote.statusCode >= 400) {
+        return reply.code(wrote.statusCode).send({ ok: false, reports: ["placement.refused"] });
+      }
+      return { ok: true, fidelity: "full", reports: [] };
     });
   });
 }

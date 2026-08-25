@@ -560,6 +560,28 @@ changes discards the timestamp and never learns the next task exists. The echo
 is not noise about something you already know; it is the producer telling you
 what actually happened.
 
+### Writing a placement
+
+A patch changes an object's properties. Where an object *sits* is not one of its
+properties — it belongs to the collection, which is where a read carries it — so
+moving a card needs its own write:
+
+```
+PATCH <base>/interchange/collections/{collection}/members/{object}
+{ "region": "do" }
+{ "region": null }        ← still a member, no longer anywhere in particular
+```
+
+Same answer shape as any other write. `region` names a region the collection
+declared; a name it did not declare **MUST** be refused rather than stored,
+because a region nothing renders is a card that has vanished.
+
+**Only for semantic placement.** A collection whose `placement.semantic` is false
+is arranging furniture, and where a sticky note sits on a canvas is not a fact
+another tool can use. There is no coordinate write in v0 and the omission is
+deliberate: a format that can carry a judgment and a decoration in the same
+message will be used to carry decorations.
+
 ### Every write answers for itself
 
 ```json

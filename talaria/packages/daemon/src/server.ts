@@ -2,10 +2,18 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
-import { bodyFieldKey, isComplete, optionLabel } from "@hermes/shared";
-import { toCanonical, type HermesTypeRow } from "@talaria/canonical";
+import {
+  fieldFor,
+  isComplete,
+  optionLabel,
+  read,
+  toCanonical,
+  type InterchangeObject,
+  type InterchangeType,
+} from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
+import type { Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
 import { applyRegionActions, Queue, type Intent } from "./queue.js";
 import { describe, freshnessOf } from "./staleness.js";
@@ -47,11 +55,12 @@ export function buildServer(deps: {
   config: Config;
   mirror: Mirror;
   hermes: Hermes;
+  ix: Interchange;
   sync: Sync;
   socketPath: string;
 }): FastifyInstance {
-  const { config, mirror, hermes, sync } = deps;
-  const queue = new Queue(hermes, mirror);
+  const { config, mirror, hermes, ix, sync } = deps;
+  const queue = new Queue(ix, hermes, mirror);
   const app = Fastify({ logger: false });
 
   /**
@@ -66,20 +75,18 @@ export function buildServer(deps: {
    * Found by shape, not by name, for the same reason the seam does it that way.
    */
   const defaultTypeId = (want: "task" | "note"): string | undefined => {
+    // Declared beats named. A type that says it is a note is the one to capture
+    // into, whatever its owner calls it.
     const all = [...types().values()];
-    if (want === "note") return all.find((t) => t.isText)?.id;
-    return (
-      all.find((t) => t.builtin && t.name.toLowerCase() === "task")?.id ??
-      all.find(
-        (t) => !t.isText && t.propertySchema?.status_field && t.propertySchema.complete_values?.length,
-      )?.id
-    );
+    const declaring = (p: string) => all.find((t) => t.profiles?.[p])?.id;
+    if (want === "note") return declaring("note") ?? all.find((t) => t.name?.toLowerCase() === "text")?.id;
+    return declaring("task") ?? all.find((t) => t.name?.toLowerCase() === "task")?.id;
   };
 
-  const types = (): Map<string, HermesTypeRow> => {
-    const m = new Map<string, HermesTypeRow>();
+  const types = (): Map<string, InterchangeType> => {
+    const m = new Map<string, InterchangeType>();
     for (const raw of mirror.types()) {
-      const t = JSON.parse(raw) as HermesTypeRow;
+      const t = JSON.parse(raw) as InterchangeType;
       m.set(t.id, t);
     }
     return m;
@@ -100,7 +107,7 @@ export function buildServer(deps: {
     const idx = types();
     return raws.map((raw) => {
       const row = JSON.parse(raw);
-      return toCanonical(row, row.blockTypeId ? idx.get(row.blockTypeId) : undefined, {
+      return toCanonical(row, row.type ? idx.get(row.type) : undefined, {
         appOrigin: config.origin,
       });
     });
@@ -252,14 +259,14 @@ export function buildServer(deps: {
      */
     const groupLabelFor = (rawJson: string, groupBy: string | null): string | null => {
       if (!groupBy) return null;
-      const b = JSON.parse(rawJson) as { blockTypeId: string | null; properties: Record<string, unknown> };
-      const type = b.blockTypeId ? types().get(b.blockTypeId) : undefined;
+      const b = JSON.parse(rawJson) as { type?: string | null; properties: Record<string, unknown> };
+      const type = b.type ? types().get(b.type) : undefined;
       if (groupBy === "type") return type?.name ?? "Untyped";
       if (!groupBy.startsWith("prop:")) return null;
       const key = groupBy.slice(5).split(".")[0]!;
       const value = b.properties?.[key];
       if (value === null || value === undefined || value === "") return null;
-      const field = (type?.propertySchema?.fields ?? []).find((f) => f.key === key);
+      const field = (type?.fields ?? []).find((f) => f.key === key) ?? null;
       if (field && typeof value === "string") return optionLabel(field, value);
       return String(value);
     };
@@ -314,19 +321,19 @@ export function buildServer(deps: {
       const widths = (props.table_col_widths ?? {}) as Record<string, unknown>;
       const widthOf = (key: string): number | null =>
         typeof widths[key] === "number" && Number.isFinite(widths[key]) ? (widths[key] as number) : null;
-      const schemaOf = (typeId: string | null) => (typeId ? types().get(typeId)?.propertySchema : null);
+      const typeOf = (typeId: string | null) => (typeId ? types().get(typeId) : undefined);
       // Members can be of mixed types; the first one with a schema names the
       // columns, which is what the app does when it draws a heading.
       const firstTyped = mirror.membersOf(id)
-        .map((m) => JSON.parse(m.raw) as { blockTypeId: string | null })
-        .find((b) => b.blockTypeId);
-      const schema = schemaOf(firstTyped?.blockTypeId ?? null);
+        .map((m) => JSON.parse(m.raw) as { type?: string | null })
+        .find((b) => b.type);
+      const schema = typeOf(firstTyped?.type ?? null);
       return raw.map((key) => {
         if (key === "title") return { key, label: "Title", width: widthOf(key) };
         if (key === "edited") return { key, label: "Edited", width: widthOf(key) };
         const bare = key.startsWith("prop:") ? key.slice(5) : key;
         const [fieldKey, leg] = bare.split(".");
-        const field = (schema?.fields ?? []).find((f) => f.key === fieldKey);
+        const field = (schema?.fields ?? []).find((f: { key: string }) => f.key === fieldKey);
         const base = field?.label?.trim() || (fieldKey ?? key).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
         if (leg === "start") return { key, label: field?.startLabel?.trim() || `${base} from`, width: widthOf(key) };
         if (leg === "end") return { key, label: field?.endLabel?.trim() || `${base} to`, width: widthOf(key) };
@@ -347,13 +354,13 @@ export function buildServer(deps: {
      */
     const datesOf = (rawBlock: string): { text: string; overdue: boolean }[] => {
       const b = JSON.parse(rawBlock) as {
-        blockTypeId: string | null;
+        type?: string | null;
         properties: Record<string, unknown>;
       };
-      const schema = b.blockTypeId ? types().get(b.blockTypeId)?.propertySchema : null;
-      if (!schema) return [];
-      const done = isComplete(schema, b.properties ?? {});
-      const canBeLate = Boolean(schema.status_field) && !done;
+      const type = b.type ? types().get(b.type) : undefined;
+      if (!type) return [];
+      const done = isComplete(type, b as InterchangeObject);
+      const canBeLate = Boolean(type.profiles?.task?.status) && !done;
       const today = new Date().toISOString().slice(0, 10);
       const short = (v: string) => {
         const d = new Date(v.includes("T") ? v : `${v}T12:00:00`);
@@ -362,12 +369,12 @@ export function buildServer(deps: {
           : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
       };
       const out: { text: string; overdue: boolean }[] = [];
-      for (const f of schema.fields) {
+      for (const f of type.fields ?? []) {
         const v = (b.properties ?? {})[f.key];
         if (v === null || v === undefined || v === "") continue;
-        if (f.type === "datetime" || f.type === "date") {
+        if (f.kind === "datetime" || f.kind === "date") {
           out.push({ text: short(String(v)), overdue: false });
-        } else if (f.type === "datespan" && typeof v === "object") {
+        } else if (f.kind === "datespan" && typeof v === "object") {
           const span = v as { start?: string; end?: string };
           const a = span.start ? short(span.start) : "";
           const z = span.end ? short(span.end) : "";
@@ -385,11 +392,11 @@ export function buildServer(deps: {
     /** One cell, as text. */
     const cellValue = (rawBlock: string, key: string): string => {
       const b = JSON.parse(rawBlock) as {
-        blockTypeId: string | null;
+        type?: string | null;
         properties: Record<string, unknown>;
         updatedAt: string;
       };
-      const schema = b.blockTypeId ? types().get(b.blockTypeId)?.propertySchema : null;
+      const schema = b.type ? types().get(b.type) : null;
       if (key === "edited") return b.updatedAt.slice(0, 10);
       const bare = key.startsWith("prop:") ? key.slice(5) : key;
       const [fieldKey, leg] = bare.split(".");
@@ -401,10 +408,10 @@ export function buildServer(deps: {
         const v = span?.[leg];
         return typeof v === "string" ? v.replace("T", " ") : "";
       }
-      const field = (schema?.fields ?? []).find((f) => f.key === fieldKey);
+      const field = (schema?.fields ?? []).find((f: { key: string }) => f.key === fieldKey);
       // A select's stored value is not what a reader should be shown.
       if (field && typeof value === "string") return optionLabel(field, value);
-      if (field?.type === "recurrence" && typeof value === "object") {
+      if (field?.kind === "recurrence" && typeof value === "object") {
         const rec = value as { frequency?: string; interval?: number };
         return rec.frequency ? `every ${rec.interval ?? 1} ${rec.frequency}` : "";
       }
@@ -429,7 +436,7 @@ export function buildServer(deps: {
     for (const r of regions) cells[String(r.index)] = [];
     for (const m of mirror.membersOf(id)) {
       const block = JSON.parse(m.raw);
-      const c = toCanonical(block, block.blockTypeId ? idx.get(block.blockTypeId) : undefined, {
+      const c = toCanonical(block, block.type ? idx.get(block.type) : undefined, {
         appOrigin: config.origin,
       });
       if (c.archivedAt) continue;
@@ -478,7 +485,7 @@ export function buildServer(deps: {
         const r = mirror.rawBlock(mid);
         if (!r) continue;
         const b = JSON.parse(r);
-        const c = toCanonical(b, b.blockTypeId ? idx.get(b.blockTypeId) : undefined, {
+        const c = toCanonical(b, b.type ? idx.get(b.type) : undefined, {
           appOrigin: config.origin,
         });
         if (c.archivedAt) continue;
@@ -654,7 +661,7 @@ export function buildServer(deps: {
         const raw = mirror.rawBlock(id);
         if (!raw) continue;
         const b = JSON.parse(raw);
-        const c = toCanonical(b, b.blockTypeId ? idx.get(b.blockTypeId) : undefined, {
+        const c = toCanonical(b, b.type ? idx.get(b.type) : undefined, {
           appOrigin: config.origin,
         });
         for (const link of c.links) {
@@ -962,7 +969,11 @@ export function buildServer(deps: {
     const title = (firstIndex >= 0 ? lines[firstIndex]! : "").trim().slice(0, 500) || "Untitled";
     const rest = firstIndex >= 0 ? lines.slice(firstIndex + 1).join("\n").trim() : "";
 
-    const prose = bodyFieldKey(type?.propertySchema ?? null);
+    // The note profile says where a body lives. `content` is the reserved slot
+    // outside the property bag, so it is not a property key and must not be
+    // written as one.
+    const bodySlot = type?.profiles?.note?.body;
+    const prose = typeof bodySlot === "string" && bodySlot !== "content" ? bodySlot : null;
     const properties: Record<string, unknown> =
       rest && prose
         ? { title, [prose]: rest }
@@ -1034,9 +1045,9 @@ export function buildServer(deps: {
     } else if (body.kind === "complete") {
       const raw = mirror.rawBlock(body.blockId);
       if (!raw) return reply.code(404).send({ error: "not in the mirror" });
-      const row = JSON.parse(raw) as { version: number; blockTypeId: string | null };
-      const schema = row.blockTypeId ? types().get(row.blockTypeId)?.propertySchema : null;
-      const status = body.status ?? schema?.complete_values?.[0];
+      const row = JSON.parse(raw) as { version: number; type?: string | null };
+      const type = row.type ? types().get(row.type) : undefined;
+      const status = body.status ?? (type?.profiles?.task?.completeValues as string[] | undefined)?.[0];
       if (!status) return reply.code(400).send({ error: "that block's type has no completed status" });
       baseVersion = row.version;
       intent = { kind: "complete", blockId: body.blockId, status };
@@ -1096,30 +1107,38 @@ export function buildServer(deps: {
       return { id: row.id };
     }
     if (intent.kind === "move") {
-      // An explicit null, not an empty object: Hermes merges context rather
-      // than replacing it, so `{}` leaves the old region where it was.
-      await hermes.placeMember(
+      // A region name, through the binding. Which cell that is on the grid is
+      // this producer's business and stops at its edge.
+      const board = mirror.rawBlock(intent.collectionId);
+      const names = board
+        ? ((JSON.parse(board) as { placement?: { regions?: string[] } }).placement?.regions ?? [])
+        : [];
+      const answer = await ix.place(
         intent.collectionId,
         intent.blockId,
-        { region: intent.region },
-        intent.join,
+        intent.region === null ? null : (names[intent.region] ?? null),
       );
+      if (!answer.ok) throw new HermesError(400, "that region is not on this board");
       // What the region does to what lands in it — the tag, and the status if
       // it sets one. Without this a board records an arrangement instead of
       // making it.
-      await applyRegionActions(hermes, mirror, intent);
+      await applyRegionActions(ix, hermes, mirror, intent);
       return { id: intent.blockId };
     }
     if (intent.kind === "complete") {
-      const page = await hermes.blocksByIds([intent.blockId]);
-      const current = page.blocks[0];
-      if (!current) throw new HermesError(404, "block not found");
-      const schema = types().get(current.blockTypeId ?? "")?.propertySchema;
-      if (!schema?.status_field) throw new HermesError(400, "no status field on that type");
-      await hermes.patchBlock(intent.blockId, {
-        version: current.version,
-        properties: { ...current.properties, [schema.status_field]: intent.status },
+      // From the mirror rather than a fresh read: the version travels with the
+      // object now, so there is nothing left to fetch first. A stale one is
+      // refused rather than merged, which is the answer we want anyway.
+      const raw = mirror.rawBlock(intent.blockId);
+      if (!raw) throw new HermesError(404, "block not found");
+      const current = JSON.parse(raw) as { type?: string | null; version?: number };
+      const statusKey = types().get(current.type ?? "")?.profiles?.task?.status;
+      if (typeof statusKey !== "string") throw new HermesError(400, "that type declares no task status");
+      const answer = await ix.patch(intent.blockId, {
+        set: { [statusKey]: intent.status },
+        version: current.version ?? 0,
       });
+      if (!answer.ok) throw new HermesError(answer.conflict ? 409 : 400, "the write was refused");
       return { id: intent.blockId };
     }
     const note = await hermes.dailyNote(intent.date);
@@ -1139,17 +1158,15 @@ export function buildServer(deps: {
   function stashLocalCreate(id: string, intent: Intent & { kind: "create" }): void {
     const now = new Date().toISOString();
     const idx = types();
-    const row = {
+    const row: InterchangeObject = {
       id,
-      blockTypeId: intent.blockTypeId ?? null,
-      collectionKind: null,
-      content: intent.content ?? null,
+      ...(intent.blockTypeId ? { type: intent.blockTypeId } : {}),
+      ...(intent.content ? { content: intent.content } : {}),
       properties: intent.properties ?? {},
-      version: 0, // not yet a server version; nothing may patch on this
-      archivedAt: null,
-      createdAt: now,
-      updatedAt: now,
-      tags: [] as string[],
+      version: 0, // not yet a producer's version; nothing may patch on this
+      archived: false,
+      created: now,
+      updated: now,
     };
     const c = toCanonical(row, intent.blockTypeId ? idx.get(intent.blockTypeId) : undefined, {
       appOrigin: config.origin,
@@ -1163,7 +1180,7 @@ export function buildServer(deps: {
         title: c.title,
         body: c.body ?? "",
         kind: c.kind,
-        typeId: row.blockTypeId,
+        typeId: row.type ?? null,
         noteDate: c.noteDate,
       },
     ]);

@@ -51,14 +51,16 @@ export function narrow(
       .map(([object, o]) => ({ object, op: o === "insert" ? "create" : o }))
       .sort((a, b) => (a.object < b.object ? -1 : 1));
 
-    // Collections arrive whole rather than as a delta of their own. A card
-    // moving is reported as an update to the card, and where it landed lives on
-    // the collection — so a follower that got the update and not the board
-    // would know something moved and not where to.
-    const live = new Set(objects.map((o) => o.id));
-    out.collections = ((out.collections ?? []) as { members?: { object?: string }[] }[]).filter((c) =>
-      (c.members ?? []).some((m) => m.object && live.has(m.object)),
-    );
+    // Every collection, whole, rather than only the ones holding a changed
+    // object. A card moving is reported as an update to the card, and where it
+    // landed lives on the collection — so a follower that got the update and
+    // not the board would know something moved and not where to.
+    //
+    // Filtering to the boards a changed object sits in *now* is the version
+    // that looks right and drops the most interesting case: a card taken off a
+    // board is no longer in its member list, so the board it left is exactly
+    // the one that would not travel, and the follower keeps showing the card
+    // where it used to be. Collections are few and members are ids.
   }
 
   out.objects = objects;

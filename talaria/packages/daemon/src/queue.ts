@@ -1,6 +1,6 @@
-import { isComplete, type PropertySchema } from "@hermes/shared";
-import type { HermesTypeRow } from "@talaria/canonical";
-import { HermesError, OfflineError, type Hermes, type SyncBlockRow } from "./hermes.js";
+import { isComplete, type InterchangeObject, type InterchangeType } from "@talaria/canonical";
+import { HermesError, OfflineError, type Hermes } from "./hermes.js";
+import type { Interchange } from "./interchange.js";
 import type { Mirror, QueuedIntent } from "./mirror.js";
 
 /**
@@ -70,6 +70,7 @@ export type ReplayResult =
  * set a status only when it is one the type actually offers.
  */
 export async function applyRegionActions(
+  ix: Interchange,
   hermes: Hermes,
   mirror: Mirror,
   intent: MoveIntent,
@@ -106,22 +107,22 @@ export async function applyRegionActions(
   if (!wantStatus) return;
   const blockRaw = mirror.rawBlock(intent.blockId);
   if (!blockRaw) return;
-  const block = JSON.parse(blockRaw) as { blockTypeId: string | null; properties: Record<string, unknown>; version: number };
+  const block = JSON.parse(blockRaw) as InterchangeObject;
   const type = mirror
     .types()
-    .map((t) => JSON.parse(t) as { id: string; propertySchema: PropertySchema | null })
-    .find((t) => t.id === block.blockTypeId);
-  const statusKey = type?.propertySchema?.status_field;
-  if (!statusKey) return;
-  const field = (type?.propertySchema?.fields ?? []).find((f) => f.key === statusKey);
+    .map((t) => JSON.parse(t) as InterchangeType)
+    .find((t) => t.id === block.type);
+  const statusKey = type?.profiles?.task?.status;
+  if (typeof statusKey !== "string") return;
+  const field = (type?.fields ?? []).find((f) => f.key === statusKey);
   // Only if the type actually offers it: writing a value a status field has
-  // never heard of leaves a block in a state nothing can read.
-  if (!field?.options?.includes(wantStatus)) return;
+  // never heard of leaves an object in a state nothing can read.
+  const offers = (field?.options ?? []).some((o) => (typeof o === "string" ? o : o.value) === wantStatus);
+  if (!offers) return;
   try {
-    await hermes.patchBlock(intent.blockId, {
-      version: block.version,
-      properties: { ...block.properties, [statusKey]: wantStatus },
-    });
+    // Two keys, not the whole bag. Everything else on this object is untouched,
+    // including the fields Talaria has never heard of.
+    await ix.patch(intent.blockId, { set: { [statusKey]: wantStatus }, version: block.version ?? 0 });
   } catch {
     // Same reasoning: the placement stands.
   }
@@ -136,6 +137,7 @@ export function appendedContent(before: string | null, addition: string): string
 
 export class Queue {
   constructor(
+    private ix: Interchange,
     private hermes: Hermes,
     private mirror: Mirror,
   ) {}
@@ -148,13 +150,28 @@ export class Queue {
     return this.mirror.pending().map((row) => ({ row, intent: JSON.parse(row.payload) as Intent }));
   }
 
-  private schemaFor(typeId: string | null): PropertySchema | null {
-    if (!typeId) return null;
+  /**
+   * What a board calls the region at this index.
+   *
+   * The app still counts cells, because a grid is drawn left to right and a
+   * person dragging a card is pointing at a square. The binding carries names,
+   * because a square is a fact about this renderer. The translation is here, at
+   * the boundary, and it is the only place either vocabulary meets the other.
+   */
+  private regionName(collectionId: string, index: number): string | null {
+    const raw = this.mirror.rawBlock(collectionId);
+    if (!raw) return null;
+    const board = JSON.parse(raw) as { placement?: { regions?: string[] } };
+    return board.placement?.regions?.[index] ?? null;
+  }
+
+  private typeFor(typeId: string | null): InterchangeType | undefined {
+    if (!typeId) return undefined;
     for (const raw of this.mirror.types()) {
-      const t = JSON.parse(raw) as HermesTypeRow;
-      if (t.id === typeId) return t.propertySchema;
+      const t = JSON.parse(raw) as InterchangeType;
+      if (t.id === typeId) return t;
     }
-    return null;
+    return undefined;
   }
 
   /**
@@ -218,35 +235,45 @@ export class Queue {
     return { id: row.id, outcome: created.version === 1 ? "applied" : "already" };
   }
 
+  /**
+   * Tick something off.
+   *
+   * Reads the object from the mirror rather than fetching it first. The binding
+   * has no read-by-id and does not need one here: the version travels with
+   * every object, so the mirror already holds the token this write has to
+   * present, and a stale one is refused rather than merged. The refusal is the
+   * answer — it means somebody else got there, which is a person's business and
+   * not something to resolve by overwriting them.
+   */
   private async replayComplete(row: QueuedIntent, intent: CompleteIntent): Promise<ReplayResult> {
-    let current: SyncBlockRow | undefined;
-    try {
-      const page = await this.hermes.blocksByIds([intent.blockId]);
-      current = page.blocks[0];
-    } catch (err) {
-      if (err instanceof HermesError && err.status === 404) current = undefined;
-      else throw err;
-    }
-    if (!current) {
-      return { id: row.id, outcome: "parked", reason: "that block no longer exists" };
-    }
-    if (current.archivedAt) {
+    const raw = this.mirror.rawBlock(intent.blockId);
+    if (!raw) return { id: row.id, outcome: "parked", reason: "that object is no longer here" };
+    const current = JSON.parse(raw) as InterchangeObject;
+    if (current.archived) {
       // Never resurrect something the user filed away while we were out of
       // touch; they had newer information than the queue does.
-      return { id: row.id, outcome: "parked", reason: "the block was archived meanwhile" };
+      return { id: row.id, outcome: "parked", reason: "the object was archived meanwhile" };
     }
-    const schema = this.schemaFor(current.blockTypeId);
-    if (!schema?.status_field) {
-      return { id: row.id, outcome: "parked", reason: "that block has no status to set" };
+    const type = this.typeFor(current.type ?? null);
+    const statusKey = type?.profiles?.task?.status;
+    if (typeof statusKey !== "string") {
+      return { id: row.id, outcome: "parked", reason: "that type declares no task status" };
     }
-    if (isComplete(schema, current.properties)) {
+    if (isComplete(type, current)) {
       // Ticked in the app too. Nothing to do, and nothing worth saying.
       return { id: row.id, outcome: "already" };
     }
-    await this.hermes.patchBlock(intent.blockId, {
-      version: current.version,
-      properties: { ...current.properties, [schema.status_field]: intent.status },
+    const answer = await this.ix.patch(intent.blockId, {
+      set: { [statusKey]: intent.status },
+      version: current.version ?? 0,
     });
+    if (!answer.ok) {
+      return {
+        id: row.id,
+        outcome: "parked",
+        reason: answer.conflict ? "it changed while we were away" : "the write was refused",
+      };
+    }
     return { id: row.id, outcome: "applied" };
   }
 
@@ -257,16 +284,19 @@ export class Queue {
    */
   private async replayMove(row: QueuedIntent, intent: MoveIntent): Promise<ReplayResult> {
     try {
-      // An explicit null, not an empty object: Hermes merges context rather
-      // than replacing it, so `{}` leaves the old region exactly where it was.
-      // Null overwrites, and the board reads null as unplaced.
-      await this.hermes.placeMember(
+      // A region *name*, which is what the board publishes and what any other
+      // tool would understand. Translating it back to whatever index this
+      // producer stores is the producer's job, and a name it never declared is
+      // refused rather than quietly filed somewhere nothing renders.
+      const answer = await this.ix.place(
         intent.collectionId,
         intent.blockId,
-        { region: intent.region },
-        intent.join,
+        intent.region === null ? null : this.regionName(intent.collectionId, intent.region),
       );
-      await applyRegionActions(this.hermes, this.mirror, intent);
+      if (!answer.ok) {
+        return { id: row.id, outcome: "parked", reason: "that region is not on this board" };
+      }
+      await applyRegionActions(this.ix, this.hermes, this.mirror, intent);
       return { id: row.id, outcome: "applied" };
     } catch (err) {
       if (err instanceof HermesError && (err.status === 404 || err.status === 400)) {

@@ -1,5 +1,6 @@
 import { ConfigError, loadConfig, MIRROR_PATH, SOCKET_PATH } from "./config.js";
 import { Hermes } from "./hermes.js";
+import { Interchange } from "./interchange.js";
 import { Mirror } from "./mirror.js";
 import { Queue } from "./queue.js";
 import { buildServer, listen } from "./server.js";
@@ -40,9 +41,14 @@ async function main(): Promise<void> {
 
   const mirror = new Mirror(MIRROR_PATH);
   const hermes = new Hermes(config);
-  const sync = new Sync(hermes, mirror, config.origin);
-  const queue = new Queue(hermes, mirror);
-  const app = buildServer({ config, mirror, hermes, sync, socketPath: SOCKET_PATH });
+  // The binding. Everything about the library goes through this; `hermes` is
+  // left for the two things that are genuinely Hermes features — the chat
+  // surface and opening a block in the web app — and for the smart-collection
+  // evaluator the format cannot yet ask for (see LIMITS.md).
+  const ix = new Interchange(`${config.origin.replace(/\/$/, "")}/api`, () => config.accessKey);
+  const sync = new Sync(ix, hermes, mirror, config.origin);
+  const queue = new Queue(ix, hermes, mirror);
+  const app = buildServer({ config, mirror, hermes, ix, sync, socketPath: SOCKET_PATH });
 
   await listen(app, SOCKET_PATH);
   log(`listening on ${SOCKET_PATH} — ${mirror.count()} blocks mirrored`);

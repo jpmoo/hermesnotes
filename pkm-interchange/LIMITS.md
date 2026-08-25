@@ -72,6 +72,43 @@ micro-optimisation. It will not stay tolerable. The fix is an exporter that can
 take the whole set for context and emit a subset, which is the same shape
 `narrow` wants and should replace it.
 
+### There is no create
+
+**Needed for:** Talaria making a task or a note.
+
+**What the format has:** `set`/`unset` on an object that already exists, and
+nothing that brings one into being. A creating client may choose the id — the
+spec says so — which is most of what a create needs and not the verb itself.
+
+**What Talaria does:** `POST /blocks` — a Hermes route. It is the largest
+remaining hole in the port and the obvious next thing to specify: `PUT` an object
+at the id the client picked, which makes creation idempotent by construction and
+needs no new concepts.
+
+### There is no tag write
+
+**Needed for:** a matrix region that tags whatever enters it.
+
+**What the format has:** `tags` on an object when reading, and no way to change
+them. They are not properties, so `set` cannot reach them.
+
+**What Talaria does:** `GET`/`PUT /blocks/:id/tags`. Either tags become
+properties — which they are not, they are a shared vocabulary across types — or
+the patch grows `addTags`/`removeTags`. The second is smaller and says what it
+means.
+
+### A note identified by a date
+
+**Needed for:** appending a line to today's daily note.
+
+**What the format has:** nothing. "The note for 2026-08-25" is a query, and the
+format has no query language — the same gap as derivations, arriving from the
+other direction.
+
+**What Talaria does:** `GET /today/:date/note`. Worth noting that the daily note
+is one of the most portable ideas in this genre and one of the least sayable
+here.
+
 ---
 
 ## Closed

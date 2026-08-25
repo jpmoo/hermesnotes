@@ -194,7 +194,7 @@ export function toInterchange(input: ExportInput): {
     const gridded = regions.length > 0;
     // A region's index means nothing outside the grid that produced it — the
     // same objection the format makes to coordinates, one step less obvious.
-    const regionNames = regions.map((r, i) => slug(r.title) || `region-${i}`);
+    const regionNames = regionNamesOf(props);
     if (gridded && regions.some((r) => !r.title?.trim())) {
       note(
         "placement.unnamed-region",
@@ -464,6 +464,21 @@ function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string)
       ...Object.fromEntries(Object.entries(f).filter(([k]) => !FIELD_KEYS.has(k))),
     },
   ];
+}
+
+/**
+ * The names a matrix's regions travel under, in index order.
+ *
+ * Exported because a write has to reverse it: a client moves a card to
+ * `urgent-important`, and the only thing that can turn that back into the
+ * index Hermes stores is the same function that turned the index into the name.
+ * Two implementations of this would drift the first time a region was renamed.
+ */
+export function regionNamesOf(properties: Record<string, unknown>): string[] {
+  const regions = Array.isArray(properties.matrix_regions)
+    ? (properties.matrix_regions as { title?: string }[])
+    : [];
+  return regions.map((r, i) => slug(r.title) || `region-${i}`);
 }
 
 /** A region title as a name that survives being read somewhere with no grid. */

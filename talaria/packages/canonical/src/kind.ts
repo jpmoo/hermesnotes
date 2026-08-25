@@ -1,4 +1,4 @@
-import { declaresProfile, type PropertySchema } from "@hermes/shared";
+import { completable, declares, type InterchangeType } from "./interchange.js";
 import type { CanonicalKind } from "./types.js";
 
 /**
@@ -53,56 +53,46 @@ const BY_PROFILE: [name: string, kind: CanonicalKind][] = [
  * difference will keep a wrong guess forever.
  */
 export function resolveKind(
-  typeName: string | null,
-  schema: PropertySchema | null | undefined,
-  opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
+  type: InterchangeType | undefined,
+  opts: { collectionKind?: string | null } = {},
 ): { kind: CanonicalKind; derived: boolean } {
   if (opts.collectionKind) return { kind: "other", derived: false };
 
   // Declared beats everything, including the shape. A type that says it is a
   // task is a task even if its status field was removed this morning.
-  //
-  // Read straight off the schema rather than through profilesOf, which derives
-  // `task` from status_field — a derived profile is the guess this branch exists
-  // to avoid laundering into a declaration.
   for (const [name, kind] of BY_PROFILE) {
-    if (declaresProfile(schema, name)) return { kind, derived: false };
+    if (declares(type, name as "task" | "event" | "contact" | "note")) return { kind, derived: false };
   }
 
-  return { kind: derive(typeName, schema, opts), derived: true };
+  return { kind: derive(type), derived: true };
 }
 
 export function kindOf(
-  typeName: string | null,
-  schema: PropertySchema | null | undefined,
-  opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
+  type: InterchangeType | undefined,
+  opts: { collectionKind?: string | null } = {},
 ): CanonicalKind {
-  return resolveKind(typeName, schema, opts).kind;
+  return resolveKind(type, opts).kind;
 }
 
-/** Everything below here is the guess, kept until declaring is the norm. */
-function derive(
-  typeName: string | null,
-  schema: PropertySchema | null | undefined,
-  opts: { builtin?: boolean; isText?: boolean; collectionKind?: string | null } = {},
-): CanonicalKind {
-  if (opts.isText) return "note";
-
-  const fields = schema?.fields ?? [];
-  const has = (t: string) => fields.some((f) => f.type === t);
-  const completes = Boolean(schema?.status_field && schema.complete_values?.length);
+/**
+ * Everything below here is the guess.
+ *
+ * `project`, `person` and `organization` are not v0 profiles, so nothing can
+ * declare them and this is the only way to have them at all. It is a consumer's
+ * private heuristic over what it was given, which is allowed — what is not
+ * allowed is presenting it as something the producer said, hence `derived`.
+ */
+function derive(type: InterchangeType | undefined): CanonicalKind {
+  const fields = type?.fields ?? [];
+  const has = (k: string) => fields.some((f) => f.kind === k);
 
   // Strongest signal first, and it doesn't care what the type is called: a thing
   // that can be finished is a task. This is what keeps a renamed Task working.
-  if (completes) return "task";
+  if (completable(type)) return "task";
 
-  // Then the name, against the kinds Hermes seeds. Deliberately NOT limited to
-  // `builtin` types: the seeding migrations skip any user who already made a
-  // type of that name, so someone who built their own Project before the
-  // built-in arrived has a Project that is user data — the common case, not the
-  // odd one. The name is their own vocabulary and it is the best evidence
-  // available when the shape says nothing.
-  const named = typeName?.trim().toLowerCase();
+  // Then the name. The producer's own vocabulary is the best evidence available
+  // when the shape says nothing, and a great many real types declare nothing.
+  const named = type?.name?.trim().toLowerCase();
   const seeded: Record<string, CanonicalKind> = {
     task: "task",
     event: "event",
@@ -125,9 +115,9 @@ function derive(
   // A person is the one shape that reliably points at an organization. Checked
   // before the org itself, since an organization can carry a reference too (to
   // its parent) and would otherwise swallow it.
-  if (fields.some((f) => f.type === "reference" && /organi[sz]ation|company|employer/i.test(f.key)))
+  if (fields.some((f) => f.kind === "reference" && /organi[sz]ation|company|employer/i.test(f.key)))
     return "person";
-  if (fields.some((f) => f.type === "reference" && /parent/i.test(f.key))) return "organization";
+  if (fields.some((f) => f.kind === "reference" && /parent/i.test(f.key))) return "organization";
 
   return "other";
 }

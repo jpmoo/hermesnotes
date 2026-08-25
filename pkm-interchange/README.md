@@ -203,6 +203,8 @@ Monthly rules must also say `byMonthDay` and `monthEnd`. A rule on the 31st that
 
 In storage the two cases are identical: an object holding a position in a collection. Nothing about the position itself says whether somebody decided it or whether it is where the card happened to land, so `placement.semantic` says which — and semantic placement uses **named regions, never coordinates**, because `urgent-important` survives being opened in a tool that draws no grid and `(340, 120)` does not.
 
+A region can be a bare name or `{ name, label }` when the thing a machine matches on is not the words a person reads. That distinction earns its place: producers derive the name by slugging the label, so a format with nowhere to keep the label makes the derivation lossy — and a board arrives with regions a consumer can match on and cannot render, drawing "Region 3" over somebody's own words.
+
 ### A link is a link
 
 `{ from, to }`, and `to` is required. Everything a reader might go on to ask — what kind of thing is it, does it still exist, what is it called — is a question about the far end and belongs to the far end. A copy of the target's type on the edge falsifies itself the moment the target is retyped.
@@ -256,6 +258,8 @@ This is the same `Thing To Do` from the top of the page, with the rest of its fi
 ```
 
 Value kinds are `text · richtext · number · boolean · url · date · datetime · datespan · enum · reference · attachment`, **and the list is open** — if you have a kind nobody standardised, declare it under your own name and it travels untouched.
+
+The same goes for keys. Types, fields, collections, regions and the envelope itself are all open objects, and anything you hang on them survives a trip through somebody else's app. One rule: **unprefixed keys belong to the format, and yours go under a prefix you control** — `hermes:color`, not `color`. Two apps writing `color` at different meanings is one problem; the format later standardising `color` underneath everyone who got there first is the worse one.
 
 One thing worth getting right at this stage, because it is the commonest shape in a knowledge base and the easiest to leave unsaid: **if a field can hold more than one value, say so.** One task in two projects, one note citing four sources.
 
@@ -344,12 +348,17 @@ Say `"full"` when you kept everything, and mean it. A tool that reports reduced 
 
 ### Level 4 — if you have an API
 
-Four things, all small, all covered in `AGENTS.md`:
+Five things, all small, all covered in `AGENTS.md`:
 
 - **Reads answer with an envelope** — the same document a file carries, so a client knows the shape before it asks. Optionally narrowed: `?profile=task` for one kind of thing, `?since=<cursor>` for what has moved. Narrowing is permission to send less, never permission to send objects nobody can read — the types always travel.
 - **Partial writes** — `set` and `unset`, and nothing you were not told about changes.
 - **Capabilities on request** — a client should be able to ask what you support *before* it writes, not discover by trying.
 - **A change feed** where `op` describes the object, not the row that moved in your storage. A membership or a tag going away is an *update* to the object that had it. Get this wrong and dragging a card between two columns announces the card as deleted.
+- **Moving something** is its own write, because where an object sits belongs to the collection rather than to the object: `PATCH .../collections/{c}/members/{o}` with a region *name*, refused if the collection never declared it.
+
+If anything mirrors you **and** writes back, four more rules matter, and they are in `AGENTS.md` under *A follower that also writes*. The short version: a read must carry each object's `version` or nobody can write safely through your binding; a write should answer with the resulting object; applying the same change twice must do nothing; and a creating client may choose the id.
+
+The tempting shortcut there — *let a follower skip the changes it caused* — is a trap, and the reason is worth reading before you build a sync loop.
 
 ---
 
@@ -404,7 +413,7 @@ This is what most apps can be measured by, and it is honest about being narrower
 ### Run the whole suite against your implementation
 
 ```bash
-npx pkm-check --self       # 66 cases, four levels, against a reference implementation
+npx pkm-check --self       # 69 cases, four levels, against a reference implementation
 ```
 
 To measure **your** app, implement the ten operations below and hand them to the runner. This is an in-process check, so it wants your app to be JavaScript — if it is not, the fixtures are plain JSON and `fixtures/README.md` describes the case grammar, so a runner in your own language is a couple of hundred lines and a genuinely useful thing to contribute back:

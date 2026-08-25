@@ -158,8 +158,8 @@ export function buildServer(deps: {
     const f = freshnessOf(sync.lastSuccessAt, sync.everSynced);
     add("mirror", f !== "never" && f !== "cold", `${mirror.count()} blocks, ${describe(f, sync.lastSuccessAt)}`);
 
-    const reach = await hermes.reachable();
-    add("hermes", reach.ok, reach.detail);
+    const reach = await ix.reachable(sync.cursor);
+    add("producer", reach.ok, reach.detail);
 
     const q = mirror.pending();
     const parked = q.filter((x) => x.parkedReason);

@@ -353,6 +353,38 @@ try {
   );
   check("what this stranger served is clean", sync.mismatch.length === 0, JSON.stringify(sync.mismatch));
 
+  // ---- what Talaria still asks Hermes for --------------------------------
+  //
+  // "It works through the spec" is a claim, and a claim nobody checks is one
+  // that decays the first time somebody reaches for a convenient route. So the
+  // surface is enumerated: every Hermes call left in the daemon must be either
+  // the chat, which is a Hermes feature and not library data, or a gap the
+  // format genuinely has and LIMITS.md names. A new one appearing here means
+  // either a limit to write down or a reach that should not have happened.
+  const { readFileSync: rf } = await import("node:fs");
+  const daemonSrc = ["sync.ts", "queue.ts", "server.ts", "index.ts"]
+    .map((f) => rf(new URL(`./src/${f}`, import.meta.url), "utf8"))
+    .join("\n")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
+  const ALLOWED: Record<string, string> = {
+    assistant: "the chat surface — a Hermes feature, not library data",
+    assistantConfirm: "the chat surface",
+    queryMatches: "LIMITS: `derivations` names the feature and not the query",
+    createBlock: "LIMITS: there is no create",
+    blockTags: "LIMITS: there is no tag write",
+    setBlockTags: "LIMITS: there is no tag write",
+    dailyNote: "LIMITS: a note identified by a date",
+    patchBlock: "LIMITS: reached only to write a daily note found by date",
+    feedEvents: "dead — no interface path reaches it since the calendar was scoped",
+  };
+  const used = [...new Set([...daemonSrc.matchAll(/hermes\.([a-zA-Z]+)\(/g)].map((m) => m[1]!))].sort();
+  const unexpected = used.filter((m) => !(m in ALLOWED));
+  console.log("\n  Hermes calls left in the daemon:");
+  for (const m of used) console.log(`    ${m.padEnd(18)} ${ALLOWED[m] ?? "*** UNACCOUNTED FOR ***"}`);
+  check("every one is the chat or a bookmarked gap", unexpected.length === 0, unexpected.join(", "));
+  check("nothing reads the library outside the binding", !/hermes\.(blocksPage|blocksByIds|blockTypes|block)\(/.test(daemonSrc));
+
   console.log(bad ? `\n${bad} failed` : "\nall good — Talaria read a stranger");
 } finally {
   mirror.close();

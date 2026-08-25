@@ -166,6 +166,38 @@ export class Interchange {
   }
 
   /**
+   * Is the far end there, and does it know us?
+   *
+   * Two questions with different answers, so two calls. `conformance` is
+   * unauthenticated by design, which makes it the honest test of *reachable* —
+   * a 401 from it would say nothing about the network. Then one scoped read,
+   * from the cursor we already hold so it is usually an empty answer, to find
+   * out whether the key is any good.
+   *
+   * Both through the binding. This used to ask for the producer's block types,
+   * which proved reachability by way of a route only that producer has.
+   */
+  async reachable(cursor: string | null): Promise<{ ok: boolean; detail: string }> {
+    try {
+      await this.conformance();
+    } catch (err) {
+      if (err instanceof OfflineError) return { ok: false, detail: `unreachable: ${err.message}` };
+      return { ok: false, detail: (err as Error).message };
+    }
+    try {
+      await this.read(cursor === null ? { profile: "__none__" } : { since: cursor });
+      return { ok: true, detail: "reachable, key accepted" };
+    } catch (err) {
+      if (err instanceof GoneError) return { ok: true, detail: "reachable, key accepted (cursor aged out)" };
+      if (err instanceof OfflineError) return { ok: false, detail: `unreachable: ${err.message}` };
+      if (/^401 /.test((err as Error).message)) {
+        return { ok: false, detail: "reachable, but the access key was refused" };
+      }
+      return { ok: false, detail: (err as Error).message };
+    }
+  }
+
+  /**
    * Move an object to a named region of a collection.
    *
    * A name, never a coordinate. `urgent-important` survives being read by

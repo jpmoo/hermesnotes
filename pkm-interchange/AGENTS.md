@@ -121,7 +121,7 @@ This is the single most important rule for interoperability between tools that m
 
 The characteristic interop disaster is not rejection, it is silence: my task recurs from its completion date, yours has no such concept, yours imports it as schedule-anchored, and I find out in March when my haircut reminder has drifted a month. Import either preserves the semantics, preserves the data opaquely and reports reduced fidelity, or fails. It never quietly does something else.
 
-→ `fixtures/conformance.json`
+→ `fixtures/roundtrip.json`
 
 ---
 
@@ -545,18 +545,14 @@ Opaque, like a cursor. Compare it for equality; do not parse it or order it.
 
 #### A write answers with the result
 
-```json
-{ "ok": true, "fidelity": "full", "reports": [],
-  "cursor": "1014", "object": { "id": "o_1", "version": 8, ... } }
-```
+The `object` and `cursor` in a write's answer — see *Every write answers for
+itself* below — are what make the echo harmless. A client that applies the
+returned object holds exactly what the producer holds, **including whatever the
+producer did that the client did not ask for**, so the row that comes down the
+feed afterwards carries a version it already has and there is nothing to do.
 
-The write is also a read. A client that applies the returned object holds
-exactly what the producer holds — **including whatever the producer did that the
-client did not ask for**, which is the part that makes this the load-bearing
-rule rather than a convenience.
-
-`cursor` is where the write landed, for a client that wants to know whether a
-row it later sees is its own.
+That is the load-bearing part, and the reason those two fields are not a
+convenience.
 
 #### Applying a change twice MUST be a no-op
 
@@ -613,6 +609,11 @@ message will be used to carry decorations.
 ### Every write answers for itself
 
 ```json
+{ "ok": true, "fidelity": "full", "reports": [],
+  "cursor": "1014", "object": { "id": "o_1", "version": 8, ... } }
+```
+
+```json
 { "ok": true, "fidelity": "reduced", "reports": ["series.anchor"] }
 ```
 
@@ -620,6 +621,14 @@ Loud failure, applied to writing. A server that stores what it can and answers a
 bare `ok` has told the caller everything went in. `"fidelity": "full"` is a
 promise, and it is worth something only because it is not said defensively —
 report reduced on everything and the field stops carrying information.
+
+`object` is the object as it now stands and `cursor` is where the write landed.
+Both are optional and both are worth sending: they are what let a follower that
+also writes recognise its own echo instead of trying to filter it out. A refusal
+answers in the same shape — `ok: false`, with `conflict: true` for a stale
+`version` — because "that region is not on this board" and "the network is down"
+call for completely different things, and a caller that cannot tell them apart
+will retry the one it should report.
 
 ### Capabilities are a question, not a header
 
@@ -683,8 +692,9 @@ One integer in `format`. Additive changes do not bump it; the round-trip rule is
 ## Checking yourself
 
 ```
-npx pkm-check ./my-export.json     # is this export valid?
-npx pkm-check --self               # the fixtures, against the reference implementation
+npx pkm-check ./my-export.json        # where do I stand, and what next?
+npx pkm-check --url https://app/api   # a running instance, read-only
+npx pkm-check --self                  # the fixtures, against the reference implementation
 ```
 
 Installing the checker installs this file and the fixtures with it, which is the
@@ -697,11 +707,11 @@ in `fixtures/README.md` and hand them to the runner:
 ```js
 import { runSuites, levelsFrom } from "pkm-check/check/src/runner.js";
 const results = runSuites(myAdapter, "node_modules/pkm-check/fixtures");
-console.log(levelsFrom(results));   // { earned: 2, byLevel: {...} }
+const { roles, byLevel } = levelsFrom(results);
+console.log(roles);    // { produce: 2, consume: 1, operate: 0 } — never one number
 ```
 
-The level that comes back is derived from the run. Do not write one down
-somewhere and hope: a manifest a producer writes is a promise, and one that falls
-out of a suite is evidence.
+The level that comes back is derived from the run, which is the whole point —
+see *Levels*.
 
 Paste the failures at your agent along with this file.

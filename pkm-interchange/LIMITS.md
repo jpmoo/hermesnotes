@@ -47,17 +47,6 @@ everywhere — the same class of thing as a semantic region, and the format
 already argues that class belongs in the data. A board that sorts by due date in
 one app and by title in another is not the same board.
 
-### External feeds are outside the model
-
-**Needed for:** calendar events Talaria shows from subscribed ICS feeds.
-
-**What the format has:** nothing. These are not objects in the library — they
-come from a third party, they are read-only, and they vanish when the
-subscription does.
-
-**Probably correct as-is.** Noted because a consumer that renders a calendar has
-to get them from somewhere, and today that is a Hermes route.
-
 ### A write costs a full export
 
 **Needed for:** the write answer carrying the resulting object.
@@ -131,4 +120,24 @@ you is not a licence to construct another one.
 
 ## Closed
 
-*(entries move here when a spec change lands, with the version that fixed them)*
+### External feeds were never a gap
+
+**Was:** calendar events Talaria shows from subscribed ICS feeds have no place in
+the format, and a consumer rendering a calendar has to get them somewhere — so
+today it asks Hermes.
+
+**Why it is not a gap.** An ICS feed is a URL that anybody can fetch. Two apps
+subscribed to the same calendar do not need one of them to relay it to the
+other; they need the same URL. Nothing about the events is *the producer's* —
+they are a third party's, read-only, and identical whoever asked.
+
+The reason it looked like one is that Talaria happened to ask Hermes first, and
+a route you are already calling is easy to mistake for a dependency you have.
+That is worth remembering next time something appears to be missing from the
+format: check whether the data is the producer's to give before asking the
+format to carry it.
+
+**What follows:** `GET /calendar/events` is a Hermes call Talaria does not need.
+Talaria can hold its own feed list and fetch the same URLs. Not yet done — it is
+a feature rather than a fix, and Hermes' own ICS reader is 399 lines of the
+kind that recurrence rules and timezones make long.

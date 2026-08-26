@@ -135,6 +135,21 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
     );
     // A coordinate means nothing outside the grid that produced it.
     if (!named || positioned) fail("placement.coordinates-not-semantic", `collections[${i}].placement`);
+
+    // A member matches on `name`, never on `label`. Matching the display text
+    // holds until somebody fixes a typo in the wording, and then every card in
+    // that region points at one that no longer exists — which is the whole
+    // reason the two are separate fields.
+    const declaredNames = new Set(
+      (c.placement.regions ?? [])
+        .map((r) => (typeof r === "string" ? r : (r as { name?: string })?.name))
+        .filter((n): n is string => typeof n === "string"),
+    );
+    for (const m of (c.members ?? []) as { region?: unknown }[]) {
+      if (m && typeof m === "object" && typeof m.region === "string" && !declaredNames.has(m.region)) {
+        fail("placement.region-not-declared", `collections[${i}].members`);
+      }
+    }
   });
 
   (e.series ?? []).forEach((s, i) => {

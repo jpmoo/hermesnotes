@@ -15,10 +15,11 @@
     "measure": "tsx measure.ts",
     "roundtrip": "tsx roundtrip.ts",
     "foreign": "tsx foreign.ts ../../pkm-interchange/example/library.json",
-    "check": "tsx regioncheck.ts && tsx importcheck.ts && tsx measure.ts && tsx probe.ts /tmp/hermes-export.json && node ../../pkm-interchange/check/src/cli.js /tmp/hermes-export.json && tsx roundtrip.ts && tsx narrowcheck.ts",
+    "check": "tsx regioncheck.ts && tsx addresscheck.ts && tsx importcheck.ts && tsx measure.ts && tsx probe.ts /tmp/hermes-export.json && node ../../pkm-interchange/check/src/cli.js /tmp/hermes-export.json && tsx roundtrip.ts && tsx narrowcheck.ts",
     "narrowcheck": "tsx narrowcheck.ts",
     "regioncheck": "tsx regioncheck.ts",
-    "importcheck": "tsx importcheck.ts"
+    "importcheck": "tsx importcheck.ts",
+    "addresscheck": "tsx addresscheck.ts"
   },
   "dependencies": {
     "@hermes/shared": "workspace:*"

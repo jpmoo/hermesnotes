@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { db } from "../db.js";
+import { env } from "../env.js";
 
 /**
  * The interchange binding: what this instance honours, and everything it holds.
@@ -209,12 +210,25 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         })),
         seriesRows,
         producer: { name: "hermes", version: "2.0.0" },
-        // Where a person can go to see any of this. Taken from the request
-        // rather than from configuration, because the origin a caller reached
-        // us on is the origin that will work for them — a value in an env file
-        // is one deployment change away from publishing addresses nobody can
-        // open, and it would publish them confidently.
-        origin: `${req.protocol}://${req.hostname}`,
+        // Where a person can go to see any of this.
+        //
+        // Derived from the request until it turned out that a request does not
+        // know. Behind a proxy that strips a path prefix — this app is served
+        // at /hermesnotes — the server sees `/api/...` and has no way to learn
+        // what came before it, so every address it published was a 404, stated
+        // confidently. Which is worse than publishing none: the format is
+        // careful that an id is opaque precisely so nobody constructs one of
+        // these, and then the producer constructed a wrong one.
+        //
+        // `PUBLIC_BASE` is that value and already exists, because the OAuth
+        // metadata endpoints need the same thing. That is also what answers the
+        // original objection to configuration: it cannot drift quietly, since
+        // anything that breaks these addresses breaks discovery in the same
+        // stroke and much more loudly.
+        //
+        // Absent, the request is still the best guess and is right for the
+        // ordinary case of an app served at the root.
+        origin: env.PUBLIC_BASE?.replace(/\/$/, "") ?? `${req.protocol}://${req.hostname}`,
       });
 
       return { ...narrow(envelope, delta, q.profile), cursor, findings };

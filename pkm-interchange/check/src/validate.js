@@ -46,6 +46,24 @@ export function validate(envelope) {
       // point is a different judgment at another zoom level. A region name opens
       // correctly in a tool that draws no grid at all.
       if (!named || positioned) fail("placement.coordinates-not-semantic", at);
+
+      // A member matches on `name`, never on `label`.
+      //
+      // Matching the display text works right up until somebody fixes a typo in
+      // the wording, at which point every card in that region points at a region
+      // that no longer exists — which is the whole reason the two are separate
+      // fields. A region nothing renders is a card that has silently vanished
+      // from the board, so it is caught here rather than at the far end.
+      const names = new Set(
+        (c.placement.regions ?? [])
+          .map((r) => (typeof r === "string" ? r : r?.name))
+          .filter((n) => typeof n === "string"),
+      );
+      for (const m of c.members ?? []) {
+        if (m && typeof m === "object" && typeof m.region === "string" && !names.has(m.region)) {
+          fail("placement.region-not-declared", `${at}.members`);
+        }
+      }
     }
   });
 

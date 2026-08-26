@@ -190,6 +190,21 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       return { title: String(label ?? names[i] ?? ""), tag: names[i] ?? "", ...extra };
     });
     const carried = (c.properties ?? {}) as Record<string, unknown>;
+    // A collection's own top-level keys, which until now went nowhere.
+    //
+    // Objects have carried their unrecognised keys since level 2 was claimed;
+    // collections never did, because every key the format had for one — `id`,
+    // `name`, `kind`, `placement`, `membership`, `members` — was consumed just
+    // above, so there was visibly nothing left over. `url` was the first key to
+    // arrive that nothing here reads, and it vanished silently: the round-trip
+    // rule broken not by mishandling a key but by there being no place where a
+    // new one would land.
+    //
+    // That is the shape of the failure worth remembering — an exhaustive
+    // handler is only exhaustive until the format grows.
+    const COLLECTION_KEYS = new Set(["id", "name", "kind", "properties", "placement", "membership", "members"]);
+    const cExtra: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(c)) if (!COLLECTION_KEYS.has(k)) cExtra[k] = v;
     const smart = (c.membership as { mode?: string } | undefined)?.mode === "query";
 
     blocks.push({
@@ -199,6 +214,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       content: null,
       properties: {
         ...carried,
+        ...(Object.keys(cExtra).length ? { [CARRY_KEY]: cExtra } : {}),
         title: String(c.name ?? "Untitled"),
         ...(regionDefs.length ? { matrix_regions: regionDefs } : {}),
         membership_mode: smart ? "smart" : "explicit",

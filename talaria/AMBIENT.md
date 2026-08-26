@@ -182,7 +182,6 @@ review queue people stop opening is worse than no queue.
 ---
 
 ## What this owes the format, and what the format owes it
-
 An agent that speaks only `pkm-interchange` will hit these in this order. They
 are `LIMITS.md`, arrived at independently from the other end — which is the
 useful part: **this project is the second implementation the spec's contributing
@@ -193,14 +192,159 @@ guessed.**
 |---|---|---|
 | 1 | **There is no create** | proposing anything at all |
 | 2 | **There is no tag write** | filing what was proposed |
-| 3 | **An object has no address** | every surface that links |
+| 3 | ~~**An object has no address**~~ — **closed**, see below | every surface that links |
 | 4 | `derivations` names the feature, not the query | re-evaluating a smart collection |
 | 5 | No sort or grouping on a collection | rendering a board as arranged |
 
 The first three are small. `PUT` an object at a client-chosen id, which makes
 creation idempotent by construction and needs no new concepts;
-`addTags`/`removeTags` on the patch; a `url` on an object or a template in
-`producer`, with the id staying opaque either way.
+`addTags`/`removeTags` on the patch; and — done — `url` on an object.
+
+### #3 is closed, and the picker is why
+
+Clicking a search result made "an object has no address" *worth specifying*. The
+picker made it blocking, and the difference is worth keeping hold of because it
+is a test for whether a limit is real: every other feature here degrades
+gracefully without an address — you can rank, scope, default and summarise with
+none. A picker that drops a link into whatever you are writing in has **nothing
+left**, because the address is the entire deliverable. It was the first feature
+whose output the format could not say.
+
+It closed as `url` on an object and on a collection — a value, not the template
+in `producer` that was the other candidate. A template is a construction rule,
+and a consumer holding one builds addresses for objects that never travelled by
+parsing and interpolating an id the format says is opaque. One string per object
+costs bytes; a template costs the id rule.
+
+Worth noting what the picker's own code showed on inspection: everything
+upstream of it — the mirror, the search, the title resolver — runs on the
+interchange read path and is producer-agnostic. Then `render()` emitted
+`{origin}/block/{id}` and hardcoded Hermes at the final step. A feature can be
+built correctly all the way through and still be locked to one producer by its
+last line.
+
+---
+
+## What building it actually taught
+
+Written down because none of it was in the design, and all of it changed the
+design.
+
+### The window manager is a query surface, not an event source
+
+The plan was to subscribe to Rift and be told things. Measured, it does not work:
+Rift's four events — `workspace_changed`, `windows_changed`,
+`window_title_changed`, `stacks_changed` — all describe windows and workspaces,
+and ⌘-Tab between two applications produces none of them. Meanwhile
+`window_title_changed` fires when a terminal retitles itself for every command it
+runs, so the one event that looked richest is mostly noise.
+
+`rift-cli query workspaces` answers everything at once: the active workspace by
+name, and the focused window's bundle id **and title**.
+
+**The general rule, which cost a day to learn:** anything that arrives only by
+event needs a way to be established at startup. A subscription tells you about
+transitions and nothing about where you already are — so after every restart the
+workspace was simply missing until the next time one happened to change. A
+subscription is also a foreground process that dies with its terminal. A poll
+over a query surface has neither problem and needs no wiring to survive a reboot.
+
+### Window titles came back for free — and then had to be given back
+
+The design gave up titles to avoid a fourth accessibility consumer, and called
+that a real loss. Rift already holds the permission and returns a `title` in the
+same query, so titles looked free.
+
+**They were not, and the way this was got wrong is the most important thing in
+this document.**
+
+Rift's `title` is not a window title. It is the accessibility title of whatever
+the window exposes as focused, and in a browser showing Gmail that is the message
+pane. So `title` arrived as the **entire body of an email** — colleagues' full
+names, addresses, direct phone numbers, budget account codes, whole forwarded
+threads from people who have no idea this software exists. Third-party
+correspondence, verbatim, on disk, within an hour of the feature shipping.
+
+The evidence that it was safe was six windows from one `rift-cli query` — a
+terminal, a Finder window, Claude, Messages. All native apps. Not one browser.
+**The single class of application where the field means something completely
+different was the class that was never sampled**, and it is the one the day is
+mostly spent in. Earlier output had already shown `Labels` and `Formatting
+options` from Chrome; both were read as harmless page titles rather than as the
+symptom they were.
+
+What replaced it: an **allowlist** of applications whose `title` has actually
+been looked at, plus a hard length cap, because a real window title is short and
+anything longer is a document's contents. Everything unverified contributes an
+application name and a workspace.
+
+The general rule, and it is not about window managers:
+
+> **A blocklist over a field you do not control requires being right about every
+> case in advance, forever. An allowlist requires being right about the cases you
+> checked.** When the cost of being wrong is other people's data, only the second
+> is defensible — and "I sampled it and it looked fine" is not the same as having
+> checked, unless the sample contained the case that breaks it.
+
+The cost is real: browsers are where most of the day happens, and they are dark
+now. But the signal there was never worth much — `Send and archive (⌘Enter)` is
+a focus artifact, not a subject.
+
+Launch Services (`lsappinfo`) covers what Rift does not manage, and needs no
+grant either. It has no title to give, which in hindsight was the safer of the
+two all along.
+
+### Resolve, then drop
+
+The most transferable idea here, and it arrived as a privacy problem. A Messages
+window title is the name of the person you are talking to — simultaneously one
+of the strongest retrieval signals available, because Hermes has People and that
+name resolves to a block, and a timestamped log of who you talk to and when.
+
+Both are true and they are not in tension, because **the value is in the
+resolution rather than in the string**. Look the title up: a hit is stored as a
+block id, which ranks *better* than the name because an id is unambiguous where a
+name is fuzzy. A miss is dropped, because a name that leads nowhere in your
+library carries the whole cost and almost none of the benefit.
+
+The matching is exact, case-insensitive, and refuses on ambiguity — the spec's
+own stub argument, one layer down: name matching converges two writers onto one
+roofer for free and gets two different Janes wrong.
+
+### BetterTouchTool was demoted before it was ever installed
+
+It was going to be the context sensor. Rift and Launch Services cover that
+between them, from inside a process that already runs forever. BTT keeps the
+surface work — floating menus, hotkeys — which is what it is best at and what
+it can be replaced at.
+
+### Everything in this stack fails silently
+
+Seven failures during one afternoon of wiring, every one of which looked like
+success from outside: a service that stopped itself after the accessibility
+prompt; one unknown config key killing the daemon on parse while launchd left it
+down; a config file sitting unread in the wrong directory while its settings
+appeared to apply; a status item hidden behind a notch in space that looked
+empty; three consecutive wrong guesses at an undocumented tool's output shape,
+each one degrading to silence; and an in-memory workspace lost on every restart.
+
+Not one was found by anything reporting it. All seven were found by a person
+running a command by hand and reading the output.
+
+That is the argument for the section above, and it is why `doctor` calls
+`frontmostApp()` live on every run rather than inferring health from row counts:
+a record that is empty because you have been in one application for an hour looks
+exactly like one that is empty because the parser broke. **Anything in this stack
+reading an undocumented or external surface gets asked directly, not inferred
+from its output.**
+
+### Still unanswered
+
+The workspace is the only semantic signal available, and it is currently called
+`first`. Whether workspace names become subject-shaped — `Roofing`, `Hermes`,
+`School` — decides whether capabilities 2 through 5 have anything to stand on.
+That is a habit question, not a code question, and a week of rows is what answers
+it.
 
 ---
 

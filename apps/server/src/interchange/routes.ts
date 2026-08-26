@@ -209,6 +209,12 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         })),
         seriesRows,
         producer: { name: "hermes", version: "2.0.0" },
+        // Where a person can go to see any of this. Taken from the request
+        // rather than from configuration, because the origin a caller reached
+        // us on is the origin that will work for them — a value in an env file
+        // is one deployment change away from publishing addresses nobody can
+        // open, and it would publish them confidently.
+        origin: `${req.protocol}://${req.hostname}`,
       });
 
       return { ...narrow(envelope, delta, q.profile), cursor, findings };

@@ -395,8 +395,8 @@ async function main(argv: string[]): Promise<number> {
         recording: boolean;
         windowHours: number;
         excluded: string[];
-        working: { at: string; app: string | null; title: string | null; workspace: string | null } | null;
-        recent: { at: string; app: string | null; title: string | null; workspace: string | null }[];
+        working: { at: string; app: string | null; title: string | null; workspace: string | null; block: string | null } | null;
+        recent: { at: string; app: string | null; title: string | null; workspace: string | null; block: string | null }[];
       }>("GET", `/context?limit=${str("limit") ?? "50"}`);
 
       if (!res.recording) {
@@ -421,7 +421,12 @@ async function main(argv: string[]): Promise<number> {
       console.log("");
       for (const r of res.recent) {
         const when = new Date(r.at).toLocaleTimeString();
-        const bits = [r.app ?? "?", r.workspace, r.title].filter(Boolean).join("  ·  ");
+        // A resolved block is shown as an arrow rather than as a title, because
+        // that is exactly what it is: the name was looked up and thrown away,
+        // and only the thing it pointed at was kept.
+        const bits = [r.app ?? "?", r.workspace, r.title, r.block ? `→ ${r.block}` : null]
+          .filter(Boolean)
+          .join("  ·  ");
         console.log(`${dim(when)}  ${bits}`);
       }
       return 0;

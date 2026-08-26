@@ -195,7 +195,28 @@ export function toCanonical(
     createdAt: String(object.created ?? ""),
     updatedAt: String(object.updated ?? ""),
     version: object.version ?? 0,
-    url: `${opts.appOrigin.replace(/\/$/, "")}/${collectionKind ? "collections" : "block"}/${object.id}`,
+    // The producer's own address, when it publishes one. Opaque: not parsed,
+    // not rewritten, and never synthesised for an object that arrived without
+    // one — absent means this producer publishes no address for this thing,
+    // which is a different fact from an address that went missing.
+    //
+    // This line used to build `{appOrigin}/block/{id}` unconditionally, which is
+    // one producer's routing scheme hardcoded into a consumer. It was the last
+    // Hermes-shaped thing in a function whose whole job is to be producer-
+    // agnostic, and it survived the port because nothing above it looked wrong:
+    // every link Talaria has ever emitted was correct, and would have sent
+    // somebody nowhere against anybody else's library.
+    //
+    // The fallback stays for producers below the `addresses` feature. It is a
+    // guess, and it is confined to here.
+    url:
+      typeof object.url === "string" && object.url
+        ? object.url
+        : `${opts.appOrigin.replace(/\/$/, "")}/${collectionKind ? "collections" : "block"}/${object.id}`,
+    // Ours, not the producer's. `talaria://` is resolved on this machine by the
+    // daemon that knows where the library lives, so it survives the library
+    // moving — and means nothing at all to anyone it is sent to. Which is why
+    // `url` above is the one a stranger gets.
     appUrl: `${URL_SCHEME}://${collectionKind ? "collection" : "block"}/${object.id}`,
   };
 }

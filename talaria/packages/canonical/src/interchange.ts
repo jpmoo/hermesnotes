@@ -43,6 +43,20 @@ export interface InterchangeObject {
   updated?: string;
   version?: number;
   series?: string;
+  /**
+   * Where a person can go to see this, as the producer says it.
+   *
+   * Opaque, like an id. Not to be rewritten, not to be pattern-matched, and
+   * never to be synthesised for an object that lacks one — absent means this
+   * producer publishes no address for this thing, which is a different fact
+   * from an address that went missing.
+   *
+   * Talaria built this string itself until the format grew a place to put it:
+   * `{origin}/block/{id}`, which is one producer's routing scheme hardcoded
+   * into a consumer, and which would have sent somebody nowhere against
+   * anything but Hermes.
+   */
+  url?: string;
   [key: string]: unknown;
 }
 
@@ -64,6 +78,8 @@ export interface InterchangeCollection {
   id: string;
   name?: string;
   kind?: string;
+  /** Where a person can go to see this board. Opaque; see `InterchangeObject.url`. */
+  url?: string;
   properties?: Record<string, unknown>;
   placement?: { semantic?: boolean; regions?: Region[] };
   membership?: { mode?: string; materialized?: boolean; query?: unknown };

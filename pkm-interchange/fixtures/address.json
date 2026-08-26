@@ -1,0 +1,136 @@
+{
+  "suite": "address",
+  "level": 1,
+  "about": "Where a thing lives. A producer knows its own URLs and nobody else can guess them, so an address is a value the producer hands over — never a rule a consumer applies. These cases exist because the alternative design is tempting, cheaper, and wrong.",
+  "requires": {
+    "features": [
+      "addresses"
+    ]
+  },
+  "cases": [
+    {
+      "id": "address/url-survives",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "object": {
+          "id": "o_1",
+          "type": "t_task",
+          "url": "https://notes.example/block/o_1"
+        }
+      },
+      "when": {
+        "importInto": "a tool that builds its own links",
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "url": "https://notes.example/block/o_1"
+        }
+      },
+      "why": "An address is the producer's to state. A consumer that overwrites it with one built from its own routing scheme has turned a working link into one that resolves only inside itself, and every link ever pasted from that consumer points at the wrong library."
+    },
+    {
+      "id": "address/collection-url-survives",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "kind": "matrix",
+          "url": "https://notes.example/collections/c_1"
+        }
+      },
+      "when": {
+        "importInto": "a tool that models collections as boards",
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "url": "https://notes.example/collections/c_1"
+        }
+      },
+      "why": "Collections were the last part of the format whose top-level keys had nowhere to land, because every key one could carry was consumed by an exhaustive handler. That handler was exhaustive until `url` arrived, and then a board's address vanished with no finding and no trace. An exhaustive handler fails silently at exactly the moment it stops being exhaustive."
+    },
+    {
+      "id": "address/absent-url-is-not-synthesised",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "export": {
+          "producer": {
+            "name": "somebody-else"
+          },
+          "objects": [
+            {
+              "id": "o_2",
+              "type": "t_task"
+            }
+          ]
+        }
+      },
+      "when": {
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "objects": [
+            {
+              "id": "o_2",
+              "type": "t_task"
+            }
+          ]
+        }
+      },
+      "why": "Absent means this producer publishes no address for this thing, which is a different fact from an address that went missing. A consumer that invents one has to guess an origin and interpolate an id, and it will hand somebody a link that goes nowhere while looking exactly like one that works."
+    },
+    {
+      "id": "address/url-is-opaque",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "object": {
+          "id": "o_3",
+          "url": "https://notes.example/w/team-a/b/o_3?view=compact#frag"
+        }
+      },
+      "when": {
+        "importInto": "a tool that normalises URLs",
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "url": "https://notes.example/w/team-a/b/o_3?view=compact#frag"
+        }
+      },
+      "why": "Opaque like an id: no stripping query strings, no dropping fragments, no rewriting a path that looks redundant. A producer's routing may need every part of that string, and a consumer cannot tell which parts by looking — the workspace segment here is not decoration."
+    },
+    {
+      "id": "address/id-stays-opaque-with-an-address-in-hand",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "export": {
+          "producer": {
+            "name": "hermes",
+            "urlTemplate": "https://notes.example/block/{id}"
+          },
+          "conformance": {
+            "features": [
+              "addresses"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "address.template-not-a-value"
+          }
+        ]
+      },
+      "why": "A template is the cheaper design and it is the wrong one. It is a construction rule, and a consumer holding one will build addresses for objects that never travelled — including objects that do not exist — by parsing and interpolating an id the format says is opaque. One string per object costs bytes. A template costs the id rule. An address a producer hands you is not a licence to construct another one."
+    }
+  ]
+}

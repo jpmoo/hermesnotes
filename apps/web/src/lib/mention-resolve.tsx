@@ -32,6 +32,19 @@ export const getBlock = (id: string): Promise<Block | null> => {
 };
 
 /** Resolve an `@name` mention: exact-title match (underscores = spaces). */
+/**
+ * Forget what we learned about a name.
+ *
+ * The cache remembers "nobody is called that", which is the right answer right
+ * up until somebody creates them — and creating them is exactly what a
+ * placeholder click does. Without this the person exists, the chip goes on
+ * showing a stub, and only a reload tells the truth.
+ */
+export const forgetPerson = (name: string): void => {
+  personCache.delete(name.toLowerCase());
+  personCache.delete(name.replace(/_/g, " ").toLowerCase());
+};
+
 export const getByName = (name: string): Promise<Block | null> => {
   const key = name.toLowerCase();
   const hit = personCache.get(key);

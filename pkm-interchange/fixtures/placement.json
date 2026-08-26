@@ -191,6 +191,92 @@
       "why": "When a board's columns are generated from a status field the objects already carry, the column is a rendering of data held elsewhere and carries nothing of its own. Same kind, opposite answer — which is exactly why the collection kind cannot be trusted to imply the semantics."
     },
     {
+      "id": "placement/labelled-region-survives",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "collection": {
+          "kind": "matrix",
+          "placement": {
+            "semantic": true,
+            "regions": [
+              "do",
+              {
+                "name": "delegate-wait",
+                "label": "Delegate & Wait",
+                "hermes:color": "#5fa4b5"
+              }
+            ]
+          },
+          "members": [
+            {
+              "object": "o_1",
+              "region": "delegate-wait"
+            }
+          ]
+        }
+      },
+      "when": {
+        "importInto": "a tool that models regions as a list of names",
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "placement": {
+            "regions": [
+              "do",
+              {
+                "name": "delegate-wait",
+                "label": "Delegate & Wait",
+                "hermes:color": "#5fa4b5"
+              }
+            ]
+          },
+          "members": [
+            {
+              "object": "o_1",
+              "region": "delegate-wait"
+            }
+          ]
+        }
+      },
+      "why": "A region is a string OR an object, and the obvious implementation casts the list to string[] and indexes straight into it. That holds until a region grows a label, and then indexOf finds nothing: every member on the board silently loses its placement, the producer's own keys on the region are dropped, and the consumer reports it as the producer's fault. Two independent implementations made this exact mistake, and neither caught it, because the library each tested against happened to contain no labelled regions."
+    },
+    {
+      "id": "placement/region-label-is-not-an-identifier",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "collection": {
+          "kind": "matrix",
+          "placement": {
+            "semantic": true,
+            "regions": [
+              {
+                "name": "delegate-wait",
+                "label": "Delegate & Wait"
+              }
+            ]
+          },
+          "members": [
+            {
+              "object": "o_1",
+              "region": "Delegate & Wait"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "placement.region-not-declared"
+          }
+        ]
+      },
+      "why": "A member matches on `name`, never on `label`. Matching the display text works right up until somebody fixes a typo in the wording, at which point every card in that region points at a region that no longer exists — which is the whole reason the two are separate fields."
+    },
+    {
       "id": "placement/position-is-opaque",
       "level": 2,
       "op": "order",

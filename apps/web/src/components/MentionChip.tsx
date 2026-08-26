@@ -4,7 +4,7 @@ import { useState } from "react";
 import { PlaceholderMenu } from "./PlaceholderMenu.tsx";
 import { flattenMentions } from "../lib/display.ts";
 import { BlockIcon, CollectionIcon } from "../lib/icons.tsx";
-import { ResolvedLabel, useMentionTarget } from "../lib/mention-resolve.tsx";
+import { ResolvedLabel, forgetPerson, useMentionTarget } from "../lib/mention-resolve.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
 
 /** Renders a mention as an icon-prefixed, clickable chip inside the editor. */
@@ -12,12 +12,6 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
   const href = String(node.attrs.href ?? "");
   const label = String(node.attrs.label ?? "");
   const isTag = href.startsWith("tag:");
-  // Named but not yet anything: clicking asks what it should become.
-  const placeholder = href.startsWith("new:") ? decodeURIComponent(href.slice(4)) : "";
-  // What it's called, as against how it had to be typed: the trigger can't take
-  // a space. The href keeps the written form — that's what the notes carrying
-  // this placeholder say, and what creating it matches on.
-  const placeholderName = placeholder.replace(/_/g, " ");
   // Text that travels from one day's note to the next: not a link to
   // anywhere, just words wearing a mark that says they keep coming back.
   const forwarded = href.startsWith("fwd:");
@@ -31,6 +25,29 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
     Boolean(label),
   );
   const { openBlock } = usePanels();
+  // A name that resolves to nothing is not a dead link.
+  //
+  // `block:<id>` failing to resolve means something was deleted — that is dead,
+  // and there is nothing to be done about it. A bare `@Name` failing to resolve
+  // means the opposite: nobody has created that person yet. Nothing was lost;
+  // the name was written before the thing existed, which is exactly what a
+  // placeholder is.
+  //
+  // Both arrived here as `dead`, so `@Cesar_Morales` rendered as a corpse,
+  // reported "no longer exists" for somebody who never existed, and returned
+  // early from every click. The name is right there and creating from it is one
+  // menu — so a name with no thing behind it opens that menu, as `new:` does.
+  const unresolvedName = Boolean(personName) && dead;
+  const placeholder = href.startsWith("new:")
+    ? decodeURIComponent(href.slice(4))
+    : unresolvedName
+      ? personName
+      : "";
+  // Named but not yet anything: clicking asks what it should become.
+  // What it's called, as against how it had to be typed: the trigger can't take
+  // a space. The href keeps the written form — that's what the notes carrying
+  // this placeholder say, and what creating it matches on.
+  const placeholderName = placeholder.replace(/_/g, " ");
 
   // Navigate on MOUSEDOWN, not click: the plain mousedown would move the
   // editor selection into this line, and the active-line extension then swaps
@@ -66,7 +83,9 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
       // One plain string, so a reference inside the name is flattened rather
       // than resolved: `|…` says "and something else" without naming it.
       title={
-        dead
+        placeholder
+          ? `${placeholderName} — not created yet. Click to make one.`
+          : dead
           ? `${flattenMentions(label) || "reference"} — no longer exists`
           : archived
             ? `${flattenMentions(label || fetchedLabel) || "reference"} — archived`
@@ -100,7 +119,10 @@ export function MentionChip({ node, updateAttributes }: NodeViewProps) {
           onClose={() => setAskAt(null)}
           // The node in hand is this editor's copy: point it at the block
           // now, or it would keep saying "new:" until the note reloaded.
-          onCreated={(b) => updateAttributes({ href: `block:${b.id}`, label: placeholderName })}
+          onCreated={(b) => {
+            if (unresolvedName) forgetPerson(personName);
+            updateAttributes({ href: `block:${b.id}`, label: placeholderName });
+          }}
         />
       )}
     </NodeViewWrapper>

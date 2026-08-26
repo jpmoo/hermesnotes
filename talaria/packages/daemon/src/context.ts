@@ -99,6 +99,93 @@ export const TITLE_BLIND = [
   "com.apple.Console",
 ];
 
+/**
+ * Applications whose window titles are kept only if they name something in the
+ * library.
+ *
+ * The middle ground between recording a title and refusing to look at it, and
+ * the more interesting rule. A window title from Messages is the name of the
+ * person you are talking to — which is one of the strongest retrieval signals
+ * on the machine, because Hermes has People and that name resolves to a block
+ * and through it to every note and task touching them.
+ *
+ * It is also, stored as text, a timestamped log of who you talk to and when.
+ *
+ * Both are true, and they are not in tension, because *the value is in the
+ * resolution rather than in the string*. Look the title up: a hit becomes a
+ * block id, which ranks better than the name ever could since an id is
+ * unambiguous where a name is fuzzy. A miss is dropped, because the name of
+ * somebody who is not in your library has almost no retrieval value and carries
+ * the whole of the cost.
+ *
+ * The rule generalises past Messages — any title that names a block is more
+ * useful as a reference than as text — but it is applied only to the apps
+ * where the title is personal, because everywhere else the raw text is worth
+ * having on its own.
+ */
+export const TITLE_IF_KNOWN = [
+  "com.apple.MobileSMS",
+  "com.apple.iChat",
+  "com.apple.mail",
+  "com.tinyspeck.slackmacgap",
+  "com.facebook.archon", // Messenger
+  "net.whatsapp.WhatsApp",
+  "ru.keepcoder.Telegram",
+  "com.hnc.Discord",
+  "us.zoom.xos",
+];
+
+/**
+ * Applications whose `title` has been *verified* to be a window title.
+ *
+ * An allowlist, and it is an allowlist because the blocklist that preceded it
+ * failed on its first day in the worst possible way.
+ *
+ * The window manager's `title` is not a window title. It is the accessibility
+ * title of whatever the window exposes as focused, and in a browser showing
+ * Gmail that is the message pane — so "title" arrived as the **entire body of an
+ * email**, complete with colleagues' names, addresses, direct phone numbers,
+ * budget codes and forwarded threads from people who have no idea this software
+ * exists. Third-party correspondence, verbatim, on disk.
+ *
+ * The design that allowed it recorded every title and dropped the ones from apps
+ * somebody had thought to flag. That requires anticipating every application
+ * whose title field misbehaves, in advance, and being right every time. It was
+ * wrong about the commonest application on the machine.
+ *
+ * So the default is now *do not record*, and an application earns its way onto
+ * this list by having been looked at. The cost is real — most of a day happens
+ * in a browser and browsers are not here — but the signal there was never worth
+ * much anyway: `Formatting options` and `Send and archive (⌘Enter)` are focus
+ * artifacts, not subjects.
+ */
+export const TITLE_TRUSTED = [
+  "com.googlecode.iterm2",
+  "com.apple.Terminal",
+  "com.apple.finder",
+  "com.apple.TextEdit",
+  "com.apple.Preview",
+  "com.apple.dt.Xcode",
+  "com.microsoft.VSCode",
+  "com.todesktop.230313mzl4w4u92",
+  "md.obsidian",
+  "com.microsoft.Excel",
+  "com.microsoft.Word",
+  "com.apple.iWork.Pages",
+  "com.apple.iWork.Numbers",
+  "com.apple.iWork.Keynote",
+];
+
+/**
+ * A backstop for the allowlist being wrong again.
+ *
+ * A window title is short. Anything past this is definitionally not one, and is
+ * far more likely to be a document's contents — which is exactly the shape the
+ * failure took. Applied to every application including trusted ones, because the
+ * whole lesson here is that a list of apps somebody vetted is not a guarantee.
+ */
+export const MAX_TITLE = 120;
+
 export interface ContextInput {
   app?: string | null;
   title?: string | null;
@@ -261,20 +348,73 @@ export class ContextRecord {
       return { recorded: false, why: `${app} is excluded` };
     }
 
-    // The app survives, the title does not. Knowing you were in a password
-    // manager is ordinary; knowing which entry you had open is not.
-    const blind = app !== null && TITLE_BLIND.includes(app);
+    let title = input.title?.trim() || null;
+    let block = input.block?.trim() || null;
+    let why: string | undefined;
+
+    if (title && title.length > MAX_TITLE) {
+      // Not a title. Almost certainly a document's contents.
+      title = null;
+      why = "that was too long to be a window title, so it was dropped";
+    } else if (app && TITLE_BLIND.includes(app)) {
+      // Belt and braces now that the default is to record nothing: a password
+      // manager must never slip through by being added to the trusted list by
+      // somebody who did not think about it.
+      title = null;
+      why = "title withheld for that app";
+    } else if (app && title && TITLE_IF_KNOWN.includes(app)) {
+      // Resolve, then drop. A hit keeps the whole signal in a better form; a
+      // miss keeps nothing, which is the right trade for a name that leads
+      // nowhere.
+      const hit = this.mirror.blockTitled(title);
+      title = null;
+      if (hit) {
+        block = block ?? hit;
+        why = "title resolved to a block";
+      } else {
+        why = "title named nothing in the library, so it was dropped";
+      }
+    } else if (app && title && !TITLE_TRUSTED.includes(app)) {
+      // The default, and the point of the rewrite. An application nobody has
+      // checked contributes its name and its workspace and nothing else.
+      title = null;
+      why = `${app} is not on the verified-title list, so the title was dropped`;
+    } else if (app && title && this.isAppName(app, title)) {
+      // Some paths can only report the application's own display name, which
+      // says nothing the `app` column does not already say. Dropping it keeps
+      // the record honest about how much subject it actually holds.
+      title = null;
+    }
+
     const row: ContextRow = {
       at: new Date().toISOString(),
       app,
-      title: blind ? null : input.title?.trim() || null,
-      workspace: input.workspace?.trim() || null,
-      block: input.block?.trim() || null,
+      title,
+      // The stored workspace when the caller did not name one. Only the poll
+      // knows it first-hand; anything else calling `note()` — a manual
+      // `context set`, a capture, whatever comes later — would otherwise write a
+      // row with the workspace missing, and that row is then the newest one and
+      // therefore the answer.
+      workspace: input.workspace?.trim() || this.workspace,
+      block,
     };
 
     this.mirror.noteContext(row);
     this.mirror.pruneContext(new Date(Date.now() - WINDOW_HOURS * 3600_000).toISOString());
-    return { recorded: true, row, ...(blind ? { why: "title withheld for that app" } : {}) };
+    return { recorded: true, row, ...(why ? { why } : {}) };
+  }
+
+  /**
+   * Is this "title" just the application's name again?
+   *
+   * The Launch Services fallback has no window title to give and reports the
+   * display name instead, so a row reads `Google Chrome · Google Chrome`. That
+   * is not a subject, and leaving it in makes the record look like it holds one.
+   */
+  private isAppName(app: string, title: string): boolean {
+    const tail = app.split(".").pop()?.toLowerCase() ?? "";
+    const t = title.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return t.length > 0 && (tail.replace(/[^a-z0-9]/g, "") === t || tail.includes(t) || t.includes(tail));
   }
 
   /** The most recent moment that was not a launcher. What the picker asks for. */

@@ -4,9 +4,17 @@ Found by reading the tree rather than by anything failing, which is the point:
 each of these is a thing that looks healthy and is not. Each entry says what
 breaks and how to prove it, so the fix can be checked rather than believed.
 
+**Status, on re-inspection.** Items 1 through 4 are fixed in the code, and 5 is
+partly done. They are kept rather than deleted because the reasoning is the
+valuable part and because a fixed defect with no record is one that comes back.
+What is *not* acceptable is this file quietly listing repairs as outstanding —
+which it did, which is the same doc drift item 5 is about.
+
+**Still open:** the fixture for #2, and most of #5.
+
 ---
 
-## 1. The envelope contradicts the manifest
+## 1. The envelope contradicts the manifest — **fixed**
 
 **Where:** `packages/interchange/src/map.ts`, the `conformance` block inside the
 returned envelope.
@@ -41,7 +49,7 @@ must stop disagreeing silently.
 
 ---
 
-## 2. A region with a label does not survive import
+## 2. A region with a label does not survive import — **fixed, no fixture**
 
 **Where:** `packages/interchange/src/import.ts`, the collection loop.
 
@@ -87,7 +95,7 @@ the fixture.
 
 ---
 
-## 3. Two comments in `map.ts` now assert things that are false
+## 3. Two comments in `map.ts` now assert things that are false — **fixed**
 
 The block above `unsupported` still reads:
 
@@ -104,7 +112,7 @@ Check the neighbouring comments in the same function while fixing this one.
 
 ---
 
-## 4. Cursor and prune horizon are computed across all owners
+## 4. Cursor and prune horizon are computed across all owners — **fixed**
 
 **Where:** `apps/server/src/interchange/routes.ts`, the `/interchange` handler.
 
@@ -127,6 +135,12 @@ Either scope both to the owner or write down why global is correct.
 ## 5. Documentation drift
 
 In descending order of consequence.
+
+**`mirror.ts`'s header** described blocks as "the JSON that `/sync/blocks`
+returned". `sync.ts` says that stopped being true — it used to call
+`/sync/blocks`, `/sync/changes` and `/block-types`, and now calls
+`GET /interchange`. Same family as the stale `map.ts` comments above: a comment
+describing a route the code no longer calls. **Fixed.**
 
 **`talaria/DESIGN.md` §3.2** still argues `seriesId` should be synthesized as
 `hash(typeId, title, rule)` and calls the real series table deferred.
@@ -154,7 +168,49 @@ It is the most useful document in the set for deciding what v0.1 owes people.
 
 ---
 
-## 6. Housekeeping, not a defect but time-sensitive
+## 6. A collection's top-level keys had nowhere to land — **fixed**
+
+Found by adding `url` to the format rather than by reading the code, which is
+why it is worth writing down.
+
+**Where:** `packages/interchange/src/import.ts`, the collection loop.
+
+Objects have carried their unrecognised keys into `pkm:carried` since level 2
+was claimed. Collections never did — and nothing was visibly wrong, because
+every key the format had for a collection was consumed by the handler just
+above it. There was genuinely nothing left over to lose.
+
+Then the format grew `url`, and a collection's address vanished on import with
+no finding and no trace. The round-trip rule broken not by mishandling a key but
+by there being **no place a new one could land**.
+
+**The shape worth remembering:** an exhaustive handler is only exhaustive until
+the format grows, and it fails silently at exactly the moment it stops being so.
+An object's loop was written as "everything I do not recognise"; a collection's
+was written as "these six keys". The first survives a new field and the second
+cannot.
+
+**To prove it:** round-trip a collection carrying a top-level key nothing reads.
+It should come back byte-identical.
+
+---
+
+## 7. Still to do
+
+- **A fixture for #2.** A collection declaring
+  `{ "name": "delegate-wait", "label": "Delegate & Wait", "hermes:color": "#5fa4b5" }`
+  with a member sitting in it. The fix is in; nothing stops it regressing.
+- **A fixture for `url`.** A producer emitting one, a consumer round-tripping it
+  unchanged, and a consumer refusing to synthesise one for an object that
+  arrived without it.
+- **`README.md` does not mention `url`.** The level-0 walkthrough is where a new
+  producer would learn to emit an address, and it is the one document written for
+  somebody who has not read the spec.
+- **The remaining drift in #5.**
+
+---
+
+## 8. Housekeeping, not a defect but time-sensitive
 
 `.claude/settings.local.json` contains a Hermes bearer token in plain text
 (several times, inside the permitted-command strings) and a personal calendar

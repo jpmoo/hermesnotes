@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
  * returns nothing is worse than no system layer at all, because trust in it
  * doesn't degrade — it collapses, and doesn't come back.
  *
- * Blocks are stored as the JSON that `/sync/blocks` returned, not as the
+ * Blocks are stored as the objects `GET /interchange` returned, not as the
  * canonical form. The mapping is cheap, the canonical shape will change more
  * often than the wire shape, and a mirror holding derived data would need
  * rebuilding every time the seam moves. Search columns are extracted alongside
@@ -449,6 +449,37 @@ export class Mirror {
   /** Drop everything older than the window. Called on every write. */
   pruneContext(before: string): void {
     this.db.prepare("DELETE FROM context WHERE at < ?").run(before);
+  }
+
+  /**
+   * The block whose title is exactly this, if there is exactly one.
+   *
+   * Used to turn a window title into a block reference before the title is
+   * stored — "was messaging Sherly Velez" is a strong retrieval signal, and an
+   * id carries it better than the string does while keeping no record of who
+   * was messaged.
+   *
+   * Deliberately strict, on three counts. Exact rather than fuzzy, because the
+   * spec's own argument about stubs applies: name matching converges two
+   * writers onto one roofer for free and gets two different Janes wrong.
+   * Case-insensitive but not partial, because a partial match on a short title
+   * hits half the library. And ambiguity resolves to nothing rather than to the
+   * first row, because two blocks called the same thing is precisely the case
+   * where guessing is worst.
+   *
+   * A miss is the normal outcome and costs nothing: the caller drops the title.
+   */
+  blockTitled(title: string): string | null {
+    const t = title.trim();
+    if (t.length < 3) return null;
+    const rows = this.db
+      .prepare("SELECT id FROM blocks WHERE archived = 0 AND lower(title) = lower(?) LIMIT 2")
+      .all(t) as { id: string }[];
+    // Destructured rather than indexed: `rows.length === 1` does not narrow
+    // `rows[0]` under `noUncheckedIndexedAccess`, and the guard has to be on the
+    // value anyway.
+    const [only, second] = rows;
+    return only && !second ? only.id : null;
   }
 
   /** Forget all of it, now. The off switch has to actually empty the drawer. */

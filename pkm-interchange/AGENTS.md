@@ -202,6 +202,41 @@ Three things inside a profile are not field names, and none of them is checked t
 
 `archived` means hidden from normal views but not deleted. A consumer with no such concept must preserve the flag rather than dropping the object or un-archiving it.
 
+### Where a thing lives
+
+An object may carry `url`: an absolute address where a person can go to see it.
+So may a collection.
+
+```json
+{ "id": "o_412", "type": "t_task", "url": "https://notes.example/block/o_412", ... }
+```
+
+"Open this where it lives" is close to universal and there is nothing to argue
+about: a producer knows its own URLs and nobody else can guess them. Without it,
+every consumer that wants to link to anything has to hardcode one producer's
+routing scheme, which is a link that works in exactly one library and sends a
+person nowhere in any other.
+
+**It is a value, not a rule.** The obvious cheaper design — a template in
+`producer`, `"https://notes.example/block/{id}"` — is a construction rule, and
+shipping one licenses exactly what the rest of this format forbids. A consumer
+holding a template will build addresses for objects that never travelled,
+including ones that do not exist, and it will do so by **parsing and
+interpolating an id that is supposed to be opaque**. One string per object costs
+bytes; a template costs the id rule. An address a producer hands you is not a
+licence to construct another one.
+
+A producer that offers addresses declares `addresses` in `features`. Consumers
+must treat `url` as opaque, must not rewrite it, and must not synthesise one for
+an object that lacks it — absent means *this producer does not publish an
+address for this*, which is different from an address it forgot to send.
+
+A producer may publish more than one kind of address; the others go under its
+own prefix, like anything else. Hermes hands out both a shareable `https` link
+and a `talaria://` one that resolves locally, and only the first is `url`,
+because `url` is the one a stranger can use.
+
+
 ---
 
 ## Series — recurrence (L1 + L2)

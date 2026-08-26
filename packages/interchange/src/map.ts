@@ -44,6 +44,16 @@ export interface ExportInput {
   seriesRows?: HermesSeries[];
   /** Edges that arrived and cannot be re-derived from properties or prose. */
   relations?: unknown[];
+  /**
+   * Where this library lives, so objects can say where a person can go to see
+   * them.
+   *
+   * Optional: a producer that does not know its own public origin publishes no
+   * addresses, which the format treats as "this producer does not publish one"
+   * rather than as an omission. Absent is honest; a guessed origin is a link
+   * that sends somebody nowhere.
+   */
+  origin?: string;
 }
 
 export function toInterchange(input: ExportInput): {
@@ -61,6 +71,23 @@ export function toInterchange(input: ExportInput): {
   const blockById = new Map(input.blocks.map((b) => [b.id, b]));
   const live = input.blocks.filter((b) => !b.collectionKind);
   const collections = input.blocks.filter((b) => b.collectionKind);
+
+  /**
+   * Where a person can go to see this.
+   *
+   * Hermes' routing scheme, said once, by the only party entitled to say it.
+   * Until the format grew `url` every consumer that wanted to link to anything
+   * had to hardcode this shape — Talaria did, in the one place it could not be
+   * avoided — and such a link works against exactly one library.
+   *
+   * Note what is *not* published: a template. A consumer holding
+   * `"{origin}/block/{id}"` would build addresses for objects that never
+   * travelled, by parsing and interpolating an id the format says is opaque.
+   * One string per object costs bytes; a template costs the id rule.
+   */
+  const origin = input.origin?.replace(/\/$/, "");
+  const addressOf = (id: string, kind: "block" | "collections") =>
+    origin ? { url: `${origin}/${kind === "block" ? "block" : "collections"}/${id}` } : {};
 
   // ---- types -------------------------------------------------------------
   const types = input.types.map((t) => {
@@ -166,6 +193,7 @@ export function toInterchange(input: ExportInput): {
     return {
       id: b.id,
       ...(b.blockTypeId ? { type: b.blockTypeId } : {}),
+      ...addressOf(b.id, "block"),
       ...carried,
       properties: props,
       ...(b.content ? { content: b.content } : {}),
@@ -236,11 +264,17 @@ export function toInterchange(input: ExportInput): {
     // the world to commit it without noticing.
     const carried = { ...props };
     for (const k of ["title", "matrix_regions", "membership_mode", "filter_query"]) delete carried[k];
+    // What an import had nowhere to put comes back out as the keys it arrived
+    // as, the same way an object's carried bag does.
+    const cCarried = (carried[CARRY_KEY] ?? {}) as Record<string, unknown>;
+    delete carried[CARRY_KEY];
 
     return {
       id: c.id,
       name: String(props.title ?? "Untitled"),
       kind,
+      ...addressOf(c.id, "collections"),
+      ...cCarried,
       ...(Object.keys(carried).length ? { properties: carried } : {}),
       placement: gridded ? { semantic: true, regions: regionsOf(props) } : { semantic: false },
       membership: smart
@@ -353,6 +387,7 @@ export function toInterchange(input: ExportInput): {
     outCollections.some((c) => c.placement.semantic) ? "placement" : null,
     outCollections.some((c) => c.membership.mode === "query") ? "derivations" : null,
     relations.length ? "relations" : null,
+    origin ? "addresses" : null,
   ].filter(Boolean) as string[];
 
   // An edge that arrived from elsewhere and one Hermes worked out for itself are

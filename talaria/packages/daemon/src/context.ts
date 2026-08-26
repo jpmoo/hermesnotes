@@ -187,6 +187,14 @@ export const TITLE_TRUSTED = [
 export const MAX_TITLE = 120;
 
 /**
+ * How long to go on assuming the window manager is not there.
+ *
+ * Long enough that a machine without it stops paying for the question, short
+ * enough that starting it is noticed within a coffee.
+ */
+export const RIFT_RECHECK_MS = 5 * 60 * 1000;
+
+/**
  * Decoration a window manager hangs on a title, which is not part of the title.
  *
  * iTerm2 puts a bell on a tab whose session received one — a command that
@@ -501,6 +509,20 @@ export class ContextRecord {
     if (name) this.mirror.set(WORKSPACE_KEY, name);
   }
 
+  /**
+   * Stop claiming a workspace.
+   *
+   * The remembered one is a guess that survives a restart, which is right while
+   * something is still answering for it. When nothing is — the window manager
+   * has been quit, or was never installed — the guess stops being stale and
+   * becomes false: every row would go on being stamped with the last workspace
+   * anybody saw, indefinitely, in a record whose whole contract is that it
+   * decays. It is the only field here that can quietly assert something untrue.
+   */
+  forgetWorkspace(): void {
+    this.mirror.set(WORKSPACE_KEY, null);
+  }
+
   get workspace(): string | null {
     return this.mirror.get(WORKSPACE_KEY);
   }
@@ -526,6 +548,17 @@ export class ContextRecord {
  */
 export class FrontmostWatcher {
   private timer: NodeJS.Timeout | null = null;
+  /**
+   * Whether the window manager answered last time, and when we last asked.
+   *
+   * `frontmostFromRift` tries four candidate paths, so a machine without
+   * `rift-cli` spawned four processes that missed, every two seconds, forever —
+   * a poll that had already learned its answer and asked again anyway. Now it
+   * asks again on a slow timer instead, because Rift may be installed or
+   * started at any point and a daemon that decided once would never notice.
+   */
+  private riftAnswered = true;
+  private riftCheckedAt = 0;
 
   constructor(
     private record: ContextRecord,
@@ -553,8 +586,20 @@ export class FrontmostWatcher {
       // together, and it is the only thing here that knows about workspaces at
       // all. Falling back to Launch Services covers an unmanaged space, a
       // floating panel, or Rift not running.
-      const rift = await frontmostFromRift(this.riftCli);
+      // Skipped entirely once it is known to be absent, and retried on the
+      // slow timer so installing or starting it is still noticed.
+      const askRift = this.riftAnswered || Date.now() - this.riftCheckedAt > RIFT_RECHECK_MS;
+      const rift = askRift ? await frontmostFromRift(this.riftCli) : undefined;
+      if (askRift) {
+        this.riftCheckedAt = Date.now();
+        this.riftAnswered = rift !== undefined;
+      }
+
       if (rift?.workspace) this.record.rememberWorkspace(rift.workspace);
+      // Nothing is answering for workspaces, so stop claiming one. A stale
+      // guess is worth keeping while its source is alive; once it is not, the
+      // guess is simply wrong and says so to everything downstream.
+      if (askRift && rift === undefined) this.record.forgetWorkspace();
 
       if (rift?.app) {
         this.record.note({ app: rift.app, title: rift.title, workspace: rift.workspace });

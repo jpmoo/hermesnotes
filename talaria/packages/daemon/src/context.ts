@@ -186,6 +186,53 @@ export const TITLE_TRUSTED = [
  */
 export const MAX_TITLE = 120;
 
+/**
+ * Decoration a window manager hangs on a title, which is not part of the title.
+ *
+ * iTerm2 puts a bell on a tab whose session received one — a command that
+ * finished with a beep, a shell error — so the same shell window is called
+ * `-zsh` for most of an afternoon and `-zsh 🔔` for the ten seconds after a
+ * `printf '\a'`. Recorded faithfully, that is two titles for one window, and
+ * the column exists to answer "what was I working in" rather than "was anything
+ * beeping at 1:47".
+ *
+ * Stripped rather than tolerated because this record is derived and used for
+ * ranking and scoping: the moment anything groups by title, `-zsh` and
+ * `-zsh 🔔` quietly become two different places to have been.
+ *
+ * Deliberately a small, named list rather than a general emoji strip. An emoji
+ * in a window title is usually somebody's own — a document called `📌 Q3` is
+ * named that — and a rule that ate those would be losing real signal to tidy up
+ * a notification badge.
+ */
+export const TITLE_MARKERS = ["\u{1F514}", "\u{1F515}", "\u{25CF}", "\u{2022}"];
+
+/**
+ * A title as the window is called, without what was blinking at the time.
+ *
+ * Markers are taken from either end and the result re-trimmed, because a
+ * stripped marker leaves the space that separated it. A title that was *only* a
+ * marker becomes nothing, which is correct: it never named anything.
+ */
+export function stripMarkers(title: string): string {
+  let out = title.trim();
+  let again = true;
+  while (again) {
+    again = false;
+    for (const m of TITLE_MARKERS) {
+      if (out.startsWith(m)) {
+        out = out.slice(m.length).trim();
+        again = true;
+      }
+      if (out.endsWith(m)) {
+        out = out.slice(0, -m.length).trim();
+        again = true;
+      }
+    }
+  }
+  return out;
+}
+
 export interface ContextInput {
   app?: string | null;
   title?: string | null;
@@ -348,7 +395,9 @@ export class ContextRecord {
       return { recorded: false, why: `${app} is excluded` };
     }
 
-    let title = input.title?.trim() || null;
+    // Before anything else looks at it, so every rule below — the length
+    // backstop, the block lookup — sees the title rather than the badge.
+    let title = (input.title ? stripMarkers(input.title) : "") || null;
     let block = input.block?.trim() || null;
     let why: string | undefined;
 

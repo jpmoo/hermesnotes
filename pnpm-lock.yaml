@@ -201,10 +201,6 @@ importers:
         version: 5.9.3
 
   talaria/packages/canonical:
-    dependencies:
-      '@hermes/shared':
-        specifier: workspace:*
-        version: link:../../../packages/shared
     devDependencies:
       tsx:
         specifier: ^4.19.2

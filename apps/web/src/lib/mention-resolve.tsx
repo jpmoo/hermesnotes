@@ -158,11 +158,31 @@ export type MentionPart =
  * syntax away to get a plain string — use that for tooltips and sorting, this to
  * render.
  */
+/**
+ * Every scheme this app answers for, in one place.
+ *
+ * It was written out three times — here, and twice in `Markdown.tsx` — and the
+ * copies drifted: the chat renderer knew `block`, `person` and `tag` and had
+ * never heard of `new` or `fwd`. A placeholder in anything the assistant wrote
+ * came out as a plain `<a href="new:Whatever">`, which a browser cannot follow
+ * and which therefore did nothing at all when clicked.
+ *
+ * A list of schemes is exactly the kind of thing that gets extended in one
+ * place, so it lives in one place.
+ */
+export const MENTION_SCHEMES = ["block", "tag", "person", "new", "fwd"] as const;
+
+/** `^scheme:` — for deciding whether a link is ours to render. */
+export const internalHref = new RegExp(`^(${MENTION_SCHEMES.join("|")}):`);
+
 export function parseMentions(raw: string): MentionPart[] {
   const parts: MentionPart[] = [];
   // Ordered so the markdown form wins over the bare tokens inside it.
-  const re =
-    /\[([^\]]*)\]\((block|tag|person|new|fwd):([^)]+)\)|\|([0-9a-fA-F-]{36})|@([A-Za-z0-9][\w-]*)|#([A-Za-z0-9][\w-]*)/g;
+  const re = new RegExp(
+    `\\[([^\\]]*)\\]\\((${MENTION_SCHEMES.join("|")}):([^)]+)\\)` +
+      "|\\|([0-9a-fA-F-]{36})|@([A-Za-z0-9][\\w-]*)|#([A-Za-z0-9][\\w-]*)",
+    "g",
+  );
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(raw))) {

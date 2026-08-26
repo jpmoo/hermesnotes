@@ -1,0 +1,10 @@
+#!/bin/sh
+# One workspace change, handed to Talaria.
+#
+# Exists as a file rather than as arguments because `rift-cli subscribe` takes a
+# single `--args` value, so `--command talaria --args context set` loses the
+# second word. A command that needs no arguments sidesteps the question.
+#
+# Nothing is passed in: `RIFT_WORKSPACE_NAME` arrives through the environment,
+# and `talaria context set` reads it there.
+exec "$(dirname "$0")/talaria" context set

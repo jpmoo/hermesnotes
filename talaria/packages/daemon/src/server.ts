@@ -15,6 +15,7 @@ import {
   type InterchangeType,
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
+import { ContextRecord, FrontmostWatcher, frontmostApp, LAUNCHERS, WINDOW_HOURS } from "./context.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
@@ -117,6 +118,92 @@ export function buildServer(deps: {
     });
   };
 
+  /**
+   * What the machine was doing, lately.
+   *
+   * Local to this daemon and to this machine. Never synced, never exported,
+   * never part of an interchange envelope — see `context.ts` for why that is a
+   * rule rather than an omission.
+   */
+  const context = new ContextRecord(mirror, config.contextExclude);
+
+  /**
+   * Nothing on this machine emits a focus event, so the daemon watches.
+   *
+   * Measured, not assumed: Rift's four events all describe windows and
+   * workspaces, and ⌘-Tab between two applications produces none of them.
+   */
+  const frontmost = new FrontmostWatcher(context, 2000, config.riftCli);
+  frontmost.start();
+  app.addHook("onClose", async () => frontmost.stop());
+
+  /**
+   * Record a moment. Called by whatever is watching the desktop.
+   *
+   * Rift's part is the workspace and only the workspace — it is the one thing
+   * here that knows about them, and the one thing it can tell us that the poll
+   * cannot see:
+   *
+   *   rift-cli subscribe cli --event workspace_changed \
+   *     --command talaria --args context set
+   *
+   * Answers with what was actually stored rather than an acknowledgement, so a
+   * caller can see the redaction instead of trusting it.
+   */
+  app.post("/context", async (req, reply) => {
+    const body = z
+      .object({
+        app: z.string().nullish(),
+        title: z.string().nullish(),
+        workspace: z.string().nullish(),
+        block: z.string().nullish(),
+      })
+      .safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: "bad context" });
+    // Held so the next poll carries it. The two halves of a row arrive from
+    // different places at different times, and a poll two seconds after a
+    // workspace switch must not write "workspace unknown" over the answer.
+    context.rememberWorkspace(body.data.workspace ?? null);
+    // A workspace change on its own is not a moment worth a row. Rift knows the
+    // workspace and nothing else — no app, no title — so writing one produced a
+    // row saying "?", which is noise in the audit and can never be the answer to
+    // `working()` anyway. The poll picks the new workspace up within two seconds
+    // and attaches it to something that actually names an application.
+    const onlyWorkspace =
+      !body.data.app && !body.data.title && !body.data.block && Boolean(body.data.workspace);
+    if (onlyWorkspace) return { recorded: false, why: "workspace noted; the next poll will carry it" };
+    return context.note(body.data);
+  });
+
+  /**
+   * Everything held, and the settings that govern it.
+   *
+   * The audit is one command on purpose. A record whose contents you cannot see
+   * is one you cannot consent to, and "it only keeps a little" is a claim that
+   * has to be checkable rather than believed.
+   */
+  app.get("/context", async (req) => {
+    const q = z.object({ limit: z.coerce.number().int().optional() }).safeParse(req.query);
+    return {
+      recording: context.recording,
+      windowHours: WINDOW_HOURS,
+      excluded: config.contextExclude,
+      working: context.working(),
+      recent: context.recent(q.success ? (q.data.limit ?? 50) : 50),
+    };
+  });
+
+  /** Off, and empty. Both halves, or it is not an off switch. */
+  app.delete("/context", async () => {
+    const forgotten = context.stop();
+    return { recording: false, forgotten };
+  });
+
+  app.post("/context/on", async () => {
+    context.start();
+    return { recording: true };
+  });
+
   app.get("/health", async () => {
     const f = freshnessOf(sync.lastSuccessAt, sync.everSynced);
     return {
@@ -164,6 +251,52 @@ export function buildServer(deps: {
     const q = mirror.pending();
     const parked = q.filter((x) => x.parkedReason);
     add("queue", parked.length === 0, parked.length ? `${parked.length} parked, needs a decision` : `${q.length} waiting`);
+
+    /**
+     * Is anything still watching the desktop?
+     *
+     * The frontmost poll reads an undocumented tool and is written to degrade to
+     * silence rather than throw, which is right — and means a change in that
+     * tool's output stops the record dead with nothing said. That already
+     * happened once: the parse expected `CFBundleIdentifier=` and the answer
+     * said `bundleID=`, so every poll for a day returned nothing and the only
+     * sign was an empty table nobody had reason to look at.
+     *
+     * So it is asked directly, every time, rather than inferred from rows.
+     */
+    if (!context.recording) {
+      add("context", true, "recording is off");
+    } else {
+      const front = await frontmostApp();
+      const rows = context.recent(1);
+      const last = rows[0] ? new Date(rows[0].at) : null;
+      const mins = last ? Math.round((Date.now() - last.getTime()) / 60000) : null;
+      add(
+        "context",
+        Boolean(front),
+        front
+          ? `watching — ${front.app}` + (mins === null ? ", nothing recorded yet" : `, last row ${mins}m ago`)
+          : "lsappinfo told us nothing — the frontmost poll is doing nothing at all",
+      );
+
+      /**
+       * Is the workspace half alive?
+       *
+       * The poll cannot see workspaces; only Rift's subscription can, and a
+       * subscription is a foreground process that dies with the terminal that
+       * started it. So the most likely state of this wiring is *stopped*, and
+       * the symptom is rows that merely stop carrying a name — invisible unless
+       * something asks.
+       */
+      const withWorkspace = context.recent(1).some((r) => r.workspace);
+      add(
+        "workspace",
+        withWorkspace,
+        withWorkspace
+          ? "arriving from the window manager"
+          : "the newest row names no workspace — is rift-cli on the daemon's PATH? set `riftCli` in config.json",
+      );
+    }
 
     return { ok: checks.every((c) => c.ok), checks };
   });

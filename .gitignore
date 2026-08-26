@@ -41,3 +41,14 @@ apps/web/dist/
 
 # Local deploy helper (server-specific; not distributed)
 restart.sh
+
+# Local Claude Code settings. `settings.local.json` holds a Hermes access key in
+# every permitted-command string that carries one, plus subscribed calendar feed
+# URLs — it is machine-local state, not shared configuration, and the `.local.`
+# in the name is the convention saying so.
+#
+# It has never been committed. What made that luck rather than design was that
+# `.claude/` was not ignored while a sync-conflict copy of a *sibling* file was
+# tracked, so a single `git add .` would have published the key. Ignored now,
+# and the stray copy untracked.
+.claude/

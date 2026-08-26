@@ -19,6 +19,24 @@ const configSchema = z.object({
   accessKey: z.string().min(1),
   /** How often to ask for changes while the network is up, in seconds. */
   pollSeconds: z.number().int().min(2).max(3600).default(30),
+  /**
+   * Bundle ids never recorded in the context record — not the app, not the
+   * title, not at all.
+   *
+   * A user-owned list on top of the floor in `context.ts`. Anything here is
+   * invisible to ranking and defaulting, which is the price of it being
+   * invisible to the record, and that is the correct trade to leave to a person
+   * rather than guess at.
+   */
+  contextExclude: z.array(z.string()).default([]),
+  /**
+   * Where `rift-cli` lives, if it is not in one of the obvious places.
+   *
+   * A LaunchAgent's `PATH` is not your shell's, so a binary you can run by name
+   * in a terminal may be unfindable to the daemon. Set this if `talaria doctor`
+   * says the workspace is missing while `rift-cli query workspaces` works.
+   */
+  riftCli: z.string().optional(),
 });
 export type Config = z.infer<typeof configSchema>;
 

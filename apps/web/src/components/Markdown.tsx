@@ -1,9 +1,11 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { internalHref, MENTION_SCHEMES } from "../lib/mention-resolve.tsx";
 import { MentionChip } from "./MentionText.tsx";
 
 /** A reference to something in Hermes rather than somewhere on the web. */
-const INTERNAL = /^(block|person|tag):/;
+// Shared, not restated. See MENTION_SCHEMES.
+const INTERNAL = internalHref;
 
 /**
  * Titles come back from the tools exactly as they're stored, which means a title
@@ -20,7 +22,10 @@ function textOf(node: unknown): string {
 }
 
 function prepare(md: string): string {
-  return md.replace(/([@|#])(\[[^\]]*\]\((?:block|person|tag):)/g, "$2");
+  return md.replace(
+    new RegExp(`([@|#])(\\[[^\\]]*\\]\\((?:${MENTION_SCHEMES.join("|")}):)`, "g"),
+    "$2",
+  );
 }
 
 /**

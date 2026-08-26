@@ -93,7 +93,32 @@ CREATE TABLE IF NOT EXISTS queue (
   parked_reason TEXT,
   attempts      INTEGER NOT NULL DEFAULT 0
 );
+
+-- What the machine was doing, lately.
+--
+-- Deliberately not a log. Rows age out, nothing here is ever sent anywhere, and
+-- nothing downstream may treat a row as a fact about the library: this is a
+-- query key with a decay, and the moment a "session" becomes a stored object
+-- somebody owns an activity log they will never read and will eventually regret.
+--
+-- No id, no primary key, no foreign key to blocks. A context row is not a thing.
+CREATE TABLE IF NOT EXISTS context (
+  at        TEXT NOT NULL,
+  app       TEXT,
+  title     TEXT,
+  workspace TEXT,
+  block     TEXT
+);
+CREATE INDEX IF NOT EXISTS context_at ON context (at);
 `;
+
+export interface ContextRow {
+  at: string;
+  app: string | null;
+  title: string | null;
+  workspace: string | null;
+  block: string | null;
+}
 
 export class Mirror {
   private db: DatabaseSync;
@@ -348,5 +373,88 @@ export class Mirror {
 
   bumpAttempt(id: number): void {
     this.db.prepare("UPDATE queue SET attempts = attempts + 1 WHERE id = ?").run(id);
+  }
+
+  // ── context ──────────────────────────────────────────────────────────
+
+  /**
+   * A row as it comes out of SQLite, as a `ContextRow`.
+   *
+   * Mapped rather than asserted. `node:sqlite` hands back
+   * `Record<string, SQLOutputValue>`, and telling the compiler it is something
+   * more specific is the move that compiles today and hides a renamed column
+   * later — the same reason `pending()` builds its objects by hand.
+   */
+  private static contextRow(r: Record<string, unknown>): ContextRow {
+    const s = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+    return {
+      at: String(r.at),
+      app: s(r.app),
+      title: s(r.title),
+      workspace: s(r.workspace),
+      block: s(r.block),
+    };
+  }
+
+  /**
+   * Write a context row, unless it says the same as the last one.
+   *
+   * A title-change event fires per keystroke in some editors, so the dedupe is
+   * not an optimisation — without it a minute of typing is a hundred rows
+   * saying one thing, and the rolling window empties itself of everything
+   * useful.
+   */
+  noteContext(row: Omit<ContextRow, "at">): void {
+    const raw = this.db
+      .prepare("SELECT at, app, title, workspace, block FROM context ORDER BY at DESC LIMIT 1")
+      .get() as Record<string, unknown> | undefined;
+    const last = raw ? Mirror.contextRow(raw) : null;
+    if (
+      last &&
+      last.app === row.app &&
+      last.title === row.title &&
+      last.workspace === row.workspace &&
+      last.block === row.block
+    ) {
+      return;
+    }
+    this.db
+      .prepare("INSERT INTO context (at, app, title, workspace, block) VALUES (?, ?, ?, ?, ?)")
+      .run(new Date().toISOString(), row.app, row.title, row.workspace, row.block);
+  }
+
+  /** The rolling window, newest first. */
+  recentContext(limit = 50): ContextRow[] {
+    const rows = this.db
+      .prepare("SELECT at, app, title, workspace, block FROM context ORDER BY at DESC LIMIT ?")
+      .all(Math.min(Math.max(limit, 1), 500)) as Record<string, unknown>[];
+    return rows.map(Mirror.contextRow);
+  }
+
+  /**
+   * The most recent row whose app is not in `skip`.
+   *
+   * This is the whole point of keeping a record rather than asking the system:
+   * once a picker is on screen it *is* the frontmost application, so "what am I
+   * in" is unanswerable at the moment it is asked and trivially answerable from
+   * a second ago.
+   */
+  workingContext(skip: string[]): ContextRow | null {
+    const rows = this.db
+      .prepare("SELECT at, app, title, workspace, block FROM context ORDER BY at DESC LIMIT 40")
+      .all() as Record<string, unknown>[];
+    return rows.map(Mirror.contextRow).find((r) => r.app && !skip.includes(r.app)) ?? null;
+  }
+
+  /** Drop everything older than the window. Called on every write. */
+  pruneContext(before: string): void {
+    this.db.prepare("DELETE FROM context WHERE at < ?").run(before);
+  }
+
+  /** Forget all of it, now. The off switch has to actually empty the drawer. */
+  forgetContext(): number {
+    const n = (this.db.prepare("SELECT COUNT(*) AS n FROM context").get() as { n: number }).n;
+    this.db.exec("DELETE FROM context");
+    return Number(n);
   }
 }

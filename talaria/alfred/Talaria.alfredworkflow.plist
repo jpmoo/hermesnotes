@@ -32,6 +32,19 @@
 				<false/>
 			</dict>
 		</array>
+		<key>A1C4E7D2-3B5F-4C88-9E10-7F2D6B8A0C31</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>D5F8B0A6-2E71-4A93-B4C2-8D19E6F03B77</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
 	</dict>
 	<key>createdby</key>
 	<string>Talaria</string>
@@ -151,6 +164,76 @@
 			<key>version</key>
 			<integer>2</integer>
 		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<true/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>0</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>hl</string>
+				<key>queuedelaycustom</key>
+				<integer>3</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>1</integer>
+				<key>runningsubtext</key>
+				<string>Searching…</string>
+				<key>script</key>
+				<string>"$HOME/.local/bin/talaria" alfred --link "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>skipuniversalaction</key>
+				<false/>
+				<key>subtext</key>
+				<string>Paste a link to a block into whatever you were writing in</string>
+				<key>title</key>
+				<string>Link to Hermes</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>A1C4E7D2-3B5F-4C88-9E10-7F2D6B8A0C31</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>autopaste</key>
+				<true/>
+				<key>clipboardtext</key>
+				<string>{query}</string>
+				<key>ignoredynamicplaceholders</key>
+				<true/>
+				<key>transient</key>
+				<false/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.output.clipboard</string>
+			<key>uid</key>
+			<string>D5F8B0A6-2E71-4A93-B4C2-8D19E6F03B77</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
 	</array>
 	<key>readme</key>
 	<string>Type `hn` followed by anything to search your Hermes blocks. Results come from Talaria's local mirror, so this works with no network at all.
@@ -160,6 +243,10 @@ Alfred cannot see these through its own search: its default results are files, a
 Return opens the block in the web app. Cmd-Return opens it via talaria://, which resolves the host at click time.
 
 A Fallback Search is included: add it under Alfred Preferences &gt; Features &gt; Default Results &gt; Setup fallback results, and 'Search Hermes for ...' will appear whenever nothing on the Mac matches what you typed.
+
+Type `hl` instead of `hn` to paste a *link* to a block into whatever you were writing in — the reciprocal of capture. Return pastes it; Cmd-Return pastes the other address (https vs talaria://); Alt-Return pastes just the title.
+
+The link's shape is chosen for the destination: markdown where markdown is authored, a bare URL where it is not — because '[Title](https://...)' pasted into an email is literal brackets, and a bare URL autolinks there anyway. Alfred cannot tell the CLI which application you were in, since by then Alfred is the frontmost one, so `hl` takes the default. A hotkey that captures the frontmost app first can pass `--for &lt;bundle-id&gt;` and get the right shape every time.
 
 Needs the talaria daemon running: `talaria doctor` will say.</string>
 	<key>uidata</key>
@@ -192,11 +279,25 @@ Needs the talaria daemon running: `talaria doctor` will say.</string>
 			<key>ypos</key>
 			<integer>180</integer>
 		</dict>
+		<key>A1C4E7D2-3B5F-4C88-9E10-7F2D6B8A0C31</key>
+		<dict>
+			<key>xpos</key>
+			<integer>40</integer>
+			<key>ypos</key>
+			<integer>320</integer>
+		</dict>
+		<key>D5F8B0A6-2E71-4A93-B4C2-8D19E6F03B77</key>
+		<dict>
+			<key>xpos</key>
+			<integer>320</integer>
+			<key>ypos</key>
+			<integer>320</integer>
+		</dict>
 	</dict>
 	<key>variablesdontexport</key>
 	<array/>
 	<key>version</key>
-	<string>0.2.0</string>
+	<string>0.3.0</string>
 	<key>webaddress</key>
 	<string></string>
 </dict>

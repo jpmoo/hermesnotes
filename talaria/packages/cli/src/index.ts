@@ -2,6 +2,16 @@
 import type { CanonicalBlock } from "@talaria/canonical";
 import { call, DaemonDown, SOCKET } from "./client.js";
 import { dim, warn } from "./format.js";
+import {
+  ADDRESSES,
+  frontmostBundleId,
+  render,
+  styleFor,
+  SYNTAXES,
+  type Address,
+  type LinkStyle,
+  type Syntax,
+} from "./link.js";
 
 /**
  * `talaria` — the command-line face of the mirror.
@@ -44,7 +54,9 @@ const today = () => {
 
 /** Flags with values, flags without, and everything left over as words. */
 function parse(args: string[]): { words: string[]; flags: Map<string, string | true> } {
-  const VALUED = new Set(["kind", "limit", "type", "date", "retry", "drop"]);
+  const VALUED = new Set([
+    "kind", "limit", "type", "date", "retry", "drop", "as", "address", "for", "app", "title", "workspace", "block",
+  ]);
   const words: string[] = [];
   const flags = new Map<string, string | true>();
   for (let i = 0; i < args.length; i++) {
@@ -63,6 +75,19 @@ function parse(args: string[]): { words: string[]; flags: Map<string, string | t
   return { words, flags };
 }
 
+/** What the daemon thinks you were working in, when nobody told us. */
+async function workingApp(): Promise<string | undefined> {
+  try {
+    const res = await call<{ working: { app: string | null } | null }>("GET", "/context?limit=1");
+    return res.working?.app ?? undefined;
+  } catch {
+    // Recording off, daemon busy, table empty — all the same answer here, which
+    // is "take the default". A picker must never fail because it could not
+    // guess a formatting preference.
+    return undefined;
+  }
+}
+
 function usage(): void {
   console.log(`talaria — Hermes Notes from the command line (served from the local mirror)
 
@@ -77,6 +102,12 @@ function usage(): void {
   talaria status                                     what the daemon knows
   talaria doctor                                     check everything that fails quietly
   talaria alfred <text>                              Alfred Script Filter JSON
+  talaria alfred --link <text>                       ...whose result is a link to paste
+  talaria link <text> [--as markdown|wiki|bare|title] [--address share|here]
+                      [--for <bundle-id>] [--copy]   a link to a block, for pasting
+  talaria context [--limit N]                        what the machine has been doing
+  talaria context set [--app ID] [--title T] [--workspace W]
+  talaria context off | on                           off also forgets everything held
   talaria open <text>                                open the best match in the browser
   talaria capture [text] [--note]                    text -> a task (or a note with --note)
 
@@ -261,25 +292,44 @@ async function main(argv: string[]): Promise<number> {
       const text = words.join(" ").trim();
       if (text) q.set("q", text);
       q.set("limit", "25");
+      // The frontmost application is a launcher by the time this runs — that is
+      // what a picker *is* — so asking the system returns the question rather
+      // than the answer. The daemon's context record holds the last thing that
+      // wasn't a launcher, which is exactly what was wanted, and `--for` still
+      // wins for a caller that knows better.
+      const linking = flags.has("link");
+      const style = linking ? styleFor(str("for") ?? (await workingApp())) : null;
       try {
         const env = await call<Envelope<CanonicalBlock[]>>("GET", `/blocks?${q}`);
         const stale = env.freshness !== "fresh" ? ` · ${env.note}` : "";
         const items = env.data.map((b) => ({
           uid: b.id,
           title: b.title,
-          subtitle:
-            [
-              `Hermes ${b.typeName}`,
-              b.completion?.done ? "done" : null,
-              b.tags.map((t) => `#${t}`).join(" ") || null,
-            ]
-              .filter(Boolean)
-              .join("  ·  ") + stale,
-          arg: b.url,
+          subtitle: linking
+            ? `${render(b, style!)}${stale}`
+            : [
+                `Hermes ${b.typeName}`,
+                b.completion?.done ? "done" : null,
+                b.tags.map((t) => `#${t}`).join(" ") || null,
+              ]
+                .filter(Boolean)
+                .join("  ·  ") + stale,
+          arg: linking ? render(b, style!) : b.url,
           // Alfred keys its own ranking off this when told to.
           match: `${b.title} ${b.typeName} ${b.tags.join(" ")}`,
           valid: true,
-          mods: { cmd: { arg: b.appUrl, subtitle: "Open via talaria:// (host-independent)" } },
+          mods: linking
+            ? {
+                // The other address, and the bare title — the two things you
+                // reach for when the guess was wrong, without reopening
+                // anything.
+                cmd: {
+                  arg: render(b, { ...style!, address: style!.address === "here" ? "share" : "here" }),
+                  subtitle: style!.address === "here" ? "Shareable https link" : "talaria:// (survives a move)",
+                },
+                alt: { arg: b.title, subtitle: "Just the title" },
+              }
+            : { cmd: { arg: b.appUrl, subtitle: "Open via talaria:// (host-independent)" } },
         }));
         console.log(JSON.stringify({ items }));
       } catch (err) {
@@ -291,6 +341,156 @@ async function main(argv: string[]): Promise<number> {
           }),
         );
       }
+      return 0;
+    }
+
+    /**
+     * What the machine has been doing, lately.
+     *
+     * `set` records a moment; bare shows everything held; `off` stops and
+     * forgets. Kept on one command because the audit and the switch belong next
+     * to the thing they govern — a record you can write to but not read is one
+     * nobody can consent to.
+     */
+    case "context": {
+      const sub = words[0];
+
+      if (sub === "set") {
+        // Rift's contribution is the workspace, and only the workspace. It has
+        // no bundle id to give — the sole app identity in its payload is a pid
+        // inside `RIFT_WINDOW_ID` — and its title stream is mostly noise, since
+        // a terminal retitles itself on every command it runs. The daemon polls
+        // for the frontmost application itself.
+        //
+        //   rift-cli subscribe cli --event workspace_changed \
+        //     --command talaria --args context set
+        const res = await call<{ recorded: boolean; row?: Record<string, unknown>; why?: string }>(
+          "POST",
+          "/context",
+          {
+            app: str("app") ?? null,
+            title: str("title") ?? null,
+            workspace: str("workspace") ?? process.env.RIFT_WORKSPACE_NAME ?? null,
+            block: str("block") ?? null,
+          },
+        );
+        if (!res.recorded) console.log(dim(`not recorded — ${res.why}`));
+        else if (res.why) console.log(dim(res.why));
+        return 0;
+      }
+
+      if (sub === "off") {
+        const res = await call<{ forgotten: number }>("DELETE", "/context");
+        console.log(`recording off — forgot ${res.forgotten} row(s)`);
+        return 0;
+      }
+
+      if (sub === "on") {
+        await call("POST", "/context/on");
+        console.log("recording on");
+        return 0;
+      }
+
+      const res = await call<{
+        recording: boolean;
+        windowHours: number;
+        excluded: string[];
+        working: { at: string; app: string | null; title: string | null; workspace: string | null } | null;
+        recent: { at: string; app: string | null; title: string | null; workspace: string | null }[];
+      }>("GET", `/context?limit=${str("limit") ?? "50"}`);
+
+      if (!res.recording) {
+        console.log(warn("recording is off") + dim(" — talaria context on"));
+        return 0;
+      }
+      console.log(
+        dim(
+          `keeping ${res.windowHours}h, on this machine only` +
+            (res.excluded.length ? `, excluding ${res.excluded.join(", ")}` : ""),
+        ),
+      );
+      if (res.working) {
+        const w = res.working;
+        console.log(`working in: ${w.app ?? "?"}${w.workspace ? ` · ${w.workspace}` : ""}`);
+        if (w.title) console.log(dim(`            ${w.title}`));
+      }
+      if (!res.recent.length) {
+        console.log(dim("nothing recorded yet"));
+        return 0;
+      }
+      console.log("");
+      for (const r of res.recent) {
+        const when = new Date(r.at).toLocaleTimeString();
+        const bits = [r.app ?? "?", r.workspace, r.title].filter(Boolean).join("  ·  ");
+        console.log(`${dim(when)}  ${bits}`);
+      }
+      return 0;
+    }
+
+    /**
+     * A link to a block, in the shape the destination wants.
+     *
+     * The reciprocal of `capture`, and the half that does not exist anywhere
+     * yet: everything in this stack can turn text into a block, and nothing can
+     * turn a block into a reference you can drop into a sentence somewhere else.
+     *
+     * Prints and does nothing more, by default. A command that writes to the
+     * clipboard without being asked is one you cannot pipe, and piping is how
+     * every other caller here works.
+     *
+     * **stdout carries the link and nothing else.** Freshness goes to stderr
+     * rather than through `footer`, because this output is destined for a
+     * clipboard or another command — a mirror-age note appended to it would be
+     * pasted into somebody's email.
+     */
+    case "link": {
+      const text = words.join(" ").trim();
+      if (!text) {
+        console.error("link to what?");
+        return 2;
+      }
+
+      const asked = str("as");
+      if (asked && !SYNTAXES.includes(asked as Syntax)) {
+        console.error(`--as wants one of: ${SYNTAXES.join(", ")}`);
+        return 2;
+      }
+      const addr = str("address");
+      if (addr && !ADDRESSES.includes(addr as Address)) {
+        console.error(`--address wants one of: ${ADDRESSES.join(", ")}`);
+        return 2;
+      }
+
+      const env = await call<Envelope<CanonicalBlock[]>>(
+        "GET",
+        `/blocks?q=${encodeURIComponent(text)}&limit=1`,
+      );
+      const hit = env.data[0];
+      if (!hit) {
+        console.error(`nothing in Hermes matches "${text}"`);
+        return 1;
+      }
+
+      // Explicit flags win over the guess. Failing that, the daemon knows what
+      // you were in a moment ago; failing *that*, ask the system, which is right
+      // whenever this is run straight from a shell.
+      const guessed = styleFor(str("for") ?? (await workingApp()) ?? (await frontmostBundleId()));
+      const style: LinkStyle = {
+        syntax: (asked as Syntax) ?? guessed.syntax,
+        address: (addr as Address) ?? guessed.address,
+      };
+
+      const out = render(hit, style);
+      if (flags.has("copy")) {
+        const { spawn } = await import("node:child_process");
+        const pb = spawn("/usr/bin/pbcopy");
+        pb.stdin.end(out);
+        await new Promise((r) => pb.on("close", r));
+        console.error(dim(`copied: ${out}`));
+      } else {
+        console.log(out);
+      }
+      if (env.freshness !== "fresh") console.error(dim(`— ${env.note}`));
       return 0;
     }
 

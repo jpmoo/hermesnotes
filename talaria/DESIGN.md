@@ -339,7 +339,7 @@ Per intent, on replay:
 
 #### Conflicts are surfaced, never resolved destructively
 
-A parked intent stays parked until the user disposes of it: `hermes queue` lists
+A parked intent stays parked until the user disposes of it: `talaria queue` lists
 what each one meant and why it stopped, `--retry` and `--drop` clear them, and
 `talaria doctor` counts them. A queue that silently discards, or silently grows
 for a fortnight, is its own failure.
@@ -587,6 +587,13 @@ export interface CanonicalRecurrence {
   expressibleAsRRULE: boolean;   // false when anchor === "completion"
 }
 ```
+
+**Superseded — the Hermes change landed 2026-08-23.** Migration 0030 added a
+`series` table with `blocks.series_id` pointing at it, so the identity is the
+producer's and the hash is gone from the canonical layer entirely. See
+`HERMES-CORE-CHANGES.md` §3. The reasoning below is kept because it is the
+argument that got the table built, and because it names precisely what a
+synthesized identity costs.
 
 Derivation of `seriesId` for v0: the UUID of the **first** occurrence, carried
 forward. This requires a Hermes change (spawn stamps the parent's series id onto

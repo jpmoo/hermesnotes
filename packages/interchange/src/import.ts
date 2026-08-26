@@ -163,8 +163,32 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
 
   const memberships: HermesMembership[] = [];
   for (const c of inCollections) {
-    const placement = (c.placement ?? {}) as { semantic?: boolean; regions?: string[] };
-    const names = placement.regions ?? [];
+    // A region is a name, or a name and the words a person reads. This cast
+    // said `string[]` and `indexOf` matched against it, which was true until a
+    // region grew a label — and then every card on a labelled board lost its
+    // placement, `matrix_regions` was rebuilt with an object where a title
+    // string belongs, and the export got blamed for it with a
+    // `placement.region-not-declared` finding owned by `format`.
+    //
+    // The same cast, in the same shape, that Talaria found on its own side. It
+    // survived here because no test library had a labelled region until one did.
+    const placement = (c.placement ?? {}) as {
+      semantic?: boolean;
+      regions?: (string | Record<string, unknown>)[];
+    };
+    const declared = placement.regions ?? [];
+    const names = declared.map((r) => (typeof r === "string" ? r : String(r.name ?? "")));
+    // Back to Hermes' shape: the label is the title a person edits, the name is
+    // what a member matches on, and the producer's own keys lose the prefix
+    // they travelled under so they land where Hermes keeps them.
+    const regionDefs = declared.map((r, i) => {
+      if (typeof r === "string") return { title: r, tag: r };
+      const { name: _n, label, ...rest } = r;
+      const extra = Object.fromEntries(
+        Object.entries(rest).map(([k, v]) => [k.startsWith("hermes:") ? k.slice(7) : k, v]),
+      );
+      return { title: String(label ?? names[i] ?? ""), tag: names[i] ?? "", ...extra };
+    });
     const carried = (c.properties ?? {}) as Record<string, unknown>;
     const smart = (c.membership as { mode?: string } | undefined)?.mode === "query";
 
@@ -176,9 +200,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       properties: {
         ...carried,
         title: String(c.name ?? "Untitled"),
-        ...(names.length
-          ? { matrix_regions: names.map((n) => ({ title: n, tag: n })) }
-          : {}),
+        ...(regionDefs.length ? { matrix_regions: regionDefs } : {}),
         membership_mode: smart ? "smart" : "explicit",
         ...(smart ? { filter_query: (c.membership as { query?: unknown }).query ?? null } : {}),
       },

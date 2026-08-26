@@ -111,6 +111,17 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         // still hold cannot be caught up by a delta, and the one thing we must
         // not do is answer with the part we happen to have — that produces a
         // follower quietly missing objects with nothing to tell it so.
+        //
+        // `oldest` is deliberately global while the delta below is this owner's.
+        // That looks like a mismatch and is safe, for a reason worth writing
+        // down rather than re-deriving: pruning is by *age* and takes no notice
+        // of who wrote a row, so the global minimum sits at the retention cutoff
+        // for everybody. If `since` is at or above it, nothing older than
+        // `since` was pruned for anyone — this owner included — so the delta is
+        // complete. A global minimum can only be lower than this owner's, so the
+        // check can refuse a caller who had lost nothing, and can never wave
+        // through one who has. Erring toward a needless full read is the right
+        // direction to err in.
         const oldest = head?.oldest == null ? null : Number(head.oldest);
         const pruned = oldest === null ? since < Number(cursor) : since + 1 < oldest;
         if (pruned) {

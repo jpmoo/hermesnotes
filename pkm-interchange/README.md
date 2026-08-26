@@ -563,7 +563,7 @@ Worth being clear so nobody builds on a promise that is not here.
 
 - **Not sync.** Exchange, not concurrent editing. No merge, no conflict resolution, no live mirroring. `position` has no generation rule and there is no identity that correlates objects across producers.
 - **Not a schema to adopt.** Your fields keep their names and your model keeps its shape. Profiles are a *mapping*, not a conversion.
-- **Not complete.** v0 has known limits, written down in `AGENTS.md` rather than discovered as bugs: `placement.semantic` is one flag for a whole collection when a board can be built both ways, and a canvas's sticky notes have no ids anyone outside the producing app can address.
+- **Not complete.** v0 has known limits, written down rather than discovered as bugs. [`LIMITS.md`](LIMITS.md) is the honest list — seven gaps found by actually porting an app onto this, each with what the app does instead. `AGENTS.md` carries the ones inherent to the model: `placement.semantic` is one flag for a whole collection when a board can be built both ways, and a canvas's sticky notes have no ids anyone outside the producing app can address.
 
 ---
 

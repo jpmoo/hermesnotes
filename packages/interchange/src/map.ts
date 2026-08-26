@@ -1,4 +1,5 @@
 import { inlineMentions, profilesOf, recurrenceSchema, type FieldDef, type PropertySchema } from "@hermes/shared";
+import { CONFORMANCE } from "./conformance.js";
 import { CARRY_KEY } from "./import.js";
 import type { Finding, HermesBlock, HermesMembership, HermesSeries, HermesType } from "./types.js";
 
@@ -369,16 +370,28 @@ export function toInterchange(input: ExportInput): {
     envelope: {
       format: "pkm-interchange/0",
       producer: { ...(input.producer ?? { name: "hermes", version: "0.0.0" }), stableIds: true },
+      // One manifest, not two.
+      //
+      // These numbers were written here by hand — `produce: 2, consume: 0,
+      // operate: 0, bindings: ["file"]` — back when they were true, and stayed
+      // put while `CONFORMANCE` grew to 4/4/4 over file, http and mcp. So
+      // `GET /conformance` and `GET /interchange` described different software,
+      // and the envelope is the one a stranger reads first because it arrives
+      // unasked. Anybody trusting it concluded Hermes was a file-only level-2
+      // producer that could not be read from or written to.
+      //
+      // Exactly the failure this route's own header describes, arriving a
+      // second time by the opposite door. The levels and bindings come from the
+      // single place that holds them now; `profiles` and `features` stay
+      // computed, because those are facts about *this* library rather than
+      // about the software, and a claim measured from the data cannot drift.
       conformance: {
-        produce: 2,
-        consume: 0,
-        operate: 0,
-        bindings: ["file"],
+        // `format` lives on the envelope, not inside its manifest — the shared
+        // constant carries it for the sake of the `/conformance` route, which
+        // answers with nothing else.
+        ...(({ format: _f, ...rest }) => rest)(CONFORMANCE),
         profiles: [...new Set(types.flatMap((t) => Object.keys(t.profiles)))],
         features,
-        // Recurrence is the honest one: Hermes plainly has it and cannot say so
-        // here, because the format wants a series and Hermes has no series.
-        unsupported: [] as string[],
       },
       types,
       objects,

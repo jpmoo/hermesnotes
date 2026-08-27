@@ -152,9 +152,18 @@ struct GlanceView: View {
             if let error = model.error {
                 message(error)
             } else if model.hits.isEmpty {
-                message(model.question == nil
-                        ? "Nothing in front worth asking about."
-                        : "Nothing close to this yet.")
+                // Say which of the three it is. "Nothing close" and "I am not
+                // allowed to look" are different problems with different
+                // answers, and a panel that shows the same empty state for both
+                // sends somebody hunting through their library for a fault that
+                // is in System Settings.
+                if !Focused.granted {
+                    message("Talaria can't read what you're working on.\n\nSystem Settings → Privacy & Security → Accessibility, and add Talaria.")
+                } else {
+                    message(model.question == nil
+                            ? "Nothing in front worth asking about."
+                            : "Nothing close to this yet.")
+                }
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 1) {

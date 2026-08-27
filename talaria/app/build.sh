@@ -112,8 +112,34 @@ xcrun swiftc \
   -o "$APP/Contents/MacOS/talaria-ax" \
   "$HERE/ax/main.swift"
 
-echo "==> Signing (ad-hoc; personal machine, no notarization)"
-codesign --force --sign - --identifier dev.talaria.Talaria "$APP"
+# Signed with a real identity when one is available, and this is not cosmetic.
+#
+# macOS keys an accessibility grant to a program's code signature. An ad-hoc
+# signature has no stable identity, so the requirement becomes the *hash* — and
+# the hash changes on every build. That is why a grant made on Tuesday stops
+# working on Wednesday and the entry sits in the list looking granted: it is,
+# but for a program that no longer exists.
+#
+# A Developer ID identity is stable across rebuilds, so the grant is made once.
+# Falls back to ad-hoc when there is no certificate, which still runs and still
+# loses its permissions every build — worth saying out loud rather than
+# discovering.
+#
+# The helper is signed first and under the app's own identifier. It is a
+# separate program to macOS otherwise, named after its binary by swiftc, and a
+# grant on the app never covered it.
+SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+if [ -n "$SIGN_ID" ]; then
+  echo "==> Signing as: $SIGN_ID"
+else
+  echo "==> Signing (ad-hoc — no Developer ID found; permissions will not survive a rebuild)"
+  SIGN_ID="-"
+fi
+codesign --force --sign "$SIGN_ID" --identifier dev.talaria.Talaria \
+  --options runtime "$APP/Contents/MacOS/talaria-ax"
+codesign --force --sign "$SIGN_ID" --identifier dev.talaria.Talaria \
+  --options runtime "$APP"
 codesign --verify --strict "$APP"
 
 echo "==> Swapping into place"

@@ -55,6 +55,40 @@ export function mayEmbedTitle(app: string, blind: readonly string[]): boolean {
   return !blind.includes(app);
 }
 
+/**
+ * What is actually being worked on, read once and not kept.
+ *
+ * A window title is often not the document. "Untitled" says nothing, and an
+ * untitled draft is exactly the moment somebody cannot find the note they are
+ * reaching for. The accessibility tree has the words; nothing else does.
+ *
+ * Spawned per question rather than observed. That is the distinction the whole
+ * design turns on: three applications holding AX observers is a known source of
+ * beachballs, while a process that starts, asks, prints and exits is the same
+ * class of thing as `lsappinfo`. It also keeps the permission legible — the tool
+ * that needs the grant is a separate 60KB binary, not a capability folded into
+ * a daemon that does thirty other things.
+ *
+ * Returns nothing at all rather than an error when it cannot see: no grant, no
+ * focused text, an application that exposes none. Having nothing to say is the
+ * ordinary case, and the caller falls back to the title.
+ */
+export async function focusedText(
+  helper: string,
+): Promise<{ text?: string; app?: string; denied?: boolean }> {
+  const { execFile } = await import("node:child_process");
+  const out = await new Promise<string>((resolve) =>
+    execFile(helper, [], { timeout: 2000, maxBuffer: 1 << 20 }, (err, stdout) =>
+      resolve(err ? "" : stdout),
+    ),
+  );
+  try {
+    return JSON.parse(out || "{}") as { text?: string; app?: string; denied?: boolean };
+  } catch {
+    return {};
+  }
+}
+
 export interface GlanceHit {
   id: string;
   score: number;
@@ -76,11 +110,25 @@ export function ollamaEmbedder(url: string, model: string): Embedder {
   return {
     model,
     async embed(text: string): Promise<Float32Array> {
-      const res = await fetch(`${url.replace(/\/$/, "")}/api/embeddings`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, prompt: text.slice(0, MAX_SOURCE) }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${url.replace(/\/$/, "")}/api/embeddings`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model, prompt: text.slice(0, MAX_SOURCE) }),
+        });
+      } catch {
+        // `fetch failed` is what a caller sees otherwise, which names neither
+        // the thing that is down nor the thing to do about it. Ollama is not a
+        // service by default — it runs while its app is open — so this is an
+        // ordinary Tuesday rather than a fault, and it should read like one.
+        //
+        // Deliberately no fallback to another host. Reaching for a model on the
+        // network because the local one is asleep would send the words this
+        // whole design exists to keep on the machine, and it would do it
+        // silently, at the moment nobody was watching.
+        throw new Error(`no model at ${url} — is Ollama running?`);
+      }
       if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
       const body = (await res.json()) as { embedding?: number[] };
       if (!body.embedding?.length) throw new Error("ollama returned no embedding");

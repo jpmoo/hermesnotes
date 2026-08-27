@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -16,7 +18,7 @@ import {
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { ContextRecord, FrontmostWatcher, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS } from "./context.js";
-import { Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
+import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
@@ -127,6 +129,16 @@ export function buildServer(deps: {
    * never part of an interchange envelope — see `context.ts` for why that is a
    * rule rather than an omission.
    */
+  /**
+   * The accessibility reader, beside the app that ships it.
+   *
+   * Resolved from the daemon's own location rather than a PATH lookup: this is
+   * a private helper of one bundle, not a tool anybody installs, and finding a
+   * different `talaria-ax` on the PATH would be a worse outcome than finding
+   * none. Missing is fine — Glance falls back to the window title.
+   */
+  const AX_HELPER = join(dirname(fileURLToPath(import.meta.url)), "Talaria.app/Contents/MacOS/talaria-ax");
+
   const context = new ContextRecord(mirror, config.contextExclude);
 
   /**
@@ -250,12 +262,24 @@ export function buildServer(deps: {
     // nothing to ask about while sitting in front of the thing being asked
     // about.
     let asked = q?.trim() ?? "";
-    let fromWindow = false;
+    let source: "asked" | "document" | "title" | null = q?.trim() ? "asked" : null;
     if (!asked) {
       const front = await frontmostApp();
-      if (front?.title && mayEmbedTitle(front.app, TITLE_BLIND)) {
-        asked = stripMarkers(front.title).slice(0, MAX_SOURCE);
-        fromWindow = true;
+      // The blind list first, and before anything is read rather than after.
+      // A password manager's contents are not to be looked at, and "we looked
+      // and then discarded it" is not the same promise as "we did not look".
+      if (front && mayEmbedTitle(front.app, TITLE_BLIND)) {
+        // The document, if it will show us. A title is a fallback rather than
+        // the intent: "Untitled" is a real filename and tells nobody anything.
+        const focused = await focusedText(AX_HELPER);
+        const text = focused.text?.trim();
+        if (text) {
+          asked = text.slice(0, MAX_SOURCE);
+          source = "document";
+        } else if (front.title) {
+          asked = stripMarkers(front.title).slice(0, MAX_SOURCE);
+          source = "title";
+        }
       }
     }
     if (!asked) {
@@ -275,12 +299,12 @@ export function buildServer(deps: {
         });
         return [{ score: Number(h.score.toFixed(4)), block: c }];
       });
-      return envelope(results, { question: asked, fromWindow });
+      return envelope(results, { question: asked, source });
     } catch (err) {
       // A model that is not running is an ordinary condition, not a failure of
       // the daemon — and saying which is the difference between "install
       // Ollama" and "something is broken".
-      return envelope([], { question: asked, error: (err as Error).message });
+      return envelope([], { question: asked, source, error: (err as Error).message });
     }
   });
 

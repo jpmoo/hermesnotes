@@ -98,6 +98,20 @@ xcrun swiftc \
   -o "$APP/Contents/MacOS/Talaria" \
   "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Theme.swift" "$HERE/Sources/HermesWindow.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/MirrorWatch.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AgendaView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/main.swift"
 
+# A second, tiny binary rather than a function in the app.
+#
+# Reading the accessibility tree is the one thing here that needs a permission
+# grant, and keeping it in its own process keeps that fact visible: it starts
+# when asked, answers, and exits. Nothing observes, which is the distinction the
+# design turns on — three apps holding AX observers beachball, a process that
+# asks one question does not.
+xcrun swiftc \
+  -O \
+  -target arm64-apple-macos14.0 \
+  -framework AppKit -framework ApplicationServices \
+  -o "$APP/Contents/MacOS/talaria-ax" \
+  "$HERE/ax/main.swift"
+
 echo "==> Signing (ad-hoc; personal machine, no notarization)"
 codesign --force --sign - --identifier dev.talaria.Talaria "$APP"
 codesign --verify --strict "$APP"

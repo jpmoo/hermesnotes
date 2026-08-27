@@ -21,7 +21,12 @@ import Foundation
 @MainActor
 final class MirrorWatch {
     private var timer: Timer?
-    private var lastCursor: Int?
+    /// Opaque, and compared only for equality — the same string the daemon
+    /// hands out. Declared `Int` until it wasn't, which made `Daemon.health()`
+    /// throw and left this watcher permanently at its baseline: `lastCursor`
+    /// never got set, so the guard below never passed and nothing ever
+    /// reloaded. See `Daemon.Health.cursor`.
+    private var lastCursor: String?
 
     /// Called when the mirror has moved since the last time it was looked at.
     private let onChange: () -> Void
@@ -35,7 +40,7 @@ final class MirrorWatch {
     /// with nothing behind it.
     func start(interval: TimeInterval = 20) {
         stop()
-        lastCursor = try? Daemon.health().cursor
+        lastCursor = (try? Daemon.health())?.cursor
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }
         }
@@ -49,11 +54,11 @@ final class MirrorWatch {
     /// Note where the mirror is now without reloading — for a view that has just
     /// refreshed itself and would otherwise be told to do it again.
     func markSeen() {
-        lastCursor = try? Daemon.health().cursor
+        lastCursor = (try? Daemon.health())?.cursor
     }
 
     private func tick() {
-        guard let now = try? Daemon.health().cursor else { return }
+        guard let now = (try? Daemon.health())?.cursor else { return }
         defer { lastCursor = now }
         guard let was = lastCursor, now != was else { return }
         onChange()

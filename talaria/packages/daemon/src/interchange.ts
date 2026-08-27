@@ -103,6 +103,20 @@ export function regionNameAt(
   return typeof r?.name === "string" ? r.name : null;
 }
 
+/** The readable part of an error body: first meaningful line, hard-capped. */
+function summarise(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "(no body)";
+  // An HTML page has nothing useful in its first line, so say what it is
+  // rather than quoting the doctype at somebody.
+  if (/^\s*<(!doctype|html)/i.test(trimmed)) {
+    const title = /<title>([^<]{1,120})<\/title>/i.exec(trimmed)?.[1]?.trim();
+    return title ? `HTML page — "${title}"` : "an HTML page, not an API response";
+  }
+  const line = trimmed.split("\n")[0]!.trim();
+  return line.length > 200 ? `${line.slice(0, 200)}…` : line;
+}
+
 export class Interchange {
   constructor(
     private base: string,
@@ -135,7 +149,12 @@ export class Interchange {
     // one honest answer to a cursor older than the log, and the signal to walk.
     if (res.status === 410) throw new GoneError(await res.text());
     const text = await res.text();
-    if (!res.ok) throw new Error(`${res.status} ${text}`);
+    // Capped, because a refusal is not always JSON. A proxy in front of a
+    // server that is switched off answers with a full HTML error page, and
+    // `talaria doctor` printed all two hundred lines of Cloudflare's into the
+    // terminal under the heading "producer". The status and the first line of
+    // it are the whole diagnostic; the rest is someone else's stylesheet.
+    if (!res.ok) throw new Error(`${res.status} ${summarise(text)}`);
     return (text ? JSON.parse(text) : null) as T;
   }
 

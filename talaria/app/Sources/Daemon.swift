@@ -32,7 +32,22 @@ enum Daemon {
     }
 
     struct Health: Decodable {
-        let cursor: Int
+        /**
+         The producer's cursor, as a string, because that is what it is.
+
+         This was declared `Int` and had been since the mirror advanced on an
+         integer epoch. The interchange cursor that replaced it is opaque by
+         rule — never parsed, never compared, never incremented, because it is a
+         sequence number belonging to the far end — and it now arrives as
+         `"1427"`. Decoding is all-or-nothing, so the mismatch did not cost the
+         one field: it threw away every call to `/health`, which is what
+         Spotlight reindexing was gated on. The symptom was an index that
+         stopped updating and one line a day in the log.
+
+         Optional because a daemon that has never synced has no cursor, and
+         "not yet" is not a decoding failure.
+         */
+        let cursor: String?
         let blocks: Int
         let freshness: String
     }
@@ -52,7 +67,22 @@ enum Daemon {
     }
 
     struct SpotlightPayload: Decodable {
-        let epoch: Int
+        /**
+         The same opaque cursor as `Health.cursor`, under an older name.
+
+         The daemon serves `epoch: sync.cursor` — the field was named when the
+         mirror advanced on an integer and kept its name when the interchange
+         cursor replaced it. So this is a string, and the identical `Int`
+         mismatch was hiding one layer below the last one: fixing `Health` moved
+         the decoding failure from `/health` to `/spotlight` rather than
+         removing it.
+
+         Kept as `epoch` rather than renamed, because the wire name is shared
+         with the daemon and a rename is a change to both ends for no behaviour.
+         Read `Health.cursor` when you want the cursor; this exists so the
+         payload decodes.
+         */
+        let epoch: String?
         let count: Int
         let items: [Item]
     }

@@ -81,7 +81,9 @@ final class DaemonProcess {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var daemon: DaemonProcess?
     private var timer: Timer?
-    private var lastIndexedEpoch = -1
+    /// The cursor the Spotlight index was last built at. Compared, never
+    /// parsed — see `Daemon.Health.cursor`.
+    private var lastIndexedCursor: String?
     private var signalSources: [DispatchSourceSignal] = []
     private var statusItem: NSStatusItem?
     private var boardWindow: NSPanel?
@@ -226,15 +228,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func syncIndexIfChanged() {
-        let since = lastIndexedEpoch
+        let since = lastIndexedCursor
         Task.detached(priority: .background) { [self] in
             do {
                 let health = try Daemon.health()
-                guard health.cursor != since else { return }
+                // Cursor against cursor. It used to compare the sync cursor
+                // against the *Spotlight* payload's epoch, which are two
+                // different numbers from two different places that happened to
+                // both be integers.
+                guard let cursor = health.cursor, cursor != since else { return }
                 let payload = try Daemon.spotlight()
                 try await Indexer.reindex(payload)
-                await MainActor.run { self.lastIndexedEpoch = payload.epoch }
-                NSLog("talaria: indexed \(payload.count) items (epoch \(payload.epoch))")
+                await MainActor.run { self.lastIndexedCursor = cursor }
+                NSLog("talaria: indexed \(payload.count) items (cursor \(cursor))")
             } catch {
                 // The daemon may simply not be up yet, which is ordinary during
                 // the first seconds after login. Logged, never surfaced.
@@ -777,7 +783,7 @@ if args.first == "--index" || args.first == "--clear" {
             } else {
                 let payload = try Daemon.spotlight()
                 try await Indexer.reindex(payload)
-                print("indexed \(payload.count) items (epoch \(payload.epoch))")
+                print("indexed \(payload.count) items (cursor \(payload.epoch ?? "—"))")
             }
         } catch {
             FileHandle.standardError.write("talaria: \(error)\n".data(using: .utf8)!)

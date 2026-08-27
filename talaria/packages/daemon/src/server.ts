@@ -487,6 +487,11 @@ export function buildServer(deps: {
         createdAt: b.createdAt,
         updatedAt: b.updatedAt,
       }));
+    // `epoch` is the cursor, and is a string. The name predates the
+    // interchange cursor and is kept because both ends agree on it; what is
+    // worth knowing is that it is opaque — compared for equality by the
+    // indexer, never parsed. Declaring it an integer on the Swift side is what
+    // silently stopped Spotlight reindexing for a fortnight.
     return { epoch: sync.cursor, count: items.length, items };
   });
 

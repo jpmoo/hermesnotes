@@ -84,6 +84,24 @@ CREATE TABLE IF NOT EXISTS state (
   v TEXT
 );
 
+-- One vector per block, for Glance.
+--
+-- The model and dimension travel with the vector because a vector without them
+-- is not merely uninformative, it is misleading: cosine similarity between
+-- embeddings of two different models returns a plausible number rather than an
+-- error. Changing model has to invalidate every row, and it can only do that if
+-- every row says which model made it.
+CREATE TABLE IF NOT EXISTS embeddings (
+  block_id  TEXT PRIMARY KEY,
+  model     TEXT NOT NULL,
+  dim       INTEGER NOT NULL,
+  -- Float32Array bytes. Kept as a blob rather than JSON: 768 floats is 3KB
+  -- packed and about 15KB as text, times a library.
+  vec       BLOB NOT NULL,
+  -- What was embedded, so a block whose text has not changed is not re-embedded.
+  source    TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS queue (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   kind          TEXT NOT NULL,
@@ -329,6 +347,55 @@ export class Mirror {
       this.db.exec("ROLLBACK");
       throw err;
     }
+  }
+
+  // ── embeddings ───────────────────────────────────────────────────────────
+
+  /** What still needs a vector: everything whose source text has changed or was never done. */
+  unembedded(model: string, limit = 200): { id: string; source: string }[] {
+    return this.db
+      .prepare(
+        `SELECT b.id AS id, TRIM(b.title || ' ' || b.body) AS source
+           FROM blocks b LEFT JOIN embeddings e ON e.block_id = b.id AND e.model = ?
+          WHERE b.archived = 0 AND TRIM(b.title || ' ' || b.body) <> ''
+            AND (e.block_id IS NULL OR e.source <> TRIM(b.title || ' ' || b.body))
+          LIMIT ?`,
+      )
+      .all(model, limit) as { id: string; source: string }[];
+  }
+
+  putEmbedding(id: string, model: string, vec: Float32Array, source: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO embeddings (block_id, model, dim, vec, source) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(block_id) DO UPDATE SET
+           model = excluded.model, dim = excluded.dim, vec = excluded.vec, source = excluded.source`,
+      )
+      .run(id, model, vec.length, new Uint8Array(vec.buffer.slice(0)), source);
+  }
+
+  /** Every vector for a model, with the block it belongs to. */
+  embeddings(model: string): { id: string; vec: Float32Array }[] {
+    const rows = this.db
+      .prepare("SELECT block_id AS id, vec FROM embeddings WHERE model = ?")
+      .all(model) as { id: string; vec: Uint8Array }[];
+    return rows.map((r) => ({
+      id: r.id,
+      vec: new Float32Array(r.vec.buffer, r.vec.byteOffset, r.vec.byteLength / 4),
+    }));
+  }
+
+  /** Forget every vector — after a model change, when none of them mean anything. */
+  forgetEmbeddings(): number {
+    const n = (this.db.prepare("SELECT COUNT(*) c FROM embeddings").get() as { c: number }).c;
+    this.db.exec("DELETE FROM embeddings");
+    return n;
+  }
+
+  embeddingStats(): { model: string; count: number }[] {
+    return this.db
+      .prepare("SELECT model, COUNT(*) AS count FROM embeddings GROUP BY model")
+      .all() as { model: string; count: number }[];
   }
 
   types(): string[] {

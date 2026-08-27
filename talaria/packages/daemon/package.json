@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "stranger": "tsx stranger.ts",
     "contextcheck": "tsx contextcheck.ts",
-    "riftcheck": "tsx riftcheck.ts"
+    "riftcheck": "tsx riftcheck.ts",
+    "glancecheck": "tsx glancecheck.ts"
   },
   "dependencies": {
     "@hermes/shared": "workspace:*",

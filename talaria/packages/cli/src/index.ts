@@ -105,6 +105,8 @@ function usage(): void {
   talaria alfred --link <text>                       ...whose result is a link to paste
   talaria link <text> [--as markdown|wiki|bare|title] [--address share|here]
                       [--for <bundle-id>] [--copy]   a link to a block, for pasting
+  talaria glance [text] [--limit N]                  what the library knows about what you are looking at
+  talaria glance --index                             build the local index now
   talaria context [--limit N]                        what the machine has been doing
   talaria context set [--app ID] [--title T] [--workspace W]
   talaria context off | on                           off also forgets everything held
@@ -352,6 +354,44 @@ async function main(argv: string[]): Promise<number> {
      * to the thing they govern — a record you can write to but not read is one
      * nobody can consent to.
      */
+    case "glance": {
+      if (flags.has("index")) {
+        const r = await call<{ embedded: number; left: number }>("POST", "/glance/index");
+        console.log(`embedded ${r.embedded}, ${r.left ? `${r.left} left` : "up to date"}`);
+        return 0;
+      }
+      const q = new URLSearchParams();
+      const text = words.join(" ").trim();
+      if (text) q.set("q", text);
+      if (str("limit")) q.set("k", str("limit")!);
+      const res = await call<{
+        data: { score: number; block: { title: string; kind: string; completion: unknown; url: string } }[];
+        question: string | null;
+        error?: string;
+      }>("GET", `/glance${q.toString() ? `?${q}` : ""}`);
+
+      if (res.error) {
+        console.log(warn("no answer") + dim(` — ${res.error}`));
+        return 1;
+      }
+      if (!res.question) {
+        console.log(dim("nothing in front worth asking about"));
+        return 0;
+      }
+      console.log(dim(`near: ${res.question}`));
+      if (!res.data.length) {
+        console.log(dim("nothing close. `talaria glance --index` if this is the first run."));
+        return 0;
+      }
+      console.log("");
+      for (const hit of res.data) {
+        const done = (hit.block.completion as { done?: boolean } | null)?.done;
+        const box = done === undefined ? "  " : done ? "[x]" : "[ ]";
+        console.log(`  ${dim(hit.score.toFixed(2))} ${box} ${hit.block.title.slice(0, 64)}`);
+      }
+      return 0;
+    }
+
     case "context": {
       const sub = words[0];
 

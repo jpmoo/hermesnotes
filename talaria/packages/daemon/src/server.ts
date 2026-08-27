@@ -15,7 +15,8 @@ import {
   type InterchangeType,
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
-import { ContextRecord, FrontmostWatcher, frontmostApp, LAUNCHERS, WINDOW_HOURS } from "./context.js";
+import { ContextRecord, FrontmostWatcher, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS } from "./context.js";
+import { Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
@@ -97,13 +98,14 @@ export function buildServer(deps: {
   };
 
   /** Every answer says how much it can be trusted. Nothing serves silently stale. */
-  const envelope = <T>(data: T) => {
+  const envelope = <T>(data: T, extra: Record<string, unknown> = {}) => {
     const f = freshnessOf(sync.lastSuccessAt, sync.everSynced);
     return {
       data,
       freshness: f,
       syncedAt: sync.lastSuccessAt,
       note: describe(f, sync.lastSuccessAt),
+      ...extra,
     };
   };
 
@@ -126,6 +128,25 @@ export function buildServer(deps: {
    * rule rather than an omission.
    */
   const context = new ContextRecord(mirror, config.contextExclude);
+
+  /**
+   * Glance keeps its own index, deliberately.
+   *
+   * The producer's vectors are made by a model on the producer's network, which
+   * a laptop away from home cannot reach — and away from home is exactly when a
+   * memory aid earns its place. Local model, local index, local comparison.
+   */
+  const glance = new Glance(mirror, ollamaEmbedder(config.glanceUrl, config.glanceModel));
+  const forgotten = glance.reconcileModel();
+  // Kept up to date in the background, a slice at a time. Deliberately not on
+  // the sync path: a library is a few hundred model calls on first run, and
+  // making a sync wait for them would turn a thirty-second poll into a stall.
+  // A Glance one block behind is not wrong, it is behind.
+  const indexer = setInterval(() => {
+    void glance.index(25).catch(() => {});
+  }, 20_000);
+  indexer.unref();
+  if (forgotten) console.error(`[talaria] glance: model changed — forgot ${forgotten} vector(s)`);
 
   /**
    * Nothing on this machine emits a focus event, so the daemon watches.
@@ -202,6 +223,71 @@ export function buildServer(deps: {
   app.post("/context/on", async () => {
     context.start();
     return { recording: true };
+  });
+
+  /**
+   * What the library knows about what you are looking at.
+   *
+   * With no `q`, the question is the front window's own title — which is why
+   * this exists at all. The words are embedded on this machine and discarded;
+   * only the vector is ever compared, and it never leaves either.
+   *
+   * Deliberately answers with canonical blocks rather than ids, because the
+   * caller is a panel that has to draw them and a second round trip per hit
+   * would make a hotkey feel like a page load.
+   */
+  app.get("/glance", async (req) => {
+    const { q, k } = z
+      .object({ q: z.string().optional(), k: z.coerce.number().int().min(1).max(40).optional() })
+      .parse(req.query);
+
+    // Asked live rather than read from the record, and this is the whole
+    // difference between a feature and a message saying it has nothing to work
+    // with. The record withholds titles for every app outside a short trusted
+    // list, because a stored title lives eight hours; Glance keeps nothing, so
+    // it reads the title, embeds it here, and drops it. On the first run the
+    // front window was Claude Desktop — not on the list — and Glance had
+    // nothing to ask about while sitting in front of the thing being asked
+    // about.
+    let asked = q?.trim() ?? "";
+    let fromWindow = false;
+    if (!asked) {
+      const front = await frontmostApp();
+      if (front?.title && mayEmbedTitle(front.app, TITLE_BLIND)) {
+        asked = stripMarkers(front.title).slice(0, MAX_SOURCE);
+        fromWindow = true;
+      }
+    }
+    if (!asked) {
+      return envelope([], { question: null, note: "nothing in front worth asking about" });
+    }
+
+    try {
+      const hits = await glance.similar(asked, k ?? 8);
+      const idx = types();
+      const results = hits.flatMap((h) => {
+        const raw = mirror.rawBlock(h.id);
+        if (!raw) return [];
+        const row = JSON.parse(raw);
+        const c = toCanonical(row, row.type ? idx.get(row.type) : undefined, {
+          appOrigin: config.origin,
+          collectionKind: row.collectionKind ?? null,
+        });
+        return [{ score: Number(h.score.toFixed(4)), block: c }];
+      });
+      return envelope(results, { question: asked, fromWindow });
+    } catch (err) {
+      // A model that is not running is an ordinary condition, not a failure of
+      // the daemon — and saying which is the difference between "install
+      // Ollama" and "something is broken".
+      return envelope([], { question: asked, error: (err as Error).message });
+    }
+  });
+
+  /** Fill the index now rather than waiting for the timer. */
+  app.post("/glance/index", async (req) => {
+    const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(2000).optional() }).parse(req.query);
+    return glance.index(limit ?? 200);
   });
 
   app.get("/health", async () => {

@@ -20,6 +20,19 @@ const configSchema = z.object({
   /** How often to ask for changes while the network is up, in seconds. */
   pollSeconds: z.number().int().min(2).max(3600).default(30),
   /**
+   * Where Glance embeds, and with what.
+   *
+   * Local by default, and that is the point rather than a default: what gets
+   * embedded is the front window's own words, so the machine doing the
+   * embedding is the machine allowed to see them. Pointing this at a shared box
+   * is a trade somebody may want, and it should be theirs to make deliberately.
+   *
+   * The model has to be the one the producer indexed with, or the scores are
+   * plausible nonsense. Hermes uses `nomic-embed-text` today.
+   */
+  glanceUrl: z.string().url().default("http://localhost:11434"),
+  glanceModel: z.string().default("nomic-embed-text:latest"),
+  /**
    * Bundle ids never recorded in the context record — not the app, not the
    * title, not at all.
    *

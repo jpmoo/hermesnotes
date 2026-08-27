@@ -75,19 +75,6 @@ micro-optimisation. It will not stay tolerable. The fix is an exporter that can
 take the whole set for context and emit a subset, which is the same shape
 `narrow` wants and should replace it.
 
-### There is no create
-
-**Needed for:** Talaria making a task or a note.
-
-**What the format has:** `set`/`unset` on an object that already exists, and
-nothing that brings one into being. A creating client may choose the id — the
-spec says so — which is most of what a create needs and not the verb itself.
-
-**What Talaria does:** `POST /blocks` — a Hermes route. It is the largest
-remaining hole in the port and the obvious next thing to specify: `PUT` an object
-at the id the client picked, which makes creation idempotent by construction and
-needs no new concepts.
-
 ### There is no tag write
 
 **Needed for:** a matrix region that tags whatever enters it.
@@ -115,6 +102,30 @@ here.
 ---
 
 ## Closed
+
+### There is no create — closed
+
+**Was:** `set`/`unset` on an object that already exists, and nothing that brings
+one into being. Talaria made every task and note with `POST /blocks`, a Hermes
+route, which was the largest remaining hole in the port.
+
+**What the format has now:** `PUT <base>/interchange/objects/<id>`. The client
+chooses the id, which Identity always permitted and no verb ever used — and
+which is the whole mechanism rather than a detail, because an id decided before
+the request is what makes a repeat recognisable as a repeat. A queue that could
+not tell a retry from a second create would answer a flaky network with
+duplicates.
+
+It creates and never edits. A `PUT` at an id already taken answers as a success
+that changed nothing, because a replace would discard every property the caller
+had never heard of — the round-trip rule broken at write time, by the verb least
+likely to be suspected of it. Changing an object stays `PATCH`'s job, where
+absent already means absent.
+
+**What it cost:** no new concepts. Seven fixture cases, one adapter operation,
+one route. The design had been written down in this file for weeks; what it was
+waiting for was a client that needed it, which is the whole reason this file
+exists rather than a v0.1 wishlist.
 
 ### External feeds were never a gap
 

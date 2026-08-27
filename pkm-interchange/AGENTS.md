@@ -540,6 +540,54 @@ A producer may return more than was asked for. Narrowing is permission to send
 less, never an obligation, and a producer that finds filtering expensive should
 send everything rather than get it wrong.
 
+### Bringing an object into being
+
+```
+PUT <base>/interchange/objects/<id>
+```
+
+```json
+{ "type": "t_task", "properties": { "title": "Bleed the radiators" } }
+```
+
+**The client chooses the id.** Identity already says an id is opaque and
+producer-assigned only by convention; nothing stopped a client from picking one,
+and this is the verb that lets it. That single decision is what makes creation
+idempotent, and idempotent creation is what an offline client needs more than it
+needs anything else in this section: a queue that could not tell a retry from a
+second create would answer a flaky network with duplicates, which is the one
+failure a person notices immediately and cannot easily undo.
+
+**A `PUT` at an id that already exists MUST NOT modify it.** It answers as
+though the create succeeded, because it did succeed — once — and the client is
+asking again only because it never heard so. Changing an object is `PATCH`'s
+job. A `PUT` that replaced would discard every property the client had never
+heard of, which is the round-trip rule broken at write time and by the verb
+least likely to be suspected of it.
+
+So the two writes divide cleanly, and neither can do the other's damage:
+
+| | |
+|---|---|
+| `PUT .../objects/<id>` | make this exist. Never edits. Safe to repeat. |
+| `PATCH .../objects/<id>` | change what exists. Never creates. `set`/`unset` only. |
+
+The body is an object as the format describes one — `type`, `properties`,
+`content`, `tags`. It MAY carry `id`; if it does, it MUST match the id in the
+address, and a producer that finds them different MUST refuse rather than pick
+one. Two ids in one request is a client bug, and guessing which was meant is how
+an object is created somewhere nobody is looking for it.
+
+`type` SHOULD name a type declared by the producer. A producer that accepts a
+create naming a type it does not have MUST report the reduction rather than
+inventing one silently — see *Every write answers for itself*.
+
+Over HTTP: `201` when it was made, `200` when it already existed. Both are
+success and a client is not required to tell them apart; the distinction is
+there for the one that wants to know whether its retry was the one that landed.
+
+→ `fixtures/create.json`
+
 ### Partial writes
 
 ```json
@@ -736,7 +784,7 @@ Installing the checker installs this file and the fixtures with it, which is the
 point: `AGENTS.md` is what you paste at your agent, and `fixtures/` is what tells
 you whether it listened.
 
-To measure your own implementation rather than a file, export the ten operations
+To measure your own implementation rather than a file, export the eleven operations
 in `fixtures/README.md` and hand them to the runner:
 
 ```js

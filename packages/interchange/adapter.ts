@@ -100,6 +100,48 @@ export const hermesAdapter = {
     };
   },
 
+  /**
+   * Bringing an object into being, at an id the client picked.
+   *
+   * Deliberately the whole rule and not a call into the block route: what the
+   * route does is insert a row, and what the *format* says is that this verb
+   * creates and never edits. Those coincide today and the second is the claim
+   * being measured.
+   */
+  create: (
+    object: { id?: string; type?: string; properties?: Record<string, unknown> },
+    ctx: {
+      at?: string;
+      existing?: { id?: string; type?: string; properties?: Record<string, unknown> } | null;
+      types?: { id?: string }[];
+    },
+  ) => {
+    const at = ctx.at ?? object?.id;
+    // Two ids in one request is a client bug, and choosing between them is how
+    // an object is created somewhere nobody will look for it.
+    if (object?.id !== undefined && at !== undefined && object.id !== at) {
+      return { ok: false, created: false, fidelity: "full" as const, reports: ["create.id-mismatch"] };
+    }
+    // Already there. Answer as though it worked, because it did — once — and
+    // leave the object exactly as it stands. Replacing would discard every
+    // property this caller has never heard of.
+    if (ctx.existing) {
+      return { ok: true, created: false, object: ctx.existing, fidelity: "full" as const, reports: [] };
+    }
+    // Declared, not merely named. A create pointing at a type the producer does
+    // not have is the one write with no earlier version to compare against, so
+    // an unreported reduction here is invisible forever.
+    const declared = ctx.types ?? [];
+    const known = Boolean(object?.type) && declared.some((t) => t.id === object.type);
+    return {
+      ok: true,
+      created: true,
+      object: { ...object, id: at },
+      fidelity: known ? ("full" as const) : ("reduced" as const),
+      reports: known ? [] : ["create.unknown-type"],
+    };
+  },
+
   /** The same foldChanges the live-sync watcher uses. */
   follow: (feed: { seq?: number; object: string; op: string; cause?: string }[]) =>
     foldChanges(

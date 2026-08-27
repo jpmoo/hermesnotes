@@ -376,8 +376,11 @@ try {
     // producer and costs a second place to configure a model. Not today.
     assistant: "the chat — Hermes owns the model, so Hermes runs the loop",
     assistantConfirm: "the chat — the pending-call flow is server-side state",
-    queryMatches: "LIMITS: `derivations` names the feature and not the query",
-    createBlock: "LIMITS: there is no create",
+    // Kept for a producer that ships no snapshot beside `materialized: false`,
+    // which the format explicitly permits. Hermes now ships one, so this no
+    // longer runs against it — but a consumer that fell over without a courtesy
+    // would be reading the format wrong.
+    queryMatches: "fallback: a producer need not materialise a smart collection",
     blockTags: "LIMITS: there is no tag write",
     setBlockTags: "LIMITS: there is no tag write",
     dailyNote: "LIMITS: a note identified by a date",

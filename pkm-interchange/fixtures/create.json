@@ -1,0 +1,114 @@
+{
+  "suite": "create",
+  "about": "Bringing an object into being, at an id the client picked. The verb v0 did not have — added because the first application to live entirely on this format could read a library, follow it, and patch it, and had to reach past the binding to make a single note.",
+  "cases": [
+    {
+      "id": "create/brings-an-object-into-being",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "object": { "id": "o_new", "type": "t_task", "properties": { "title": "Bleed the radiators" } }
+      },
+      "expect": {
+        "ok": true,
+        "created": true,
+        "object": { "id": "o_new", "type": "t_task", "properties": { "title": "Bleed the radiators" } }
+      },
+      "why": "The base case, and the one the format could not say at all until now. A client that can read a library and change what is in it and cannot add to it is not usable as an application; it is a viewer with edit buttons."
+    },
+    {
+      "id": "create/the-client-chooses-the-id",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "object": { "id": "chosen-by-the-client", "type": "t_task", "properties": { "title": "Mine" } }
+      },
+      "expect": {
+        "ok": true,
+        "created": true,
+        "object": { "id": "chosen-by-the-client" }
+      },
+      "why": "Identity says an id is opaque and does not say who mints it, which always permitted this and never provided the verb. The client choosing is not a convenience: it is the whole mechanism behind the next two cases, because an id decided before the request is what makes a repeat recognisable as a repeat."
+    },
+    {
+      "id": "create/repeating-a-create-is-not-a-second-object",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "existing": { "id": "o_new", "type": "t_task", "properties": { "title": "Bleed the radiators" } },
+        "object": { "id": "o_new", "type": "t_task", "properties": { "title": "Bleed the radiators" } }
+      },
+      "expect": {
+        "ok": true,
+        "created": false,
+        "object": { "id": "o_new", "properties": { "title": "Bleed the radiators" } }
+      },
+      "why": "A queue that drained on a bad network sent this twice and heard the answer once. It must not produce two radiators. `created: false` is how a client learns its retry was not the one that landed — success either way, and the distinction available to whoever wants it."
+    },
+    {
+      "id": "create/an-existing-object-is-not-replaced",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "existing": {
+          "id": "o_1",
+          "type": "t_task",
+          "properties": { "title": "Ship it", "status": "doing", "owner": "o_9" }
+        },
+        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it" } }
+      },
+      "expect": {
+        "ok": true,
+        "created": false,
+        "object": { "properties": { "title": "Ship it", "status": "doing", "owner": "o_9" } }
+      },
+      "why": "The reason this verb creates and never edits. A PUT that replaced would be the round-trip rule broken at write time by the verb least likely to be suspected of it: the client sends the fields it knows about, and status and owner — which it has never heard of — are gone. Changing an object is PATCH's job, where absent already means absent."
+    },
+    {
+      "id": "create/two-ids-is-a-refusal",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "object": { "id": "o_body", "type": "t_task", "properties": { "title": "Which one?" } },
+        "args": { "at": "o_address" }
+      },
+      "expect": { "ok": false },
+      "why": "A body id that disagrees with the address is a client bug, and picking one is how an object is created somewhere nobody will look for it. Refusing is the only answer that cannot be silently wrong."
+    },
+    {
+      "id": "create/an-unknown-type-is-reported",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "object": { "id": "o_new", "type": "t_nonexistent", "properties": { "title": "Orphan" } }
+      },
+      "expect": { "fidelity": "reduced", "reports": ["create.unknown-type"] },
+      "why": "A producer may accept this and may refuse it. What it must not do is accept it, invent a type, and answer a bare ok — which is loud failure applied to the one write that has no prior object to compare against."
+    },
+    {
+      "id": "create/unknown-properties-survive",
+      "level": 4,
+      "op": "create",
+      "given": {
+        "type": { "id": "t_task", "name": "Task", "fields": [{ "key": "title", "kind": "text" }] },
+        "object": {
+          "id": "o_new",
+          "type": "t_task",
+          "properties": { "title": "Bleed the radiators", "acme:pressure": 1.4 }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "created": true,
+        "object": { "properties": { "title": "Bleed the radiators", "acme:pressure": 1.4 } }
+      },
+      "why": "The round-trip rule holds at the moment of creation too. A producer that keeps only the properties its types declare turns every create into a lossy import, and the loss is invisible because there is no earlier version to compare with."
+    }
+  ]
+}

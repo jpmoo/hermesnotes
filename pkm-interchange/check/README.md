@@ -6,7 +6,7 @@ read [../README.md](../README.md); for the specification itself,
 
 ## How an implementation plugs in
 
-Export the ten operations in [`../fixtures/README.md`](../fixtures/README.md)
+Export the eleven operations in [`../fixtures/README.md`](../fixtures/README.md)
 and hand the object to `runSuites`:
 
 ```js

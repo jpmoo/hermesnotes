@@ -1,6 +1,6 @@
 import { isComplete, type InterchangeObject, type InterchangeType } from "@talaria/canonical";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
-import { regionNameAt, type Interchange } from "./interchange.js";
+import { regionNameAt, UnsupportedError, type Interchange } from "./interchange.js";
 import type { Mirror, QueuedIntent } from "./mirror.js";
 
 /**
@@ -202,6 +202,14 @@ export class Queue {
           out.push({ id: row.id, outcome: "deferred", reason: "offline" });
           break;
         }
+        // A verb this producer has not got. Waits rather than parking: parking
+        // is for a decision somebody has to make, and "the server has not been
+        // upgraded yet" is not one — it resolves on its own, and the write
+        // should go out when it does rather than sit needing a hand.
+        if (err instanceof UnsupportedError) {
+          out.push({ id: row.id, outcome: "deferred", reason: err.message });
+          continue;
+        }
         this.mirror.park(row.id, (err as Error).message);
         out.push({ id: row.id, outcome: "parked", reason: (err as Error).message });
         continue;
@@ -233,17 +241,25 @@ export class Queue {
    * already has rather than making a second one.
    */
   private async replayCreate(row: QueuedIntent, intent: CreateIntent): Promise<ReplayResult> {
-    const created = await this.hermes.createBlock({
-      id: intent.id,
-      blockTypeId: intent.blockTypeId,
+    // Through the binding. This was `hermes.createBlock` — a Hermes route —
+    // because the format had no verb for it, which LIMITS.md called the largest
+    // remaining hole in the port. It now has one, and the port has no hole.
+    const made = await this.ix.put(intent.id, {
+      type: intent.blockTypeId,
       content: intent.content,
       properties: intent.properties,
     });
     // The block is already in the mirror — it was written there when the intent
     // was made, which is what gave it an identity to be found by before it had
-    // ever reached a server. Version 1 means this call is what created it;
-    // anything higher means a previous attempt did, and was edited since.
-    return { id: row.id, outcome: created.version === 1 ? "applied" : "already" };
+    // ever reached a server. The producer says whether this call is what created
+    // it; `created: false` means a previous attempt already did, and the answer
+    // is the object as it stands rather than a second one.
+    //
+    // Asked rather than inferred from a version number, which is what this did
+    // before: version 1 meant "we made it" and anything higher meant "somebody
+    // had", which is the same question answered by proxy and wrong the moment a
+    // producer numbers differently.
+    return { id: row.id, outcome: made.created === false ? "already" : "applied" };
   }
 
   /**

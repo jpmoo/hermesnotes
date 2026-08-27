@@ -159,6 +159,45 @@ function runCase(adapter, c, bySuiteId) {
       }
       return { pass: checks.every(Boolean), got };
     }
+    /**
+     * Bringing an object into being.
+     *
+     * `given.existing` is the object already at that id, when the case is about
+     * a repeat; absent means the id is free. `given.args.at` overrides the
+     * address, which is only used by the case where the two ids disagree.
+     */
+    case "create": {
+      const at = given.args?.at ?? given.object?.id;
+      const got = adapter.create(
+        given.object,
+        // The declared types travel with the request, because "is this type
+        // real" is a question about the document and not about the object.
+        { at, existing: given.existing ?? null, types: env.types ?? [] },
+        caps,
+      );
+      const checks = [];
+      if (c.expect.ok !== undefined) checks.push(got.ok === c.expect.ok);
+      if (c.expect.created !== undefined) checks.push(Boolean(got.created) === c.expect.created);
+      if (c.expect.fidelity !== undefined) checks.push(got.fidelity === c.expect.fidelity);
+      if (c.expect.reports !== undefined) {
+        checks.push(
+          c.expect.reports.length === 0
+            ? (got.reports ?? []).length === 0
+            : c.expect.reports.every((r) => (got.reports ?? []).includes(r)),
+        );
+      }
+      if (c.expect.object !== undefined) {
+        checks.push(subset(c.expect.object, got.object));
+        // Exact, for the same reason `patch` is exact: the failure this suite
+        // exists to catch is a property quietly not surviving, and a subset
+        // match cannot see one that went missing.
+        if (c.expect.object.properties) {
+          checks.push(exact(Object.keys(c.expect.object.properties).sort(),
+                            Object.keys(got.object?.properties ?? {}).sort()));
+        }
+      }
+      return { pass: checks.every(Boolean), got };
+    }
     case "follow": {
       const got = adapter.follow(given.feed);
       return {

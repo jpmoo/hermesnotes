@@ -41,6 +41,8 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("onReady", async () => {
     const needed: [string, string][] = [
       ["PATCH", `${mount}/blocks/:id`],
+      ["POST", `${mount}/blocks`],
+      ["GET", `${mount}/blocks/:id`],
       ["GET", `${mount}/interchange`],
       ["PATCH", `${mount}/collections/:id/members/:blockId`],
     ];
@@ -285,6 +287,100 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
      * is translated back out. A binding that grows its own business logic is two
      * apps in one process waiting to disagree.
      */
+    /**
+     * Bringing an object into being, at an id the client picked.
+     *
+     * Creates and never edits, which is the whole reason it is a separate verb
+     * from PATCH rather than a mode of it. A PUT that replaced would discard
+     * every property the caller had never heard of — the round-trip rule broken
+     * at write time, by the verb least likely to be suspected of it — so an id
+     * that is already taken is answered as a success that changed nothing.
+     *
+     * That is also what makes it safe for a queue to replay. The client chose
+     * the id before it sent anything, so a retry after a lost answer is
+     * recognisably the same create rather than a second radiator.
+     */
+    guarded.put("/interchange/objects/:id", async (req, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      const body = z
+        .object({
+          id: z.string().optional(),
+          type: z.string().uuid().optional(),
+          properties: z.record(z.unknown()).optional(),
+          content: z.string().optional(),
+        })
+        .parse(req.body ?? {});
+
+      // Two ids in one request is a client bug, and picking one is how an
+      // object is created somewhere nobody will look for it.
+      if (body.id !== undefined && body.id !== id) {
+        return reply.code(400).send({ ok: false, reports: ["create.id-mismatch"] });
+      }
+
+      // Already there? Then this is a repeat, and the answer is the object as
+      // it stands — untouched.
+      const before = await app.inject({
+        method: "GET",
+        url: `${mount}/blocks/${id}`,
+        headers: { authorization: req.headers.authorization ?? "" },
+      });
+      if (before.statusCode < 400) {
+        const env = await app.inject({
+          method: "GET",
+          url: `${mount}/interchange`,
+          headers: { authorization: req.headers.authorization ?? "" },
+        });
+        const read = env.json() as { cursor?: string; objects?: { id: string }[] };
+        return reply.code(200).send({
+          ok: true,
+          created: false,
+          fidelity: "full",
+          reports: [],
+          cursor: read.cursor,
+          object: (read.objects ?? []).find((o) => o.id === id),
+        });
+      }
+
+      // A type the producer does not have. Reported rather than invented — this
+      // is the one write with no earlier version to compare against, so a
+      // reduction nobody mentions is invisible for good.
+      const reports: string[] = [];
+      if (body.type) {
+        const known = await db
+          .select({ id: blockTypes.id })
+          .from(blockTypes)
+          .where(and(eq(blockTypes.id, body.type), eq(blockTypes.ownerId, requireUser(req))));
+        if (!known.length) reports.push("create.unknown-type");
+      }
+
+      const made = await app.inject({
+        method: "POST",
+        url: `${mount}/blocks`,
+        headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+        payload: { id, blockTypeId: body.type, properties: body.properties, content: body.content },
+      });
+      if (made.statusCode >= 400) {
+        return reply.code(made.statusCode).send({ ok: false, reports: ["write.refused"] });
+      }
+
+      // Read back the way a reader would, so the object in this answer is the
+      // object the next `?since=` will carry.
+      const after = await app.inject({
+        method: "GET",
+        url: `${mount}/interchange`,
+        headers: { authorization: req.headers.authorization ?? "" },
+      });
+      const env = after.json() as { cursor?: string; objects?: { id: string }[] };
+      return reply.code(201).send({
+        ok: true,
+        created: true,
+        fidelity: reports.length ? "reduced" : "full",
+        reports,
+        cursor: env.cursor,
+        object: (env.objects ?? []).find((o) => o.id === id),
+      });
+    });
+
     guarded.patch("/interchange/objects/:id", async (req, reply) => {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
       const body = z

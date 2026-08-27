@@ -519,7 +519,7 @@ This is what most apps can be measured by, and it is honest about being narrower
 npx pkm-check --self       # 69 cases, four levels, against a reference implementation
 ```
 
-To measure **your** app, implement the ten operations below and hand them to the runner. This is an in-process check, so it wants your app to be JavaScript — if it is not, the fixtures are plain JSON and `fixtures/README.md` describes the case grammar, so a runner in your own language is a couple of hundred lines and a genuinely useful thing to contribute back:
+To measure **your** app, implement the eleven operations below and hand them to the runner. This is an in-process check, so it wants your app to be JavaScript — if it is not, the fixtures are plain JSON and `fixtures/README.md` describes the case grammar, so a runner in your own language is a couple of hundred lines and a genuinely useful thing to contribute back:
 
 ```js
 import { runSuites, levelsFrom } from "pkm-check/check/src/runner.js";

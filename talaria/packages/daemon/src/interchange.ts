@@ -117,6 +117,22 @@ function summarise(body: string): string {
   return line.length > 200 ? `${line.slice(0, 200)}…` : line;
 }
 
+/**
+ * The producer does not offer this verb.
+ *
+ * Distinct from a refusal, and the distinction decides what happens to the
+ * write. A refusal is a decision — a stale version, a region that is not on
+ * that board — and needs a person. This is a producer that has not been
+ * upgraded yet, which is a condition that ends by itself, so the intent waits
+ * the way an offline one waits rather than being parked for somebody to come
+ * and retry by hand.
+ *
+ * The format makes the same distinction from the other side: capabilities are a
+ * question you can ask, not something to discover by attempting a write. This
+ * is what to do when you attempted it anyway.
+ */
+export class UnsupportedError extends Error {}
+
 export class Interchange {
   constructor(
     private base: string,
@@ -148,6 +164,11 @@ export class Interchange {
     // The producer saying it cannot answer this question. Not a failure — the
     // one honest answer to a cursor older than the log, and the signal to walk.
     if (res.status === 410) throw new GoneError(await res.text());
+    // No such route, or a route that does not take this method. Either way the
+    // producer does not implement this verb.
+    if (res.status === 404 || res.status === 405) {
+      throw new UnsupportedError(`this producer does not implement ${method} ${path}`);
+    }
     const text = await res.text();
     // Capped, because a refusal is not always JSON. A proxy in front of a
     // server that is switched off answers with a full HTML error page, and
@@ -156,6 +177,26 @@ export class Interchange {
     // it are the whole diagnostic; the rest is someone else's stylesheet.
     if (!res.ok) throw new Error(`${res.status} ${summarise(text)}`);
     return (text ? JSON.parse(text) : null) as T;
+  }
+
+  /**
+   * Bring an object into being, at an id we chose.
+   *
+   * The verb the format did not have until it did — Talaria reached past the
+   * binding to Hermes' `POST /blocks` for every task and note it made, which
+   * was the largest remaining hole in the port and is now closed.
+   *
+   * Safe to replay, which is the property the queue is built on. The id is
+   * decided here before anything is sent, so a create that went out and whose
+   * answer was lost is recognisably the same create when it goes out again: the
+   * producer answers `created: false` and changes nothing, rather than making a
+   * second one.
+   */
+  put(
+    id: string,
+    object: { type?: string; properties?: Record<string, unknown>; content?: string },
+  ): Promise<{ ok?: boolean; created?: boolean; object?: unknown; reports?: string[] }> {
+    return this.req("PUT", `/interchange/objects/${id}`, object);
   }
 
   /**

@@ -1502,13 +1502,16 @@ export function buildServer(deps: {
   /** Try the write against Hermes right now; throws OfflineError if it can't. */
   async function applyNow(intent: Intent): Promise<Record<string, unknown>> {
     if (intent.kind === "create") {
-      const row = await hermes.createBlock({
-        id: intent.id,
-        blockTypeId: intent.blockTypeId,
+      // Through the binding, like the queued path beside it. Both routes to a
+      // create used `hermes.createBlock`; leaving one of them behind would have
+      // meant the online path reaching past the format and the offline path not,
+      // which is the sort of split nobody finds until the two disagree.
+      await ix.put(intent.id, {
+        type: intent.blockTypeId,
         content: intent.content,
         properties: intent.properties,
       });
-      return { id: row.id };
+      return { id: intent.id };
     }
     if (intent.kind === "move") {
       // A region name, through the binding. Which cell that is on the grid is

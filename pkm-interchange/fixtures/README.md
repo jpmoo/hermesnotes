@@ -65,6 +65,7 @@ a live binding.
 | `nextOccurrence` | `series`, `instance`, `when` | `{ start?, due? }` or `null` |
 | `import` | `export`, `with` | `{ result, fidelity, reports }` |
 | `roundtrip` | `export`, `with` | import, then serialize, then compare |
+| `create` | `object`, `existing?`, `args.at?` | `{ ok, created, object, fidelity, reports }` |
 | `patch` | `object`, `patch`, `with` | `{ ok, conflict?, object, fidelity, reports }` |
 | `follow` | `feed` | `{ alive, gone }` — what a follower concludes |
 
@@ -74,7 +75,14 @@ people to ignore warnings.
 
 `patch` matches its expected property bag **exactly** rather than as a subset. A
 patch that leaves a property behind is the whole subject of that suite, and a
-loose match would not see it.
+loose match would not see it. `create` matches the same way and for the same
+reason — a property that did not survive being created is invisible to a subset
+match, and there is no earlier version to notice it against.
+
+`create` is given `existing` when the case is about a repeat: the object already
+at that id, or absent when the id is free. `args.at` overrides the address, and
+is only used by the case where the address and the body disagree about which id
+is meant.
 
 ## Capabilities
 

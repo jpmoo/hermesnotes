@@ -108,7 +108,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("Library/Application Support/Talaria")
     }
 
+    /**
+     One of us, however we were started.
+
+     launchd owns this app — `KeepAlive: true`, running the binary by path —
+     and macOS's usual "an application is already open" check does not fire
+     between a launchd start and an `open`, because those take different routes
+     into LaunchServices. So a well-meant `open Talaria.app` while the agent is
+     running gives you two menu bar icons with identical menus, two hotkey
+     registrations racing for the same combination, and two daemons.
+
+     Cheap to prevent and confusing to diagnose, which is the argument for
+     doing it here rather than remembering not to.
+     */
+    private func alreadyRunning() -> Bool {
+        guard let me = Bundle.main.bundleIdentifier else { return false }
+        let others = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == me && $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        }
+        return !others.isEmpty
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if alreadyRunning() {
+            NSLog("talaria: another instance is already running — this one is stepping aside")
+            NSApp.terminate(nil)
+            return
+        }
         let d = DaemonProcess(root: supportRoot)
         daemon = d
         installSignalHandlers()

@@ -1,5 +1,8 @@
 {
-  "origin": "https://app.schoolahead.today/hermesnotes",
+  "_comment": "Talaria writes this file for you: menu bar → Settings…, or `open talaria://settings`. Kept here as a reference for what ends up in it.",
+  "origin": "https://app.example.com/hermesnotes",
   "accessKey": "PASTE_YOUR_ACCESS_KEY",
-  "pollSeconds": 30
+  "pollSeconds": 30,
+  "glanceUrl": "http://localhost:11434",
+  "glanceModel": "nomic-embed-text:latest"
 }

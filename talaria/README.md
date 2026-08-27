@@ -25,7 +25,16 @@ launchd/             a LaunchAgent plist
 Hermes needs the `/sync/*` routes, so deploy the server first (`./restart.sh` on
 the host).
 
-Then copy the example config into place and fill in the key:
+Then tell it where Hermes is. Right-click Talaria's menu bar icon → **Settings…**
+(or `open talaria://settings` from anywhere). Paste the address and an access
+key, press **Test connection** to check both before saving, and Save — which
+writes the file below and restarts the daemon.
+
+The panel is the only setup step. Everything in the table is reachable from it,
+and the file is written for you at mode 600.
+
+<details>
+<summary>Or write it by hand</summary>
 
 ```bash
 mkdir -p ~/Library/Application\ Support/Talaria
@@ -33,14 +42,23 @@ cp talaria/config.example.json ~/Library/Application\ Support/Talaria/config.jso
 chmod 600 ~/Library/Application\ Support/Talaria/config.json
 ```
 
+</details>
+
 | field | required | what it is |
 |---|---|---|
 | `origin` | yes | Where Hermes lives, up to but **not** including `/api`. The daemon appends `/api/...` itself, so `https://host/hermesnotes` becomes `https://host/hermesnotes/api/sync/blocks`. No trailing slash needed. |
 | `accessKey` | yes | A Hermes access key — **Settings → Access keys** in the web app. Shown once when minted. The daemon reads it and nothing else does; it never leaves this machine except as a bearer header to `origin`. |
 | `pollSeconds` | no (default 30) | How often to ask for changes while the network is up. Backs off automatically when it isn't, up to 15 minutes, so a laptop on a dead hotel network doesn't hammer. |
+| `glanceUrl` | no (default `http://localhost:11434`) | Where Glance embeds what you are working on. **Local is the point, not just the default** — the text of your front window goes to whatever is at this address. The panel says plainly which of the two you have chosen. |
+| `glanceModel` | no (default `nomic-embed-text:latest`) | Which model does the embedding. Only has to agree with itself: Glance keeps its own index, so changing this throws those vectors away and rebuilds rather than breaking anything. The panel lists what the server actually has installed, and filters to the ones that can embed. |
 
-The file is read at startup only — restart the daemon after editing it. `chmod
-600` matters: it holds a key that can read and write everything in your account.
+The file is read at startup only. Saving from the settings panel restarts the
+daemon for you; editing by hand does not, so restart it yourself after. `chmod
+600` matters either way: it holds a key that can read and write everything in
+your account. The panel writes it that way and puts it back on every save.
+
+Saving is an overlay, never a rewrite — anything in the file the panel does not
+know about survives untouched.
 
 Then:
 
@@ -159,8 +177,8 @@ here that needs the network** — everything else answers from the mirror. When 
 can't be reached it says so rather than spinning.
 
 Anything destructive comes back for approval before it runs: the panel lists
-what it wants to do and does nothing until you say. `"assistantHotkey"` in
-`config.json` rebinds it.
+what it wants to do and does nothing until you say. Settings → **Shortcuts**
+rebinds it.
 
 ## Collections
 
@@ -205,12 +223,14 @@ the drawer is the moment it joins the collection, and dropping one back takes it
 out of the grid without taking it out of the collection.
 
 Two ways in. **⌃⌥B** opens it from anywhere; the menu bar item does the same.
-Set `"boardHotkey"` in `config.json` to change it (e.g. `"cmd+shift+h"`); it
-takes effect on the next app restart. ⌃⌥Space is deliberately left free.
+Settings → **Shortcuts** changes it (e.g. `cmd+shift+h`), and the new binding
+takes effect on Save rather than on the next restart. ⌃⌥Space is deliberately
+left free.
 
 The menu bar uses an SF Symbol, not the logo: the mark is line art that draws
 eleven meaningful pixels at 18 points, and thickened enough to see it becomes a
-blob. `"menuBarSymbol"` in `config.json` picks a different one.
+blob. Settings → **Shortcuts** → *Menu bar icon* picks a different one, by SF
+Symbol name.
 
 The second entrance is not a convenience: macOS drops status items that don't
 fit, and on a Mac with a notch and a busy menu bar ours is the newest and so the

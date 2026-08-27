@@ -12,6 +12,21 @@ export const CONFIG_PATH = join(HOME, "config.json");
 export const MIRROR_PATH = join(HOME, "mirror.sqlite");
 export const SOCKET_PATH = process.env.TALARIA_SOCKET ?? join(HOME, "talaria.sock");
 
+/**
+ * Written by the settings panel, readable by anyone.
+ *
+ * `Talaria.app` → menu bar → Settings… (or `open talaria://settings`) edits this
+ * file and restarts the daemon; it is no longer something a person has to
+ * compose by hand before anything will start. It stays a plain JSON file on
+ * purpose — a config you can `cat`, diff and copy to another machine is worth
+ * more than one hidden in a defaults database.
+ *
+ * The panel overlays rather than rewrites, so anything here that this schema
+ * does not declare survives a save untouched. That matters for the four keys
+ * only the app reads — `boardHotkey`, `assistantHotkey`, `glanceHotkey` and
+ * `menuBarSymbol` — which zod strips on the way in and which would otherwise be
+ * deleted by the first person to press Save.
+ */
 const configSchema = z.object({
   /** e.g. https://app.example.com/hermesnotes — no trailing slash needed. */
   origin: z.string().url(),
@@ -27,8 +42,12 @@ const configSchema = z.object({
    * embedding is the machine allowed to see them. Pointing this at a shared box
    * is a trade somebody may want, and it should be theirs to make deliberately.
    *
-   * The model has to be the one the producer indexed with, or the scores are
-   * plausible nonsense. Hermes uses `nomic-embed-text` today.
+   * The model only has to agree with *itself*. Glance builds and keeps its own
+   * index here, so nothing is ever compared against a vector Hermes made, and
+   * any embedding model will do — changing it throws the local index away and
+   * rebuilds. (Comparing across two models is what produces plausible nonsense,
+   * which is why the index records the model that made it and forgets the lot
+   * when that changes. See `glance.ts`.)
    */
   glanceUrl: z.string().url().default("http://localhost:11434"),
   glanceModel: z.string().default("nomic-embed-text:latest"),
@@ -69,9 +88,10 @@ export function loadConfig(): Config {
   } catch {
     throw new ConfigError(
       `No config at ${CONFIG_PATH}.\n` +
-        `Create it as:\n` +
-        `  {\n    "origin": "https://your-hermes/hermesnotes",\n    "accessKey": "hn_…"\n  }\n` +
-        `Mint the key in Hermes under Settings → Access keys, then: chmod 600 "${CONFIG_PATH}"`,
+        `Open Talaria's menu bar icon (right-click) → Settings…, or run:\n` +
+        `  open talaria://settings\n` +
+        `You will need a Hermes address and an access key, minted under Settings → Access keys.\n` +
+        `The panel writes this file; editing it by hand still works if you would rather.`,
     );
   }
   let parsed: unknown;
@@ -86,7 +106,8 @@ export function loadConfig(): Config {
   if ((parsed as { accessKey?: unknown })?.accessKey === "PASTE_YOUR_ACCESS_KEY") {
     throw new ConfigError(
       `${CONFIG_PATH} still has the placeholder access key in it.\n` +
-        `Mint a real one in Hermes under Settings → Access keys and paste it into "accessKey".`,
+        `Mint a real one in Hermes under Settings → Access keys, then put it in via\n` +
+        `  open talaria://settings`,
     );
   }
   const result = configSchema.safeParse(parsed);

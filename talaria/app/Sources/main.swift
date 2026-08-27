@@ -73,6 +73,34 @@ final class DaemonProcess {
         stopping = true
         process?.terminate()
     }
+
+    /**
+     Pick up a changed config, now rather than in five seconds.
+
+     Everything the daemon builds from config.json — the binding's base address,
+     the sync, the embedder Glance compares against — is constructed once at
+     startup, so a settings change is applied by starting again. That is the
+     honest way to do it: the alternative is mutating half a dozen live objects
+     and discovering, months later, the one that was still holding the old
+     value.
+
+     The old process's `terminationHandler` is cleared *before* it is signalled,
+     because otherwise both it and this would relaunch: the handler schedules a
+     start in five seconds, this one starts immediately, and the machine ends up
+     with two daemons on the same SQLite file. Clearing it first makes this
+     restart the only one that happens, without a flag two threads race over.
+     */
+    func restart() {
+        guard !stopping else { return }
+        let old = process
+        old?.terminationHandler = nil
+        process = nil
+        DispatchQueue.global().async { [weak self] in
+            old?.terminate()
+            old?.waitUntilExit()
+            self?.start()
+        }
+    }
 }
 
 // MARK: - App
@@ -92,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var assistantHotkey: Hotkey?
     private var glanceHotkey: Hotkey?
     private var glanceWindow: NSPanel?
+    private var settingsWindow: NSPanel?
     /// Watches for a click anywhere else while a summoned panel is open.
     /// Keyed by panel, because two can be up at once and closing one must not
     /// stop the other listening.
@@ -99,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let glanceModel = GlanceModel()
     private let boardModel = BoardModel()
     private let assistantModel = AssistantModel()
+    private let settingsModel = SettingsModel()
 
     /// Where Talaria keeps its things — and where the bundled daemon lives.
     ///
@@ -167,6 +197,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.hideBoard()
                 self?.hideAssistant()
                 self?.hideGlance()
+            }
+        }
+
+        // Settings were saved. Two things have to happen and neither can be
+        // done by the panel: the daemon rebuilds everything it made from the
+        // config, and the hotkeys are re-registered here, where they live.
+        NotificationCenter.default.addObserver(
+            forName: .talariaConfigSaved, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.daemon?.restart()
+                self?.installHotkeys()
             }
         }
 
@@ -298,24 +340,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // A hotkey as well as the menu bar, and not as a convenience: macOS
-        // silently drops status items that don't fit, and on a Mac with a notch
-        // and a busy menu bar ours is the newest and so the first to go. An
-        // entrance that can vanish without saying anything is not an entrance.
-        // ctrl+opt+space is deliberately left free for the assistant panel.
-        let spec = Self.configured("boardHotkey") ?? "ctrl+opt+b"
-        hotkey = Hotkey(spec: spec) { [weak self] in self?.toggleBoardWindow() }
+        installHotkeys()
+    }
 
-        let askSpec = Self.configured("assistantHotkey") ?? "ctrl+opt+space"
-        assistantHotkey = Hotkey(spec: askSpec) { [weak self] in self?.toggleAssistantWindow() }
+    /**
+     The global shortcuts, registered from config.json.
 
-        // Control is doing the work in all three of these. Option alone is
-        // macOS's compose modifier — ⌥B is ∫ and ⇧⌥B is ı — so an
-        // Option-without-Control shortcut types into whatever field has focus
-        // as well as firing. Adding Control suppresses that, which is why the
-        // board has had ctrl+opt+b since the beginning.
-        let glanceSpec = Self.configured("glanceHotkey") ?? "ctrl+opt+g"
-        glanceHotkey = Hotkey(spec: glanceSpec) { [weak self] in self?.toggleGlanceWindow() }
+     A hotkey as well as the menu bar, and not as a convenience: macOS silently
+     drops status items that don't fit, and on a Mac with a notch and a busy
+     menu bar ours is the newest and so the first to go. An entrance that can
+     vanish without saying anything is not an entrance.
+
+     Control is doing the work in all three. Option alone is macOS's compose
+     modifier — ⌥B is ∫ and ⇧⌥B is ı — so an Option-without-Control shortcut
+     types into whatever field has focus as well as firing. Adding Control
+     suppresses that, which is why the board has had ctrl+opt+b from the start.
+
+     Each is cleared to nil before the new one is made, and that order is the
+     whole reason this is a function rather than three assignments. `Hotkey`
+     unregisters in `deinit`, and a plain reassignment constructs the
+     replacement while the old one is still holding the combination — Carbon
+     refuses the duplicate, *then* the old is released and unregisters, and the
+     shortcut is left registered by nobody. Silent, and only after a settings
+     change, which is the worst time to find out.
+     */
+    private func installHotkeys() {
+        hotkey = nil
+        hotkey = Hotkey(spec: Self.configured("boardHotkey") ?? "ctrl+opt+b") {
+            [weak self] in self?.toggleBoardWindow()
+        }
+        assistantHotkey = nil
+        assistantHotkey = Hotkey(spec: Self.configured("assistantHotkey") ?? "ctrl+opt+space") {
+            [weak self] in self?.toggleAssistantWindow()
+        }
+        glanceHotkey = nil
+        glanceHotkey = Hotkey(spec: Self.configured("glanceHotkey") ?? "ctrl+opt+g") {
+            [weak self] in self?.toggleGlanceWindow()
+        }
     }
 
     /**
@@ -416,6 +477,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A click inside is somebody using it, not leaving it. Sheets and
             // menus belonging to the panel count as inside.
             if event.window === panel || event.window?.parent === panel { return event }
+            // So does a menu. A pop-up button — the model picker in Settings is
+            // one — puts its list in a window AppKit owns rather than in a child
+            // of the panel, so neither test above catches it and choosing an
+            // item would dismiss the panel you were choosing it *for*.
+            //
+            // Matched by class name because there is no public type to compare
+            // against, and deliberately erring toward "inside": a panel that
+            // fails to dismiss is a keystroke's inconvenience, while one that
+            // vanishes mid-interaction takes the half-typed form with it.
+            if let name = event.window?.className, name.contains("Menu") { return event }
             Task { @MainActor in onHide() }
             return event
         }
@@ -447,6 +518,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderOut(nil)
     }
 
+    /**
+     A titled panel, and why none of them use `.fullSizeContentView`.
+
+     They did. It is what lets the material run the whole height of a window
+     rather than stopping at a grey strip, and that is genuinely the nicer look
+     — but it puts the content view over the title bar's own, and the content
+     view here is an `NSVisualEffectView` that paints. The result was a title
+     nobody could read and three traffic lights that were present in the
+     accessibility tree, invisible on screen, and impossible to click. A window
+     you cannot close or drag is not worth a seam you would not have noticed.
+
+     The body stays translucent regardless: that comes from the effect view in
+     the content, not from the style mask.
+
+     The settings panel.
+
+     Wears the same material as everything else and deliberately not the same
+     dismissal. Glance, the board and the assistant all close on a click
+     elsewhere, which is right for something summoned by a hotkey and cheap to
+     summon again. This one holds half-typed text — you go to a browser to copy
+     an access key out of Hermes and come back — so a panel that vanished while
+     you fetched the thing it was asking for would be losing exactly the work it
+     requested.
+     */
+    private func settingsPanel() -> NSPanel {
+        if let w = settingsWindow { return w }
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 620),
+            styleMask: [.titled, .closable, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Talaria Settings"
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.contentViewController = NSHostingController(
+            rootView: SettingsView(model: settingsModel)
+        )
+        panel.setFrameAutosaveName("talaria.settings")
+        panel.center()
+        settingsWindow = panel
+        return panel
+    }
+
+    private func showSettingsWindow() {
+        let panel = settingsPanel()
+        // Re-read from disk, but never over unsaved typing.
+        //
+        // Both halves matter. The file is editable by hand and by `talaria`, so
+        // a panel showing what was on disk an hour ago would save it back over
+        // whatever has happened since — hence the reload. But this panel now
+        // closes on a click elsewhere, and going to a browser to copy an access
+        // key out of Hermes *is* a click elsewhere: reloading unconditionally
+        // would throw away the half-filled form at exactly the moment somebody
+        // left to fetch the thing it was asking for.
+        if !settingsModel.dirty { settingsModel.load() }
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
+            let f = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: screen.visibleFrame.midX - f.width / 2,
+                y: screen.visibleFrame.midY - f.height / 2
+            ))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        watchForDismissal(panel) { [weak self] in self?.hideSettings() }
+    }
+
+    private func hideSettings() {
+        guard let panel = settingsWindow else { return }
+        stopWatchingForDismissal(panel)
+        panel.orderOut(nil)
+    }
+
     /// The assistant panel.
     ///
     /// Non-activating would be wrong here: it exists to be typed into, so it
@@ -460,12 +609,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let w = assistantWindow { return w }
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
-            styleMask: [.titled, .closable, .utilityWindow, .fullSizeContentView],
+            styleMask: [.titled, .closable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
         panel.title = "Ask Hermes Notes"
-        panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
@@ -523,12 +671,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let w = boardWindow { return w }
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
         panel.title = "Hermes Notes Collections"
-        panel.titlebarAppearsTransparent = true
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
@@ -616,6 +763,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.setSubmenu(submenu, for: picker)
 
             menu.addItem(.separator())
+            let settings = menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+            settings.target = self
+            settings.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
             menu.addItem(withTitle: "Refresh", action: #selector(refreshBoard), keyEquivalent: "r").target = self
             menu.addItem(withTitle: "Quit Talaria", action: #selector(quit), keyEquivalent: "q").target = self
             statusItem?.menu = menu
@@ -639,6 +789,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showBoard() { toggleBoardWindow() }
 
     @objc private func showGlance() { toggleGlanceWindow() }
+
+    @objc private func showSettings() { showSettingsWindow() }
 
     @objc private func showHermes() { HermesWindow.shared.show() }
 
@@ -714,6 +866,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ url: URL) {
+        // `talaria://settings` — a way in that does not depend on the menu bar.
+        //
+        // The status item is the only visible entrance this app has, and macOS
+        // drops status items it has no room for: on a notched Mac with a busy
+        // menu bar, ours is the newest and so the first to go. Every other
+        // surface already has a hotkey for that reason. Settings gets a URL
+        // instead, which is also what lets Alfred and `talaria` reach it.
+        if url.host == "settings" {
+            showSettingsWindow()
+            return
+        }
         // talaria://block/<uuid> — host is "block", path is "/<uuid>"
         let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !id.isEmpty else {

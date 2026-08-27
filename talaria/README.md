@@ -171,7 +171,7 @@ pbpaste | talaria capture --note   # as a note
 
 ## Ask Hermes
 
-**⌃⌥Space** opens a prompt anywhere. It talks to the Hermes assistant, which
+**⇧⌥A** opens a prompt anywhere. It talks to the Hermes assistant, which
 runs on your server against your own Ollama model, so this is **the one thing
 here that needs the network** — everything else answers from the mirror. When it
 can't be reached it says so rather than spinning.
@@ -222,10 +222,16 @@ Cards drag between regions **and to and from the drawer** — dragging one out o
 the drawer is the moment it joins the collection, and dropping one back takes it
 out of the grid without taking it out of the collection.
 
-Two ways in. **⌃⌥B** opens it from anywhere; the menu bar item does the same.
+Two ways in. **⇧⌥C** opens it from anywhere; the menu bar item does the same.
 Settings → **Shortcuts** changes it (e.g. `cmd+shift+h`), and the new binding
-takes effect on Save rather than on the next restart. ⌃⌥Space is deliberately
-left free.
+takes effect on Save rather than on the next restart.
+
+The three defaults are ⇧⌥C, ⇧⌥A and ⇧⌥G. Option is macOS's compose modifier,
+which sounds like a reason to avoid it and isn't: a shortcut that registers
+swallows the keystroke, so nothing is composed. The case that bites is a
+combination something *else* already owns — then the key falls through and
+types a dead-key character into whatever you were writing. That refusal is
+logged, by name, in `~/Library/Logs/talaria.log`.
 
 The menu bar uses an SF Symbol, not the logo: the mark is line art that draws
 eleven meaningful pixels at 18 points, and thickened enough to see it becomes a

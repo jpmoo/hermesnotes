@@ -209,6 +209,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated {
                 self?.daemon?.restart()
                 self?.installHotkeys()
+                // Glance reads its own preference out of the same file, and a
+                // panel that only picked it up at the next login would look
+                // like the checkbox had not worked.
+                self?.glanceModel.reloadSettings()
             }
         }
 
@@ -351,32 +355,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
      menu bar ours is the newest and so the first to go. An entrance that can
      vanish without saying anything is not an entrance.
 
-     Control is doing the work in all three. Option alone is macOS's compose
-     modifier — ⌥B is ∫ and ⇧⌥B is ı — so an Option-without-Control shortcut
-     types into whatever field has focus as well as firing. Adding Control
-     suppresses that, which is why the board has had ctrl+opt+b from the start.
+     All three are ⇧⌥ combinations. Option is macOS's compose modifier — ⌥B is ∫
+     and ⇧⌥B is ı — which looks like a reason to avoid it and is not one, as
+     long as the shortcut actually registers: `RegisterEventHotKey` consumes the
+     event, so nothing is composed and nothing reaches the focused field. The
+     danger is the *refusal* case. Something else already owning the combination
+     means the keystroke falls through to whatever you were writing and types a
+     dead-key character, which reads as the keyboard misbehaving rather than as
+     a shortcut clash — so a refusal is logged saying exactly that.
 
      Each is cleared to nil before the new one is made, and that order is the
      whole reason this is a function rather than three assignments. `Hotkey`
      unregisters in `deinit`, and a plain reassignment constructs the
-     replacement while the old one is still holding the combination — Carbon
-     refuses the duplicate, *then* the old is released and unregisters, and the
-     shortcut is left registered by nobody. Silent, and only after a settings
-     change, which is the worst time to find out.
+     replacement while the old one still holds the combination — Carbon refuses
+     the duplicate, *then* the old is released and unregisters, and the shortcut
+     is left registered by nobody. Silent, and only after a settings change,
+     which is the worst time to find out.
      */
     private func installHotkeys() {
         hotkey = nil
-        hotkey = Hotkey(spec: Self.configured("boardHotkey") ?? "ctrl+opt+b") {
-            [weak self] in self?.toggleBoardWindow()
-        }
+        hotkey = register("boardHotkey", "shift+opt+c") { [weak self] in self?.toggleBoardWindow() }
         assistantHotkey = nil
-        assistantHotkey = Hotkey(spec: Self.configured("assistantHotkey") ?? "ctrl+opt+space") {
-            [weak self] in self?.toggleAssistantWindow()
-        }
+        assistantHotkey = register("assistantHotkey", "shift+opt+a") { [weak self] in self?.toggleAssistantWindow() }
         glanceHotkey = nil
-        glanceHotkey = Hotkey(spec: Self.configured("glanceHotkey") ?? "ctrl+opt+g") {
-            [weak self] in self?.toggleGlanceWindow()
+        glanceHotkey = register("glanceHotkey", "shift+opt+g") { [weak self] in self?.toggleGlanceWindow() }
+    }
+
+    /// One shortcut, from config or from the default, saying so when it can't
+    /// be had. See the note above on why a refused Option combination is worse
+    /// than a refused Control one.
+    private func register(_ key: String, _ fallback: String, _ action: @escaping () -> Void) -> Hotkey? {
+        let spec = Self.configured(key) ?? fallback
+        guard let hk = Hotkey(spec: spec, action: action) else {
+            NSLog("talaria: '\(spec)' was refused — something else owns it. That shortcut now does nothing, and an Option combination that is not registered types a compose character into whatever you are writing. Pick another in Settings → Shortcuts.")
+            return nil
         }
+        return hk
     }
 
     /**

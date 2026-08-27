@@ -325,19 +325,35 @@ enum Daemon {
         /**
          Whether this is worth seeing while working on something now.
 
-         Undated things are always near. A person, a project, a note has no date
-         and is not less relevant for it — that is most of what anybody wants
-         while writing a letter, and demoting them would empty the useful half
-         of the list to make room for tasks.
+         Two separate questions, kept separate on purpose, because only one of
+         them has a right answer.
+
+         *Is it dated at all* is a fact about the block. *Where undated things
+         belong* is a preference, and a real one either way: a person, a project
+         or a loose note is not less relevant for having no date — that is most
+         of what anybody wants while writing a letter — but a library with a few
+         hundred undated notes in it can bury the three things actually due this
+         week. Which of those describes your library is not something this code
+         can know, so `Glance → undated` decides it and the default keeps
+         undated things near.
 
          Dated things are near if any end of them falls in the window. Both ends
          are checked because a span that started last week and ends next month
          is happening *now*, and testing only its start or only its end would
          call it past or future depending on which end you picked.
          */
+
+        /// Whether it carries any date at all. `isNear` says nothing useful
+        /// when this is false — there is nothing to compare against a window.
+        var isDated: Bool { !dates.isEmpty }
+
+        private var dates: [String] {
+            guard let schedule = block.schedule else { return [] }
+            return [schedule.start?.value, schedule.end?.value].compactMap { $0 }
+        }
+
         var isNear: Bool {
-            guard let schedule = block.schedule else { return true }
-            let dates = [schedule.start?.value, schedule.end?.value].compactMap { $0 }
+            let dates = self.dates
             if dates.isEmpty { return true }
             let today = ISO8601DateFormatter.day.string(from: Date())
             let from = ISO8601DateFormatter.day.string(from: Date().addingTimeInterval(-7 * 86400))
@@ -346,6 +362,11 @@ enum Daemon {
             return dates.contains { $0.prefix(10) >= from && $0.prefix(10) <= to }
                 || dates.contains { $0.prefix(10) <= today }
                     && dates.contains { $0.prefix(10) >= today }
+        }
+
+        /// Where this belongs, given what the reader asked for.
+        func isAbove(theFold undatedBelow: Bool) -> Bool {
+            isDated ? isNear : !undatedBelow
         }
 
         let score: Double

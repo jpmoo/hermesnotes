@@ -136,6 +136,14 @@ final class GlanceModel: ObservableObject {
     @Published var busy = false
     /// What the person typed, when they want to ask something other than the window.
     @Published var query = ""
+    /// Whether undated hits belong below the fold. Read from config.json rather
+    /// than held, so a change in Settings shows up on the next hotkey press
+    /// instead of at the next login.
+    @Published var undatedFurtherOut = false
+
+    func reloadSettings() {
+        undatedFurtherOut = ConfigStore.load().glanceUndatedFurtherOut
+    }
 
     private var watch: Timer?
 
@@ -181,6 +189,7 @@ final class GlanceModel: ObservableObject {
      */
     func startFollowing() {
         stopFollowing()
+        reloadSettings()
         refresh()
         let t = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -249,8 +258,8 @@ struct GlanceView: View {
                                     Image(systemName: expanded ? "chevron.down" : "chevron.right")
                                         .font(.system(size: 8, weight: .semibold))
                                     Text(expanded
-                                         ? "further out"
-                                         : "\(later.count) further out")
+                                         ? foldLabel
+                                         : "\(later.count) \(foldLabel)")
                                         .font(.system(size: 10, weight: .medium))
                                     Rectangle()
                                         .fill(Color.primary.opacity(0.08))
@@ -284,11 +293,25 @@ struct GlanceView: View {
         )
     }
 
-    /// What is happening around now, plus everything undated.
-    private var near: [Daemon.GlanceHit] { model.hits.filter(\.isNear) }
+    /// What is happening around now — plus everything undated, unless the
+    /// reader has asked for those below the line instead.
+    private var near: [Daemon.GlanceHit] {
+        model.hits.filter { $0.isAbove(theFold: model.undatedFurtherOut) }
+    }
 
-    /// Dated, and not around now. Still ranked, still scored, one click away.
-    private var later: [Daemon.GlanceHit] { model.hits.filter { !$0.isNear } }
+    /// Everything else. Still ranked, still scored, one click away.
+    private var later: [Daemon.GlanceHit] {
+        model.hits.filter { !$0.isAbove(theFold: model.undatedFurtherOut) }
+    }
+
+    /// What the divider calls what is under it. Naming undated things only when
+    /// some of them are actually down there — a line reading "further out or
+    /// undated" above three dated tasks is a small lie about what it hides.
+    private var foldLabel: String {
+        model.undatedFurtherOut && later.contains { !$0.isDated }
+            ? "further out or undated"
+            : "further out"
+    }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {

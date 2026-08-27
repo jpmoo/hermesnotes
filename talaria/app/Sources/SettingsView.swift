@@ -255,14 +255,28 @@ struct SettingsView: View {
                 note(icon: "arrow.triangle.2.circlepath", tone: .secondary,
                      "Changing the model throws away the vectors already built and starts again — a few hundred calls, in the background. Scores mean nothing across two different models, so there is no way to keep them.")
             }
+
+            field("Undated") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $model.config.glanceUndatedFurtherOut) {
+                        Text("Include undated items in \u{201C}Further Out/Undated\u{201D}")
+                            .font(.system(size: 11))
+                    }
+                    .toggleStyle(.checkbox)
+                    Text("Off, a note or a person with no date sits in the main list — which is most of what you want while writing something. On, they move below the divider with the far-off ones, leaving the top of the list to what is actually happening this week.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
     private var shortcuts: some View {
-        section("Shortcuts", "Written as ctrl+opt+g. Control is doing real work there — Option on its own is the compose key, so ⌥B types ∫ into whatever you were writing as well as firing.") {
-            field("Collections") { hotkeyField($model.config.boardHotkey, "ctrl+opt+b") }
-            field("Ask Hermes") { hotkeyField($model.config.assistantHotkey, "ctrl+opt+space") }
-            field("Glance") { hotkeyField($model.config.glanceHotkey, "ctrl+opt+g") }
+        section("Shortcuts", "Written as shift+opt+g. A shortcut that registers swallows the keystroke, so an Option combination composes nothing — but if something else already owns it, it does nothing here and types a dead-key character into whatever you are writing. Check ~/Library/Logs/talaria.log if one stops working.") {
+            field("Collections") { hotkeyField($model.config.boardHotkey, "shift+opt+c") }
+            field("Ask Hermes") { hotkeyField($model.config.assistantHotkey, "shift+opt+a") }
+            field("Glance") { hotkeyField($model.config.glanceHotkey, "shift+opt+g") }
             field("Menu bar icon") {
                 TextField("bubble.left.and.bubble.right", text: $model.config.menuBarSymbol)
                     .textFieldStyle(.roundedBorder)

@@ -47,6 +47,9 @@ struct TalariaConfig: Equatable, Sendable {
     var assistantHotkey = ""
     var glanceHotkey = ""
     var menuBarSymbol = ""
+    /// Whether undated hits sit below Glance's fold rather than above it.
+    /// Off by default — see `Daemon.GlanceHit.isAbove(theFold:)`.
+    var glanceUndatedFurtherOut = false
 
     /// Sent to the daemon only when set; an empty string is not a default, it is
     /// the absence of an answer. `riftCli: ""` would be taken as a path and
@@ -83,6 +86,7 @@ enum ConfigStore {
         c.assistantHotkey = str("assistantHotkey")
         c.glanceHotkey = str("glanceHotkey")
         c.menuBarSymbol = str("menuBarSymbol")
+        c.glanceUndatedFurtherOut = (obj["glanceUndatedFurtherOut"] as? Bool) ?? false
         return c
     }
 
@@ -120,6 +124,11 @@ enum ConfigStore {
         optional("menuBarSymbol", c.menuBarSymbol)
         if c.contextExclude.isEmpty { obj.removeValue(forKey: "contextExclude") }
         else { obj["contextExclude"] = c.contextExclude }
+
+        // A false is the default, so it is written only when true. Keeps a file
+        // nobody has changed identical to the one the panel first wrote.
+        if c.glanceUndatedFurtherOut { obj["glanceUndatedFurtherOut"] = true }
+        else { obj.removeValue(forKey: "glanceUndatedFurtherOut") }
 
         try FileManager.default.createDirectory(
             atPath: directory, withIntermediateDirectories: true

@@ -13,7 +13,7 @@ final class Hotkey {
     private static var installed = false
     private static var nextID: UInt32 = 1
 
-    /// `spec` looks like "ctrl+opt+space" or "cmd+shift+h".
+    /// `spec` looks like "shift+opt+g" or "cmd+shift+h".
     init?(spec: String, action: @escaping () -> Void) {
         guard let (code, mods) = Hotkey.parse(spec) else {
             NSLog("talaria: can't make sense of hotkey '\(spec)'")

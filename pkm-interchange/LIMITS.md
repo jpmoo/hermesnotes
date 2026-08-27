@@ -70,6 +70,11 @@ back to find one object, because the exporter derives relations and resolves
 inline mentions across the entire set — running it on one block would resolve a
 mention against a library of one and mint a stub with a fresh id.
 
+`PUT` does it too, now, and in the create case that read follows a write rather
+than replacing one — so closing the create gap made this one apply in a second
+place rather than leaving it where it was. Worth saying plainly: a limit that
+gets cheaper to hit is a limit that got worse.
+
 **Why it is tolerable:** 111 objects, milliseconds, and correctness over
 micro-optimisation. It will not stay tolerable. The fix is an exporter that can
 take the whole set for context and emit a subset, which is the same shape

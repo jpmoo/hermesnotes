@@ -246,7 +246,17 @@ struct GlanceView: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 6)
+
+            // How near it is, in the order the list is already in. Worth showing
+            // because similarity has no wrong answers, only worse ones: a list
+            // that ends at 0.31 looks the same as one that ends at 0.72 until
+            // the number is there, and knowing the difference is what tells you
+            // whether the top hit means anything.
+            Text(String(format: "%.2f", hit.score))
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)

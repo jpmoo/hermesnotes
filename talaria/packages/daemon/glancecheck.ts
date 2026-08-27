@@ -8,7 +8,7 @@
  *
  *   pnpm --filter @talaria/daemon glancecheck
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cosine, Glance, isLocal, mayEmbedTitle, type Embedder } from "./src/glance.js";
@@ -45,6 +45,37 @@ check(
   mayEmbedTitle("com.microsoft.Excel", TITLE_BLIND),
   "the record would withhold this one; Glance keeps nothing, so it may look",
 );
+
+// ---- the same promise, in both places -------------------------------------
+//
+// The app holds the accessibility grant, so the app is what reads a window, and
+// it therefore carries its own copy of the blind list — a check that ran only
+// in the daemon would run after the looking had already happened. Two copies of
+// a safety floor is a drift hazard, and the drift is silent in the worst
+// direction: a name missing from the Swift copy is a password manager being
+// read, with nothing on fire and no test red.
+//
+// So the two are compared. Parsed out of the Swift source rather than exported
+// from somewhere shared, because there is nothing both a Node process and a
+// signed AppKit binary can import.
+{
+  const swift = readFileSync(new URL("../../app/Sources/GlanceView.swift", import.meta.url), "utf8");
+  const block = /static let blind: Set<String> = \[([^\]]*)\]/.exec(swift)?.[1] ?? "";
+  const inApp = [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]!).sort();
+  const inDaemon = [...TITLE_BLIND].sort();
+  const missing = inDaemon.filter((id) => !inApp.includes(id));
+  const extra = inApp.filter((id) => !inDaemon.includes(id));
+  check(
+    "the app is blind to everything the daemon is blind to",
+    inApp.length > 0 && missing.length === 0,
+    missing.length ? `the app would read: ${missing.join(", ")}` : `${inApp.length} apps`,
+  );
+  check(
+    "and to nothing the daemon has not heard of",
+    extra.length === 0,
+    extra.length ? `only in the app: ${extra.join(", ")}` : "",
+  );
+}
 
 // ---- what it will and will not start -------------------------------------
 //

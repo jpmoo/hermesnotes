@@ -20,9 +20,17 @@ import Foundation
  nothing, and an untitled draft is exactly when you cannot find the note you are
  looking for yourself.
 
- Prints JSON on stdout: `{"text": "...", "app": "..."}`, or `{}` when there is
- nothing readable — no permission, no focused text, an app that exposes none.
- Never an error: having nothing to say is the ordinary case.
+ Prints JSON on stdout: `{"text": "...", "title": "...", "app": "..."}`, or `{}`
+ when there is nothing readable — no permission, no focused text, an app that
+ exposes none. Never an error: having nothing to say is the ordinary case.
+
+ `title` is here because the two things the daemon could otherwise ask both get
+ it wrong. `lsappinfo` answers with the application's *display name* — the
+ leading quoted token of its record is the name field — so a Chrome window
+ showing a letter to Milton reports "Google Chrome", and a fallback that
+ embedded it went looking for that. Rift has real titles, but only for windows
+ it manages, and returns null for plenty of them. The accessibility tree has it
+ for everything, and this process is already the one asking.
  */
 
 /// How much is worth reading. A draft can be a whole book, and the embedder
@@ -65,6 +73,17 @@ guard let app = NSWorkspace.shared.frontmostApplication else {
 let axApp = AXUIElementCreateApplication(app.processIdentifier)
 var result: [String: String] = [:]
 if let bundle = app.bundleIdentifier { result["app"] = bundle }
+
+// The window's own title, whether or not its contents will show themselves.
+// Reported alongside rather than instead: a document beats a title when there
+// is one, and that choice belongs to the caller.
+if let raw = attr(axApp, kAXFocusedWindowAttribute as String) {
+    let window = unsafeBitCast(raw, to: AXUIElement.self)
+    if let title = (attr(window, kAXTitleAttribute as String) as? String)?
+        .trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+        result["title"] = String(title.prefix(maxChars))
+    }
+}
 
 if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
     // The cast is unchecked because AXUIElement is a CFType that does not

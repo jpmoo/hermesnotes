@@ -276,9 +276,19 @@ export function buildServer(deps: {
         if (text) {
           asked = text.slice(0, MAX_SOURCE);
           source = "document";
-        } else if (front.title) {
-          asked = stripMarkers(front.title).slice(0, MAX_SOURCE);
-          source = "title";
+        } else {
+          // The window's real title before Launch Services' idea of one.
+          //
+          // `frontmostApp` reports the application's *display name* — its
+          // lsappinfo record's leading quoted token is the name field, not the
+          // window's — so this branch spent a fortnight embedding the string
+          // "Google Chrome" and wondering why a letter to Milton matched
+          // nothing. The helper reads the window itself.
+          const title = focused.title?.trim() || front.title;
+          if (title) {
+            asked = stripMarkers(title).slice(0, MAX_SOURCE);
+            source = "title";
+          }
         }
       }
     }

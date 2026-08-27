@@ -75,7 +75,7 @@ export function mayEmbedTitle(app: string, blind: readonly string[]): boolean {
  */
 export async function focusedText(
   helper: string,
-): Promise<{ text?: string; app?: string; denied?: boolean }> {
+): Promise<{ text?: string; title?: string; app?: string; denied?: boolean }> {
   const { execFile } = await import("node:child_process");
   const out = await new Promise<string>((resolve) =>
     execFile(helper, [], { timeout: 2000, maxBuffer: 1 << 20 }, (err, stdout) =>
@@ -83,7 +83,12 @@ export async function focusedText(
     ),
   );
   try {
-    return JSON.parse(out || "{}") as { text?: string; app?: string; denied?: boolean };
+    return JSON.parse(out || "{}") as {
+      text?: string;
+      title?: string;
+      app?: string;
+      denied?: boolean;
+    };
   } catch {
     return {};
   }

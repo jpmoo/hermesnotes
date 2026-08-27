@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Talaria asks a few applications for the document you are working in, in the
+    only language they answer: Word draws its own text and exposes nothing to
+    the accessibility tree, so it is asked over Apple Events instead.
+
+    Required because the bundle is signed with the hardened runtime. Without
+    this key an Apple Event is refused as errAEEventNotPermitted and — the part
+    that costs the afternoon — macOS shows no permission prompt at all, because
+    the process is not entitled to ask for one. The usage string in Info.plist
+    is what the prompt says; this is what allows there to be a prompt.
+
+    Still gated by the user: the first event to each application raises the
+    ordinary Automation prompt naming that application, and is refused until
+    granted. This entitlement buys the right to ask, not the right to proceed.
+  -->
+  <key>com.apple.security.automation.apple-events</key>
+  <true/>
+</dict>
+</plist>

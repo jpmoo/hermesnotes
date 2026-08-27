@@ -138,9 +138,22 @@ else
 fi
 codesign --force --sign "$SIGN_ID" --identifier dev.talaria.Talaria \
   --options runtime "$APP/Contents/MacOS/talaria-ax"
+# The app, and the one entitlement it needs.
+#
+# `--options runtime` is not optional here — a Developer ID signature without
+# the hardened runtime is not something macOS will let hold a TCC grant for
+# long. But the hardened runtime also blocks Apple Events outright unless the
+# bundle is entitled to send them, and blocks them *silently*: the send fails
+# with errAEEventNotPermitted and no prompt is ever shown, because an
+# unentitled process is not allowed to ask. Word therefore looked exactly like
+# an application that had refused permission nobody had been offered.
 codesign --force --sign "$SIGN_ID" --identifier dev.talaria.Talaria \
-  --options runtime "$APP"
+  --options runtime --entitlements "$HERE/Talaria.entitlements" "$APP"
 codesign --verify --strict "$APP"
+# Checked rather than assumed. A signature that silently lost its entitlements
+# is the same bug again, and it is invisible until somebody opens Word.
+codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q 'automation.apple-events' \
+  || { echo "!! the bundle is not entitled to send Apple Events — Word will fail silently"; exit 1; }
 
 echo "==> Swapping into place"
 rm -rf "$FINAL.previous"

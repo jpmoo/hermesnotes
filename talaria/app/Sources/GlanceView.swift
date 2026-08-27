@@ -36,12 +36,69 @@ import SwiftUI
 enum Focused {
     static var maxChars = 4000
 
+    /**
+     Applications this will not look at, at all, for any reason.
+
+     Mirrors `TITLE_BLIND` in `packages/daemon/src/context.ts`, which is
+     canonical; `glancecheck` fails the build if the two drift apart, because a
+     name missing from this copy is a password manager being read rather than a
+     test going red.
+
+     It has to live here, and that is the point. The daemon applies its own copy
+     before *its* read, but the daemon is no longer the one reading: the app
+     holds the accessibility grant, so the app does the looking and sends the
+     result as a question. Anything checked only at the far end is checked after
+     the fact — and "we looked and then discarded it" is not the promise. The
+     promise is that we did not look.
+     */
+    static let blind: Set<String> = [
+        "com.1password.1password",
+        "com.agilebits.onepassword7",
+        "com.apple.keychainaccess",
+        "com.bitwarden.desktop",
+        "com.lastpass.LastPass",
+        "com.apple.Passwords",
+        "org.keepassxc.keepassxc",
+        "com.apple.Console",
+    ]
+
     private static func attr(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
         var out: CFTypeRef?
         return AXUIElementCopyAttributeValue(element, name as CFString, &out) == .success ? out : nil
     }
 
     static var granted: Bool { AXIsProcessTrusted() }
+
+    /// The frontmost application, unless it is one we have promised not to read.
+    private static func readableFront() -> NSRunningApplication? {
+        guard AXIsProcessTrusted() else { return nil }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        if let id = app.bundleIdentifier, blind.contains(id) { return nil }
+        return app
+    }
+
+    /**
+     The focused window's own title.
+
+     Needed because neither thing the daemon could ask has it. `lsappinfo`
+     answers with the application's display name — its record's leading quoted
+     token is the name field, so a Chrome window showing a letter to Milton
+     reported "Google Chrome" and Glance dutifully went looking for that. Rift
+     has real titles but only for windows it manages, and answers null for
+     plenty of them.
+
+     The accessibility tree has it for everything, and this process is already
+     the one holding the grant.
+     */
+    static func windowTitle() -> String? {
+        guard let app = readableFront() else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        guard let raw = attr(axApp, kAXFocusedWindowAttribute as String) else { return nil }
+        let window = unsafeBitCast(raw, to: AXUIElement.self)
+        guard let title = attr(window, kAXTitleAttribute as String) as? String else { return nil }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : String(trimmed.prefix(maxChars))
+    }
 
     /**
      Leave the answer where something else can read it.
@@ -91,8 +148,7 @@ enum Focused {
 
     /// The focused element's text: a selection if there is one, else its value.
     static func text() -> String? {
-        guard AXIsProcessTrusted() else { return nil }
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        guard let app = readableFront() else { return nil }
 
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
@@ -114,12 +170,32 @@ enum Focused {
         return nil
     }
 
-    /// Run one of the scripts above, and treat every failure as silence.
+    /**
+     Run one of the scripts above.
+
+     Every failure is silence to the caller — Glance falls back to the window
+     title, which is the right behaviour — but it is no longer silence in the
+     log. Treating "not permitted" the same as "no document open" is what made
+     an unentitled binary indistinguishable from Word simply having nothing to
+     say, and -1743 in particular has a specific cause and a specific fix.
+     */
     private static func script(_ source: String) -> String? {
         guard let s = NSAppleScript(source: source) else { return nil }
         var err: NSDictionary?
         let out = s.executeAndReturnError(&err)
-        if err != nil { return nil }
+        if let err {
+            let code = (err[NSAppleScript.errorNumber] as? Int) ?? 0
+            let why = (err[NSAppleScript.errorMessage] as? String) ?? "\(err)"
+            switch code {
+            case -1743:
+                NSLog("talaria: not permitted to send Apple Events (-1743). The bundle needs com.apple.security.automation.apple-events, or Talaria needs ticking under Privacy & Security → Automation.")
+            case -600, -609:
+                break // that application simply is not running
+            default:
+                NSLog("talaria: AppleScript failed (\(code)) — \(why)")
+            }
+            return nil
+        }
         guard let text = out.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !text.isEmpty else { return nil }
         return String(text.prefix(maxChars))
@@ -157,8 +233,13 @@ final class GlanceModel: ObservableObject {
         // document itself, and the words still go no further than this machine.
         Focused.recordTrust()
         let document = typed.isEmpty ? Focused.text() : nil
+        // The window's own title, when the document will not show itself. Read
+        // here rather than left to the daemon: what the daemon can reach is the
+        // application's *name*, which is how Glance came to spend a fortnight
+        // asking the library about "Google Chrome".
+        let title = (typed.isEmpty && document == nil) ? Focused.windowTitle() : nil
         Task.detached(priority: .userInitiated) { [weak self] in
-            let ask = typed.isEmpty ? document : typed
+            let ask = typed.isEmpty ? (document ?? title) : typed
             let answer = try? Daemon.glance(query: ask)
             await MainActor.run {
                 guard let self else { return }
@@ -172,7 +253,7 @@ final class GlanceModel: ObservableObject {
                 // The daemon reports where *it* got the question; when the app
                 // supplied one it calls that "asked", which would be a lie
                 // about a document nobody typed into a search box.
-                self.source = document != nil ? "document" : answer.source
+                self.source = document != nil ? "document" : (title != nil ? "title" : answer.source)
                 self.error = answer.error
             }
         }

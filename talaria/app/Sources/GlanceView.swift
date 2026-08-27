@@ -36,6 +36,10 @@ import SwiftUI
 enum Focused {
     static var maxChars = 4000
 
+    /// The shortest a field's whole contents can be and still be worth asking
+    /// about. Not applied to a selection, which is deliberate at any length.
+    static let MEANINGFUL = 12
+
     /**
      Applications this will not look at, at all, for any reason.
 
@@ -153,13 +157,27 @@ enum Focused {
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
             let element = unsafeBitCast(focused, to: AXUIElement.self)
+
             // A highlight is a stronger statement of what somebody means than
-            // the whole document is, so it wins.
-            for name in [kAXSelectedTextAttribute, kAXValueAttribute] {
-                if let v = attr(element, name as String) as? String,
-                   !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return String(v.prefix(maxChars))
-                }
+            // the whole document is, so it wins, and at any length: two words
+            // deliberately selected are a real question.
+            if let v = attr(element, kAXSelectedTextAttribute as String) as? String {
+                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !t.isEmpty { return String(t.prefix(maxChars)) }
+            }
+
+            // A field's whole contents are incidental rather than chosen, so
+            // they have to be worth something before they beat the window title.
+            //
+            // Google Docs is the case that forces this. Its focused element is
+            // an off-screen input one pixel tall holding a two-character window
+            // around the cursor — the document itself is on a canvas and is
+            // never in the tree. Without a floor, Glance would take "no" as the
+            // document, embed it, and return nonsense with every appearance of
+            // having read something.
+            if let v = attr(element, kAXValueAttribute as String) as? String {
+                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.count >= MEANINGFUL { return String(t.prefix(maxChars)) }
             }
         }
 

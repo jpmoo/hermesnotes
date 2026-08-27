@@ -1,3 +1,4 @@
+import ApplicationServices
 import SwiftUI
 
 /**
@@ -14,6 +15,52 @@ import SwiftUI
  of whatever is behind it, and nothing here competes with the application it is
  floating over.
  */
+
+/**
+ What is being typed, read by the app rather than by a helper.
+
+ There is a `talaria-ax` binary in this bundle that does the same job for the
+ command line, and for a while it did this one too. It could not: macOS keys an
+ accessibility grant to a program's code signature, the helper signs as
+ `talaria-ax` while the app signs as `dev.talaria.Talaria`, and so a grant on
+ Talaria.app never covered it. Both are ad-hoc signed as well, which means the
+ hash changes on every rebuild and any grant that *did* apply would go stale the
+ next time the thing was built.
+
+ Reading it here sidesteps all of that. The app is what somebody added to the
+ Accessibility list, so the app is what asks.
+
+ Never prompts. Denied, it returns nothing and Glance falls back to the window
+ title, which is worse but real.
+ */
+enum Focused {
+    static var maxChars = 4000
+
+    private static func attr(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+        var out: CFTypeRef?
+        return AXUIElementCopyAttributeValue(element, name as CFString, &out) == .success ? out : nil
+    }
+
+    static var granted: Bool { AXIsProcessTrusted() }
+
+    /// The focused element's text: a selection if there is one, else its value.
+    static func text() -> String? {
+        guard AXIsProcessTrusted() else { return nil }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        guard let focused = attr(axApp, kAXFocusedUIElementAttribute as String) else { return nil }
+        let element = unsafeBitCast(focused, to: AXUIElement.self)
+        // A highlight is a stronger statement of what somebody means than the
+        // whole document is, so it wins.
+        for name in [kAXSelectedTextAttribute, kAXValueAttribute] {
+            if let v = attr(element, name as String) as? String,
+               !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return String(v.prefix(maxChars))
+            }
+        }
+        return nil
+    }
+}
 
 @MainActor
 final class GlanceModel: ObservableObject {
@@ -32,8 +79,14 @@ final class GlanceModel: ObservableObject {
     func refresh() {
         busy = true
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Read here, on the main actor, before the fetch goes off the thread —
+        // and by the app, which is what holds the accessibility grant. Sending
+        // it as the question means the daemon never has to reach for the
+        // document itself, and the words still go no further than this machine.
+        let document = typed.isEmpty ? Focused.text() : nil
         Task.detached(priority: .userInitiated) { [weak self] in
-            let answer = try? Daemon.glance(query: typed.isEmpty ? nil : typed)
+            let ask = typed.isEmpty ? document : typed
+            let answer = try? Daemon.glance(query: ask)
             await MainActor.run {
                 guard let self else { return }
                 self.busy = false
@@ -43,7 +96,10 @@ final class GlanceModel: ObservableObject {
                 }
                 self.hits = answer.data
                 self.question = answer.question
-                self.source = answer.source
+                // The daemon reports where *it* got the question; when the app
+                // supplied one it calls that "asked", which would be a lie
+                // about a document nobody typed into a search box.
+                self.source = document != nil ? "document" : answer.source
                 self.error = answer.error
             }
         }

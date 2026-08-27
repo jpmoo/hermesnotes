@@ -121,6 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var glanceHotkey: Hotkey?
     private var glanceWindow: NSPanel?
     private var settingsWindow: NSPanel?
+    private var composeWindow: NSPanel?
+    private var composeHotkey: Hotkey?
     /// Watches for a click anywhere else while a summoned panel is open.
     /// Keyed by panel, because two can be up at once and closing one must not
     /// stop the other listening.
@@ -129,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let boardModel = BoardModel()
     private let assistantModel = AssistantModel()
     private let settingsModel = SettingsModel()
+    private let composeModel = ComposeModel()
 
     /// Where Talaria keeps its things — and where the bundled daemon lives.
     ///
@@ -379,6 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         assistantHotkey = register("assistantHotkey", "shift+opt+a") { [weak self] in self?.toggleAssistantWindow() }
         glanceHotkey = nil
         glanceHotkey = register("glanceHotkey", "shift+opt+g") { [weak self] in self?.toggleGlanceWindow() }
+        composeHotkey = nil
+        composeHotkey = register("composeHotkey", "shift+opt+h") { [weak self] in self?.toggleComposeWindow() }
     }
 
     /// One shortcut, from config or from the default, saying so when it can't
@@ -621,6 +626,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderOut(nil)
     }
 
+    /**
+     Composing a new block.
+
+     Titled and keyed, like the assistant and unlike Glance: this is a thing you
+     type into at length, so it takes focus and keeps it. It does *not* dismiss
+     on a click elsewhere — half a filled-in form is exactly the kind of work
+     that should survive going to another window to check a date.
+     */
+    private func composePanel() -> NSPanel {
+        if let w = composeWindow { return w }
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
+            styleMask: [.titled, .closable, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "New Block"
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .windowBackgroundColor
+        panel.contentViewController = NSHostingController(
+            rootView: ComposeView(model: composeModel) { [weak self] title in
+                MainActor.assumeIsolated {
+                    self?.hideCompose()
+                    Task { await Self.notify(title: "Created", body: title) }
+                }
+            }
+        )
+        panel.setFrameAutosaveName("talaria.compose")
+        panel.center()
+        composeWindow = panel
+        return panel
+    }
+
+    private func toggleComposeWindow() {
+        let panel = composePanel()
+        if panel.isVisible {
+            hideCompose()
+            return
+        }
+        composeModel.load()
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
+            let f = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: screen.visibleFrame.midX - f.width / 2,
+                y: screen.visibleFrame.maxY - f.height - 100
+            ))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func hideCompose() {
+        composeWindow?.orderOut(nil)
+    }
+
     /// The assistant panel.
     ///
     /// Non-activating would be wrong here: it exists to be typed into, so it
@@ -794,13 +858,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let glance = menu.addItem(withTitle: "Glance", action: #selector(showGlance), keyEquivalent: "")
             glance.target = self
             glance.image = NSImage(systemSymbolName: "sparkle.magnifyingglass", accessibilityDescription: nil)
+            let compose = menu.addItem(withTitle: "New Block…", action: #selector(showCompose), keyEquivalent: "n")
+            compose.target = self
+            compose.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: nil)
 
             menu.addItem(.separator())
             // Which of the two a plain click opens. A menu bar item has exactly
             // one left click to give, and which one you want depends on how you
             // work — so it is a choice rather than my guess.
             let submenu = NSMenu()
-            for (title, value) in [("Ask Hermes Notes", "assistant"), ("Hermes Notes Collections", "board")] {
+            for (title, value) in Self.primaryChoices {
                 let item = submenu.addItem(withTitle: title, action: #selector(setPrimary(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = value
@@ -820,8 +887,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem?.menu = nil
             return
         }
-        if Self.primaryPanel == "assistant" { toggleAssistantWindow() } else { toggleBoardWindow() }
+        switch Self.primaryPanel {
+        case "assistant": toggleAssistantWindow()
+        case "glance": toggleGlanceWindow()
+        case "compose": toggleComposeWindow()
+        default: toggleBoardWindow()
+        }
     }
+
+    /// What a plain click can be set to open. A menu bar item has exactly one
+    /// left click to give, and which surface deserves it depends on how somebody
+    /// works — so it is a choice rather than my guess.
+    private static let primaryChoices: [(String, String)] = [
+        ("Hermes Notes Collections", "board"),
+        ("Ask Hermes Notes", "assistant"),
+        ("Glance", "glance"),
+        ("New Block", "compose"),
+    ]
 
     /// Which panel a left click opens, remembered between launches.
     private static var primaryPanel: String {
@@ -838,6 +920,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showGlance() { toggleGlanceWindow() }
 
     @objc private func showSettings() { showSettingsWindow() }
+
+    @objc private func showCompose() { toggleComposeWindow() }
 
     @objc private func showHermes() { HermesWindow.shared.show() }
 
@@ -931,6 +1015,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch url.host {
         case "settings": showSettingsWindow(); return
         case "glance": toggleGlanceWindow(); return
+        case "new", "compose": toggleComposeWindow(); return
         case "collections", "board": toggleBoardWindow(); return
         case "chat", "assistant", "ask": toggleAssistantWindow(); return
         default: break

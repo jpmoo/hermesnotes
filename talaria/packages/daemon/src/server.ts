@@ -439,12 +439,24 @@ export function buildServer(deps: {
       .object({
         q: z.string().optional(),
         kind: z.string().optional(),
+        // For filling a reference field: "which Projects are there to pick
+        // from" is a question about the type the user made, not about the
+        // canonical kind it maps to.
+        type: z.string().optional(),
         archived: z.coerce.boolean().optional(),
         limit: z.coerce.number().int().min(1).max(500).optional(),
       })
       .parse(req.query);
     return envelope(
-      canon(mirror.search({ q: q.q, kind: q.kind, includeArchived: q.archived, limit: q.limit })),
+      canon(
+        mirror.search({
+          q: q.q,
+          kind: q.kind,
+          typeId: q.type,
+          includeArchived: q.archived,
+          limit: q.limit,
+        }),
+      ),
     );
   });
 
@@ -1221,7 +1233,29 @@ export function buildServer(deps: {
     });
   });
 
-  app.get("/types", async () => envelope([...types().values()].map((t) => ({ id: t.id, name: t.name }))));
+  /**
+   * The types, and what each one is made of.
+   *
+   * `fields` is here so a composer can be built without knowing what a Task is.
+   * Every field carries its own kind, label and options, which is the whole
+   * reason a form can be drawn from this rather than written per type — and the
+   * reason it must be: types are rows the user can rename and reshape, so a
+   * panel with a Task-shaped form hardcoded in it is wrong the first time
+   * somebody adds a field.
+   */
+  app.get("/types", async () =>
+    envelope(
+      [...types().values()].map((t) => ({
+        id: t.id,
+        name: t.name,
+        fields: t.fields ?? [],
+        // Which slot a body goes in, when the type declares one. A text type
+        // keeps its prose in `content`, outside the property bag entirely.
+        bodySlot: typeof t.profiles?.note?.body === "string" ? (t.profiles.note.body as string) : null,
+        titleKey: typeof t.profiles?.task?.title === "string" ? (t.profiles.task.title as string) : null,
+      })),
+    ),
+  );
 
   app.post("/sync", async (req) => {
     const { full } = z.object({ full: z.coerce.boolean().optional() }).parse(req.query);

@@ -277,6 +277,7 @@ struct SettingsView: View {
             field("Collections") { hotkeyField($model.config.boardHotkey, "shift+opt+c") }
             field("Ask Hermes") { hotkeyField($model.config.assistantHotkey, "shift+opt+a") }
             field("Glance") { hotkeyField($model.config.glanceHotkey, "shift+opt+g") }
+            field("New block") { hotkeyField($model.config.composeHotkey, "shift+opt+h") }
             field("Menu bar icon") {
                 TextField("bubble.left.and.bubble.right", text: $model.config.menuBarSymbol)
                     .textFieldStyle(.roundedBorder)

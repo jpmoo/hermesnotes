@@ -180,6 +180,25 @@ Anything destructive comes back for approval before it runs: the panel lists
 what it wants to do and does nothing until you say. Settings → **Shortcuts**
 rebinds it.
 
+## New blocks
+
+**⇧⌥H** opens a composer. Pick a type and fill in its fields.
+
+The panel contains no idea of what a Task is. It draws itself from what
+`/types` declares — every field carries its own `kind`, `label` and options, so
+a text field, a status, a date span and a reference picker all appear because
+the *type* said so. Rename a type, add a field, and the form follows; write
+`if typeName == "Task"` and it is wrong the first time somebody does either.
+
+Recurrence and attachments are named in the panel and deliberately not offered.
+A malformed recurrence is a block that spawns wrong occurrences forever, which
+is a good deal worse than a field you finish on the web.
+
+This is the one surface that goes through Hermes' own API rather than the
+interchange binding, because the format has no `create` verb yet — see
+`pkm-interchange/LIMITS.md`. It still writes through the queue, so a block
+composed on a train exists locally and is sent on reconnect.
+
 ## Collections
 
 **Any** collection in a floating window, styled from the web app's own palette:

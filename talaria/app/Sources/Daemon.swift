@@ -401,6 +401,103 @@ enum Daemon {
         try write(["kind": "complete", "blockId": id])
     }
 
+    // MARK: Composing
+
+    /**
+     One field a type declares, and everything needed to draw it.
+
+     Read rather than assumed. A form built from `if typeName == "Task"` would be
+     wrong the first time somebody renames a type or adds a field — types are
+     rows the user owns, not code — so the composer knows nothing except what
+     arrives here.
+     */
+    struct TypeField: Decodable, Identifiable {
+        let key: String
+        let kind: String?
+        let label: String?
+        let options: [String]?
+        let startLabel: String?
+        let endLabel: String?
+        let many: Bool?
+        let targetType: String?
+        var id: String { key }
+
+        var display: String { label ?? key }
+        var isMany: Bool { many ?? false }
+
+        /**
+         Options arrive either as plain strings or as `{value, label}` objects.
+
+         The format allows both and this library uses the first, but a producer
+         is entitled to either — and a decoder that handled one would throw away
+         the whole type on meeting the other, which costs the composer rather
+         than the field.
+         */
+        private enum CodingKeys: String, CodingKey {
+            case key, kind, label, options, startLabel, endLabel, many, targetType
+        }
+
+        private struct Option: Decodable {
+            let value: String
+            let label: String?
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            key = try c.decode(String.self, forKey: .key)
+            kind = try c.decodeIfPresent(String.self, forKey: .kind)
+            label = try c.decodeIfPresent(String.self, forKey: .label)
+            startLabel = try c.decodeIfPresent(String.self, forKey: .startLabel)
+            endLabel = try c.decodeIfPresent(String.self, forKey: .endLabel)
+            many = try c.decodeIfPresent(Bool.self, forKey: .many)
+            targetType = try c.decodeIfPresent(String.self, forKey: .targetType)
+            if let plain = try? c.decodeIfPresent([String].self, forKey: .options) {
+                options = plain
+            } else if let rich = try? c.decodeIfPresent([Option].self, forKey: .options) {
+                options = rich.map(\.value)
+            } else {
+                options = nil
+            }
+        }
+    }
+
+    struct BlockType: Decodable, Identifiable, Hashable {
+        let id: String
+        let name: String?
+        let fields: [TypeField]
+        /// Where prose goes. `"content"` means the reserved slot outside the
+        /// property bag — writing it as a property would silently discard it.
+        let bodySlot: String?
+        let titleKey: String?
+
+        var display: String { name ?? "Untitled type" }
+        static func == (a: BlockType, b: BlockType) -> Bool { a.id == b.id }
+        func hash(into h: inout Hasher) { h.combine(id) }
+    }
+
+    static func types() throws -> [BlockType] {
+        try JSONDecoder().decode(Envelope<[BlockType]>.self, from: get("/types")).data
+    }
+
+    /// Candidates for a reference field, by the type it points at.
+    static func blocks(ofType typeId: String, limit: Int = 200) throws -> [Card] {
+        let path = "/blocks?type=\(typeId)&limit=\(limit)"
+        return try JSONDecoder().decode(Envelope<[Card]>.self, from: get(path)).data
+    }
+
+    /// Make one, through the same queue everything else writes through — so a
+    /// block composed on a train exists locally and goes out on reconnect.
+    static func create(
+        blockTypeId: String,
+        content: String?,
+        properties: [String: Any]
+    ) throws {
+        var body: [String: Any] = ["kind": "create", "blockTypeId": blockTypeId]
+        if let content, !content.isEmpty { body["content"] = content }
+        if !properties.isEmpty { body["properties"] = properties }
+        try write(body)
+    }
+
     // MARK: The agenda
 
     struct FeedEvent: Decodable {

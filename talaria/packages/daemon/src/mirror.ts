@@ -255,13 +255,25 @@ export class Mirror {
    * an embedding model, and is exactly the thing that must not be reached for
    * when the network is down.
    */
-  search(opts: { q?: string; kind?: string; includeArchived?: boolean; limit?: number }): string[] {
+  search(opts: {
+    q?: string;
+    kind?: string;
+    /** A block *type* id, which is not the same question as `kind`: kind is the
+     *  canonical shape a block was mapped to, typeId is the row the user made. */
+    typeId?: string;
+    includeArchived?: boolean;
+    limit?: number;
+  }): string[] {
     const where: string[] = [];
     const params: (string | number)[] = [];
     if (!opts.includeArchived) where.push("archived = 0");
     if (opts.kind) {
       where.push("kind = ?");
       params.push(opts.kind);
+    }
+    if (opts.typeId) {
+      where.push("type_id = ?");
+      params.push(opts.typeId);
     }
     if (opts.q?.trim()) {
       where.push("(title LIKE ? ESCAPE '\\' OR body LIKE ? ESCAPE '\\')");

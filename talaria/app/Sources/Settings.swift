@@ -46,6 +46,7 @@ struct TalariaConfig: Equatable, Sendable {
     var boardHotkey = ""
     var assistantHotkey = ""
     var glanceHotkey = ""
+    var composeHotkey = ""
     var menuBarSymbol = ""
     /// Whether undated hits sit below Glance's fold rather than above it.
     /// Off by default — see `Daemon.GlanceHit.isAbove(theFold:)`.
@@ -85,6 +86,7 @@ enum ConfigStore {
         c.boardHotkey = str("boardHotkey")
         c.assistantHotkey = str("assistantHotkey")
         c.glanceHotkey = str("glanceHotkey")
+        c.composeHotkey = str("composeHotkey")
         c.menuBarSymbol = str("menuBarSymbol")
         c.glanceUndatedFurtherOut = (obj["glanceUndatedFurtherOut"] as? Bool) ?? false
         return c
@@ -121,6 +123,7 @@ enum ConfigStore {
         optional("boardHotkey", c.boardHotkey)
         optional("assistantHotkey", c.assistantHotkey)
         optional("glanceHotkey", c.glanceHotkey)
+        optional("composeHotkey", c.composeHotkey)
         optional("menuBarSymbol", c.menuBarSymbol)
         if c.contextExclude.isEmpty { obj.removeValue(forKey: "contextExclude") }
         else { obj["contextExclude"] = c.contextExclude }

@@ -131,8 +131,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: Opener.didOpen, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.boardWindow?.orderOut(nil)
-                self?.assistantWindow?.orderOut(nil)
+                // Through the hide functions rather than straight to
+                // `orderOut`, or the dismissal monitors outlive the window they
+                // were watching and go on firing at every click for the rest of
+                // the session.
+                self?.hideBoard()
+                self?.hideAssistant()
+                self?.hideGlance()
             }
         }
 
@@ -403,10 +408,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.orderOut(nil)
     }
 
+    private func hideAssistant() {
+        guard let panel = assistantWindow else { return }
+        stopWatchingForDismissal(panel)
+        panel.orderOut(nil)
+    }
+
     /// The assistant panel.
     ///
     /// Non-activating would be wrong here: it exists to be typed into, so it
     /// takes focus and gives it back on Escape.
+    ///
+    /// Dismissed by a click elsewhere like the other two, and it costs less
+    /// here than anywhere: the panel is never released, so a conversation
+    /// closed mid-sentence is exactly where you left it when the hotkey brings
+    /// it back.
     private func assistantPanel() -> NSPanel {
         if let w = assistantWindow { return w }
         let panel = NSPanel(
@@ -421,7 +437,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.contentViewController = NSHostingController(rootView: AssistantView(model: assistantModel))
+        // Same material as the other two. Titled and keyed rather than
+        // borderless and non-activating, because this one exists to be typed
+        // into — a prompt that cannot take the cursor is not a prompt.
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.contentViewController = NSHostingController(
+            rootView: AssistantView(model: assistantModel).background(VisualEffect(radius: 0))
+        )
         panel.setFrameAutosaveName("talaria.assistant")
         panel.center()
         assistantWindow = panel
@@ -431,7 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func toggleAssistantWindow() {
         let panel = assistantPanel()
         if panel.isVisible {
-            panel.orderOut(nil)
+            hideAssistant()
             return
         }
         // Near the top of whichever screen the pointer is on — where a prompt
@@ -445,6 +468,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        watchForDismissal(panel) { [weak self] in self?.hideAssistant() }
     }
 
     /// A string setting from config.json, if it names one.

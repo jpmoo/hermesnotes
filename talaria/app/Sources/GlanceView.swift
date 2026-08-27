@@ -63,22 +63,66 @@ enum Focused {
         try? data.write(to: URL(fileURLWithPath: dir + "/accessibility.json"), options: .atomic)
     }
 
+    /**
+     Applications that draw their own text, and how to ask them instead.
+
+     The accessibility tree only has words if the application put them there.
+     TextEdit does, and so does a Gmail compose box, because both use real text
+     controls. Word draws its document itself and exposes nothing; Google Docs
+     renders to a canvas and is worse — its title is reachable and its body is
+     not, which is why searching only works there when the name of the thing
+     happens to be in the filename.
+
+     Word is scriptable, though, with a full dictionary. So for the few
+     applications where this is true, ask in the language they do answer.
+     Deliberately a short named list rather than a general "try AppleScript on
+     anything": every first attempt raises a permission prompt naming the target
+     application, and a tool that asks to control everything on the machine
+     deserves to be refused.
+     */
+    private static let scripted: [String: String] = [
+        "com.microsoft.Word": """
+        tell application "Microsoft Word"
+          if (count of documents) is 0 then return ""
+          return content of text object of active document
+        end tell
+        """,
+    ]
+
     /// The focused element's text: a selection if there is one, else its value.
     static func text() -> String? {
         guard AXIsProcessTrusted() else { return nil }
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        guard let focused = attr(axApp, kAXFocusedUIElementAttribute as String) else { return nil }
-        let element = unsafeBitCast(focused, to: AXUIElement.self)
-        // A highlight is a stronger statement of what somebody means than the
-        // whole document is, so it wins.
-        for name in [kAXSelectedTextAttribute, kAXValueAttribute] {
-            if let v = attr(element, name as String) as? String,
-               !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return String(v.prefix(maxChars))
+        if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
+            let element = unsafeBitCast(focused, to: AXUIElement.self)
+            // A highlight is a stronger statement of what somebody means than
+            // the whole document is, so it wins.
+            for name in [kAXSelectedTextAttribute, kAXValueAttribute] {
+                if let v = attr(element, name as String) as? String,
+                   !v.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return String(v.prefix(maxChars))
+                }
             }
         }
+
+        // Nothing in the tree. Ask the ones that answer another way.
+        if let id = app.bundleIdentifier, let source = scripted[id] {
+            return script(source)
+        }
         return nil
+    }
+
+    /// Run one of the scripts above, and treat every failure as silence.
+    private static func script(_ source: String) -> String? {
+        guard let s = NSAppleScript(source: source) else { return nil }
+        var err: NSDictionary?
+        let out = s.executeAndReturnError(&err)
+        if err != nil { return nil }
+        guard let text = out.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
+        return String(text.prefix(maxChars))
     }
 }
 

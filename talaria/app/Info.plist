@@ -136,5 +136,11 @@
       </array>
     </dict>
   </array>
+	<!-- Shown when macOS asks whether Talaria may read another application's
+	     document. Named plainly, because a permission prompt is the one place a
+	     person decides whether to trust this, and "Talaria would like to control
+	     Microsoft Word" with no reason attached is a prompt people deny. -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Glance reads the document you are working in, so it can show notes and tasks about it. The text is turned into a vector on this Mac and is not stored or sent anywhere.</string>
 </dict>
 </plist>

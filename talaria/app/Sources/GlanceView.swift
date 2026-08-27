@@ -43,6 +43,26 @@ enum Focused {
 
     static var granted: Bool { AXIsProcessTrusted() }
 
+    /**
+     Leave the answer where something else can read it.
+
+     Whether the app is trusted is a fact only the app can establish:
+     `AXIsProcessTrusted` speaks for the calling process, TCC's database is
+     itself protected, and the helper run from a terminal is attributed to the
+     terminal — so all three of the obvious ways to check from outside report
+     something other than the truth. Writing it down turns "press the hotkey and
+     tell me what it says" into a question anybody can answer.
+     */
+    static func recordTrust() {
+        let dir = NSHomeDirectory() + "/Library/Application Support/Talaria"
+        let payload: [String: Any] = [
+            "granted": AXIsProcessTrusted(),
+            "at": ISO8601DateFormatter().string(from: Date()),
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        try? data.write(to: URL(fileURLWithPath: dir + "/accessibility.json"), options: .atomic)
+    }
+
     /// The focused element's text: a selection if there is one, else its value.
     static func text() -> String? {
         guard AXIsProcessTrusted() else { return nil }
@@ -83,6 +103,7 @@ final class GlanceModel: ObservableObject {
         // and by the app, which is what holds the accessibility grant. Sending
         // it as the question means the daemon never has to reach for the
         // document itself, and the words still go no further than this machine.
+        Focused.recordTrust()
         let document = typed.isEmpty ? Focused.text() : nil
         Task.detached(priority: .userInitiated) { [weak self] in
             let ask = typed.isEmpty ? document : typed

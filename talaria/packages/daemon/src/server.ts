@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -328,6 +328,18 @@ export function buildServer(deps: {
       // normal case and the reason this is worth reporting at all: something
       // here means the far end is older than the manifest it is serving.
       mismatch: sync.mismatch,
+      // Written by the app, because only the app can say. Absent means it has
+      // not run since this was added rather than that it is denied — the two
+      // are different and reporting them as one is how a diagnostic starts
+      // lying.
+      accessibility: (() => {
+        try {
+          const raw = readFileSync(`${process.env.HOME}/Library/Application Support/Talaria/accessibility.json`, "utf8");
+          return JSON.parse(raw) as { granted: boolean; at: string };
+        } catch {
+          return null;
+        }
+      })(),
       origin: config.origin,
       socket: deps.socketPath,
     };

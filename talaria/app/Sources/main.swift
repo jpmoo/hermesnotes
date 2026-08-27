@@ -130,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Focused.recordTrust()
         if alreadyRunning() {
             NSLog("talaria: another instance is already running — this one is stepping aside")
             NSApp.terminate(nil)

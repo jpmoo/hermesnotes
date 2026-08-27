@@ -209,6 +209,8 @@ final class GlanceModel: ObservableObject {
 struct GlanceView: View {
     @ObservedObject var model: GlanceModel
     @FocusState private var searching: Bool
+    /// Whether the things dated outside the window are showing.
+    @State private var expanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -232,7 +234,40 @@ struct GlanceView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(model.hits) { hit in row(hit) }
+                        ForEach(near) { hit in row(hit) }
+
+                        // Said rather than hidden. A filter whose contents you
+                        // cannot see is one you have no reason to distrust: if
+                        // the letter to Milton were dated six weeks out you
+                        // would conclude Glance did not know about it and go
+                        // hunting in Hermes. One line removes that entirely,
+                        // and the scores stay visible so it is obvious these
+                        // are further out rather than worse matches.
+                        if !later.isEmpty {
+                            Button { expanded.toggle() } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                                        .font(.system(size: 8, weight: .semibold))
+                                    Text(expanded
+                                         ? "further out"
+                                         : "\(later.count) further out")
+                                        .font(.system(size: 10, weight: .medium))
+                                    Rectangle()
+                                        .fill(Color.primary.opacity(0.08))
+                                        .frame(height: 0.5)
+                                }
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 12)
+                                .padding(.top, 8)
+                                .padding(.bottom, 4)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            if expanded {
+                                ForEach(later) { hit in row(hit) }
+                            }
+                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -248,6 +283,12 @@ struct GlanceView: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
     }
+
+    /// What is happening around now, plus everything undated.
+    private var near: [Daemon.GlanceHit] { model.hits.filter(\.isNear) }
+
+    /// Dated, and not around now. Still ranked, still scored, one click away.
+    private var later: [Daemon.GlanceHit] { model.hits.filter { !$0.isNear } }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {

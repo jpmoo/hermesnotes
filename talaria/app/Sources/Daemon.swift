@@ -273,12 +273,49 @@ enum Daemon {
             let status: String?
         }
 
+        struct When: Decodable {
+            let value: String
+        }
+
+        struct Schedule: Decodable {
+            let start: When?
+            let end: When?
+        }
+
         struct Block: Decodable {
             let id: String
             let title: String
             let typeName: String
             let url: String
             let completion: Completion?
+            /// Absent on anything that is not dated, which is most of a library.
+            let schedule: Schedule?
+        }
+
+        /**
+         Whether this is worth seeing while working on something now.
+
+         Undated things are always near. A person, a project, a note has no date
+         and is not less relevant for it — that is most of what anybody wants
+         while writing a letter, and demoting them would empty the useful half
+         of the list to make room for tasks.
+
+         Dated things are near if any end of them falls in the window. Both ends
+         are checked because a span that started last week and ends next month
+         is happening *now*, and testing only its start or only its end would
+         call it past or future depending on which end you picked.
+         */
+        var isNear: Bool {
+            guard let schedule = block.schedule else { return true }
+            let dates = [schedule.start?.value, schedule.end?.value].compactMap { $0 }
+            if dates.isEmpty { return true }
+            let today = ISO8601DateFormatter.day.string(from: Date())
+            let from = ISO8601DateFormatter.day.string(from: Date().addingTimeInterval(-7 * 86400))
+            let to = ISO8601DateFormatter.day.string(from: Date().addingTimeInterval(21 * 86400))
+            // String comparison is correct for ISO days and needs no parsing.
+            return dates.contains { $0.prefix(10) >= from && $0.prefix(10) <= to }
+                || dates.contains { $0.prefix(10) <= today }
+                    && dates.contains { $0.prefix(10) >= today }
         }
 
         let score: Double
@@ -296,10 +333,14 @@ enum Daemon {
 
     /// Ask what the library knows about what is in front, or about `query`.
     static func glance(query: String?) throws -> GlanceAnswer {
-        var path = "/glance"
+        // More than the panel shows at rest, because the ones below the line
+        // have to come from somewhere: asking for eight and splitting them
+        // would leave the divider reading "1 further out" and the near list
+        // looking thin. The cost is a few hundred more dot products.
+        var path = "/glance?k=16"
         if let query, !query.isEmpty {
             let escaped = query.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
-            path += "?q=\(escaped)"
+            path += "&q=\(escaped)"
         }
         return try JSONDecoder().decode(GlanceAnswer.self, from: get(path))
     }
@@ -445,4 +486,15 @@ enum Daemon {
         let env = try JSONDecoder().decode(Envelope.self, from: data)
         return URL(string: env.data.url)
     }
+}
+
+extension ISO8601DateFormatter {
+    /// `YYYY-MM-DD` in the local zone, because "is this soon" is a question
+    /// about the reader's day rather than about UTC's.
+    static let day: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        f.timeZone = .current
+        return f
+    }()
 }

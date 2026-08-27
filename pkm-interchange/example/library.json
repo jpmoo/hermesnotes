@@ -51,8 +51,11 @@
     {
       "id": "t_org",
       "name": "Organization",
-      "fields": [{ "key": "name", "kind": "text", "required": true }],
-      "profiles": { "contact": { "name": "name", "kind": "org" } }
+      "fields": [
+        { "key": "name", "kind": "text", "required": true },
+        { "key": "kind", "kind": "enum", "options": ["org", "person"] }
+      ],
+      "profiles": { "contact": { "name": "name", "kind": "kind" } }
     },
     {
       "id": "t_reading",
@@ -133,7 +136,7 @@
     {
       "id": "o_district",
       "type": "t_org",
-      "properties": { "name": "Example School District" },
+      "properties": { "name": "Example School District", "kind": "org" },
       "archived": false,
       "created": "2026-01-04T08:00:00Z",
       "updated": "2026-01-04T08:00:00Z"
@@ -218,5 +221,7 @@
   "relations": [
     { "from": "o_note_anchor", "to": "o_spec", "type": "supports" },
     { "from": "o_reading_1", "to": "o_note_anchor", "type": "informs" }
-  ]
+  ],
+
+  "findings": []
 }

@@ -556,7 +556,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
-        panel.backgroundColor = .clear
+        // Clear would leave the title bar painted by nothing at all.
+        //
+        // The content view stops at the title bar now, so whatever the *window*
+        // draws is what shows up there — and a clear window draws nothing, which
+        // is why the Collections title was legible against a plain desktop and
+        // see-through over a document. Not opaque, so the effect view in the
+        // content can still sample what is behind it; just not empty.
+        //
+        // Glance is deliberately not in this list: it is borderless, has no
+        // title bar to paint, and takes its rounded shape from the masked effect
+        // view — a window background there would square off the corners.
+        panel.backgroundColor = .windowBackgroundColor
         panel.contentViewController = NSHostingController(
             rootView: SettingsView(model: settingsModel)
         )
@@ -622,7 +633,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // borderless and non-activating, because this one exists to be typed
         // into — a prompt that cannot take the cursor is not a prompt.
         panel.isOpaque = false
-        panel.backgroundColor = .clear
+        // Clear would leave the title bar painted by nothing at all.
+        //
+        // The content view stops at the title bar now, so whatever the *window*
+        // draws is what shows up there — and a clear window draws nothing, which
+        // is why the Collections title was legible against a plain desktop and
+        // see-through over a document. Not opaque, so the effect view in the
+        // content can still sample what is behind it; just not empty.
+        //
+        // Glance is deliberately not in this list: it is borderless, has no
+        // title bar to paint, and takes its rounded shape from the masked effect
+        // view — a window background there would square off the corners.
+        panel.backgroundColor = .windowBackgroundColor
         panel.contentViewController = NSHostingController(
             rootView: AssistantView(model: assistantModel).background(VisualEffect(radius: 0))
         )
@@ -689,7 +711,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // regions there are. Chromeless would cost the close button and the
         // resize edges to buy a look.
         panel.isOpaque = false
-        panel.backgroundColor = .clear
+        // Clear would leave the title bar painted by nothing at all.
+        //
+        // The content view stops at the title bar now, so whatever the *window*
+        // draws is what shows up there — and a clear window draws nothing, which
+        // is why the Collections title was legible against a plain desktop and
+        // see-through over a document. Not opaque, so the effect view in the
+        // content can still sample what is behind it; just not empty.
+        //
+        // Glance is deliberately not in this list: it is borderless, has no
+        // title bar to paint, and takes its rounded shape from the masked effect
+        // view — a window background there would square off the corners.
+        panel.backgroundColor = .windowBackgroundColor
         panel.contentViewController = NSHostingController(
             rootView: BoardView(model: boardModel).background(VisualEffect(radius: 0))
         )
@@ -866,16 +899,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ url: URL) {
-        // `talaria://settings` — a way in that does not depend on the menu bar.
-        //
-        // The status item is the only visible entrance this app has, and macOS
-        // drops status items it has no room for: on a notched Mac with a busy
-        // menu bar, ours is the newest and so the first to go. Every other
-        // surface already has a hotkey for that reason. Settings gets a URL
-        // instead, which is also what lets Alfred and `talaria` reach it.
-        if url.host == "settings" {
-            showSettingsWindow()
-            return
+        /*
+         Every surface, by name.
+
+         The status item is the only visible entrance this app has, and macOS
+         drops status items it has no room for: on a notched Mac with a busy
+         menu bar ours is the newest and so the first to go. The three panels
+         have hotkeys for that reason, and a hotkey is not addressable — nothing
+         can hand one to Alfred, a Shortcut or a script. These are, and they cost
+         four lines.
+
+         Toggles rather than shows, for the three that have a hotkey, so the URL
+         and the key do the same thing rather than two subtly different things.
+         Settings is show-only: it is the one you go to deliberately, and there
+         is no second way to have opened it by accident.
+         */
+        switch url.host {
+        case "settings": showSettingsWindow(); return
+        case "glance": toggleGlanceWindow(); return
+        case "collections", "board": toggleBoardWindow(); return
+        case "chat", "assistant", "ask": toggleAssistantWindow(); return
+        default: break
         }
         // talaria://block/<uuid> — host is "block", path is "/<uuid>"
         let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))

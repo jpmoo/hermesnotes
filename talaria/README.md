@@ -282,6 +282,20 @@ opens them. It reindexes when the daemon's cursor moves, not on a timer.
 collection. Paste one anywhere that linkifies URLs, or `open talaria://block/…`
 from a terminal.
 
+Every surface has a name too, which is the only way to reach one from a script,
+a Shortcut or an Alfred keyword — a hotkey is not addressable, and the menu bar
+item is something macOS will drop when the bar is full:
+
+| | |
+|---|---|
+| `talaria://collections` | the collections window (also `board`) |
+| `talaria://chat` | Ask Hermes (also `assistant`, `ask`) |
+| `talaria://glance` | Glance |
+| `talaria://settings` | the settings panel |
+
+The first three toggle, so the URL and the hotkey do the same thing rather than
+two subtly different ones. Settings only ever opens.
+
 Why a custom scheme when the https link already works: **the https link names a
 host**, so every one ever pasted dies the day Hermes moves. A `talaria://` link
 is resolved by the daemon at click time out of the one config file that knows

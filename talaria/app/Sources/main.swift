@@ -90,6 +90,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var assistantHotkey: Hotkey?
     private var glanceHotkey: Hotkey?
     private var glanceWindow: NSPanel?
+    /// Watches for a click anywhere else while a summoned panel is open.
+    /// Keyed by panel, because two can be up at once and closing one must not
+    /// stop the other listening.
+    private var dismissMonitors: [ObjectIdentifier: (Any?, Any?)] = [:]
     private let glanceModel = GlanceModel()
     private let boardModel = BoardModel()
     private let assistantModel = AssistantModel()
@@ -305,6 +309,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        // A real shadow, cast from the rounded material rather than from the
+        // window's rectangle. The mask lives on the effect view for exactly
+        // this reason: clip the content in SwiftUI alone and the window still
+        // believes it is square, so it draws a square shadow behind round
+        // corners — which is most of what made it look bolted on.
         panel.hasShadow = true
         panel.isMovableByWindowBackground = true
         let host = NSHostingController(rootView: GlanceView(model: glanceModel))
@@ -318,8 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func toggleGlanceWindow() {
         let panel = glancePanel()
         if panel.isVisible {
-            glanceModel.stopFollowing()
-            panel.orderOut(nil)
+            hideGlance()
             return
         }
         // Top-right of whichever screen the pointer is on: out of the way of
@@ -335,7 +343,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Ordered front without activating: the front application stays front,
         // which is the whole point — Glance is about what it is showing.
         panel.orderFrontRegardless()
+        panel.invalidateShadow()
         glanceModel.startFollowing()
+        watchForDismissal(panel) { [weak self] in self?.hideGlance() }
+    }
+
+    /**
+     Close it when attention goes elsewhere.
+
+     A non-activating panel never becomes key, so none of the ordinary
+     did-resign-key machinery ever fires — the window has no idea it stopped
+     being looked at. Two monitors instead: a global one for a click in any
+     other application, and a local one for Escape and for clicks landing in
+     Talaria's own windows.
+
+     Deliberately not on focus changes. Glance is *about* the front window, and
+     dismissing it every time the front window changed would close it at the
+     exact moment it had something new to say.
+     */
+    private func watchForDismissal(_ panel: NSPanel, onHide: @escaping @MainActor () -> Void) {
+        stopWatchingForDismissal(panel)
+        let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
+            Task { @MainActor in onHide() }
+        }
+        let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) {
+            event in
+            if event.type == .keyDown {
+                // 53 is Escape. Swallowed, so it does not also reach whatever is
+                // behind — dismissing a panel should not cancel a dialog too.
+                guard event.keyCode == 53 else { return event }
+                Task { @MainActor in onHide() }
+                return nil
+            }
+            // A click inside is somebody using it, not leaving it. Sheets and
+            // menus belonging to the panel count as inside.
+            if event.window === panel || event.window?.parent === panel { return event }
+            Task { @MainActor in onHide() }
+            return event
+        }
+        dismissMonitors[ObjectIdentifier(panel)] = (global, local)
+    }
+
+    private func stopWatchingForDismissal(_ panel: NSPanel) {
+        guard let (global, local) = dismissMonitors.removeValue(forKey: ObjectIdentifier(panel)) else { return }
+        if let global { NSEvent.removeMonitor(global) }
+        if let local { NSEvent.removeMonitor(local) }
+    }
+
+    private func hideGlance() {
+        guard let panel = glanceWindow else { return }
+        stopWatchingForDismissal(panel)
+        glanceModel.stopFollowing()
+        panel.orderOut(nil)
+    }
+
+    private func hideBoard() {
+        guard let panel = boardWindow else { return }
+        stopWatchingForDismissal(panel)
+        panel.orderOut(nil)
     }
 
     /// The assistant panel.
@@ -411,7 +476,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.contentViewController = NSHostingController(rootView: BoardView(model: boardModel))
+        // The same material as Glance, and for the same reason: a window that
+        // carries the colour of what is behind it reads as part of the machine
+        // rather than as a thing an application put on the screen.
+        //
+        // Still titled, still resizable — unlike Glance this is somewhere you
+        // work, a matrix needs room, and how much room depends on how many
+        // regions there are. Chromeless would cost the close button and the
+        // resize edges to buy a look.
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.contentViewController = NSHostingController(
+            rootView: BoardView(model: boardModel).background(VisualEffect(radius: 0))
+        )
         // Big enough that the whole grid is on screen at once, which is the
         // point of a matrix — and resizable, since how much fits depends on how
         // many regions there are and how full they get.
@@ -426,7 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func toggleBoardWindow() {
         let panel = boardPanel()
         if panel.isVisible {
-            panel.orderOut(nil)
+            hideBoard()
             return
         }
         boardModel.load()
@@ -441,6 +518,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        // Dismissed by a click elsewhere, like Glance. Worth knowing the cost:
+        // this is a window somebody works in, so stepping into another
+        // application to check something closes it, and the hotkey brings it
+        // back. The right trade for a thing summoned by a hotkey and the wrong
+        // one for a document, which is why nothing else here does it.
+        watchForDismissal(panel) { [weak self] in self?.hideBoard() }
     }
 
     @objc private func toggleBoard(_ sender: NSStatusBarButton) {

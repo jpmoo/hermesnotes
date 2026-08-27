@@ -109,11 +109,13 @@ struct GlanceView: View {
             }
         }
         .frame(width: 380, height: 420)
-        .background(VisualEffect())
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(VisualEffect(radius: 16))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+            // A hairline rather than a border. It is what separates the panel
+            // from a light document behind it; any heavier and the thing starts
+            // looking like a dialog again.
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
     }
 
@@ -201,16 +203,43 @@ struct GlanceView: View {
     }
 }
 
-/// The material behind it. `.hudWindow` is the one that reads as a floating
-/// widget rather than as a document window that happens to be small.
-private struct VisualEffect: NSViewRepresentable {
+/**
+ The material behind it.
+
+ `.hudWindow` was the first attempt and it reads as a HUD from about 2012 —
+ heavy, dark, obviously a thing an application put on your screen. `.popover` is
+ the material the system itself uses for menu-bar popovers and inspectors, so a
+ panel wearing it looks like part of the machine rather than a guest on it.
+
+ `.behindWindow` is what makes it genuinely translucent: the blur samples the
+ windows underneath rather than its own background, which is why the colour of
+ whatever you are working in comes through it.
+
+ The rounding lives here rather than in SwiftUI. A borderless window with a
+ clear background derives its shadow from the shape of its opaque content — clip
+ the content in SwiftUI and the window still believes it is a rectangle, so the
+ shadow is drawn square behind a rounded panel. Masking the effect view itself
+ gives the window a real shape to cast from.
+ */
+struct VisualEffect: NSViewRepresentable {
+    var radius: CGFloat = 16
+
     func makeNSView(context: Context) -> NSVisualEffectView {
         let v = NSVisualEffectView()
-        v.material = .hudWindow
+        v.material = .popover
         v.blendingMode = .behindWindow
         v.state = .active
+        // Not emphasized: emphasis is for the window somebody is working in,
+        // and this one is deliberately never that.
+        v.isEmphasized = false
+        v.wantsLayer = true
+        v.layer?.cornerRadius = radius
+        v.layer?.cornerCurve = .continuous
+        v.layer?.masksToBounds = true
         return v
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.layer?.cornerRadius = radius
+    }
 }

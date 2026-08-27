@@ -11,7 +11,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cosine, Glance, mayEmbedTitle, type Embedder } from "./src/glance.js";
+import { cosine, Glance, isLocal, mayEmbedTitle, type Embedder } from "./src/glance.js";
 import { TITLE_BLIND } from "./src/context.js";
 import { Mirror } from "./src/mirror.js";
 
@@ -44,6 +44,28 @@ check(
   "an ordinary app's title may be embedded",
   mayEmbedTitle("com.microsoft.Excel", TITLE_BLIND),
   "the record would withhold this one; Glance keeps nothing, so it may look",
+);
+
+// ---- what it will and will not start -------------------------------------
+//
+// Glance starts a *local* model server when it finds one asleep, because Ollama
+// on macOS runs only while its app is open and asking somebody to go and open it
+// defeats the point of a hotkey. It must never do that for a remote address:
+// "start the server" aimed at another machine is useless, and reaching for a
+// model that is not on this laptop is the one thing the whole design forbids.
+//
+// Asserted against the predicate rather than against wall-clock time. Timing was
+// the first attempt and it measured the wrong thing entirely: ten seconds
+// against an unroutable address is TCP giving up, and would have read as "it
+// tried to start something" when nothing of the sort had happened.
+check("localhost is local", isLocal("http://localhost:11434"));
+check("127.0.0.1 is local", isLocal("http://127.0.0.1:11434"));
+check("the LAN is not", !isLocal("http://192.168.0.244:11434"));
+check("nor is anywhere else", !isLocal("https://api.example.com"));
+check(
+  "nor is something merely spelled like it",
+  !isLocal("http://localhost.evil.example/"),
+  "a prefix match here would start reaching off the machine",
 );
 
 // ---- the index ------------------------------------------------------------

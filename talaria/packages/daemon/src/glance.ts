@@ -99,6 +99,65 @@ export interface Embedder {
   embed(text: string): Promise<Float32Array>;
 }
 
+/** Where `ollama` might be, in the order worth trying. */
+const OLLAMA_BINS = [
+  "/usr/local/bin/ollama",
+  "/opt/homebrew/bin/ollama",
+  "/Applications/Ollama.app/Contents/Resources/ollama",
+];
+
+/** Don't try to start it more than this often — a closed door twice is still closed. */
+const WAKE_COOLDOWN_MS = 60_000;
+let lastWake = 0;
+
+/**
+ * Start the model server, if it is here and asleep.
+ *
+ * Ollama on macOS is not a service: it runs while its app is open, so a laptop
+ * that was rebooted has the model installed, the index built, and nothing
+ * listening. Asking somebody to go and open an app before a hotkey will answer
+ * is asking them to stop doing the thing they pressed the hotkey during.
+ *
+ * Three limits on how eager this is. Only for a local address — waking a machine
+ * that is not this one is not this process's business, and "start a server"
+ * meant for `localhost` pointed at a LAN host would do nothing useful anyway.
+ * Only once a minute, because a door that was closed is usually still closed and
+ * spawning `serve` on every failed embed would be a fork bomb with a friendly
+ * name. And detached, unref'd, never awaited beyond the port opening: the daemon
+ * did not start Ollama's life and has no business owning the end of it either.
+ */
+export function isLocal(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(url);
+}
+
+async function wake(url: string): Promise<boolean> {
+  if (!isLocal(url)) return false;
+  if (Date.now() - lastWake < WAKE_COOLDOWN_MS) return false;
+  lastWake = Date.now();
+
+  const { existsSync } = await import("node:fs");
+  const bin = OLLAMA_BINS.find((b) => existsSync(b));
+  if (!bin) return false;
+
+  const { spawn } = await import("node:child_process");
+  const child = spawn(bin, ["serve"], { detached: true, stdio: "ignore" });
+  child.unref();
+
+  // Wait for the port rather than for a fixed delay: a cold start is a second
+  // or two and a warm one is instant, and sleeping the longer of those every
+  // time is how a hotkey stops feeling like one.
+  for (let i = 0; i < 25; i++) {
+    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const res = await fetch(`${url.replace(/\/$/, "")}/api/tags`);
+      if (res.ok) return true;
+    } catch {
+      // still coming up
+    }
+  }
+  return false;
+}
+
 /**
  * Ollama, on this machine by default.
  *
@@ -118,16 +177,20 @@ export function ollamaEmbedder(url: string, model: string): Embedder {
           body: JSON.stringify({ model, prompt: text.slice(0, MAX_SOURCE) }),
         });
       } catch {
-        // `fetch failed` is what a caller sees otherwise, which names neither
-        // the thing that is down nor the thing to do about it. Ollama is not a
-        // service by default — it runs while its app is open — so this is an
-        // ordinary Tuesday rather than a fault, and it should read like one.
+        // Asleep rather than absent, most likely. Start it and ask once more.
         //
-        // Deliberately no fallback to another host. Reaching for a model on the
-        // network because the local one is asleep would send the words this
-        // whole design exists to keep on the machine, and it would do it
-        // silently, at the moment nobody was watching.
-        throw new Error(`no model at ${url} — is Ollama running?`);
+        // Deliberately no fallback to another *host*. Reaching for a model on
+        // the network because the local one is closed would send the words this
+        // design exists to keep here, silently, at the moment nobody was
+        // watching. Starting the local one is the opposite move: same machine,
+        // same promise, one fewer thing for a person to have to know.
+        const woke = await wake(url);
+        if (!woke) throw new Error(`no model at ${url} — is Ollama installed?`);
+        res = await fetch(`${url.replace(/\/$/, "")}/api/embeddings`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model, prompt: text.slice(0, MAX_SOURCE) }),
+        });
       }
       if (!res.ok) throw new Error(`ollama ${res.status}: ${await res.text()}`);
       const body = (await res.json()) as { embedding?: number[] };

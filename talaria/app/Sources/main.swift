@@ -88,6 +88,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var assistantWindow: NSPanel?
     private var hotkey: Hotkey?
     private var assistantHotkey: Hotkey?
+    private var glanceHotkey: Hotkey?
+    private var glanceWindow: NSPanel?
+    private let glanceModel = GlanceModel()
     private let boardModel = BoardModel()
     private let assistantModel = AssistantModel()
 
@@ -263,6 +266,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let askSpec = Self.configured("assistantHotkey") ?? "ctrl+opt+space"
         assistantHotkey = Hotkey(spec: askSpec) { [weak self] in self?.toggleAssistantWindow() }
+
+        // Control is doing the work in all three of these. Option alone is
+        // macOS's compose modifier — ⌥B is ∫ and ⇧⌥B is ı — so an
+        // Option-without-Control shortcut types into whatever field has focus
+        // as well as firing. Adding Control suppresses that, which is why the
+        // board has had ctrl+opt+b since the beginning.
+        let glanceSpec = Self.configured("glanceHotkey") ?? "ctrl+opt+g"
+        glanceHotkey = Hotkey(spec: glanceSpec) { [weak self] in self?.toggleGlanceWindow() }
+    }
+
+    /**
+     Glance: a floating widget rather than a window.
+
+     Everything else Talaria opens is a place you go to. This appears beside
+     what you are already doing, so it is chromeless, translucent, and
+     `.nonactivatingPanel` — the document you were typing in keeps the cursor.
+     A panel that stole focus would answer a question by interrupting the work
+     that raised it, and you would have to click back before you could act on
+     what it told you.
+
+     `.canJoinAllSpaces` because it is about the front window and the front
+     window can be anywhere; `.stationary` so it does not slide around during a
+     space switch.
+     */
+    private func glancePanel() -> NSPanel {
+        if let w = glanceWindow { return w }
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 420),
+            styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.isMovableByWindowBackground = true
+        let host = NSHostingController(rootView: GlanceView(model: glanceModel))
+        host.view.frame.size = NSSize(width: 380, height: 420)
+        panel.contentViewController = host
+        panel.setFrameAutosaveName("talaria.glance")
+        glanceWindow = panel
+        return panel
+    }
+
+    func toggleGlanceWindow() {
+        let panel = glancePanel()
+        if panel.isVisible {
+            glanceModel.stopFollowing()
+            panel.orderOut(nil)
+            return
+        }
+        // Top-right of whichever screen the pointer is on: out of the way of
+        // what is being read, and where a widget belongs rather than a dialog.
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+            ?? NSScreen.main {
+            let f = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: screen.visibleFrame.maxX - f.width - 24,
+                y: screen.visibleFrame.maxY - f.height - 24
+            ))
+        }
+        // Ordered front without activating: the front application stays front,
+        // which is the whole point — Glance is about what it is showing.
+        panel.orderFrontRegardless()
+        glanceModel.startFollowing()
     }
 
     /// The assistant panel.
@@ -384,6 +457,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let coll = menu.addItem(withTitle: "Hermes Notes Collections", action: #selector(showBoard), keyEquivalent: "")
             coll.target = self
             coll.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)
+            let glance = menu.addItem(withTitle: "Glance", action: #selector(showGlance), keyEquivalent: "")
+            glance.target = self
+            glance.image = NSImage(systemSymbolName: "sparkle.magnifyingglass", accessibilityDescription: nil)
 
             menu.addItem(.separator())
             // Which of the two a plain click opens. A menu bar item has exactly
@@ -421,6 +497,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showBoard() { toggleBoardWindow() }
+
+    @objc private func showGlance() { toggleGlanceWindow() }
 
     @objc private func showHermes() { HermesWindow.shared.show() }
 

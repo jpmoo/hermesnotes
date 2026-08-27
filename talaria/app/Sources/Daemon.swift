@@ -259,6 +259,56 @@ enum Daemon {
         }
     }
 
+    // MARK: Glance
+
+    /// One hit, and how near it was.
+    ///
+    /// `completion` is optional and read as such: a note has no status, and a
+    /// checkbox beside one is an offer of nonsense. The same all-or-nothing
+    /// decoder trap as `Card` applies — a required field missing from one hit
+    /// would throw away the whole panel.
+    struct GlanceHit: Decodable, Identifiable {
+        struct Completion: Decodable {
+            let done: Bool
+            let status: String?
+        }
+
+        struct Block: Decodable {
+            let id: String
+            let title: String
+            let typeName: String
+            let url: String
+            let completion: Completion?
+        }
+
+        let score: Double
+        let block: Block
+        var id: String { block.id }
+    }
+
+    struct GlanceAnswer: Decodable {
+        let data: [GlanceHit]
+        let question: String?
+        /// "document", "title" or "asked" — where the question came from.
+        let source: String?
+        let error: String?
+    }
+
+    /// Ask what the library knows about what is in front, or about `query`.
+    static func glance(query: String?) throws -> GlanceAnswer {
+        var path = "/glance"
+        if let query, !query.isEmpty {
+            let escaped = query.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+            path += "?q=\(escaped)"
+        }
+        return try JSONDecoder().decode(GlanceAnswer.self, from: get(path))
+    }
+
+    /// Tick something off from wherever it is being shown.
+    static func complete(id: String) throws {
+        try write(["kind": "complete", "blockId": id])
+    }
+
     // MARK: The agenda
 
     struct FeedEvent: Decodable {

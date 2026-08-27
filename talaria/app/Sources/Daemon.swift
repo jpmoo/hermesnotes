@@ -479,10 +479,33 @@ enum Daemon {
         try JSONDecoder().decode(Envelope<[BlockType]>.self, from: get("/types")).data
     }
 
+    /**
+     A block offered as the value of a reference field.
+
+     Its own shape rather than `Card`, and that distinction is the whole bug it
+     was written to fix. `/blocks` answers with *canonical* blocks; `Card` is the
+     board's shape and requires `done`, which canonical does not have. Swift's
+     synthesized decoder is all-or-nothing, so the array failed to decode
+     entirely — and a `try?` turned that into an empty menu with nothing said.
+
+     `Card`'s own doc comment warns about exactly this. Reusing a decoder
+     because its fields look close enough is how you meet the warning from the
+     inside.
+     */
+    struct Reference: Decodable, Identifiable, Hashable {
+        let id: String
+        let title: String
+        let typeName: String?
+    }
+
     /// Candidates for a reference field, by the type it points at.
-    static func blocks(ofType typeId: String, limit: Int = 200) throws -> [Card] {
+    ///
+    /// Throws rather than returning empty. "Nothing of that type yet" and "the
+    /// payload changed shape under us" look identical in a dropdown, and only
+    /// one of them is the user's problem.
+    static func blocks(ofType typeId: String, limit: Int = 200) throws -> [Reference] {
         let path = "/blocks?type=\(typeId)&limit=\(limit)"
-        return try JSONDecoder().decode(Envelope<[Card]>.self, from: get(path)).data
+        return try JSONDecoder().decode(Envelope<[Reference]>.self, from: get(path)).data
     }
 
     /// Make one, through the same queue everything else writes through — so a

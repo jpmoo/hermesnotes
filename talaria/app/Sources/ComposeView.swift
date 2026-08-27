@@ -37,7 +37,9 @@ final class ComposeModel: ObservableObject {
     /// Candidates for reference fields, by the type they point at. Fetched once
     /// per type rather than per keystroke: a library has a few hundred blocks
     /// and this is a local SQLite read.
-    @Published var candidates: [String: [Daemon.Card]] = [:]
+    @Published var candidates: [String: [Daemon.Reference]] = [:]
+    /// Why a reference menu is empty, when it is empty for a reason.
+    @Published var candidateError: String?
 
     var type: Daemon.BlockType? { types.first { $0.id == typeId } }
 
@@ -86,11 +88,22 @@ final class ComposeModel: ObservableObject {
             .compactMap(\.targetType)
         guard !wanted.isEmpty else { return }
         Task.detached(priority: .userInitiated) { [weak self] in
-            var found: [String: [Daemon.Card]] = [:]
+            var found: [String: [Daemon.Reference]] = [:]
+            var failure: String?
             for t in wanted {
-                found[t] = (try? Daemon.blocks(ofType: t)) ?? []
+                do {
+                    found[t] = try Daemon.blocks(ofType: t)
+                } catch {
+                    // Kept, not swallowed. An empty dropdown that cannot say why
+                    // is what made this bug invisible in the first place.
+                    found[t] = []
+                    failure = "\(error)"
+                }
             }
-            await MainActor.run { self?.candidates.merge(found) { _, new in new } }
+            await MainActor.run {
+                self?.candidates.merge(found) { _, new in new }
+                self?.candidateError = failure
+            }
         }
     }
 
@@ -304,6 +317,7 @@ struct ComposeView: View {
             labelled(field.display) {
                 ReferencePicker(
                     candidates: model.candidates[field.targetType ?? ""] ?? [],
+                    problem: model.candidateError,
                     many: field.isMany,
                     picked: Binding(
                         get: { model.refs[field.key] ?? [] },
@@ -404,14 +418,19 @@ private struct DateLeg: View {
 
 /// Picking blocks for a reference field, from what the library actually has.
 private struct ReferencePicker: View {
-    let candidates: [Daemon.Card]
+    let candidates: [Daemon.Reference]
+    /// Set when the list could not be fetched, as opposed to being genuinely
+    /// empty. The two look the same in a menu and are not the same problem.
+    let problem: String?
     let many: Bool
     @Binding var picked: [String]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Menu {
-                if candidates.isEmpty {
+                if let problem {
+                    Text("Couldn't load: \(problem)")
+                } else if candidates.isEmpty {
                     Text("Nothing of that type yet")
                 } else {
                     ForEach(candidates) { c in
@@ -433,6 +452,7 @@ private struct ReferencePicker: View {
     }
 
     private var summary: String {
+        if problem != nil { return "unavailable" }
         if picked.isEmpty { return "—" }
         let names = picked.compactMap { id in candidates.first { $0.id == id }?.title }
         return names.isEmpty ? "\(picked.count) selected" : names.joined(separator: ", ")

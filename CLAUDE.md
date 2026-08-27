@@ -85,6 +85,7 @@ pnpm --filter @hermes/interchange roundtrip                 # own library, out a
 pnpm --filter @hermes/interchange foreign                   # a stranger's library
 node pkm-interchange/walkthrough.mjs                        # the README transcript, live
 bash talaria/acceptance/run.sh                              # offline/reconnect scenario
+bash talaria/app/check.sh                                   # every payload the app decodes, against a live daemon
 pnpm -r typecheck
 ```
 

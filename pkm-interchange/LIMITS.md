@@ -32,8 +32,22 @@ declaration, so a consumer can render a smart list it cannot recompute; or let
 the query travel opaquely with a named dialect, so a consumer knows to ask the
 producer rather than guess.
 
-**Meanwhile:** the membership arrives evaluated in the envelope already. It
-goes stale, and there is no way to ask for a re-evaluation through the binding.
+**Meanwhile:** the producer ships the evaluated set as the snapshot the format
+already allows beside `materialized: false` — the query stays the truth, the
+members are a courtesy, and a consumer must not treat them as authoritative.
+That is enough to *render* a smart collection without a query engine, which is
+what a consumer actually needs, and it is why Talaria no longer asks Hermes to
+run the query.
+
+This sentence used to claim the membership already arrived evaluated. It did
+not: Hermes shipped `members: []` on every dynamic smart collection, and
+Talaria reached past the binding to `POST /blocks/query` for all of them. The
+line made the limit sound smaller than it was, which is the worst thing a
+limitations document can do.
+
+**What is still missing:** a way to ask for a re-evaluation through the binding.
+A snapshot is as fresh as the last export, which for a polling consumer is
+fine, and for one that has just written something is not.
 
 ### No sort or grouping on a collection
 

@@ -3,7 +3,9 @@ import { CONFORMANCE, narrow, regionNamesOf, toInterchange } from "@hermes/inter
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import type { FilterQuery } from "@hermes/shared";
 import { authenticate, requireUser } from "../auth/middleware.js";
+import { runQuery } from "../collections/query.js";
 import { db } from "../db.js";
 import { env } from "../env.js";
 
@@ -192,7 +194,45 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         .from(memberships)
         .innerJoin(blocks, and(eq(blocks.id, memberships.blockId), eq(blocks.ownerId, userId)));
 
+      /**
+       * What each live smart collection currently matches.
+       *
+       * A dynamic smart collection has no membership rows, so without this it
+       * exports as a name and a query and nothing else — and a consumer with no
+       * query engine can show a person the collection exists and not what is in
+       * it. Talaria was solving that by asking Hermes' own `/blocks/query`,
+       * reaching past the binding for the one thing it exists to carry.
+       *
+       * Shipped as the snapshot the format permits beside `materialized: false`:
+       * the query stays the truth, this is a courtesy, and a consumer is
+       * forbidden from treating it as authoritative. Capped for the same reason
+       * the graph builder caps it — an export should not become unbounded work
+       * because somebody made a hundred saved searches.
+       */
+      const queryMembers = new Map<string, string[]>();
+      let evaluated = 0;
+      const SMART_QUERY_CAP = 80;
+      for (const c of rows) {
+        if (evaluated >= SMART_QUERY_CAP) break;
+        if (!c.collectionKind) continue;
+        const props = (c.properties ?? {}) as Record<string, unknown>;
+        if (props.membership_mode !== "smart") continue;
+        // A snapshot smart collection already has its rows; re-evaluating would
+        // overwrite a set somebody deliberately froze.
+        if (props.smart_mode === "snapshot") continue;
+        const filter = props.filter_query as FilterQuery | undefined;
+        if (!filter) continue;
+        evaluated += 1;
+        try {
+          const matches = await runQuery(userId, filter);
+          queryMembers.set(c.id, matches.map((m) => m.id));
+        } catch {
+          // A broken filter costs its own collection and nothing else.
+        }
+      }
+
       const { envelope, findings } = toInterchange({
+        queryMembers,
         types: types.map((t) => ({ ...t, propertySchema: t.propertySchema ?? null })),
         blocks: rows.map((b) => ({
           ...b,

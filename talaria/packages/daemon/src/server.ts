@@ -862,10 +862,27 @@ export function buildServer(deps: {
       const byId = new Map(all.map((b) => [b.id, b]));
 
       /** A collection's contents: its query's answer if it has one, else rows. */
+      /**
+       * Who is in a collection, preferring what the envelope said.
+       *
+       * This used to prefer the cached answer from Hermes' own `/blocks/query`,
+       * because a dynamic smart collection arrived with an empty `members` and
+       * there was nothing else to draw. The producer now ships the evaluated
+       * set as the snapshot the format allows beside `materialized: false`, so
+       * the envelope has it and the binding is enough.
+       *
+       * The cache stays as a fallback rather than being deleted, and that is
+       * the point rather than caution: a producer is *permitted* to ship no
+       * snapshot — under `materialized: false` the query is the truth and the
+       * members are a courtesy — so a consumer that fell over without one would
+       * be reading the format wrong. This reads it right: use the snapshot when
+       * there is one, ask when there is not, and work either way.
+       */
       const membersOfCollection = (cid: string): string[] => {
+        const declared = mirror.membersOf(cid).map((m) => (JSON.parse(m.raw) as { id: string }).id);
+        if (declared.length) return declared;
         const cached = mirror.get(`query.${cid}`);
-        if (cached) return JSON.parse(cached) as string[];
-        return mirror.membersOf(cid).map((m) => (JSON.parse(m.raw) as { id: string }).id);
+        return cached ? (JSON.parse(cached) as string[]) : [];
       };
 
       /**

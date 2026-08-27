@@ -301,6 +301,11 @@ export class Sync {
       const q = row.membership?.query ?? row.properties?.filter_query;
       if (!q) continue;
       if (opts.onlyMissing && this.mirror.get(`query.${row.id}`) !== null) continue;
+      // The producer shipped a snapshot, so there is nothing to ask for. This
+      // is the branch that makes the off-spec call disappear on a Hermes that
+      // materialises, without a flag day and without stranding one that does
+      // not — including a producer that is not Hermes at all.
+      if (this.mirror.membersOf(row.id).length > 0) continue;
       try {
         const matched = await this.hermes.queryMatches(q);
         this.mirror.set(`query.${row.id}`, JSON.stringify(matched.map((b) => b.id)));

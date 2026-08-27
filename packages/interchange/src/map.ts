@@ -45,6 +45,17 @@ export interface ExportInput {
   /** Edges that arrived and cannot be re-derived from properties or prose. */
   relations?: unknown[];
   /**
+   * What each dynamic smart collection's query currently matches.
+   *
+   * Supplied by the caller rather than computed here, because this package is
+   * pure — rows in, envelope out — and evaluating Hermes' filter language means
+   * reaching the database. Keeping it out preserves the property that makes
+   * this package testable against fixtures.
+   *
+   * Emitted as the snapshot the format allows beside `materialized: false`.
+   */
+  queryMembers?: Map<string, string[]>;
+  /**
    * Where this library lives, so objects can say where a person can go to see
    * them.
    *
@@ -67,6 +78,7 @@ export function toInterchange(input: ExportInput): {
     else found.set(code, { code, owner, detail, count: 1 });
   };
 
+  const queryMembers = input.queryMembers;
   const typeById = new Map(input.types.map((t) => [t.id, t]));
   const blockById = new Map(input.blocks.map((b) => [b.id, b]));
   const live = input.blocks.filter((b) => !b.collectionKind);
@@ -240,6 +252,24 @@ export function toInterchange(input: ExportInput): {
     }
 
     const smart = props.membership_mode === "smart";
+    /**
+     * What a live query currently matches, shipped as a snapshot.
+     *
+     * The format is precise about what this is and is not. Under
+     * `materialized: false` the query remains the truth and any `members` array
+     * is "a snapshot for reference only" which a consumer MUST NOT treat as
+     * authoritative — so this is extra information, not a change of meaning,
+     * and `materialized` stays false. Setting it true would say something else
+     * entirely: that the query was run once and its result deliberately fixed,
+     * which is Hermes' *snapshot* smart mode and a different thing a person
+     * chose.
+     *
+     * Worth shipping because without it a consumer with no query engine has a
+     * smart collection it can name and cannot show. Talaria was reaching past
+     * the binding to Hermes' own `/blocks/query` for exactly this, which is the
+     * one thing the port was trying not to do.
+     */
+    const evaluated = queryMembers?.get(c.id);
     const members = (byCollection.get(c.id) ?? []).map((m) => {
       const ctx = m.context ?? {};
       const idx = ctx.region;
@@ -280,7 +310,13 @@ export function toInterchange(input: ExportInput): {
       membership: smart
         ? { mode: "query", materialized: false, query: props.filter_query ?? null }
         : { mode: "explicit" },
-      members,
+      // A dynamic smart collection has no membership rows, so `members` would
+      // otherwise be empty and say nothing. Explicit rows still win where both
+      // exist — a matrix can hold a query *and* cards somebody placed by hand,
+      // and those placements are stated fact rather than snapshot.
+      members: smart && members.length === 0 && evaluated
+        ? evaluated.map((object) => ({ object }))
+        : members,
     };
   });
 
@@ -558,6 +594,15 @@ export function regionsOf(
     const extra = Object.fromEntries(
       Object.entries(rest)
         .filter(([, v]) => v !== null && v !== undefined)
+        // A tag that is just the name again is not information, it is the name
+        // spelled twice. The importer gives every region `tag: name` because
+        // Hermes wants one, so emitting it made a round trip *gain* a key it
+        // did not arrive with: `"do"` went out, came back as
+        // `{ name: "do", "hermes:tag": "do" }`, and the labelled-region fixture
+        // failed on a board nobody had touched. Dropped only when it is
+        // derivable — a tag that differs from the name is a real choice and
+        // still travels.
+        .filter(([k, v]) => !(k === "tag" && v === name))
         .map(([k, v]) => [k.includes(":") ? k : `hermes:${k}`, v]),
     );
     if (!label || label === name) return Object.keys(extra).length ? { name, ...extra } : name;

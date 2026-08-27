@@ -23,6 +23,30 @@ const check = (name: string, ok: boolean, detail = "") => {
   if (!ok) bad += 1;
 };
 
+/**
+ * Wait for something to become true, rather than for a number of milliseconds.
+ *
+ * The watcher polls on a timer and shells out to a script on every tick, so how
+ * long it takes to record its first row is a fact about how busy the machine is,
+ * not about whether the code works. Sleeping a fixed 250ms and then asserting
+ * measured the wrong thing: it passed on an idle laptop and failed against a
+ * concurrent Swift build, which is the one moment a test result is least
+ * welcome and least informative.
+ *
+ * The timeout is deliberately far longer than anything that could be called
+ * slow. It exists so a genuine hang fails the run rather than hanging CI; it is
+ * not a budget, and a passing run under load will still return in milliseconds
+ * because the poll returns the moment the condition holds.
+ */
+async function settles(what: () => boolean, timeoutMs = 5000, everyMs = 25): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (what()) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+}
+
 const home = mkdtempSync(join(tmpdir(), "riftcheck-"));
 const cli = join(home, "rift-cli");
 /** How many times the fake was actually run. */
@@ -55,21 +79,37 @@ try {
   setRift(true);
   const watcher = new FrontmostWatcher(record, 50, cli);
   watcher.start();
-  await new Promise((r) => setTimeout(r, 250));
+  // Both halves of the same answer, so they arrive on the same tick — waited for
+  // together, then asserted separately so a failure names the value it actually
+  // found rather than just "timed out".
+  const answered = await settles(
+    () => record.workspace === "first" && record.recent(1)[0]?.title === "-zsh",
+  );
   check("a workspace is recorded while Rift answers", record.workspace === "first", String(record.workspace));
   const row = record.recent(1)[0];
   check("and a real window title comes with it", row?.title === "-zsh", String(row?.title));
 
   // ---- the moment it stops ------------------------------------------------
   setRift(false);
-  await new Promise((r) => setTimeout(r, 250));
+  // Conditional on the workspace having been set in the first place. Polling for
+  // null is the one assertion here that a broken run passes for free: if nothing
+  // ever recorded "first", `workspace` is already null and the wait returns on
+  // its first tick having proved nothing. This is about a transition, so the
+  // starting state has to be real.
+  const forgotten = answered && (await settles(() => record.workspace === null));
   check(
     "the workspace is forgotten once nothing answers for it",
-    record.workspace === null,
-    String(record.workspace),
+    forgotten,
+    answered ? String(record.workspace) : "never held a workspace to forget",
   );
 
   // ---- and stays quiet ----------------------------------------------------
+  // Still a fixed sleep, and it has to be. Everything above waits for something
+  // to happen; this waits to confirm that nothing does, and there is no
+  // condition to poll for the absence of an event — the wall-clock span *is* the
+  // measurement. Load makes this one more forgiving rather than less: a busy
+  // machine fits fewer ticks into the window, so a watcher that had gone on
+  // calling would still be caught.
   const before = callCount();
   await new Promise((r) => setTimeout(r, 400));
   const after = callCount();

@@ -16,6 +16,31 @@ import SwiftUI
  queue, so a block composed offline exists locally and is sent on reconnect.
  */
 
+/**
+ How wide a control is, and why it is a number rather than a spring.
+
+ The panel is a fixed 480 wide, so this is 480 less the horizontal padding, the
+ label column and the gap between them. Stated once and used by everything,
+ because `.borderedButton` honours a fixed width on its label and ignores
+ `maxWidth: .infinity` entirely — greedy layout made the menus collapse to their
+ own content while the text fields filled the row, which is the mismatch this
+ exists to remove.
+
+ `menuInset` is the chrome a bordered menu draws around its label: padding plus
+ the disclosure arrow. Measured, not derived — nothing will tell you.
+ */
+enum Field {
+    static let width: CGFloat = 480 - 36 - 96 - 10
+    static let menuInset: CGFloat = 47
+
+    /// How a list of choices is ordered. `localizedStandardCompare` is the
+    /// Finder's comparison: case-insensitive, and "Item 2" before "Item 10"
+    /// rather than after it.
+    static func ordered(_ items: [String]) -> [String] {
+        items.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+}
+
 @MainActor
 final class ComposeModel: ObservableObject {
     @Published var types: [Daemon.BlockType] = []
@@ -41,13 +66,58 @@ final class ComposeModel: ObservableObject {
     /// Why a reference menu is empty, when it is empty for a reason.
     @Published var candidateError: String?
 
+    /// Text that was selected somewhere else when this was opened. Held rather
+    /// than applied once, because the type can change afterwards and the field
+    /// it belongs in changes with it.
+    private var seed: String?
+
     var type: Daemon.BlockType? { types.first { $0.id == typeId } }
+
+    /**
+     Which declared field is the body, when the body lives outside the bag.
+
+     `fields` says what a type *has*; `profiles.note.body` says where it *lives*.
+     Read together, a type that declares a richtext field and also says its body
+     is `content` is describing one thing in two places — the field is the body,
+     and the profile is redirecting its storage out of the property bag.
+
+     Read apart, which is what this did, you get two editors. The Text type
+     declares `description` labelled "Body" and puts its prose in `content`, so
+     the panel drew that field *and* a synthesised body beneath it, both called
+     Body. Hermes writes neither of the two: zero of nineteen Text blocks in
+     this library have a `description` at all.
+
+     Only the first richtext field is claimed. A type with two of them is
+     describing two different things, and only one of them can be the slot the
+     profile named.
+     */
+    var bodyField: Daemon.TypeField? {
+        guard isProse else { return nil }
+        return type?.fields.first { $0.kind == "richtext" }
+    }
+
+    /**
+     Whether this type is prose and nothing else.
+
+     A type whose note profile puts its body in `content` is one Hermes stores
+     as text — and on create it keeps the content and **discards the property
+     bag entirely**. `server.ts` has said so since the capture Service was
+     written; this panel had not read it, and offered a Title field that was
+     silently thrown away on save. What comes back instead is the first line of
+     the body, which is Hermes deciding the title rather than storing one.
+
+     So for these types the panel offers the body and says where the title comes
+     from. Offering fields that do nothing is worse than offering none: a title
+     you typed and cannot find afterwards reads as data loss, because it is.
+     */
+    var isProse: Bool { type?.bodySlot == "content" }
 
     /// Which type a new block defaults to, remembered between openings. Most
     /// people make far more of one thing than of anything else.
     private static let lastKey = "talaria.composeType"
 
-    func load() {
+    func load(seed: String? = nil) {
+        self.seed = seed
         error = nil
         Task.detached(priority: .userInitiated) { [weak self] in
             let found = try? Daemon.types()
@@ -64,7 +134,53 @@ final class ComposeModel: ObservableObject {
                     self.typeId = found.first { $0.id == remembered }?.id ?? found[0].id
                 }
                 self.loadCandidates()
+                self.applySeed()
             }
+        }
+    }
+
+    /**
+     Put a selection into the field it belongs in.
+
+     The first declared field, because that is the one a type leads with and the
+     one somebody means by "make a note of this" — title on most things, and
+     whatever a type happens to lead with otherwise.
+
+     Split rather than dumped, when that field holds one line. A multi-line
+     selection in a title is a title with newlines in it; the first line is the
+     name of the thing and the rest is what it says, which is the same rule the
+     capture Service has always used. Nothing is dropped: if there is nowhere
+     for prose to go, the whole selection stays in the first field rather than
+     losing the tail.
+     */
+    private func applySeed() {
+        guard let seed, let type, let first = type.fields.first else { return }
+        let lines = seed.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let head = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? seed
+        let tail = lines.drop(while: { $0.trimmingCharacters(in: .whitespaces).isEmpty })
+            .dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // A field that holds prose takes the lot; a one-line field takes the
+        // first line and hands the rest on.
+        // A prose type has one place for everything, so nothing is split off.
+        if isProse {
+            body = seed
+            return
+        }
+        let oneLine = first.kind == "text"
+        guard oneLine, !tail.isEmpty else {
+            strings[first.key] = seed
+            return
+        }
+        strings[first.key] = head
+        if type.bodySlot == "content" {
+            body = tail
+        } else if let prose = type.fields.first(where: { $0.kind == "richtext" })?.key {
+            strings[prose] = tail
+        } else {
+            // Nowhere to put it. Keeping it in the first field is ugly and is
+            // still better than a composer that silently ate half a selection.
+            strings[first.key] = seed
         }
     }
 
@@ -80,6 +196,7 @@ final class ComposeModel: ObservableObject {
         error = nil
         UserDefaults.standard.set(typeId, forKey: Self.lastKey)
         loadCandidates()
+        applySeed()
     }
 
     private func loadCandidates() {
@@ -129,7 +246,14 @@ final class ComposeModel: ObservableObject {
         error = nil
 
         var properties: [String: Any] = [:]
-        for field in type.fields {
+        let bodyKey = bodyField?.key
+        // Nothing to send: Hermes discards the bag for these and titles the
+        // block from its first line.
+        for field in type.fields where !isProse {
+            // Claimed as the body: its text goes to `content`, and writing it
+            // as a property as well would store the same prose twice under two
+            // names.
+            if field.key == bodyKey { continue }
             switch field.kind {
             case "text", "richtext", "enum":
                 let v = (strings[field.key] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -166,6 +290,7 @@ final class ComposeModel: ObservableObject {
         if type.bodySlot != "content", !body.trimmingCharacters(in: .whitespaces).isEmpty,
            let prose = type.fields.first(where: { $0.kind == "richtext" })?.key,
            properties[prose] == nil {
+            // Only reached when nothing reserved a slot for prose.
             properties[prose] = body.trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
@@ -214,20 +339,19 @@ struct ComposeView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(model.type?.fields ?? []) { field in
-                            row(field)
-                        }
-                        if model.type?.bodySlot == "content" {
-                            labelled("Body") {
-                                TextEditor(text: $model.body)
-                                    .font(.system(size: 12))
-                                    .scrollContentBackground(.hidden)
-                                    .frame(height: 140)
-                                    .padding(4)
-                                    .background(fieldBackground)
+                        if model.isProse {
+                            bodyEditor(model.bodyField?.display ?? "Body")
+                            Text("Hermes titles a \(model.type?.display ?? "text") block from its first line — the other fields are not stored on one, so they are not offered here.")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, 106)
+                        } else {
+                            ForEach(model.type?.fields ?? []) { field in
+                                row(field)
                             }
                         }
-                        if let skipped = unsupported, !skipped.isEmpty {
+                        if let skipped = unsupported, !skipped.isEmpty, !model.isProse {
                             // Said out loud. A field that silently never appears
                             // reads as the composer being broken; a field that
                             // says it is not here reads as a boundary.
@@ -280,15 +404,23 @@ struct ComposeView: View {
                 TextField("", text: binding(field.key))
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12))
+                    .frame(width: Field.width)
             }
         case "richtext":
-            labelled(field.display) {
-                TextEditor(text: binding(field.key))
-                    .font(.system(size: 12))
-                    .scrollContentBackground(.hidden)
-                    .frame(height: 84)
-                    .padding(4)
-                    .background(fieldBackground)
+            // The body is bound to `content` rather than to a property, and is
+            // given the room prose needs; any other richtext field is an
+            // ordinary one.
+            if field.key == model.bodyField?.key {
+                bodyEditor(field.display)
+            } else {
+                labelled(field.display) {
+                    TextEditor(text: binding(field.key))
+                        .font(.system(size: 12))
+                        .scrollContentBackground(.hidden)
+                        .frame(width: Field.width - 8, height: 84)
+                        .padding(4)
+                        .background(fieldBackground)
+                }
             }
         case "number":
             labelled(field.display) {
@@ -299,12 +431,17 @@ struct ComposeView: View {
             }
         case "enum":
             labelled(field.display) {
-                Picker("", selection: binding(field.key)) {
-                    Text("—").tag("")
-                    ForEach(field.options ?? [], id: \.self) { Text($0).tag($0) }
+                FieldMenu(summary: (model.strings[field.key] ?? "").isEmpty ? "—" : model.strings[field.key]!) {
+                    Button("—") { model.strings[field.key] = "" }
+                    Divider()
+                    ForEach(Field.ordered(field.options ?? []), id: \.self) { option in
+                        Button {
+                            model.strings[field.key] = option
+                        } label: {
+                            Label(option, systemImage: model.strings[field.key] == option ? "checkmark" : "")
+                        }
+                    }
                 }
-                .labelsHidden()
-                .frame(maxWidth: 200)
             }
         case "datespan":
             labelled(field.display) {
@@ -348,6 +485,17 @@ struct ComposeView: View {
     }
 
     // MARK: Pieces
+
+    private func bodyEditor(_ label: String) -> some View {
+        labelled(label) {
+            TextEditor(text: $model.body)
+                .font(.system(size: 12))
+                .scrollContentBackground(.hidden)
+                .frame(width: Field.width - 8, height: 150)
+                .padding(4)
+                .background(fieldBackground)
+        }
+    }
 
     private var fieldBackground: some View {
         RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05))
@@ -417,6 +565,47 @@ private struct DateLeg: View {
 }
 
 /// Picking blocks for a reference field, from what the library actually has.
+/**
+ The one control both menus wear.
+
+ They used to be two: an enum was a `Picker` and a reference was a `Menu`,
+ because a reference can be multi-valued and `Picker` does not do that. Two
+ different SwiftUI controls meant two different sets of chrome — and a `Picker`
+ reserves space for its label even with `.labelsHidden()`, so its box started a
+ label's width to the right of every text field on the panel. Rows that should
+ have shared a left edge did not.
+
+ One control, fixed width, drawn here rather than inherited, so single and
+ multi-valued fields look the same and line up with everything else.
+ */
+private struct FieldMenu<Content: View>: View {
+    let summary: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        Menu {
+            content()
+        } label: {
+            // The label carries the width, because `.borderedButton` sizes its
+            // box to its content and ignores a frame applied outside it — which
+            // is why an earlier attempt left every menu 57pt wide. Greedy
+            // rather than fixed, so a menu fills its row exactly as the text
+            // fields do and every box on the panel shares both edges.
+            Text(summary)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: Field.width - Field.menuInset, alignment: .leading)
+        }
+        // The system's own bordered menu rather than a box drawn here. A custom
+        // label under `.borderlessButton` lost its background entirely and drew
+        // as a bare chevron — worse than the mismatch it was meant to fix. This
+        // is the same control AppKit gives a pop-up button, so an enum and a
+        // reference wear identical chrome.
+        .menuStyle(.borderedButton)
+    }
+}
+
 private struct ReferencePicker: View {
     let candidates: [Daemon.Reference]
     /// Set when the list could not be fetched, as opposed to being genuinely
@@ -426,35 +615,39 @@ private struct ReferencePicker: View {
     @Binding var picked: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Menu {
-                if let problem {
-                    Text("Couldn't load: \(problem)")
-                } else if candidates.isEmpty {
-                    Text("Nothing of that type yet")
-                } else {
-                    ForEach(candidates) { c in
-                        Button {
-                            toggle(c.id)
-                        } label: {
-                            // A tick rather than a separate selected list: the
-                            // menu is where you look to see what is on.
-                            Label(c.title, systemImage: picked.contains(c.id) ? "checkmark" : "")
-                        }
+        FieldMenu(summary: summary) {
+            if let problem {
+                Text("Couldn't load: \(problem)")
+            } else if candidates.isEmpty {
+                Text("Nothing of that type yet")
+            } else {
+                if !picked.isEmpty {
+                    Button("Clear") { picked = [] }
+                    Divider()
+                }
+                ForEach(sorted) { c in
+                    Button {
+                        toggle(c.id)
+                    } label: {
+                        // A tick rather than a separate selected list: the menu
+                        // is where you look to see what is on.
+                        Label(c.title, systemImage: picked.contains(c.id) ? "checkmark" : "")
                     }
                 }
-            } label: {
-                Text(summary).font(.system(size: 11))
             }
-            .menuStyle(.borderlessButton)
-            .frame(maxWidth: 240, alignment: .leading)
         }
+    }
+
+    /// The library hands these back newest-first, which is an order nobody can
+    /// see. Sorted the way a list of names should be.
+    private var sorted: [Daemon.Reference] {
+        candidates.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
 
     private var summary: String {
         if problem != nil { return "unavailable" }
         if picked.isEmpty { return "—" }
-        let names = picked.compactMap { id in candidates.first { $0.id == id }?.title }
+        let names = Field.ordered(picked.compactMap { id in candidates.first { $0.id == id }?.title })
         return names.isEmpty ? "\(picked.count) selected" : names.joined(separator: ", ")
     }
 

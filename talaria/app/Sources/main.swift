@@ -166,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Focused.recordTrust()
+        Focused.watchFrontmost()
         if alreadyRunning() {
             NSLog("talaria: another instance is already running — this one is stepping aside")
             NSApp.terminate(nil)
@@ -669,7 +670,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hideCompose()
             return
         }
-        composeModel.load()
+        // Read before activating. Showing the panel makes Talaria frontmost, and
+        // by then the only selection anywhere is whatever is in this window.
+        composeModel.load(seed: Focused.selection())
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
             let f = panel.frame
             panel.setFrameOrigin(NSPoint(

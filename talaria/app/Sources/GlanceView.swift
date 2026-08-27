@@ -73,12 +73,65 @@ enum Focused {
 
     static var granted: Bool { AXIsProcessTrusted() }
 
-    /// The frontmost application, unless it is one we have promised not to read.
+    /**
+     Whoever was last in front that was not us.
+
+     Tracked rather than asked for, because by the time some of these panels are
+     open the answer to "what is frontmost" is Talaria. That is fine for a hotkey
+     — nothing activates us, so the front application is still the one somebody
+     was working in — and wrong for every other route in: `open talaria://new`
+     activates the app *before* delivering the URL, so a selection read at that
+     point is a selection in our own empty window.
+
+     One observer, one bundle id, no polling.
+     */
+    private(set) static var previousApp: NSRunningApplication?
+
+    static func watchFrontmost() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier != Bundle.main.bundleIdentifier
+            else { return }
+            previousApp = app
+        }
+    }
+
+    /// The application to read, unless it is one we have promised not to.
     private static func readableFront() -> NSRunningApplication? {
         guard AXIsProcessTrusted() else { return nil }
-        guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
+        let front = NSWorkspace.shared.frontmostApplication
+        // Ourselves in front means the question is about whatever we covered up.
+        let app = (front?.bundleIdentifier == Bundle.main.bundleIdentifier)
+            ? (previousApp ?? front)
+            : front
+        guard let app else { return nil }
         if let id = app.bundleIdentifier, blind.contains(id) { return nil }
         return app
+    }
+
+    /**
+     What is selected right now, and only that.
+
+     Distinct from `text()`, which falls back to a whole field's contents when
+     nothing is highlighted. A composer seeded with the entire document somebody
+     happened to have open would be putting words in their mouth; a composer
+     seeded with what they deliberately selected is doing what they asked.
+
+     Read before the panel appears, because showing it changes what is frontmost
+     and the selection would be Talaria's own by the time anything asked.
+     */
+    static func selection() -> String? {
+        guard let app = readableFront() else { return nil }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        guard let focused = attr(axApp, kAXFocusedUIElementAttribute as String) else { return nil }
+        let element = unsafeBitCast(focused, to: AXUIElement.self)
+        guard let v = attr(element, kAXSelectedTextAttribute as String) as? String else { return nil }
+        let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : String(t.prefix(maxChars))
     }
 
     /**

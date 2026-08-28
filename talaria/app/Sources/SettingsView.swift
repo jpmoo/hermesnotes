@@ -305,12 +305,12 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            field("rift-cli") {
+            field("aerospace") {
                 VStack(alignment: .leading, spacing: 4) {
-                    TextField("found automatically", text: $model.config.riftCli)
+                    TextField("found automatically", text: $model.config.aerospaceCli)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 12, design: .monospaced))
-                    Text("Only needed if `talaria doctor` says the workspace is missing while the command works in a terminal — a LaunchAgent's PATH is not your shell's.")
+                    Text("Only needed if `talaria doctor` says the workspace is missing while `aerospace list-workspaces --focused` works in a terminal — a LaunchAgent's PATH is not your shell's.")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)

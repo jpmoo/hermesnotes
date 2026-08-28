@@ -192,7 +192,7 @@ export const MAX_TITLE = 120;
  * Long enough that a machine without it stops paying for the question, short
  * enough that starting it is noticed within a coffee.
  */
-export const RIFT_RECHECK_MS = 5 * 60 * 1000;
+export const WM_RECHECK_MS = 5 * 60 * 1000;
 
 /**
  * Decoration a window manager hangs on a title, which is not part of the title.
@@ -300,58 +300,76 @@ export async function frontmostApp(): Promise<{ app: string; title: string | nul
  *
  * Preferred over `frontmostApp` because it answers all three questions at once
  * — application, window title and workspace — and because it *establishes*
- * state rather than waiting for a transition. That distinction is the whole
- * reason this exists: Rift's `workspace_changed` subscription is a foreground
- * process that dies with its terminal, and it only fires on change, so nothing
- * ever re-announced the workspace you were already sitting in. A poll has
- * neither problem and needs no wiring to survive a reboot.
+ * state rather than waiting for a transition. That distinction is why this
+ * exists at all: an event subscription only fires on change, so nothing ever
+ * re-announces the workspace you were already sitting in. A poll has neither
+ * problem and needs no wiring to survive a reboot.
  *
- * Talaria reading Rift is a sensor being read, which is fine. Rift reading
- * Hermes would be the thing this project does not do.
+ * Talaria reading a window manager is a sensor being read, which is fine. A
+ * window manager reading Hermes would be the thing this project does not do.
  *
- * Rift only knows about windows it manages, so this can legitimately answer
- * nothing — an unmanaged space, a floating panel, Rift not running at all.
- * `frontmostApp` covers those.
+ * AeroSpace answers a formatted query, so one call carries everything and there
+ * is no tree to walk. That is the whole of the difference from the Rift version
+ * this replaces, which fetched every workspace, found the active one, then
+ * found the focused window inside it — and returned an empty title for Chrome
+ * and several other applications, which is why window titles moved to an
+ * accessibility read in the app and stayed there.
+ *
+ * It can still legitimately answer nothing: a workspace with no windows in it,
+ * or AeroSpace not running at all. `frontmostApp` covers those.
  */
-export async function frontmostFromRift(cliPath?: string): Promise<
+export async function frontmostFromAerospace(cliPath?: string): Promise<
   { app: string; title: string | null; workspace: string | null } | undefined
 > {
   const { execFile } = await import("node:child_process");
   const candidates = cliPath
     ? [cliPath]
-    : ["/opt/homebrew/bin/rift-cli", "/usr/local/bin/rift-cli", `${process.env.HOME}/.cargo/bin/rift-cli`, `${process.env.HOME}/.local/bin/rift-cli`];
+    : [
+        "/opt/homebrew/bin/aerospace",
+        "/usr/local/bin/aerospace",
+        `${process.env.HOME}/.local/bin/aerospace`,
+      ];
+
+  const run = (bin: string, args: string[]): Promise<string> =>
+    new Promise((resolve) =>
+      execFile(bin, args, { timeout: 2000 }, (err, stdout) => resolve(err ? "" : stdout)),
+    );
 
   for (const bin of candidates) {
-    const out = await new Promise<string>((resolve) =>
-      execFile(bin, ["query", "workspaces"], { timeout: 2000 }, (err, stdout) =>
-        resolve(err ? "" : stdout),
-      ),
-    );
-    if (!out.trim()) continue;
+    // Tab-separated rather than JSON: `--json` omits the bundle id and the
+    // workspace, and a format string is the documented way to ask for exactly
+    // the fields you want.
+    const line = (
+      await run(bin, [
+        "list-windows",
+        "--focused",
+        "--format",
+        "%{app-bundle-id}\t%{workspace}\t%{window-title}",
+      ])
+    ).trim();
 
-    try {
-      const spaces = JSON.parse(out) as {
-        is_active?: boolean;
-        name?: string;
-        windows?: { is_focused?: boolean; bundle_id?: string; title?: string }[];
-      }[];
-      const active = spaces.find((s) => s.is_active);
-      if (!active) return undefined;
-      const win = active.windows?.find((w) => w.is_focused);
-      if (!win?.bundle_id) {
-        // A workspace is active but nothing in it is focused — a floating panel,
-        // or focus sitting on something Rift does not manage. The workspace is
-        // still true and still worth having.
-        return { app: "", title: null, workspace: active.name ?? null };
+    if (line) {
+      // Split twice and keep the remainder whole: a window title may contain a
+      // tab, and losing everything after one would be a silent truncation of
+      // the one field most likely to carry it.
+      const first = line.indexOf("\t");
+      const second = line.indexOf("\t", first + 1);
+      if (first > 0 && second > first) {
+        const app = line.slice(0, first);
+        const workspace = line.slice(first + 1, second).trim();
+        const title = line.slice(second + 1).trim();
+        return { app, title: title || null, workspace: workspace || null };
       }
-      return {
-        app: win.bundle_id,
-        title: win.title?.trim() || null,
-        workspace: active.name ?? null,
-      };
-    } catch {
-      return undefined;
     }
+
+    // A workspace can be active with nothing focused in it — an empty one, or
+    // focus resting on something AeroSpace does not manage. The workspace is
+    // still true and still worth having.
+    const ws = (await run(bin, ["list-workspaces", "--focused"])).trim();
+    if (ws) return { app: "", title: null, workspace: ws };
+
+    // This binary answered nothing at all for either question, which is what an
+    // absent or stopped AeroSpace looks like. Try the next path.
   }
   return undefined;
 }
@@ -488,7 +506,8 @@ export class ContextRecord {
   /**
    * The last workspace anybody told us about.
    *
-   * Rift knows this and the poll does not, so the two halves of a context row
+   * The window manager knows this and the poll does not, so the two halves of a
+   * context row
    * arrive from different places at different times. Carrying the workspace
    * forward is what stops a poll two seconds after a workspace switch from
    * writing a row that says the workspace is unknown — which would then be the
@@ -532,10 +551,16 @@ export class ContextRecord {
  * Watch what is in front.
  *
  * A poll rather than a subscription, because nothing on this machine offers the
- * event. Rift emits `workspace_changed`, `windows_changed`,
- * `window_title_changed` and `stacks_changed` — all of which describe windows
- * and workspaces, and none of which is focus. Tabbing between two applications
- * produces no Rift event at all, which was measured rather than assumed.
+ * event. Measured against Rift, whose four events — `workspace_changed`,
+ * `windows_changed`, `window_title_changed`, `stacks_changed` — all describe
+ * windows and workspaces and none of which is focus: tabbing between two
+ * applications produced no event at all.
+ *
+ * The finding outlived the window manager it was made against. AeroSpace has
+ * `on-focus-changed`, which would remove the need for a poll here — worth
+ * doing, and a bigger change than swapping the reader, because a callback is
+ * configured in AeroSpace's own file rather than in ours and the two would have
+ * to be installed together.
  *
  * Two seconds misses anything shorter than two seconds. For this purpose that is
  * a feature: a glance at a calculator is not a change of what you are working
@@ -551,20 +576,21 @@ export class FrontmostWatcher {
   /**
    * Whether the window manager answered last time, and when we last asked.
    *
-   * `frontmostFromRift` tries four candidate paths, so a machine without
-   * `rift-cli` spawned four processes that missed, every two seconds, forever —
-   * a poll that had already learned its answer and asked again anyway. Now it
-   * asks again on a slow timer instead, because Rift may be installed or
-   * started at any point and a daemon that decided once would never notice.
+   * `frontmostFromAerospace` tries several candidate paths, so a machine with
+   * no window manager spawned a process per path that missed, every two
+   * seconds, forever — a poll that had already learned its answer and asked
+   * again anyway. Now it asks again on a slow timer instead, because one may be
+   * installed or started at any point and a daemon that decided once would
+   * never notice.
    */
-  private riftAnswered = true;
-  private riftCheckedAt = 0;
+  private wmAnswered = true;
+  private wmCheckedAt = 0;
 
   constructor(
     private record: ContextRecord,
     private everyMs = 2000,
-    /** Where `rift-cli` lives, when it is not somewhere obvious. */
-    private riftCli?: string,
+    /** Where `aerospace` lives, when it is not somewhere obvious. */
+    private aerospaceCli?: string,
   ) {}
 
   start(): void {
@@ -585,24 +611,24 @@ export class FrontmostWatcher {
       // The window manager first: it answers application, title and workspace
       // together, and it is the only thing here that knows about workspaces at
       // all. Falling back to Launch Services covers an unmanaged space, a
-      // floating panel, or Rift not running.
+      // floating panel, or AeroSpace not running.
       // Skipped entirely once it is known to be absent, and retried on the
       // slow timer so installing or starting it is still noticed.
-      const askRift = this.riftAnswered || Date.now() - this.riftCheckedAt > RIFT_RECHECK_MS;
-      const rift = askRift ? await frontmostFromRift(this.riftCli) : undefined;
-      if (askRift) {
-        this.riftCheckedAt = Date.now();
-        this.riftAnswered = rift !== undefined;
+      const askWm = this.wmAnswered || Date.now() - this.wmCheckedAt > WM_RECHECK_MS;
+      const wm = askWm ? await frontmostFromAerospace(this.aerospaceCli) : undefined;
+      if (askWm) {
+        this.wmCheckedAt = Date.now();
+        this.wmAnswered = wm !== undefined;
       }
 
-      if (rift?.workspace) this.record.rememberWorkspace(rift.workspace);
+      if (wm?.workspace) this.record.rememberWorkspace(wm.workspace);
       // Nothing is answering for workspaces, so stop claiming one. A stale
       // guess is worth keeping while its source is alive; once it is not, the
       // guess is simply wrong and says so to everything downstream.
-      if (askRift && rift === undefined) this.record.forgetWorkspace();
+      if (askWm && wm === undefined) this.record.forgetWorkspace();
 
-      if (rift?.app) {
-        this.record.note({ app: rift.app, title: rift.title, workspace: rift.workspace });
+      if (wm?.app) {
+        this.record.note({ app: wm.app, title: wm.title, workspace: wm.workspace });
         return;
       }
 

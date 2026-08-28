@@ -1,20 +1,23 @@
 /**
  * What happens when the window manager is not there.
  *
- * Rift answers application, title and workspace together and is the only thing
- * here that knows workspaces exist. Without it Launch Services still names the
- * frontmost app, so the record degrades rather than stops — but two things did
- * not degrade cleanly, and this is those two.
+ * AeroSpace answers application, title and workspace together and is the only
+ * thing here that knows workspaces exist. Without it Launch Services still
+ * names the frontmost app, so the record degrades rather than stops — but two
+ * things did not degrade cleanly, and this is those two.
  *
- * Driven by a fake `rift-cli` that can be made to answer or not, because the
- * behaviour under test is precisely what happens at the moment it stops.
+ * Driven by a fake `aerospace` that can be made to answer or not, because the
+ * behaviour under test is precisely what happens at the moment it stops. The
+ * fake matters more than it looks: it is the seam that made swapping Rift for
+ * AeroSpace a rewrite of one function rather than of a test suite, because the
+ * suite was written against *a window manager* rather than against Rift.
  *
- *   pnpm --filter @talaria/daemon riftcheck
+ *   pnpm --filter @talaria/daemon wmcheck
  */
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ContextRecord, FrontmostWatcher, RIFT_RECHECK_MS } from "./src/context.js";
+import { ContextRecord, FrontmostWatcher, WM_RECHECK_MS } from "./src/context.js";
 import { Mirror } from "./src/mirror.js";
 
 let bad = 0;
@@ -47,17 +50,20 @@ async function settles(what: () => boolean, timeoutMs = 5000, everyMs = 25): Pro
   }
 }
 
-const home = mkdtempSync(join(tmpdir(), "riftcheck-"));
-const cli = join(home, "rift-cli");
+const home = mkdtempSync(join(tmpdir(), "wmcheck-"));
+const cli = join(home, "aerospace");
 /** How many times the fake was actually run. */
 const calls = join(home, "calls");
 
 /** Rewrite the fake: either it answers with a workspace, or it fails like an absent binary. */
-const setRift = (answering: boolean) => {
+const setWm = (answering: boolean) => {
   writeFileSync(
     cli,
     answering
-      ? `#!/bin/sh\necho x >> ${calls}\ncat <<'JSON'\n[{"is_active":true,"name":"first","windows":[{"is_focused":true,"bundle_id":"com.googlecode.iterm2","title":"-zsh"}]}]\nJSON\n`
+      ? // `list-windows --focused --format ...` — one tab-separated line of
+        // bundle id, workspace, title. Printed for any argv, because what is
+        // under test is the parsing and the degradation, not the flag handling.
+        `#!/bin/sh\necho x >> ${calls}\nprintf 'com.googlecode.iterm2\\tfirst\\t-zsh\\n'\n`
       : `#!/bin/sh\necho x >> ${calls}\nexit 127\n`,
   );
   chmodSync(cli, 0o755);
@@ -76,7 +82,7 @@ record.start();
 
 try {
   // ---- while it is answering ---------------------------------------------
-  setRift(true);
+  setWm(true);
   const watcher = new FrontmostWatcher(record, 50, cli);
   watcher.start();
   // Both halves of the same answer, so they arrive on the same tick — waited for
@@ -85,12 +91,12 @@ try {
   const answered = await settles(
     () => record.workspace === "first" && record.recent(1)[0]?.title === "-zsh",
   );
-  check("a workspace is recorded while Rift answers", record.workspace === "first", String(record.workspace));
+  check("a workspace is recorded while the window manager answers", record.workspace === "first", String(record.workspace));
   const row = record.recent(1)[0];
   check("and a real window title comes with it", row?.title === "-zsh", String(row?.title));
 
   // ---- the moment it stops ------------------------------------------------
-  setRift(false);
+  setWm(false);
   // Conditional on the workspace having been set in the first place. Polling for
   // null is the one assertion here that a broken run passes for free: if nothing
   // ever recorded "first", `workspace` is already null and the wait returns on
@@ -118,8 +124,8 @@ try {
     after === before,
     `${after - before} call(s) across ~8 ticks`,
   );
-  check("but will ask again eventually", RIFT_RECHECK_MS > 0 && RIFT_RECHECK_MS <= 15 * 60 * 1000,
-    `${RIFT_RECHECK_MS / 1000}s`);
+  check("but will ask again eventually", WM_RECHECK_MS > 0 && WM_RECHECK_MS <= 15 * 60 * 1000,
+    `${WM_RECHECK_MS / 1000}s`);
 
   // ---- Launch Services still names what is in front ------------------------
   const front = record.recent(1)[0];

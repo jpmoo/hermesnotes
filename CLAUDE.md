@@ -31,7 +31,7 @@ Four things in one pnpm monorepo, in the order they depend on each other:
   them. Parts of §3.2 are stale; see DEFECTS.md.
 - `talaria/HERMES-CORE-CHANGES.md` — everything Talaria asked of Hermes proper,
   with what was verified.
-- `talaria/AMBIENT.md` — the ambient-desktop design (BTT / Rift / Alfred / local
+- `talaria/AMBIENT.md` — the ambient-desktop design (BTT / AeroSpace / Alfred / local
   inference). Not built.
 - `DEFECTS.md` — open defects and doc drift found by review, with the reasoning.
 

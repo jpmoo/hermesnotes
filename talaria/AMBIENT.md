@@ -1,7 +1,7 @@
 # Ambient — the desktop as a PKM surface
 
 **Status:** design brief. Nothing here is built.
-**Scope:** what Talaria becomes when BetterTouchTool, Rift and a local inference
+**Scope:** what Talaria becomes when BetterTouchTool, a tiling window manager and a local inference
 box join it. Written in the same spirit as `DESIGN.md`: decisions with the
 reasoning attached, open questions named rather than resolved early.
 
@@ -12,12 +12,12 @@ reasoning attached, open questions named rather than resolved early.
 `packages/canonical` exists because a seam that is merely documented leaks by
 week three. The same rule has to hold one level further out:
 
-> **BetterTouchTool and Rift are sensors and surfaces. They are never clients of
+> **BetterTouchTool and the window manager are sensors and surfaces. They are never clients of
 > Hermes.** Everything reaches the library through the Talaria socket, and
 > Talaria speaks nothing but `pkm-interchange` to the server.
 
 The failure mode is specific and it is what every "I wired my Mac to my notes"
-setup becomes: a BTT script that curls a Hermes route, a Rift handler that curls
+setup becomes: a BTT script that curls a Hermes route, a window-manager handler that curls
 a different one, an Alfred workflow with its own copy of the token. Three sources
 of truth for what a block is, three things that break when the schema moves, and
 the bearer key in four config files.
@@ -35,27 +35,41 @@ This is the same argument `DESIGN.md` §1.1 makes about re-implementing
 
 | | role | what it contributes |
 |---|---|---|
-| **Rift** | **the context sensor**, and arrangement | JSON-over-Mach IPC. `rift-cli query workspaces\|windows\|displays` reads state; `rift-cli execute workspace switch N` arranges; `rift-cli subscribe cli --event … --command …` runs a command on `workspace_changed`, `windows_changed`, `window_title_changed`, `stacks_changed` |
-| **BetterTouchTool** | **surface**, and the apps Rift does not manage | floating menus host a webview; hotkeys; conditional activation groups for anything outside a managed window |
+| **AeroSpace** | **the context sensor**, and arrangement | `aerospace list-windows --focused --format '%{app-bundle-id}\t%{workspace}\t%{window-title}'` reads all three facts in one call; `aerospace workspace N` arranges; `on-focus-changed` and `exec-on-workspace-change` in its config run a command on change |
+| **BetterTouchTool** | **surface**, and the apps the window manager does not manage | floating menus host a webview; hotkeys; conditional activation groups for anything outside a managed window |
 | **Alfred** | one more search entrance | already fed by `talaria alfred`; nothing new required |
 | **Talaria** | **the bus** | socket, mirror, FTS, queue, URL scheme, `doctor` — all of it already exists |
 | **Local inference box** | the thing that runs when nobody is asking | lives on the LAN where Hermes lives, not on the Mac |
 
-**Rift is the sensor, not BTT.** An earlier draft of this document had it the
-other way round, on the assumption that window titles were BTT's to observe.
-They are not: Rift emits `window_title_changed` natively and its subscription
-mode runs an arbitrary command with event data in the environment. Which means
-the sensor wiring is
-
-```
-rift-cli subscribe cli --event window_title_changed --command talaria --args context set
-```
-
-and there is no glue at all. The thesis above — *sensors call `talaria`* — turns
-out to be the shape Rift already ships.
+**The window manager is the sensor, not BTT.** An earlier draft of this document
+had it the other way round, on the assumption that window titles were BTT's to
+observe. They are not — a window manager already tracks them, and can run a
+command when they change. The sensor wiring is a line of its config, and there
+is no glue at all. The thesis above — *sensors call `talaria`* — turns out to be
+a shape window managers already ship.
 
 BTT keeps the surface work, which is what it is actually best at, plus context
-for windows Rift is not managing.
+for windows the window manager is not managing.
+
+**Written against Rift, now running on AeroSpace,** and worth recording what
+survived the swap. Everything above did: the roles, the argument for which tool
+is the sensor, the shape of the wiring. What changed was one function in the
+daemon — `frontmostFromAerospace`, thirty lines — because the design never
+depended on a particular window manager, only on there being one that could be
+asked.
+
+Two things got better. AeroSpace answers application, workspace and title in a
+single formatted call rather than a whole workspace tree to walk. And it returns
+a real window title where Rift returned an empty string for Chrome and several
+others — the defect that sent title-reading into an accessibility call inside
+the app, where it has stayed because it is better there anyway.
+
+One thing is now available and not yet taken: `exec-on-workspace-change` is
+declared in AeroSpace's own config and run by its daemon, so it does not die
+with the terminal that started it — which was the whole reason the context
+watcher polls. Turning that poll into a push is a real simplification and is not
+done, because the callback lives in a file this project does not own and the two
+would have to be installed together.
 
 On the last row of that table: the box is a headless network appliance. Which
 preserves the property Talaria already has and must keep — **reads never touch

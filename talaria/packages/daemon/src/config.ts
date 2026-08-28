@@ -62,13 +62,14 @@ const configSchema = z.object({
    */
   contextExclude: z.array(z.string()).default([]),
   /**
-   * Where `rift-cli` lives, if it is not in one of the obvious places.
+   * Where `aerospace` lives, if it is not in one of the obvious places.
    *
    * A LaunchAgent's `PATH` is not your shell's, so a binary you can run by name
    * in a terminal may be unfindable to the daemon. Set this if `talaria doctor`
-   * says the workspace is missing while `rift-cli query workspaces` works.
+   * says the workspace is missing while `aerospace list-workspaces --focused`
+   * works.
    */
-  riftCli: z.string().optional(),
+  aerospaceCli: z.string().optional(),
 });
 export type Config = z.infer<typeof configSchema>;
 

@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "stranger": "tsx stranger.ts",
     "contextcheck": "tsx contextcheck.ts",
-    "riftcheck": "tsx riftcheck.ts",
+    "wmcheck": "tsx wmcheck.ts",
     "glancecheck": "tsx glancecheck.ts"
   },
   "dependencies": {

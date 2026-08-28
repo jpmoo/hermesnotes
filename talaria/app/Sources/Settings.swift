@@ -39,7 +39,7 @@ struct TalariaConfig: Equatable, Sendable {
     var glanceUrl = "http://localhost:11434"
     var glanceModel = "nomic-embed-text:latest"
     var contextExclude: [String] = []
-    var riftCli = ""
+    var aerospaceCli = ""
 
     // Read by the app, ignored by the daemon: zod strips what it does not
     // declare rather than rejecting it, which is what lets these live here.
@@ -82,7 +82,7 @@ enum ConfigStore {
         if !str("glanceUrl").isEmpty { c.glanceUrl = str("glanceUrl") }
         if !str("glanceModel").isEmpty { c.glanceModel = str("glanceModel") }
         c.contextExclude = (obj["contextExclude"] as? [String]) ?? []
-        c.riftCli = str("riftCli")
+        c.aerospaceCli = str("aerospaceCli")
         c.boardHotkey = str("boardHotkey")
         c.assistantHotkey = str("assistantHotkey")
         c.glanceHotkey = str("glanceHotkey")
@@ -119,7 +119,7 @@ enum ConfigStore {
             if value.trimmingCharacters(in: .whitespaces).isEmpty { obj.removeValue(forKey: key) }
             else { obj[key] = value.trimmingCharacters(in: .whitespaces) }
         }
-        optional("riftCli", c.riftCli)
+        optional("aerospaceCli", c.aerospaceCli)
         optional("boardHotkey", c.boardHotkey)
         optional("assistantHotkey", c.assistantHotkey)
         optional("glanceHotkey", c.glanceHotkey)

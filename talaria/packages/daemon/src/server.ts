@@ -163,22 +163,22 @@ export function buildServer(deps: {
   /**
    * Nothing on this machine emits a focus event, so the daemon watches.
    *
-   * Measured, not assumed: Rift's four events all describe windows and
+   * Measured, not assumed: a window manager's events describe windows and
    * workspaces, and ⌘-Tab between two applications produces none of them.
    */
-  const frontmost = new FrontmostWatcher(context, 2000, config.riftCli);
+  const frontmost = new FrontmostWatcher(context, 2000, config.aerospaceCli);
   frontmost.start();
   app.addHook("onClose", async () => frontmost.stop());
 
   /**
    * Record a moment. Called by whatever is watching the desktop.
    *
-   * Rift's part is the workspace and only the workspace — it is the one thing
-   * here that knows about them, and the one thing it can tell us that the poll
-   * cannot see:
+   * The window manager's part is the workspace and only the workspace — it is
+   * the one thing here that knows about them, and the one thing it can tell us
+   * that the poll cannot see:
    *
-   *   rift-cli subscribe cli --event workspace_changed \
-   *     --command talaria --args context set
+   *   aerospace list-windows --focused \
+   *     --format '%{app-bundle-id}\t%{workspace}\t%{window-title}'
    *
    * Answers with what was actually stored rather than an acknowledgement, so a
    * caller can see the redaction instead of trusting it.
@@ -197,7 +197,8 @@ export function buildServer(deps: {
     // different places at different times, and a poll two seconds after a
     // workspace switch must not write "workspace unknown" over the answer.
     context.rememberWorkspace(body.data.workspace ?? null);
-    // A workspace change on its own is not a moment worth a row. Rift knows the
+    // A workspace change on its own is not a moment worth a row. The window
+    // manager knows the
     // workspace and nothing else — no app, no title — so writing one produced a
     // row saying "?", which is noise in the audit and can never be the answer to
     // `working()` anyway. The poll picks the new workspace up within two seconds
@@ -414,7 +415,7 @@ export function buildServer(deps: {
       /**
        * Is the workspace half alive?
        *
-       * The poll cannot see workspaces; only Rift's subscription can, and a
+       * The poll cannot see workspaces; only the window manager can, and a
        * subscription is a foreground process that dies with the terminal that
        * started it. So the most likely state of this wiring is *stopped*, and
        * the symptom is rows that merely stop carrying a name — invisible unless
@@ -426,7 +427,7 @@ export function buildServer(deps: {
         withWorkspace,
         withWorkspace
           ? "arriving from the window manager"
-          : "the newest row names no workspace — is rift-cli on the daemon's PATH? set `riftCli` in config.json",
+          : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
       );
     }
 

@@ -105,6 +105,10 @@ Without this, two producers write `color` meaning different things and a consume
 
 This is about *structural* keys. An object's `properties` are keyed by the producer's own declared fields and are not in this namespace — `properties.deadline` is data, not an extension.
 
+**A collection's `properties` are not that carve-out, and take the prefix.** The difference is whether a consumer can find out what a key means. An object's properties are described by a type it can read: `deadline` is declared, with a kind, and a stranger can render it. A collection has no type, so nothing there is declarable and nothing outside the producer can know what `table_sort` is. That makes it an extension on a structural object, which is exactly what the prefix is for.
+
+This was found the way most of this document was — by looking at what a real producer actually emitted. Hermes was spending twenty-nine unprefixed names on collections, among them `sort_mode` and `table_sort`, which are this document's own open limit *"no sort or grouping on a collection"* being solved privately under the name v0.1 will want. The failure mode a paragraph above is not hypothetical; it had already started.
+
 A consumer preserves prefixed and unprefixed keys alike; the round-trip rule does not care whose they are. What the prefix buys is the ability to know, and to write your own without asking anyone.
 
 ## Unknown fields

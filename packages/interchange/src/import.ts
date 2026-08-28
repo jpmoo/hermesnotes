@@ -189,7 +189,15 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       );
       return { title: String(label ?? names[i] ?? ""), tag: names[i] ?? "", ...extra };
     });
-    const carried = (c.properties ?? {}) as Record<string, unknown>;
+    // The prefix comes back off, so these land where Hermes keeps them and a
+    // round trip compares equal. Same move the regions above make, for the same
+    // reason: a producer's own keys travel prefixed and are stored unprefixed.
+    const carried = Object.fromEntries(
+      Object.entries((c.properties ?? {}) as Record<string, unknown>).map(([k, v]) => [
+        k.startsWith("hermes:") ? k.slice(7) : k,
+        v,
+      ]),
+    );
     // A collection's own top-level keys, which until now went nowhere.
     //
     // Objects have carried their unrecognised keys since level 2 was claimed;

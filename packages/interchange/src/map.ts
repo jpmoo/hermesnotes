@@ -292,8 +292,22 @@ export function toInterchange(input: ExportInput): {
     // Naming five keys and dropping the rest is precisely the failure the
     // round-trip rule exists to stop, and an exporter is the easiest place in
     // the world to commit it without noticing.
-    const carried = { ...props };
-    for (const k of ["title", "matrix_regions", "membership_mode", "filter_query"]) delete carried[k];
+    const carried: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(props)) {
+      if (["title", "matrix_regions", "membership_mode", "filter_query"].includes(k)) continue;
+      // Under Hermes' own prefix, because a collection is a *structural* object
+      // and unprefixed keys on one belong to the format.
+      //
+      // The carve-out for `properties` is about an object's, whose keys are the
+      // producer's own declared fields — data, described by a type a consumer
+      // can read. A collection has no type, so nothing here is declarable and
+      // nothing outside Hermes can know what `table_sort` means. Left
+      // unprefixed, these were 29 names spent in the format's namespace, and
+      // the rule's own stated failure was already happening: `sort_mode` and
+      // `table_sort` are LIMITS' "no sort or grouping on a collection", being
+      // solved privately under the name v0.1 will want.
+      carried[k.includes(":") ? k : `hermes:${k}`] = v;
+    }
     // What an import had nowhere to put comes back out as the keys it arrived
     // as, the same way an object's carried bag does.
     const cCarried = (carried[CARRY_KEY] ?? {}) as Record<string, unknown>;

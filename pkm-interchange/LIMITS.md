@@ -12,6 +12,20 @@ rather than quietly reaching past it.
 the honest move for now, as long as it is here, named, and confined to a place
 somebody can find. What is not acceptable is reaching past it silently.
 
+**And a list built this way has a bias worth stating.** One consumer was ported
+onto one producer, so this finds what *both* of them feel and is blind to
+everything neither does. Hermes is flat blocks plus collections; nothing here
+would ever have noticed that the format cannot express an outline, which is the
+native shape of Logseq, Roam, Tana and Workflowy. That entry is below, and it is
+marked as found by asking rather than by building — the two kinds of evidence
+are not equally strong and should not read as though they are.
+
+The test this file exists to serve is not *can Talaria talk to Hermes*. It is
+*can two applications that have never heard of each other exchange a library*.
+Those come apart quietly: an entry that names a shared need reads exactly like
+an entry that names a Hermes need, and only the second one narrows the format
+into an API for one product.
+
 ---
 
 ## Open
@@ -61,25 +75,6 @@ everywhere — the same class of thing as a semantic region, and the format
 already argues that class belongs in the data. A board that sorts by due date in
 one app and by title in another is not the same board.
 
-### A write costs a full export
-
-**Needed for:** the write answer carrying the resulting object.
-
-**What happens now:** `PATCH /interchange/objects/:id` reads the whole library
-back to find one object, because the exporter derives relations and resolves
-inline mentions across the entire set — running it on one block would resolve a
-mention against a library of one and mint a stub with a fresh id.
-
-`PUT` does it too, now, and in the create case that read follows a write rather
-than replacing one — so closing the create gap made this one apply in a second
-place rather than leaving it where it was. Worth saying plainly: a limit that
-gets cheaper to hit is a limit that got worse.
-
-**Why it is tolerable:** 111 objects, milliseconds, and correctness over
-micro-optimisation. It will not stay tolerable. The fix is an exporter that can
-take the whole set for context and emit a subset, which is the same shape
-`narrow` wants and should replace it.
-
 ### There is no tag write
 
 **Needed for:** a matrix region that tags whatever enters it.
@@ -91,6 +86,30 @@ them. They are not properties, so `set` cannot reach them.
 properties — which they are not, they are a shared vocabulary across types — or
 the patch grows `addTags`/`removeTags`. The second is smaller and says what it
 means.
+
+### No hierarchy
+
+**Needed for:** any outliner. Logseq, Roam, Tana and Workflowy are outline-first
+— a block sits *inside* another block, in order, and the nesting is the document
+rather than a view of it.
+
+**What the format has:** nothing that says containment. `relations` gives an
+edge, `collections` give membership with `position`, and neither says "this
+block is the third child of that one". A tree can be approximated with reference
+fields, which is what Hermes does, and an approximation is what it stays: the
+edges are there and the order and the containment are not.
+
+**How this one was found, which is the part worth keeping:** not by porting.
+Every other entry in this file arrived because Talaria needed something and
+Hermes could not say it — and that only ever surfaces gaps *both* of them feel.
+Hermes is flat blocks plus collections, so neither would ever notice this one.
+It came from asking what a different shape of application would need, and the
+answer is a large fraction of the genre.
+
+**The evidence is in Hermes' own export.** A rollup — its one hierarchical
+collection — goes out as `members: []` with the whole structure inside a
+`rollup` property. The hierarchy is not expressed, it is smuggled, and a
+consumer gets a collection it knows is a rollup and cannot draw.
 
 ### A note identified by a date
 
@@ -131,6 +150,27 @@ absent already means absent.
 one route. The design had been written down in this file for weeks; what it was
 waiting for was a client that needed it, which is the whole reason this file
 exists rather than a v0.1 wishlist.
+
+### A write costs a full export — not a format limit
+
+Kept, moved, because it does not belong in Open and deleting it would lose the
+reasoning.
+
+`PATCH` and `PUT` both read the whole library back to find one object, because
+the exporter derives relations and resolves inline mentions across the entire
+set — running it on one block would resolve a mention against a library of one
+and mint a stub with a fresh id. 143 objects, milliseconds, correctness over
+micro-optimisation, and it will not stay tolerable.
+
+**Why it is not a limit of the format.** This file's own rule is that an entry
+is *something a real client needed and the format had no way to say*. The format
+says the write answer perfectly well — `object`, `cursor`, `fidelity`. Hermes is
+merely slow at producing one. Filed here it inflated the count of format gaps
+with a producer's engineering task, which is the same category error as a
+producer's key spending a name the format owns.
+
+The fix is Hermes': an exporter that takes the whole set for context and emits a
+subset, which is the shape `narrow` wants and should replace it.
 
 ### External feeds were never a gap
 

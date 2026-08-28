@@ -58,6 +58,33 @@ export type SyncOutcome =
   | { state: "offline"; detail: string }
   | { state: "error"; detail: string };
 
+/**
+ * A producer's own keys, with the prefix taken off.
+ *
+ * A collection is a structural object, so everything the producer hangs on one
+ * travels under a prefix it controls — `hermes:table_sort`, not `table_sort`.
+ * The rule is right and it is not free for a consumer: every view that reads
+ * one of these would otherwise have to spell the producer's name.
+ *
+ * So it comes off once, here, at the seam. Keyed to whatever the envelope's
+ * `producer.name` says rather than to "hermes", because a consumer that
+ * special-cased one producer's prefix would be doing the thing this project
+ * exists not to do — and a stranger's keys deserve the same treatment.
+ * Anything under *another* producer's prefix keeps it, which is correct: two
+ * producers' `sort` are not the same key, and that is the whole argument for
+ * prefixes.
+ */
+export function unprefixed(
+  properties: Record<string, unknown> | undefined,
+  producer: { name?: string } | undefined,
+): Record<string, unknown> {
+  const own = producer?.name ? `${producer.name}:` : null;
+  if (!own) return { ...(properties ?? {}) };
+  return Object.fromEntries(
+    Object.entries(properties ?? {}).map(([k, v]) => [k.startsWith(own) ? k.slice(own.length) : k, v]),
+  );
+}
+
 export class Sync {
   constructor(
     private ix: Interchange,
@@ -159,7 +186,7 @@ export class Sync {
       ...(env.objects ?? []),
       ...((env.collections ?? []).map((c) => ({
         id: c.id,
-        properties: { ...(c.properties ?? {}), title: c.name },
+        properties: { ...unprefixed(c.properties, env.producer), title: c.name },
         collectionKind: c.kind,
         // Kept because a move has to be written as a region *name*, and this is
         // the only place the names are said. Without it the mirror knows a card

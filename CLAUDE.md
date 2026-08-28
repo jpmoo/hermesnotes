@@ -18,7 +18,7 @@ Four things in one pnpm monorepo, in the order they depend on each other:
 
 - `pkm-interchange/AGENTS.md` — the specification. **The fixtures are
   authoritative; where prose and a fixture disagree the fixture is right.**
-- `pkm-interchange/fixtures/README.md` — the case grammar and the ten adapter
+- `pkm-interchange/fixtures/README.md` — the case grammar and the eleven adapter
   operations. Anything measuring an implementation goes through this.
 - `pkm-interchange/README.md` — the human-facing introduction to the format.
 - `LIMITS.md` (in `pkm-interchange/`) — **seven things a real client needed and

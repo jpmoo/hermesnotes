@@ -54,9 +54,18 @@ if (args.includes("--self")) {
       console.log(dim(`        why: ${r.why}`));
     }
   }
-  const failed = results.filter((r) => !r.pass);
+  // Not applicable is not failure. A case scoped away by the adapter's own
+  // `simulates` or `conformance` was never asked, and counting it as a failure
+  // meant this command exited non-zero on a clean run — so `npm test` could not
+  // pass while a single case was out of scope, which is every run there has
+  // ever been.
+  const na = results.filter((r) => r.na);
+  const failed = results.filter((r) => !r.pass && !r.na);
   const { earned, roles, byLevel } = levelsFrom(results);
-  console.log(`\n${results.length - failed.length}/${results.length} passing`);
+  console.log(
+    `\n${results.length - failed.length - na.length}/${results.length} passing` +
+      (na.length ? `, ${na.length} not applicable` : ""),
+  );
   for (const [level, at] of Object.entries(byLevel)) {
     console.log(
       `  level ${level}: ${at.passed} passed, ${at.failed} failed` + (at.na ? `, ${at.na} not applicable` : ""),

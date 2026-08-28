@@ -18,6 +18,31 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixt
 
 const MUTANTS = [
   {
+    // The failure the whole verb was shaped around: PUT read as "make the
+    // resource have this state" rather than "make it exist". It looks correct,
+    // it is what PUT means elsewhere, and it destroys every property the caller
+    // never knew about — silently, on a retry nobody thought was a write.
+    name: "a create replaces the object already there",
+    caught: "create/an-existing-object-is-not-replaced",
+    patch: (a) => ({
+      ...a,
+      create: (object, ctx) =>
+        ctx.existing
+          ? { ok: true, created: false, object: { ...ctx.existing, ...object }, fidelity: "full", reports: [] }
+          : a.create(object, ctx),
+    }),
+  },
+  {
+    // The other half. An id minted at the server means a repeat cannot be
+    // recognised as one, so a queue draining on a bad network leaves two.
+    name: "a create mints its own id and makes a second object",
+    caught: "create/repeating-a-create-is-not-a-second-object",
+    patch: (a) => ({
+      ...a,
+      create: (object, ctx) => a.create(object, { ...ctx, existing: null }),
+    }),
+  },
+  {
     name: "clamp re-anchors to the shorter month",
     caught: "recurrence/monthly-clamp-does-not-reanchor",
     // Advance from the last occurrence's day rather than the rule's. The rule

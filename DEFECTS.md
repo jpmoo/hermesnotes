@@ -10,7 +10,8 @@ valuable part and because a fixed defect with no record is one that comes back.
 What is *not* acceptable is this file quietly listing repairs as outstanding —
 which it did, which is the same doc drift item 5 is about.
 
-**Still open:** the fixture for #2, and most of #5.
+**Still open:** most of #5. The fixture for #2 landed, and immediately earned
+itself — see that entry.
 
 ---
 
@@ -49,7 +50,7 @@ must stop disagreeing silently.
 
 ---
 
-## 2. A region with a label does not survive import — **fixed, no fixture**
+## 2. A region with a label does not survive import — **fixed, with the fixture**
 
 **Where:** `packages/interchange/src/import.ts`, the collection loop.
 
@@ -87,11 +88,18 @@ which has no labelled regions. Same shape as `placement/position-is-opaque`
 passing under a locale-aware sort because its data was `a0 / a0V / a1` — a
 fixture that does not contain the discriminating case.
 
-**To prove it:** add a case to `fixtures/placement.json` whose collection
+**Proved.** `placement/labelled-region-survives` is that case — the collection
 declares `{ "name": "delegate-wait", "label": "Delegate & Wait",
-"hermes:color": "#5fa4b5" }` with a member sitting in it, and round-trip it.
-Fix the type, share one `regionName()` helper between map and import, and keep
-the fixture.
+"hermes:color": "#5fa4b5" }`, a member sits in it, and it round-trips. One
+`regionName()` helper is shared between map and import.
+
+Worth knowing what the fixture then caught, since this is the argument for
+writing one at all. It went red on a second, unrelated bug: the importer gives
+every region `tag: name` because Hermes wants one, and the exporter carried that
+back out as `hermes:tag`, so a bare `"do"` returned as an object and the round
+trip *gained* a key it never arrived with. `measure` had been failing on it, and
+the manifest overclaiming — produce and consume said 4 and earned 1 — with
+nothing else in the repository saying so.
 
 ---
 
@@ -197,9 +205,6 @@ It should come back byte-identical.
 
 ## 7. Still to do
 
-- **A fixture for #2.** A collection declaring
-  `{ "name": "delegate-wait", "label": "Delegate & Wait", "hermes:color": "#5fa4b5" }`
-  with a member sitting in it. The fix is in; nothing stops it regressing.
 - **A fixture for `url`.** A producer emitting one, a consumer round-tripping it
   unchanged, and a consumer refusing to synthesise one for an object that
   arrived without it.

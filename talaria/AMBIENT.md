@@ -190,15 +190,22 @@ guessed.**
 
 | | limit | blocks |
 |---|---|---|
-| 1 | **There is no create** | proposing anything at all |
+| 1 | ~~**There is no create**~~ — **closed**, `PUT` at a client-chosen id | proposing anything at all |
 | 2 | **There is no tag write** | filing what was proposed |
 | 3 | ~~**An object has no address**~~ — **closed**, see below | every surface that links |
 | 4 | `derivations` names the feature, not the query | re-evaluating a smart collection |
 | 5 | No sort or grouping on a collection | rendering a board as arranged |
 
-The first three are small. `PUT` an object at a client-chosen id, which makes
-creation idempotent by construction and needs no new concepts;
-`addTags`/`removeTags` on the patch; and — done — `url` on an object.
+The first three were small, and two are done. `PUT` an object at a client-chosen
+id — specified, fixtured and shipped, and it makes creation idempotent by
+construction exactly as predicted here; `url` on an object; and still open,
+`addTags`/`removeTags` on the patch.
+
+Worth recording that this table predicted the design before the spec had it.
+The entry read "`PUT` an object at the id the client picked" months before
+`fixtures/create.json` existed, and that is what the second implementation is
+for — the shape was obvious from the outside and invisible from within a single
+producer.
 
 ### #3 is closed, and the picker is why
 

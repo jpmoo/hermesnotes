@@ -57,7 +57,12 @@ Missing counts as failing, and it should: to somebody deciding whether to trust
 their notes to a tool, "we have not built that" and "we built it wrong" are the
 same news.
 
-**Hermes earns level 0.** 16 of 64.
+**The first run: Hermes earned level 0.** 16 of 64.
+
+Everything below this line is what happened next, and the number at the bottom of
+this file is where it stands now. Both are kept deliberately — a document that
+only ever shows the current score is one you cannot tell a real measurement from
+a claim in.
 
 Most of that is absence — no consumer, no validator, no patch semantics, so 48
 cases fail with nothing to call. The interesting number is the other one: of the
@@ -115,13 +120,13 @@ member arrived as a bare id and left as an object, which turned out to be an
 ambiguity in the format rather than a bug in the code: two spellings for one
 member, now written down as shorthand with expansion declared not to be a loss.
 
-**Hermes earns level 4.** 57 of 66, with 9 cases not applicable.
+**Hermes earns level 4.** 69 of 83, with 14 cases not applicable.
 
 ```
-level 1: 23 passed, 0 failed
-level 2: 22 passed, 0 failed, 5 not applicable
+level 1: 25 passed, 0 failed
+level 2: 24 passed, 0 failed, 10 not applicable
 level 3:  1 passed, 0 failed, 3 not applicable
-level 4: 11 passed, 0 failed, 1 not applicable
+level 4: 19 passed, 0 failed, 1 not applicable
 ```
 
 `src/conformance.ts` holds the claim and `pnpm measure` refuses to pass if the

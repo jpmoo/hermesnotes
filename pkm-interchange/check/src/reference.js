@@ -178,6 +178,53 @@ export function patch(object, p = {}, capabilities = {}) {
 }
 
 /**
+ * Bring an object into being, at an id the client chose.
+ *
+ * Creates and never edits, which is the whole reason it is a verb of its own
+ * rather than a mode of `patch`. Replacing would discard every property the
+ * caller had never heard of — the round-trip rule broken at write time, by the
+ * verb least likely to be suspected of it — so an id already taken is answered
+ * as a success that changed nothing.
+ *
+ * That is also what makes it safe to repeat. The client picked the id before it
+ * sent anything, so a retry after a lost answer is recognisably the same create
+ * rather than a second object.
+ */
+export function create(object = {}, ctx = {}) {
+  const at = ctx.at ?? object.id;
+
+  // Two ids in one request is a caller's bug, and choosing between them is how
+  // an object is created somewhere nobody will look for it.
+  if (object.id !== undefined && at !== undefined && object.id !== at) {
+    return { ok: false, created: false, fidelity: "full", reports: ["create.id-mismatch"] };
+  }
+
+  // Already there. It succeeded once; this is the caller asking again because
+  // it never heard so. Leave the object exactly as it stands.
+  if (ctx.existing) {
+    return { ok: true, created: false, object: ctx.existing, fidelity: "full", reports: [] };
+  }
+
+  // Declared, not merely named. A create is the one write with no earlier
+  // version to compare against, so a reduction nobody mentions is invisible for
+  // good.
+  const declared = ctx.types ?? [];
+  const known = Boolean(object.type) && declared.some((t) => t.id === object.type);
+
+  return {
+    ok: true,
+    created: true,
+    // Cloned, and every property kept — including the ones no type declares.
+    // A producer that keeps only what it recognises turns each create into a
+    // lossy import, and the loss cannot be seen because there is nothing
+    // earlier to compare it with.
+    object: { ...structuredClone(object), id: at },
+    fidelity: known ? "full" : "reduced",
+    reports: known ? [] : ["create.unknown-type"],
+  };
+}
+
+/**
  * What a follower concludes from a change feed.
  *
  * Rows arrive in order and the last one about an object is the current one — in
@@ -225,5 +272,6 @@ export const adapter = {
   import: importEnvelope,
   roundtrip,
   patch,
+  create,
   follow,
 };

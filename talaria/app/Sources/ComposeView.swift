@@ -116,7 +116,21 @@ final class ComposeModel: ObservableObject {
     /// people make far more of one thing than of anything else.
     private static let lastKey = "talaria.composeType"
 
+    /**
+     Open the composer.
+
+     A selection empties whatever was here first. Highlighting something and
+     pressing the hotkey says "make a new thing about this", and seeding the
+     title while yesterday's due date and project sat underneath would produce a
+     block half about something else.
+
+     Without one, a half-typed draft survives. That is the case where the panel
+     was closed rather than finished — a stray Escape, a click on the close
+     button — and losing the sentence somebody was partway through would be a
+     worse failure than showing it to them again.
+     */
     func load(seed: String? = nil) {
+        if seed != nil { reset() }
         self.seed = seed
         error = nil
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -184,16 +198,30 @@ final class ComposeModel: ObservableObject {
         }
     }
 
-    /// Reset the form when the type changes — the fields are different, and
-    /// carrying a value across into a field that happens to share a key would
-    /// be putting words in somebody's mouth.
-    func typeChanged() {
+    /**
+     Empty the form.
+
+     Its own function because the clearing used to happen by accident. The type
+     picker's `onChange` calls `typeChanged`, and on the very first open the
+     type goes from "" to something, so it fired and the form came up blank —
+     which looked like the panel resetting itself. On every open after that the
+     type is unchanged, nothing fires, and the last block's title is still
+     sitting there waiting to be saved again under a new id.
+     */
+    func reset() {
         strings = [:]
         starts = [:]
         ends = [:]
         refs = [:]
         body = ""
         error = nil
+    }
+
+    /// Reset when the type changes — the fields are different, and carrying a
+    /// value across into a field that happens to share a key would be putting
+    /// words in somebody's mouth.
+    func typeChanged() {
+        reset()
         UserDefaults.standard.set(typeId, forKey: Self.lastKey)
         loadCandidates()
         applySeed()
@@ -301,6 +329,12 @@ final class ComposeModel: ObservableObject {
                 try Daemon.create(blockTypeId: typeId, content: content, properties: properties)
                 await MainActor.run {
                     self?.busy = false
+                    // The block exists now, so the form has done its job. Left
+                    // full, the next thing you compose starts as a copy of the
+                    // last one — which is how the same title gets saved twice
+                    // under two ids.
+                    self?.reset()
+                    self?.seed = nil
                     onDone(title)
                 }
             } catch {

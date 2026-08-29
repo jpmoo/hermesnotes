@@ -287,9 +287,16 @@ final class GlanceModel: ObservableObject {
     /// than held, so a change in Settings shows up on the next hotkey press
     /// instead of at the next login.
     @Published var undatedFurtherOut = false
+    /// Below this, a hit is "less similar" rather than a hit. Zero is off.
+    @Published var threshold = 0.0
+    /// Whether finished things get their own section.
+    @Published var separateDone = false
 
     func reloadSettings() {
-        undatedFurtherOut = ConfigStore.load().glanceUndatedFurtherOut
+        let c = ConfigStore.load()
+        undatedFurtherOut = c.glanceUndatedFurtherOut
+        threshold = c.glanceThreshold
+        separateDone = c.glanceSeparateDone
     }
 
     private var watch: Timer?
@@ -370,8 +377,10 @@ final class GlanceModel: ObservableObject {
 struct GlanceView: View {
     @ObservedObject var model: GlanceModel
     @FocusState private var searching: Bool
-    /// Whether the things dated outside the window are showing.
-    @State private var expanded = false
+    /// Which of the folded sections are open. Independent, because opening
+    /// "further out" to find a date should not also unfurl everything the
+    /// embedder scored badly.
+    @State private var open: Set<Daemon.GlanceSection> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -395,38 +404,40 @@ struct GlanceView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(near) { hit in row(hit) }
+                        let filed = sections
+                        ForEach(filed[.main] ?? []) { hit in row(hit) }
 
-                        // Said rather than hidden. A filter whose contents you
-                        // cannot see is one you have no reason to distrust: if
-                        // the letter to Milton were dated six weeks out you
-                        // would conclude Glance did not know about it and go
-                        // hunting in Hermes. One line removes that entirely,
-                        // and the scores stay visible so it is obvious these
-                        // are further out rather than worse matches.
-                        if !later.isEmpty {
-                            Button { expanded.toggle() } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                                        .font(.system(size: 8, weight: .semibold))
-                                    Text(expanded
-                                         ? foldLabel
-                                         : "\(later.count) \(foldLabel)")
-                                        .font(.system(size: 10, weight: .medium))
-                                    Rectangle()
-                                        .fill(Color.primary.opacity(0.08))
-                                        .frame(height: 0.5)
+                        // Said rather than hidden, and this is the whole reason
+                        // the sections are dividers instead of a filter. A
+                        // filter whose contents you cannot see is one you have
+                        // no reason to distrust: if the letter to Milton were
+                        // dated six weeks out, or scored a hair under the
+                        // threshold, you would conclude Glance did not know
+                        // about it and go hunting in Hermes. One line each
+                        // removes that, and the scores stay visible so it is
+                        // obvious which of the three reasons applied.
+                        //
+                        // Ordered by how much attention the thing has earned:
+                        // wrong time, then weak match, then already finished.
+                        ForEach([Daemon.GlanceSection.furtherOut, .lessSimilar, .done], id: \.self) { section in
+                            let hits = filed[section] ?? []
+                            if !hits.isEmpty {
+                                fold(section, hits)
+                                // Opened when the reader asked, and also when
+                                // the main list came back empty and this is the
+                                // best there is.
+                                //
+                                // Every section folded and nothing above them
+                                // is a panel that has found sixteen things and
+                                // shows a person none of them — three clicks
+                                // from an answer, looking exactly like a panel
+                                // that found nothing. A fold is for demoting
+                                // what you probably do not want under what you
+                                // probably do; with nothing above it, it is
+                                // just hiding.
+                                if open.contains(section) || firstOpen == section {
+                                    ForEach(hits) { hit in row(hit) }
                                 }
-                                .foregroundStyle(.tertiary)
-                                .padding(.horizontal, 12)
-                                .padding(.top, 8)
-                                .padding(.bottom, 4)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
-                            if expanded {
-                                ForEach(later) { hit in row(hit) }
                             }
                         }
                     }
@@ -445,24 +456,37 @@ struct GlanceView: View {
         )
     }
 
-    /// What is happening around now — plus everything undated, unless the
-    /// reader has asked for those below the line instead.
-    private var near: [Daemon.GlanceHit] {
-        model.hits.filter { $0.isAbove(theFold: model.undatedFurtherOut) }
+    /// Every hit, filed once. Computed together so a hit cannot appear twice —
+    /// the sections are a partition, not four independent filters.
+    private var sections: [Daemon.GlanceSection: [Daemon.GlanceHit]] {
+        Dictionary(grouping: model.hits) {
+            Daemon.GlanceSection.of(
+                $0,
+                undatedBelow: model.undatedFurtherOut,
+                threshold: model.threshold,
+                separateDone: model.separateDone
+            )
+        }
     }
 
-    /// Everything else. Still ranked, still scored, one click away.
-    private var later: [Daemon.GlanceHit] {
-        model.hits.filter { !$0.isAbove(theFold: model.undatedFurtherOut) }
-    }
-
-    /// What the divider calls what is under it. Naming undated things only when
-    /// some of them are actually down there — a line reading "further out or
-    /// undated" above three dated tasks is a small lie about what it hides.
-    private var foldLabel: String {
-        model.undatedFurtherOut && later.contains { !$0.isDated }
-            ? "further out or undated"
-            : "further out"
+    /// What each divider calls what is under it.
+    ///
+    /// "Further out" names undated things only when some are actually down
+    /// there — a line reading "further out or undated" above three dated tasks
+    /// is a small lie about what it hides.
+    private func label(_ section: Daemon.GlanceSection, _ hits: [Daemon.GlanceHit]) -> String {
+        switch section {
+        case .furtherOut:
+            return model.undatedFurtherOut && hits.contains { !$0.isDated }
+                ? "further out or undated"
+                : "further out"
+        case .lessSimilar:
+            return "less similar"
+        case .done:
+            return "done"
+        case .main:
+            return ""
+        }
     }
 
     private var header: some View {
@@ -498,6 +522,41 @@ struct GlanceView: View {
         .padding(.horizontal, 12)
         .padding(.top, 10)
         .padding(.bottom, 8)
+    }
+
+    /// The section to unfold when the main list is empty: the first one that has
+    /// anything in it, in the order they are shown. Nil whenever the main list
+    /// has content, so this never overrides what somebody has actually clicked.
+    private var firstOpen: Daemon.GlanceSection? {
+        let filed = sections
+        guard (filed[.main] ?? []).isEmpty else { return nil }
+        return [Daemon.GlanceSection.furtherOut, .lessSimilar, .done]
+            .first { !(filed[$0] ?? []).isEmpty }
+    }
+
+    /// One collapsible divider.
+    private func fold(_ section: Daemon.GlanceSection, _ hits: [Daemon.GlanceHit]) -> some View {
+        let isOpen = open.contains(section) || firstOpen == section
+        let name = label(section, hits)
+        return Button {
+            if isOpen { open.remove(section) } else { open.insert(section) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                Text(isOpen ? name : "\(hits.count) \(name)")
+                    .font(.system(size: 10, weight: .medium))
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 0.5)
+            }
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func row(_ hit: Daemon.GlanceHit) -> some View {

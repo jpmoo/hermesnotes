@@ -256,6 +256,40 @@ struct SettingsView: View {
                      "Changing the model throws away the vectors already built and starts again — a few hundred calls, in the background. Scores mean nothing across two different models, so there is no way to keep them.")
             }
 
+            field("Less similar") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Slider(value: $model.config.glanceThreshold, in: 0...1, step: 0.01)
+                            .frame(width: Field.width - 70)
+                        Text(model.config.glanceThreshold == 0
+                             ? "off"
+                             : String(format: "%.2f", model.config.glanceThreshold))
+                            .font(.system(size: 11, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(model.config.glanceThreshold == 0 ? .tertiary : .secondary)
+                            .frame(width: 34, alignment: .leading)
+                    }
+                    Text("Anything scoring below this is filed under \u{201C}less similar\u{201D} instead of the main list. Zero is off. Every hit shows its score, so the way to pick a number is to glance at a few and see where the useful ones stop.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            field("Done") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $model.config.glanceSeparateDone) {
+                        Text("Put finished things in their own section")
+                            .font(.system(size: 11))
+                    }
+                    .toggleStyle(.checkbox)
+                    Text("Read through the type's own status and complete values, so it follows whatever a type calls finished rather than the word \u{201C}done\u{201D}. Things with no status at all — a note, a person — are never filed here.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             field("Undated") {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $model.config.glanceUndatedFurtherOut) {

@@ -369,9 +369,48 @@ enum Daemon {
             isDated ? isNear : !undatedBelow
         }
 
+        /// Whether this has been finished. Absent on anything with no status at
+        /// all — a note or a person is not incomplete, it is not that kind of
+        /// thing — and those are never filed as done.
+        var isDone: Bool { block.completion?.done == true }
+
         let score: Double
         let block: Block
         var id: String { block.id }
+    }
+
+    /**
+     Which section of Glance a hit belongs in.
+
+     Four buckets, and the order of the tests is the whole design. Done is
+     checked first because it is the strongest statement that something needs no
+     attention: a finished task that happens to be due tomorrow and scores well
+     is still finished, and letting either of those pull it back into the main
+     list would be ranking it above things you can still act on.
+
+     Then the date, then the score — a date is a fact the library asserts and a
+     similarity is a number this machine made up, so where they disagree the
+     fact wins.
+     */
+    enum GlanceSection: Int, CaseIterable {
+        case main
+        case furtherOut
+        case lessSimilar
+        case done
+
+        static func of(
+            _ hit: GlanceHit,
+            undatedBelow: Bool,
+            threshold: Double,
+            separateDone: Bool
+        ) -> GlanceSection {
+            if separateDone, hit.isDone { return .done }
+            if !hit.isAbove(theFold: undatedBelow) { return .furtherOut }
+            // Zero is off rather than "everything qualifies", so a library that
+            // has never set a threshold behaves exactly as it did before.
+            if threshold > 0, hit.score < threshold { return .lessSimilar }
+            return .main
+        }
     }
 
     struct GlanceAnswer: Decodable {

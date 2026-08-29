@@ -51,6 +51,14 @@ struct TalariaConfig: Equatable, Sendable {
     /// Whether undated hits sit below Glance's fold rather than above it.
     /// Off by default — see `Daemon.GlanceHit.isAbove(theFold:)`.
     var glanceUndatedFurtherOut = false
+    /// Similarity below which a hit is filed under "less similar" rather than
+    /// shown in the main list. Zero switches it off, which is the default: a
+    /// threshold is a judgement about one library's scores and there is no
+    /// number that is right for everybody's.
+    var glanceThreshold = 0.0
+    /// Whether finished things get their own section instead of sitting among
+    /// the live ones.
+    var glanceSeparateDone = false
 
     /// Sent to the daemon only when set; an empty string is not a default, it is
     /// the absence of an answer. `riftCli: ""` would be taken as a path and
@@ -89,6 +97,8 @@ enum ConfigStore {
         c.composeHotkey = str("composeHotkey")
         c.menuBarSymbol = str("menuBarSymbol")
         c.glanceUndatedFurtherOut = (obj["glanceUndatedFurtherOut"] as? Bool) ?? false
+        c.glanceThreshold = (obj["glanceThreshold"] as? Double) ?? 0
+        c.glanceSeparateDone = (obj["glanceSeparateDone"] as? Bool) ?? false
         return c
     }
 
@@ -132,6 +142,10 @@ enum ConfigStore {
         // nobody has changed identical to the one the panel first wrote.
         if c.glanceUndatedFurtherOut { obj["glanceUndatedFurtherOut"] = true }
         else { obj.removeValue(forKey: "glanceUndatedFurtherOut") }
+        if c.glanceSeparateDone { obj["glanceSeparateDone"] = true }
+        else { obj.removeValue(forKey: "glanceSeparateDone") }
+        if c.glanceThreshold > 0 { obj["glanceThreshold"] = c.glanceThreshold }
+        else { obj.removeValue(forKey: "glanceThreshold") }
 
         try FileManager.default.createDirectory(
             atPath: directory, withIntermediateDirectories: true

@@ -89,7 +89,10 @@ bash talaria/app/check.sh                                   # every payload the 
 pnpm -r typecheck
 ```
 
-## One housekeeping note
+## One housekeeping note — settled
 
-`.claude/settings.local.json` is not in `.gitignore` and this repository is
-public. Check whether it is tracked before the next push.
+`.claude/settings.local.json` holds a Hermes access key and this repository is
+public. It was never committed: a search of every object in the history found
+zero blobs containing the token, and `.claude/` is in `.gitignore` now. Nothing
+to revoke, and nothing to do — recorded because "was that ever pushed?" is a
+question worth answering once rather than every time somebody notices the file.

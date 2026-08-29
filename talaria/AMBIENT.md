@@ -64,12 +64,34 @@ a real window title where Rift returned an empty string for Chrome and several
 others — the defect that sent title-reading into an accessibility call inside
 the app, where it has stayed because it is better there anyway.
 
-One thing is now available and not yet taken: `exec-on-workspace-change` is
-declared in AeroSpace's own config and run by its daemon, so it does not die
-with the terminal that started it — which was the whole reason the context
-watcher polls. Turning that poll into a push is a real simplification and is not
-done, because the callback lives in a file this project does not own and the two
-would have to be installed together.
+**The poll stays, and the reason is better than "not done yet."**
+
+`exec-on-workspace-change` is declared in AeroSpace's own config and run by its
+daemon, so unlike Rift's subscription it does not die with the terminal that
+started it — which was the original reason for polling. That looked like an easy
+win until the callbacks were actually enumerated:
+
+    on-focus-changed · on-focused-monitor-changed · on-window-detected
+    on-mode-changed · on-flatten-containers · on-padding
+    exec-on-workspace-change
+
+**There is no title-change callback.** Rift had `window_title_changed`;
+AeroSpace has nothing for it. So a push would miss the case where the title
+changes while focus and workspace do not — a browser tab, a different document
+in the same editor — which is the richest signal the record holds, and precisely
+for the applications on `TITLE_TRUSTED` that are allowed to contribute one.
+
+A hybrid would work: callbacks for immediate workspace and focus response, a
+slower poll for titles. But then the poll still runs, and what is bought is "up
+to two seconds faster on a workspace switch, and fewer wakeups" — against
+installing a callback into a config file this project does not own, which has to
+be kept in step with it. The poll is also cheaper than it looks: `noteContext`
+writes only on change, so two-second polling produced 483 rows across eight
+hours rather than fourteen thousand.
+
+Worth revisiting if AeroSpace grows a title event. On Hyprland it would already
+be worth doing — `.socket2.sock` emits `windowtitlev2`, which is the missing
+piece.
 
 On the last row of that table: the box is a headless network appliance. Which
 preserves the property Talaria already has and must keep — **reads never touch

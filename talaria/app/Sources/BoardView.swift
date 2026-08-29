@@ -24,6 +24,19 @@ final class BoardModel: ObservableObject {
 
     private let lastBoardKey = "talaria.lastBoard"
 
+    /// Read the library again, then draw it. What the refresh button does.
+    func reload() {
+        busy = true
+        Task.detached(priority: .userInitiated) { [self] in
+            // Best effort: if the far end is unreachable this throws, and
+            // redrawing the mirror is still the right thing to do — it is what
+            // every other surface in this app does offline. The freshness line
+            // already says how old it is.
+            try? Daemon.sync()
+            await MainActor.run { self.load() }
+        }
+    }
+
     func load() {
         busy = true
         Task.detached(priority: .userInitiated) { [self] in
@@ -237,13 +250,18 @@ struct BoardView: View {
                 .help("Open this collection in Hermes")
             }
             Button {
-                model.load()
+                // From Hermes, not from the mirror. This used to be `load()`
+                // alone, which re-read the same local rows and rendered the same
+                // board — the button flashed and nothing moved, which is worse
+                // than having no button, because it looks like the board is
+                // right rather than stale.
+                model.reload()
                 // Reloading by hand is also "I have seen it": without this the
                 // watcher would notice the same move a moment later and do it again.
                 watch?.markSeen()
             } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
-                .help("Refresh from the mirror")
+                .help("Refresh from Hermes")
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
     }

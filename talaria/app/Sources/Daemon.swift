@@ -259,6 +259,24 @@ enum Daemon {
         try JSONDecoder().decode(Envelope<[BoardSummary]>.self, from: get("/boards")).data
     }
 
+    /**
+     Ask the daemon to read the library again before we look at it.
+
+     `full` throws away the cursor and re-reads everything. That is the right
+     shape for a button somebody pressed: a catch-up asks only what has changed
+     *since*, and a smart collection's answer changes without any object
+     changing — a task whose date rolls into range today was not edited, so no
+     feed carries it and no cursor advances past it. Catching up would have
+     returned "nothing new" and left the board exactly as wrong as it was.
+
+     Which is a limit of the binding rather than a bug in the daemon: there is
+     no way to ask a producer to re-evaluate a query. Re-reading everything is
+     what a client can do about it today.
+     */
+    static func sync(full: Bool = true) throws {
+        _ = try post("/sync?full=\(full)", [:])
+    }
+
     static func board(_ id: String) throws -> (board: Board, freshness: String, note: String) {
         let e = try JSONDecoder().decode(Envelope<Board>.self, from: get("/board/\(id)"))
         return (e.data, e.freshness, e.note)

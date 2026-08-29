@@ -928,7 +928,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showHermes() { HermesWindow.shared.show() }
 
-    @objc private func refreshBoard() { boardModel.load() }
+    /// The menu's Refresh, which means the same thing the board's own does:
+    /// read the library again, then draw it. Both called `load()` before, which
+    /// redrew the mirror and looked like a refresh that had nothing to say.
+    @objc private func refreshBoard() { boardModel.reload() }
 
     @objc private func showAssistant() { toggleAssistantWindow() }
 

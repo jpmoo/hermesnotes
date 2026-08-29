@@ -592,6 +592,12 @@ export function toInterchange(input: ExportInput): {
     outCollections.some((c) => c.membership.mode === "query") ? "derivations" : null,
     relations.length ? "relations" : null,
     origin ? "addresses" : null,
+    // Computed from the data like the rest, and missed when `order` was added —
+    // the second time a feature has been emitted without being declared. The
+    // first was `addresses`, and under-claiming measures identically to not
+    // implementing: every case requiring the feature is scoped away as not
+    // applicable and silently never runs.
+    outCollections.some((c) => (c as { order?: { sort?: unknown; groupBy?: unknown } }).order) ? "ordering" : null,
   ].filter(Boolean) as string[];
 
   // An edge that arrived from elsewhere and one Hermes worked out for itself are

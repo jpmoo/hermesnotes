@@ -752,7 +752,24 @@ export function buildServer(deps: {
 
     const arrangement = orderOf(row);
     const grouping = keyOf(arrangement.groupBy);
-    const cachedQuery = mirror.get(`query.${id}`);
+    /**
+     * The producer's own answer beats ours.
+     *
+     * `members` beside `materialized: false` *is* what the query returns, so
+     * when the producer shipped any, that is the answer and our cached
+     * evaluation is not needed. Worse than not needed: this cache is only
+     * refreshed when a collection has no membership rows, so once the producer
+     * started shipping the answer the cache froze — and the Eisenhower matrix
+     * went on drawing eight cards from a query result computed days earlier,
+     * with a refresh button that could not shift it because nothing was stale
+     * enough to re-fetch.
+     *
+     * It stays as the fallback for a producer that says `materialized: false`
+     * and ships no snapshot, which is legal and is the only case it was ever
+     * for.
+     */
+    const shipped = mirror.membersOf(id).length > 0;
+    const cachedQuery = shipped ? null : mirror.get(`query.${id}`);
     const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;
     // What makes a collection smart is the mode it was put in, not the presence
     // of a saved query — a manual collection can carry one from before it was

@@ -338,7 +338,14 @@ export class Sync {
       // is the branch that makes the off-spec call disappear on a Hermes that
       // materialises, without a flag day and without stranding one that does
       // not — including a producer that is not Hermes at all.
-      if (this.mirror.membersOf(row.id).length > 0) continue;
+      if (this.mirror.membersOf(row.id).length > 0) {
+        // And drop whatever we worked out last time. Leaving it costs nothing
+        // until something prefers it, which is exactly what happened: a stale
+        // set from before the producer shipped answers, never refreshed because
+        // this branch stopped asking, and read as current by the board.
+        this.mirror.set(`query.${row.id}`, null);
+        continue;
+      }
       try {
         const matched = await this.hermes.queryMatches(q);
         this.mirror.set(`query.${row.id}`, JSON.stringify(matched.map((b) => b.id)));

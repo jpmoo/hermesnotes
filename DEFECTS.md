@@ -272,3 +272,45 @@ answer, and visible nonsense — and all three came from the same place.
 its board check opened `boards().first`, which is a calendar. It opens **every**
 board now and reports the kinds it saw, because the kinds take different paths
 through that route and break separately.
+
+
+---
+
+## 10. Refresh refreshed nothing, and a stale query answer outlived its own cache — **fixed**
+
+Two separate faults on one board, found by looking at why the Eisenhower matrix
+stayed wrong after the producer started exporting the right thing.
+
+**The board preferred its own stale answer.** Talaria evaluated a smart
+collection's query itself and cached the result at `query.<id>`, refreshing it
+only when the collection had no membership rows. Once Hermes began shipping the
+query's answer as `members`, every such collection had rows — so the cache
+stopped being refreshed and was still being read. The board drew eight cards
+from a query result computed days earlier. The producer's answer wins now, and
+the cache is cleared on sight rather than left for something to prefer later; it
+survives only as the fallback for a producer that says `materialized: false` and
+ships no snapshot, which is the one case it was ever for.
+
+**Refresh read the mirror.** `BoardView`'s button and the menu's Refresh both
+called `load()`, which re-read local rows and redrew the same board — the button
+flashed and nothing moved, which is worse than having no button, because it
+looks like confirmation the board is right. Both ask the daemon to read the
+library first now.
+
+It re-reads *everything* rather than catching up, and that is the interesting
+part: a catch-up asks what changed since a cursor, and a smart collection's
+answer changes without anything changing. A task whose date rolls into range
+today was not edited, so no feed carries it and no cursor advances past it —
+catching up returns "nothing new" and leaves the board exactly as wrong as it
+was. That is `LIMITS.md`'s first open entry, *a way to ask for a re-evaluation
+through the binding*, met in the wild rather than in the abstract. Re-reading
+the library is what a client can do about it today.
+
+**And `ordering` was emitted without being declared.** The envelope's `features`
+is computed from the data on purpose, and the new `order` block was not added to
+the detector — so `GET /conformance` claimed the feature and the envelope did
+not. Second instance of exactly the fault `address.json` was found by:
+under-claiming measures identically to not implementing, because every case
+requiring the feature is scoped away as not-applicable and silently never runs.
+Worth a rule of its own: **a feature added to the data is not added until the
+detector knows about it.**

@@ -442,10 +442,7 @@ struct ComposeView: View {
         switch field.kind {
         case "text":
             labelled(field.display) {
-                TextField("", text: binding(field.key))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
-                    .frame(width: Field.width)
+                ClearableField(text: binding(field.key))
             }
         case "richtext":
             // The body is bound to `content` rather than to a property, and is
@@ -619,6 +616,51 @@ private struct DateLeg: View {
  One control, fixed width, drawn here rather than inherited, so single and
  multi-valued fields look the same and line up with everything else.
  */
+/**
+ A one-line field with a way to empty it.
+
+ For the case the seeding created: the composer fills the first field from
+ whatever was selected, and sometimes that is not what somebody wanted — a stray
+ click before the hotkey, a selection left over from reading something else — so
+ the first thing they have to do is select the text and delete it before they can
+ type.
+
+ Inside the field's trailing edge rather than beside it. Outside would make this
+ row wider than every other row in the form, which is the alignment that was
+ deliberately made uniform; a clear button is not worth spending that on. It is
+ also where macOS puts one.
+
+ Shown only when there is something to clear, so an empty form is not a column of
+ crosses.
+ */
+private struct ClearableField: View {
+    @Binding var text: String
+    var width: CGFloat = Field.width
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            TextField("", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 12))
+                .frame(width: width)
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .padding(.trailing, 5)
+                .help("Clear this field")
+                // A click here is about the field, not about leaving the panel.
+                .focusable(false)
+            }
+        }
+    }
+}
+
 private struct FieldMenu<Content: View>: View {
     let summary: String
     @ViewBuilder var content: () -> Content

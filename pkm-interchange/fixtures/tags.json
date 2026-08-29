@@ -1,0 +1,92 @@
+{
+  "suite": "tags",
+  "about": "Changing an object's tags without replacing them. Tags are a vocabulary shared across types rather than properties of one, so `set` cannot reach them and a whole-list write would destroy every tag the writer had not heard of.",
+  "cases": [
+    {
+      "id": "tags/add-leaves-the-others",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it" }, "tags": ["writing", "admin"] },
+        "patch": { "addTags": ["urgent"] }
+      },
+      "expect": {
+        "ok": true,
+        "object": { "tags": ["writing", "admin", "urgent"] }
+      },
+      "why": "The whole reason this is not a whole-list write. A client that knows about one tag would send one tag, and a server treating that as the new set deletes the rest — the same failure `set` has, on the field most likely to be shared between tools."
+    },
+    {
+      "id": "tags/remove-leaves-the-others",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it" }, "tags": ["writing", "admin", "urgent"] },
+        "patch": { "removeTags": ["admin"] }
+      },
+      "expect": {
+        "ok": true,
+        "object": { "tags": ["writing", "urgent"] }
+      },
+      "why": "Removal names what goes, never what stays. The mirror image of the case above and the same failure if implemented as a replacement."
+    },
+    {
+      "id": "tags/adding-one-already-there-is-not-an-error",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it" }, "tags": ["urgent"] },
+        "patch": { "addTags": ["urgent"] }
+      },
+      "expect": {
+        "ok": true,
+        "object": { "tags": ["urgent"] }
+      },
+      "why": "A queue draining on a bad network sends the same write twice and hears the answer once. If a repeat were an error, every reconnect would surface failures for work that had already succeeded — and no tag is duplicated, because a tag list is a set."
+    },
+    {
+      "id": "tags/removing-one-that-is-absent-is-not-an-error",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it" }, "tags": ["writing"] },
+        "patch": { "removeTags": ["someday"] }
+      },
+      "expect": {
+        "ok": true,
+        "object": { "tags": ["writing"] }
+      },
+      "why": "The same argument from the other side. The state the caller asked for is the state that now holds, which is what idempotent means."
+    },
+    {
+      "id": "tags/properties-are-untouched-by-a-tag-write",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": {
+          "id": "o_1",
+          "type": "t_task",
+          "properties": { "title": "Ship it", "status": "doing", "owner": "o_9" },
+          "tags": ["writing"]
+        },
+        "patch": { "addTags": ["urgent"] }
+      },
+      "expect": {
+        "ok": true,
+        "object": { "properties": { "title": "Ship it", "status": "doing", "owner": "o_9" } }
+      },
+      "why": "Tags and properties are separate namespaces and a write to one is not a write to the other. Worth pinning because the obvious implementation rebuilds the object, and rebuilding is where the property nobody modelled goes missing."
+    },
+    {
+      "id": "tags/the-same-tag-added-and-removed-is-refused",
+      "level": 4,
+      "op": "patch",
+      "given": {
+        "object": { "id": "o_1", "type": "t_task", "properties": { "title": "Ship it" }, "tags": ["writing"] },
+        "patch": { "addTags": ["urgent"], "removeTags": ["urgent"] }
+      },
+      "expect": { "ok": false },
+      "why": "There is no reading of this that is obviously right, and choosing one silently is how a board ends up tagged the opposite of what somebody asked for. The same argument as two ids on a create: a contradiction is the caller's bug, and guessing hides it."
+    }
+  ]
+}

@@ -608,6 +608,32 @@ payload as the whole object.
 `unset` is the only way to remove a value. Not `null` — that collides with every
 model where null means something. Not an absent key — that is the case above.
 
+#### Tags
+
+```json
+{ "addTags": ["urgent"], "removeTags": ["someday"], "version": 7 }
+```
+
+Tags are not properties — they are a vocabulary shared across types, which is
+why `set` cannot reach them and why replacing the list wholesale is the wrong
+shape. A client that knows about one tag would send one tag and delete the rest,
+which is the round-trip rule broken exactly as `set` would break it.
+
+So: two moves, and the same rule as above. **A tag named by neither is
+untouched.** Adding one already present changes nothing, removing one that is
+absent changes nothing — both are successes, because a client replaying a queue
+cannot know which of its writes landed and must be able to send the same thing
+twice.
+
+Tags compare byte-wise. A producer that folds case is welcome to; the format
+does not, because two producers disagreeing about whether `Urgent` and `urgent`
+are one tag is worse than either answer.
+
+**The same tag in `addTags` and `removeTags` MUST be refused.** It has no
+reading that is obviously right, and picking one silently is how a board ends up
+tagged the opposite of what somebody asked for. Same argument as two ids on a
+create.
+
 If you version objects, a patch may carry `version`, and a stale one **MUST** be
 refused rather than merged. Merging looks helpful and is how one client's edit
 silently reverts another's, with the writer told it landed.

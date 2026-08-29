@@ -18,6 +18,35 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixt
 
 const MUTANTS = [
   {
+    // The obvious wrong implementation, and the one the verb exists to prevent:
+    // treat the tags a caller named as the caller's whole intended list. Every
+    // tag the writer had never heard of disappears, silently, on a write that
+    // looked like it was only adding one.
+    name: "a tag write replaces the list instead of amending it",
+    caught: "tags/add-leaves-the-others",
+    patch: (a) => ({
+      ...a,
+      patch: (object, p, caps) => {
+        const out = a.patch(object, p, caps);
+        if (p?.addTags || p?.removeTags) out.object.tags = [...(p.addTags ?? [])];
+        return out;
+      },
+    }),
+  },
+  {
+    // Idempotence dropped: a repeat becomes an error, so every reconnect
+    // surfaces failures for work that already succeeded.
+    name: "adding a tag that is already present is treated as an error",
+    caught: "tags/adding-one-already-there-is-not-an-error",
+    patch: (a) => ({
+      ...a,
+      patch: (object, p, caps) =>
+        (p?.addTags ?? []).some((t) => (object.tags ?? []).includes(t))
+          ? { ok: false, object, fidelity: "full", reports: ["tags.duplicate"] }
+          : a.patch(object, p, caps),
+    }),
+  },
+  {
     // The failure the whole verb was shaped around: PUT read as "make the
     // resource have this state" rather than "make it exist". It looks correct,
     // it is what PUT means elsewhere, and it destroys every property the caller

@@ -160,8 +160,26 @@ export function patch(object, p = {}, capabilities = {}) {
     return { ok: false, conflict: true, object, fidelity: "full", reports: [] };
   }
 
+  // A tag in both lists is a contradiction, and picking one silently is how a
+  // board ends up tagged the opposite of what somebody asked for.
+  const add = p.addTags ?? [];
+  const drop = p.removeTags ?? [];
+  const contradictory = add.filter((t) => drop.includes(t));
+  if (contradictory.length) {
+    return { ok: false, object, fidelity: "full", reports: ["tags.added-and-removed"] };
+  }
+
   const next = structuredClone(object);
   next.properties = { ...(next.properties ?? {}) };
+
+  // Named, never replaced. A whole-list write would delete every tag this
+  // caller had not heard of, which is the round-trip rule broken on the field
+  // most likely to be shared between tools.
+  if (add.length || drop.length) {
+    const tags = [...(next.tags ?? [])].filter((t) => !drop.includes(t));
+    for (const t of add) if (!tags.includes(t)) tags.push(t);
+    next.tags = tags;
+  }
   for (const [k, v] of Object.entries(p.set ?? {})) {
     const anchors = capabilities.series?.anchors;
     if (Array.isArray(anchors) && v && typeof v === "object" && v.anchor && !anchors.includes(v.anchor)) {

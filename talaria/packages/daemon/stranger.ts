@@ -381,8 +381,6 @@ try {
     // longer runs against it — but a consumer that fell over without a courtesy
     // would be reading the format wrong.
     queryMatches: "fallback: a producer need not materialise a smart collection",
-    blockTags: "LIMITS: there is no tag write",
-    setBlockTags: "LIMITS: there is no tag write",
     dailyNote: "LIMITS: a note identified by a date",
     patchBlock: "LIMITS: reached only to write a daily note found by date",
     feedEvents: "dead — no interface path reaches it since the calendar was scoped",

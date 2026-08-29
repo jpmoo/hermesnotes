@@ -83,16 +83,44 @@ export const hermesAdapter = {
 
   /** The same applyPatch the block route uses. */
   patch: (
-    object: { properties?: Record<string, unknown>; version?: number },
-    p: { set?: Record<string, unknown>; unset?: string[]; version?: number },
+    object: { properties?: Record<string, unknown>; version?: number; tags?: string[] },
+    p: {
+      set?: Record<string, unknown>;
+      unset?: string[];
+      addTags?: string[];
+      removeTags?: string[];
+      version?: number;
+    },
   ) => {
+    // A tag in both lists is a contradiction with no obviously right reading,
+    // and picking one silently is how a board ends up tagged the opposite of
+    // what somebody asked for.
+    const add = p?.addTags ?? [];
+    const drop = p?.removeTags ?? [];
+    if (add.some((t) => drop.includes(t))) {
+      return { ok: false, object, fidelity: "full" as const, reports: ["tags.added-and-removed"] };
+    }
+
     const out = applyPatch({ properties: object.properties ?? {}, version: object.version }, p ?? {});
+
+    // Amended, never replaced, and kept out of `applyPatch` deliberately: that
+    // function is about the property bag, and tags are a vocabulary shared
+    // across types rather than a property of one. Folding them in would put two
+    // namespaces behind one door.
+    let tags = object.tags;
+    if (out.ok && (add.length || drop.length)) {
+      const next = [...(object.tags ?? [])].filter((t) => !drop.includes(t));
+      for (const t of add) if (!next.includes(t)) next.push(t);
+      tags = next;
+    }
+
     return {
       ok: out.ok,
       ...(out.conflict ? { conflict: true } : {}),
       object: {
         ...object,
         properties: out.properties,
+        ...(tags !== undefined ? { tags } : {}),
         ...(out.ok && object.version !== undefined ? { version: object.version + 1 } : {}),
       },
       fidelity: out.fidelity,

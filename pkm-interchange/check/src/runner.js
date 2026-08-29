@@ -156,6 +156,14 @@ function runCase(adapter, c, bySuiteId) {
           checks.push(exact(Object.keys(c.expect.object.properties).sort(),
                             Object.keys(got.object?.properties ?? {}).sort()));
         }
+        // Exact, for the same reason, and it matters more here. `subset` on an
+        // array asks only that each expected element is present *somewhere*, so
+        // a removal that silently did nothing would still pass — which is the
+        // failure the remove cases exist to catch. Sorted, because a tag list
+        // is a set and the order it returns in is not the subject.
+        if (c.expect.object.tags) {
+          checks.push(exact([...c.expect.object.tags].sort(), [...(got.object?.tags ?? [])].sort()));
+        }
       }
       return { pass: checks.every(Boolean), got };
     }

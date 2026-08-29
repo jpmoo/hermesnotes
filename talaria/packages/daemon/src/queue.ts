@@ -103,13 +103,18 @@ export async function applyRegionActions(
 
   if (addTag || dropTag) {
     try {
-      const current = await hermes.blockTags(intent.blockId);
-      let next = current;
-      if (dropTag) next = next.filter((t) => t !== dropTag);
-      if (addTag && !next.includes(addTag)) next = [...next, addTag];
-      if (next.length !== current.length || next.some((t, i) => t !== current[i])) {
-        await hermes.setBlockTags(intent.blockId, next);
-      }
+      // One named move through the binding. This used to be `GET` then `PUT
+      // /blocks/:id/tags` — two round trips against private routes, doing a
+      // read-modify-write because Hermes' own route takes the whole list and a
+      // whole-list write would have deleted every tag Talaria had not heard of.
+      // The merge lives in the producer now, where it only has to be right once.
+      const raw = mirror.rawBlock(intent.blockId);
+      const version = raw ? ((JSON.parse(raw) as InterchangeObject).version ?? 0) : 0;
+      await ix.patch(intent.blockId, {
+        ...(addTag ? { addTags: [addTag] } : {}),
+        ...(dropTag ? { removeTags: [dropTag] } : {}),
+        version,
+      });
     } catch {
       // A tag that wouldn't apply shouldn't undo a move that already has.
     }

@@ -206,14 +206,6 @@ export class Hermes {
     return await this.req<unknown>("PATCH", `/collections/${collectionId}/members/${blockId}`, { context });
   }
 
-  blockTags(blockId: string) {
-    return this.req<string[]>("GET", `/blocks/${blockId}/tags`);
-  }
-
-  setBlockTags(blockId: string, tags: string[]) {
-    return this.req<unknown>("PUT", `/blocks/${blockId}/tags`, { tags });
-  }
-
   dailyNote(date: string) {
     return this.req<{ id: string; content: string | null; version: number }>("GET", `/today/${date}/note`);
   }

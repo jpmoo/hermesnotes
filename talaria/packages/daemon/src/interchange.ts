@@ -293,14 +293,25 @@ export class Interchange {
   /**
    * Change part of an object.
    *
-   * Two moves and no third: `set` what should hold these values, `unset` what
-   * should hold none. A property named by neither is untouched, including every
-   * property Talaria has never heard of — which is most of them, and the reason
-   * a person can run this against a library it does not fully model.
+   * `set` what should hold these values, `unset` what should hold none, and
+   * `addTags`/`removeTags` for the vocabulary that is not a property at all. A
+   * property or tag named by none of them is untouched, including every one
+   * Talaria has never heard of — which is most of them, and the reason a person
+   * can run this against a library it does not fully model.
+   *
+   * The tag half used to be `GET` then `PUT /blocks/:id/tags`, two round trips
+   * against private routes, doing a read-modify-write that every client wanting
+   * to add a tag would have had to repeat. It is one named move now.
    */
   async patch(
     id: string,
-    change: { set?: Record<string, unknown>; unset?: string[]; version: number },
+    change: {
+      set?: Record<string, unknown>;
+      unset?: string[];
+      addTags?: string[];
+      removeTags?: string[];
+      version: number;
+    },
   ): Promise<WriteAnswer> {
     return this.answered(() => this.req<WriteAnswer>("PATCH", `/interchange/objects/${id}`, change));
   }

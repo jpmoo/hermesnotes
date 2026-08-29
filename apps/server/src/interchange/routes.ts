@@ -387,9 +387,18 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         .object({
           set: z.record(z.unknown()).optional(),
           unset: z.array(z.string()).optional(),
+          addTags: z.array(z.string()).optional(),
+          removeTags: z.array(z.string()).optional(),
           version: z.number().int(),
         })
         .parse(req.body);
+
+      // A tag in both lists is a contradiction with no obviously right reading.
+      const add = body.addTags ?? [];
+      const drop = body.removeTags ?? [];
+      if (add.some((t) => drop.includes(t))) {
+        return reply.code(400).send({ ok: false, reports: ["tags.added-and-removed"] });
+      }
 
       const wrote = await app.inject({
         method: "PATCH",
@@ -404,6 +413,38 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       }
       if (wrote.statusCode >= 400) {
         return reply.code(wrote.statusCode).send({ ok: false, reports: ["write.refused"] });
+      }
+
+      // Tags after the properties, and only once they were accepted.
+      //
+      // The version check lives in the property patch. Writing tags first meant
+      // a stale patch was refused *after* the tags had already changed — a
+      // partial write, which is the one outcome worse than a refusal, because
+      // the caller is told nothing landed while something did.
+
+      // Amended, never replaced. Hermes' own route takes the whole list, so the
+      // read-and-merge has to happen somewhere — here, once, rather than in
+      // every client that wants to add a tag. That merge is exactly what
+      // Talaria was doing across two round trips against private routes, which
+      // is the limit this verb closes.
+      if (add.length || drop.length) {
+        const held = await app.inject({
+          method: "GET",
+          url: `${mount}/blocks/${id}/tags`,
+          headers: { authorization: req.headers.authorization ?? "" },
+        });
+        const current = held.statusCode < 400 ? (held.json() as string[]) : [];
+        const next = current.filter((t) => !drop.includes(t));
+        for (const t of add) if (!next.includes(t)) next.push(t);
+        const put = await app.inject({
+          method: "PUT",
+          url: `${mount}/blocks/${id}/tags`,
+          headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+          payload: { tags: next },
+        });
+        if (put.statusCode >= 400) {
+          return reply.code(put.statusCode).send({ ok: false, reports: ["tags.refused"] });
+        }
       }
 
       // Read back through the same path a reader would use, so the object in

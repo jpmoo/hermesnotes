@@ -75,18 +75,6 @@ everywhere — the same class of thing as a semantic region, and the format
 already argues that class belongs in the data. A board that sorts by due date in
 one app and by title in another is not the same board.
 
-### There is no tag write
-
-**Needed for:** a matrix region that tags whatever enters it.
-
-**What the format has:** `tags` on an object when reading, and no way to change
-them. They are not properties, so `set` cannot reach them.
-
-**What Talaria does:** `GET`/`PUT /blocks/:id/tags`. Either tags become
-properties — which they are not, they are a shared vocabulary across types — or
-the patch grows `addTags`/`removeTags`. The second is smaller and says what it
-means.
-
 ### No hierarchy
 
 **Needed for:** any outliner. Logseq, Roam, Tana and Workflowy are outline-first
@@ -126,6 +114,35 @@ here.
 ---
 
 ## Closed
+
+### There is no tag write — closed
+
+**Was:** `tags` on an object when reading, and no way to change them. They are
+not properties, so `set` could not reach them, and Talaria did `GET` then
+`PUT /blocks/:id/tags` — two round trips against private routes.
+
+**Now:** `addTags` and `removeTags` on the patch, which is the design this entry
+already named as the smaller of the two options.
+
+Named moves rather than a list, for the same reason `set` is not a whole-object
+write: a client that knows about one tag would send one tag, and a producer
+treating that as the new set deletes every tag the writer had never heard of.
+That is the round-trip rule broken on the field most likely to be shared between
+tools.
+
+Adding one already present and removing one that is absent are both successes,
+because a queue replaying after a lost answer cannot know which of its writes
+landed. The same tag in both lists is refused — there is no reading of it that
+is obviously right, and choosing one silently is how a board ends up tagged the
+opposite of what somebody asked for.
+
+The read-modify-write did not disappear; it moved into the producer, where it
+has to be correct once instead of in every client that wants to add a tag. And
+it now happens *after* the version check rather than before, which was a real
+bug in the first draft: a stale patch was refused after the tags had already
+changed, telling the caller nothing landed while something had.
+
+→ `fixtures/tags.json`
 
 ### There is no create — closed
 

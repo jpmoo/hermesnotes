@@ -78,7 +78,16 @@ export async function focusedText(
 ): Promise<{ text?: string; title?: string; app?: string; denied?: boolean }> {
   const { execFile } = await import("node:child_process");
   const out = await new Promise<string>((resolve) =>
-    execFile(helper, [], { timeout: 2000, maxBuffer: 1 << 20 }, (err, stdout) =>
+    // `--deep` asks a browser to build its accessibility tree and walks the
+    // page, rather than reading only the focused element. Without it a browser
+    // answers with its window title and nothing else, so Glance was about the
+    // name of the tab rather than what was on it — the flag has existed since
+    // the helper was written and nothing ever passed it.
+    //
+    // Not free: it turns on a tree the application had chosen not to build, and
+    // walks it. Bounded by the timeout below, and this runs once per glance
+    // rather than on a loop.
+    execFile(helper, ["--deep"], { timeout: 2000, maxBuffer: 1 << 20 }, (err, stdout) =>
       resolve(err ? "" : stdout),
     ),
   );

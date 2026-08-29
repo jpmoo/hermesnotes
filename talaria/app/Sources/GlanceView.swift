@@ -207,7 +207,15 @@ enum Focused {
             if !t.isEmpty { return String(t.prefix(maxChars)) }
         }
         // Everything that can answer without side effects has now said no.
-        return allowCopy ? selectionByCopy() : nil
+        //
+        // What a copy found earlier still counts, and is checked whether or not
+        // this read may copy: that is what keeps a poll from throwing away the
+        // selection the opening read went and got.
+        let key = copyKey()
+        if let copied, let key, copied.key == key { return copied.text }
+        guard allowCopy, let key, let text = selectionByCopy() else { return nil }
+        copied = (key, text)
+        return text
     }
 
     /**
@@ -384,6 +392,33 @@ enum Focused {
 
         let text = (copied ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? nil : String(text.prefix(maxChars))
+    }
+
+    /**
+     What the last copy produced, and which document it came from.
+
+     Because a copy may happen once and a panel is read many times. Glance
+     re-reads every four seconds, and those reads are not allowed to copy — so
+     without this the first read found the selection, the poll four seconds
+     later found nothing at all, and the answer somebody was reading vanished
+     while they were reading it.
+
+     Keyed by application and window title, which is as close to "the same
+     document" as anything cheap gets. Move to another document and the key
+     misses, so the panel stops claiming the last one's selection and falls back
+     to the title — which is what following the window means. Change the
+     selection *within* a document and this is stale until the panel is
+     reopened; that is the price of not taking the clipboard every four seconds,
+     and it is the right way round.
+     */
+    private static var copied: (key: String, text: String)?
+
+    /// Forget it, so the next opening reads the world afresh.
+    static func forgetCopied() { copied = nil }
+
+    private static func copyKey() -> String? {
+        guard let id = readableFront()?.bundleIdentifier else { return nil }
+        return id + "\u{1}" + (windowTitle() ?? "")
     }
 
     /// Applications whose documents are drawn rather than exposed, and which
@@ -601,6 +636,9 @@ final class GlanceModel: ObservableObject {
     func startFollowing() {
         stopFollowing()
         reloadSettings()
+        // A new opening is a new question: whatever a copy found last time is
+        // about wherever you were then.
+        Focused.forgetCopied()
         refresh(allowCopy: true)
         let t = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in

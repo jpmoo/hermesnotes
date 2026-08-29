@@ -672,7 +672,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Read before activating. Showing the panel makes Talaria frontmost, and
         // by then the only selection anywhere is whatever is in this window.
-        composeModel.load(seed: Focused.selection())
+        composeModel.load(seed: Focused.selection(allowCopy: true))
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
             let f = panel.frame
             panel.setFrameOrigin(NSPoint(

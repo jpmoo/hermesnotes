@@ -143,7 +143,7 @@ enum Focused {
      Read before the panel appears, because showing it changes what is frontmost
      and the selection would be Talaria's own by the time anything asked.
      */
-    static func selection() -> String? {
+    static func selection(allowCopy: Bool = false) -> String? {
         if let mine = ownSelection() { return mine }
         guard let app = readableFront() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
@@ -162,7 +162,8 @@ enum Focused {
             let t = (script(source) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { return String(t.prefix(maxChars)) }
         }
-        return nil
+        // Everything that can answer without side effects has now said no.
+        return allowCopy ? selectionByCopy() : nil
     }
 
     /**
@@ -244,6 +245,109 @@ enum Focused {
           return content of text object of selection
         end tell
         """,
+        // A browser can simply be asked what is highlighted, which is the only
+        // way to reach a document drawn on a canvas: Google Docs keeps its body
+        // out of the accessibility tree entirely — the node a screen reader is
+        // given is a one-pixel buffer two characters wide around the cursor — so
+        // there has never been anything there to read, selected or not.
+        //
+        // Chrome refuses this until somebody ticks View → Developer → Allow
+        // JavaScript from Apple Events, and Safari until the same item under
+        // Develop. Failing is fine: the copy below catches it. This is the
+        // better path when it is available, because it touches nothing.
+        "com.google.Chrome": """
+        tell application "Google Chrome"
+          if (count of windows) is 0 then return ""
+          return execute front window's active tab javascript "String(window.getSelection())"
+        end tell
+        """,
+        "com.microsoft.edgemac": """
+        tell application "Microsoft Edge"
+          if (count of windows) is 0 then return ""
+          return execute front window's active tab javascript "String(window.getSelection())"
+        end tell
+        """,
+        "com.brave.Browser": """
+        tell application "Brave Browser"
+          if (count of windows) is 0 then return ""
+          return execute front window's active tab javascript "String(window.getSelection())"
+        end tell
+        """,
+        "com.apple.Safari": """
+        tell application "Safari"
+          if (count of documents) is 0 then return ""
+          return (do JavaScript "String(window.getSelection())" in front document)
+        end tell
+        """,
+    ]
+
+    /**
+     Ask the front application to copy, and read what it copied.
+
+     The last resort, and the only thing that reaches a document a browser draws
+     rather than exposes when the script above is switched off. It is also the
+     one read here with a side effect, so it is fenced in:
+
+     - Browsers only. A synthetic ⌘C is near-universal but not universal, and
+       sending one into an application that means something else by it is not a
+       risk worth taking to fill in a form.
+     - Never on a poll. Glance re-reads every four seconds while it is open, and
+       hijacking the clipboard at that rate would be intolerable — `allowCopy`
+       is true for the one read that happens when a panel opens and false
+       thereafter.
+     - The clipboard is put back. What was there is captured first and rewritten
+       afterwards, and if nothing was selected the copy changes nothing, the
+       count does not move, and this returns without having touched it at all.
+     */
+    private static func selectionByCopy() -> String? {
+        guard let id = readableFront()?.bundleIdentifier, copyable.contains(id) else { return nil }
+        let pb = NSPasteboard.general
+        let before = pb.changeCount
+        // Captured before anything is sent, because after the copy it is gone.
+        let saved: [[String: Data]] = (pb.pasteboardItems ?? []).map { item in
+            var kept: [String: Data] = [:]
+            for type in item.types {
+                if let data = item.data(forType: type) { kept[type.rawValue] = data }
+            }
+            return kept
+        }
+
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return nil }
+        let cKey: CGKeyCode = 8
+        for down in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: down)
+            event?.flags = .maskCommand
+            event?.post(tap: .cgAnnotatedSessionEventTap)
+        }
+
+        // A copy is another process's work, so it does not land on our clock.
+        // Bounded, because "nothing was selected" looks exactly like "not yet".
+        let deadline = Date().addingTimeInterval(0.35)
+        while pb.changeCount == before && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+        // Nothing copied: nothing was selected, and nothing has been disturbed.
+        guard pb.changeCount != before else { return nil }
+
+        let copied = pb.string(forType: .string)
+        pb.clearContents()
+        if !saved.isEmpty {
+            pb.writeObjects(saved.map { kept in
+                let item = NSPasteboardItem()
+                for (type, data) in kept { item.setData(data, forType: NSPasteboard.PasteboardType(type)) }
+                return item
+            })
+        }
+
+        let text = (copied ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : String(text.prefix(maxChars))
+    }
+
+    /// Applications whose documents are drawn rather than exposed, and which
+    /// therefore have to be asked to copy. All browsers, deliberately.
+    private static let copyable: Set<String> = [
+        "com.google.Chrome", "com.apple.Safari", "com.microsoft.edgemac",
+        "com.brave.Browser", "company.thebrowser.Browser", "org.mozilla.firefox",
     ]
 
     /**
@@ -284,7 +388,7 @@ enum Focused {
     ]
 
     /// What the front window is about: a selection if there is one, else its text.
-    static func text() -> String? {
+    static func text(allowCopy: Bool = false) -> String? {
         // A highlight is a stronger statement of what somebody means than the
         // whole document is, so it wins — at any length, and from *any* source.
         //
@@ -297,7 +401,7 @@ enum Focused {
         // app's own web view, and the scripted applications in turn, so asking
         // it first means every source gets its chance before any of them is
         // asked for a window.
-        if let selected = selection() { return selected }
+        if let selected = selection(allowCopy: allowCopy) { return selected }
 
         guard let app = readableFront() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
@@ -396,7 +500,10 @@ final class GlanceModel: ObservableObject {
     private var watch: Timer?
 
     /// Ask about whatever is in front, unless something has been typed.
-    func refresh() {
+    /// - Parameter allowCopy: whether this read may ask the front application to
+    ///   copy. True for the one that happens when the panel opens; false for the
+    ///   poll, which would otherwise take the clipboard every four seconds.
+    func refresh(allowCopy: Bool = false) {
         busy = true
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         // Read here, on the main actor, before the fetch goes off the thread —
@@ -404,7 +511,7 @@ final class GlanceModel: ObservableObject {
         // it as the question means the daemon never has to reach for the
         // document itself, and the words still go no further than this machine.
         Focused.recordTrust()
-        let document = typed.isEmpty ? Focused.text() : nil
+        let document = typed.isEmpty ? Focused.text(allowCopy: allowCopy) : nil
         // The window's own title. Read here rather than left to the daemon:
         // what the daemon can reach is the application's *name*, which is how
         // Glance came to spend a fortnight asking the library about "Google
@@ -452,7 +559,7 @@ final class GlanceModel: ObservableObject {
     func startFollowing() {
         stopFollowing()
         reloadSettings()
-        refresh()
+        refresh(allowCopy: true)
         let t = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.query.isEmpty else { return }

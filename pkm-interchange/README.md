@@ -290,9 +290,9 @@ Five requests. The consumer never learned what a Chore is, and at no point neede
 
 ---
 
-## What it models, and the four decisions that will surprise you
+## What it models, and the five decisions that will surprise you
 
-Types and objects are the easy part. Four things in here are opinionated, and they are the four an exporter runs into without warning.
+Types and objects are the easy part. Five things in here are opinionated, and they are the five an exporter runs into without warning.
 
 ### Recurrence is an object, not a field
 
@@ -313,6 +313,14 @@ A region can be a bare name or `{ name, label }` when the thing a machine matche
 `{ from, to }`, and `to` is required. Everything a reader might go on to ask — what kind of thing is it, does it still exist, what is it called — is a question about the far end and belongs to the far end. A copy of the target's type on the edge falsifies itself the moment the target is retyped.
 
 A name written before the thing exists is not a link with a piece missing. It is a link to a **stub**: a real object with a real id, a name, and no type yet. When the stub becomes real it keeps its id, so every link already points at the right thing and nothing has to be rewritten.
+
+### An address is a value, never a rule for making one
+
+An object may carry `url`: an absolute address where a person can go to see it. A consumer treats it as opaque — it must not rewrite it, and it must not invent one for an object that arrived without.
+
+The rejected design is the one everybody reaches for first. A single `urlTemplate` on the producer costs a handful of bytes instead of one string per object, and it is wrong: a consumer holding a template builds addresses by interpolating an id, for objects that never travelled and may not exist. The format promises ids are opaque, and everything else leans on that promise. A template quietly spends it, so a validator rejects one.
+
+Emit an address if your app has a place a person can go. Emitting none is honest — the format reads it as "this producer does not publish addresses" rather than as an omission — while a guessed one is a link that sends somebody nowhere.
 
 ### Prose is opaque, and its links are mirrored
 

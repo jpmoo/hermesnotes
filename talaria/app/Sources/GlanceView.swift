@@ -100,6 +100,25 @@ enum Focused {
         }
     }
 
+    /**
+     How long to wait for another application to answer.
+
+     An accessibility read is a synchronous call into a process this one does
+     not control, and every one of these runs on the main actor because it has
+     to happen before a panel is shown. With no bound, an application that has
+     stopped servicing its event loop takes Talaria's UI down with it — Finder
+     wedged for several minutes on this machine once, and the symptom would have
+     been Glance doing nothing at all, with no crash and nothing in the log.
+
+     The helper binary has had this protection since it was written, for free,
+     because the daemon spawns it with a two-second subprocess timeout. The
+     in-app reads were added later and inherited nothing.
+
+     Half a second. A window title or a focused field is a value the target
+     already holds; anything slower than this is not slow, it is stuck.
+     */
+    private static let axTimeout: Float = 0.5
+
     /// The application to read, unless it is one we have promised not to.
     private static func readableFront() -> NSRunningApplication? {
         guard AXIsProcessTrusted() else { return nil }
@@ -127,6 +146,7 @@ enum Focused {
     static func selection() -> String? {
         guard let app = readableFront() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, axTimeout)
         guard let focused = attr(axApp, kAXFocusedUIElementAttribute as String) else { return nil }
         let element = unsafeBitCast(focused, to: AXUIElement.self)
         guard let v = attr(element, kAXSelectedTextAttribute as String) as? String else { return nil }
@@ -150,6 +170,7 @@ enum Focused {
     static func windowTitle() -> String? {
         guard let app = readableFront() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, axTimeout)
         guard let raw = attr(axApp, kAXFocusedWindowAttribute as String) else { return nil }
         let window = unsafeBitCast(raw, to: AXUIElement.self)
         guard let title = attr(window, kAXTitleAttribute as String) as? String else { return nil }
@@ -208,6 +229,7 @@ enum Focused {
         guard let app = readableFront() else { return nil }
 
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, axTimeout)
         if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
             let element = unsafeBitCast(focused, to: AXUIElement.self)
 

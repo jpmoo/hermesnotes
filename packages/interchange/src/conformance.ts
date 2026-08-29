@@ -30,6 +30,11 @@ export const CONFORMANCE = {
    */
   bindings: ["file", "http", "mcp"],
   profiles: ["task", "note"],
-  features: ["series", "placement", "derivations", "relations", "attachments"],
+  // `addresses` was missing while `url` was being emitted on every object and
+  // every collection, which is under-claiming — and under-claiming measures the
+  // same as not implementing it: `fixtures/address.json` requires the feature,
+  // so all five of its cases were scoped away as not-applicable and had never
+  // once run. A manifest is a promise in both directions.
+  features: ["series", "placement", "derivations", "relations", "attachments", "addresses"],
   unsupported: [] as string[],
 } as const;

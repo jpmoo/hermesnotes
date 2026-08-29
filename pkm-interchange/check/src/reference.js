@@ -261,7 +261,7 @@ export const adapter = {
   // implementation declares what it actually does and is measured on that.
   conformance: {
     profiles: ["task", "event", "contact", "note"],
-    features: ["series", "placement", "derivations", "relations", "attachments"],
+    features: ["series", "placement", "derivations", "relations", "attachments", "addresses"],
   },
   validate,
   profilesOf,

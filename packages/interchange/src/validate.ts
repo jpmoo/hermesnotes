@@ -39,6 +39,9 @@ interface Field {
 }
 interface Env {
   format?: unknown;
+  /// Open, because a producer may hang whatever it likes here and the point of
+  /// reading it is to catch a key that should not exist.
+  producer?: Record<string, unknown>;
   conformance?: {
     produce?: number;
     consume?: number;
@@ -166,6 +169,20 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
       if (!rule.byMonthDay) fail("series.month-day-required", `series[${i}].rule.byMonthDay`);
     }
   });
+
+  // An address is a value, never a rule for making one.
+  //
+  // `urlTemplate` is the cheaper design and it is the wrong one. A consumer
+  // holding one will build addresses for objects that never travelled — objects
+  // that may not exist — by parsing and interpolating an id this format
+  // promises is opaque. One string per object costs bytes; a template costs the
+  // id rule, which everything else leans on.
+  const producer = e.producer;
+  if (producer && typeof producer === "object") {
+    for (const k of Object.keys(producer)) {
+      if (/template/i.test(k)) fail("address.template-not-a-value", `producer.${k}`);
+    }
+  }
 
   (e.relations ?? []).forEach((r, i) => {
     if (!r.to) fail("relation.no-target", `relations[${i}]`);

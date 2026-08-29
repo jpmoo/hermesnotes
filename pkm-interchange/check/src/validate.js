@@ -100,6 +100,19 @@ export function validate(envelope) {
     }
   });
 
+  // An address is a value, never a rule for making one.
+  //
+  // `urlTemplate` is the cheaper design and it is the wrong one. A consumer
+  // holding one will build addresses for objects that never travelled — objects
+  // that may not exist — by parsing and interpolating an id this format
+  // promises is opaque. One string per object costs bytes; a template costs the
+  // id rule, which everything else leans on.
+  if (envelope.producer && typeof envelope.producer === "object") {
+    for (const k of Object.keys(envelope.producer)) {
+      if (/template/i.test(k)) fail("address.template-not-a-value", `producer.${k}`);
+    }
+  }
+
   // A profile is the whole substance of level 1: it is the producer saying which
   // of their fields is the due date. A mapping that names a field the type does
   // not declare says it and delivers nothing — the consumer that trusts the

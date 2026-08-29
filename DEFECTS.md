@@ -205,13 +205,18 @@ It should come back byte-identical.
 
 ## 7. Still to do
 
-- **A fixture for `url`.** A producer emitting one, a consumer round-tripping it
-  unchanged, and a consumer refusing to synthesise one for an object that
-  arrived without it.
-- **`README.md` does not mention `url`.** The level-0 walkthrough is where a new
-  producer would learn to emit an address, and it is the one document written for
-  somebody who has not read the spec.
 - **The remaining drift in #5.**
+
+Both `url` items are done, and the fixture had a sting in it. `fixtures/address.json`
+already existed with all five cases — but it requires the `addresses` feature, and
+Hermes' manifest never declared one while emitting `url` on every object and every
+collection. Under-claiming measures identically to not implementing: all five were
+scoped away as not-applicable and had never once run.
+
+Declared, they ran, and four passed immediately. The fifth failed in *both*
+implementations — neither validator knew that `producer.urlTemplate` must be
+rejected, so the rule had never been enforced anywhere. It is in both now, and the
+spec suite went from 78/83 with five skipped to **83/83 with none**.
 
 ---
 

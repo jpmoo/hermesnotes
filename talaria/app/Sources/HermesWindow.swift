@@ -10,7 +10,7 @@ import WebKit
 /// already owns `talaria://` and already resolves an id to an address; giving it
 /// somewhere to put the result closes the loop without a second wrapper.
 @MainActor
-final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
+final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     static let shared = HermesWindow()
 
     private var window: NSWindow?
@@ -55,6 +55,36 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
         // The default store is on disk, so a session survives quitting — being
         // asked to log in every launch would make this worse than a browser tab.
         config.websiteDataStore = .default()
+
+        /*
+         Tell the app what is selected in here.
+
+         So that highlighting a line in Hermes and pressing the composer hotkey
+         seeds the new block with it, the same as highlighting a line anywhere
+         else. It did not, because the read looks past this application when it
+         is frontmost — right for a panel covering somebody's document, wrong
+         for our own window, which is a document.
+
+         Pushed rather than pulled: `evaluateJavaScript` is asynchronous and the
+         read that needs this happens synchronously, on the main actor, before a
+         panel is shown. Keeping the last selection here means the answer is
+         already in hand.
+
+         Nothing leaves the machine. This is the same text the composer would
+         have got from any other application, reaching the same field.
+         */
+        config.userContentController.add(self, name: "selection")
+        config.userContentController.addUserScript(WKUserScript(
+            source: """
+            document.addEventListener('selectionchange', function () {
+              try {
+                window.webkit.messageHandlers.selection.postMessage(String(window.getSelection() || ''));
+              } catch (e) {}
+            });
+            """,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        ))
         let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = self
         view.uiDelegate = self
@@ -76,6 +106,12 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
         window = win
         web = view
         return view
+    }
+
+    /// The web view reporting what is highlighted in it.
+    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "selection" else { return }
+        Focused.webSelection = message.body as? String
     }
 
     // MARK: Navigation

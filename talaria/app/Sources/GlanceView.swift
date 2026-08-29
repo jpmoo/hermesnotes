@@ -144,14 +144,25 @@ enum Focused {
      and the selection would be Talaria's own by the time anything asked.
      */
     static func selection() -> String? {
+        if let mine = ownSelection() { return mine }
         guard let app = readableFront() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(axApp, axTimeout)
-        guard let focused = attr(axApp, kAXFocusedUIElementAttribute as String) else { return nil }
-        let element = unsafeBitCast(focused, to: AXUIElement.self)
-        guard let v = attr(element, kAXSelectedTextAttribute as String) as? String else { return nil }
-        let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? nil : String(t.prefix(maxChars))
+        if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
+            let element = unsafeBitCast(focused, to: AXUIElement.self)
+            if let v = attr(element, kAXSelectedTextAttribute as String) as? String {
+                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !t.isEmpty { return String(t.prefix(maxChars)) }
+            }
+        }
+        // Nothing in the tree. This used to be where it gave up, which is how
+        // Word came to look like a bug rather than an application that keeps its
+        // selection somewhere else.
+        if let id = app.bundleIdentifier, let source = scriptedSelection[id] {
+            let t = (script(source) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty { return String(t.prefix(maxChars)) }
+        }
+        return nil
     }
 
     /**
@@ -215,6 +226,54 @@ enum Focused {
      application, and a tool that asks to control everything on the machine
      deserves to be refused.
      */
+    /**
+     Where a selection is, for applications that do not put it in the tree.
+
+     Separate from `scripted` below, which answers with the whole document.
+     Word is the case: its accessibility tree carries no
+     `AXSelectedTextAttribute` a caller can reach, so highlighting a paragraph
+     and pressing the composer hotkey produced an empty form — the feature
+     looked broken rather than unsupported, and the whole-document script next
+     to it was no help, because a composer seeded with somebody's entire
+     document is worse than one seeded with nothing.
+     */
+    private static let scriptedSelection: [String: String] = [
+        "com.microsoft.Word": """
+        tell application "Microsoft Word"
+          if (count of documents) is 0 then return ""
+          return content of text object of selection
+        end tell
+        """,
+    ]
+
+    /**
+     What is selected in one of *our* windows.
+
+     `readableFront` deliberately looks past this app when it is frontmost,
+     because a panel in front means the question is about whatever it covered
+     up. That is right for Glance and wrong here: the Hermes Notes window is a
+     document like any other, and selecting a line in it and pressing the
+     composer hotkey read some other application's window instead.
+
+     A panel is still a panel — the compose and assistant windows are `NSPanel`
+     and are excluded, so the rule only relaxes for a real window somebody is
+     working in.
+
+     The text comes from the web view rather than the accessibility tree on
+     purpose: an AX read against your own process is serviced by your own run
+     loop, and this one runs on the main actor before a panel is shown. It would
+     be a deadlock, saved only by the timeout, on every open.
+     */
+    static var webSelection: String?
+
+    private static func ownSelection() -> String? {
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == Bundle.main.bundleIdentifier,
+              let key = NSApp.keyWindow, !(key is NSPanel)
+        else { return nil }
+        let t = (webSelection ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : String(t.prefix(maxChars))
+    }
+
     private static let scripted: [String: String] = [
         "com.microsoft.Word": """
         tell application "Microsoft Word"
@@ -224,22 +283,27 @@ enum Focused {
         """,
     ]
 
-    /// The focused element's text: a selection if there is one, else its value.
+    /// What the front window is about: a selection if there is one, else its text.
     static func text() -> String? {
-        guard let app = readableFront() else { return nil }
+        // A highlight is a stronger statement of what somebody means than the
+        // whole document is, so it wins — at any length, and from *any* source.
+        //
+        // That last part is the correction. The selection used to be read only
+        // from the accessibility tree here, so an application that keeps its
+        // selection elsewhere fell through to the branches below and Glance
+        // asked about the entire document instead: highlight a paragraph in Word
+        // and it answered about the whole memo, which is not what anybody
+        // pointing at a paragraph meant. `selection()` tries the tree, this
+        // app's own web view, and the scripted applications in turn, so asking
+        // it first means every source gets its chance before any of them is
+        // asked for a window.
+        if let selected = selection() { return selected }
 
+        guard let app = readableFront() else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(axApp, axTimeout)
         if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
             let element = unsafeBitCast(focused, to: AXUIElement.self)
-
-            // A highlight is a stronger statement of what somebody means than
-            // the whole document is, so it wins, and at any length: two words
-            // deliberately selected are a real question.
-            if let v = attr(element, kAXSelectedTextAttribute as String) as? String {
-                let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !t.isEmpty { return String(t.prefix(maxChars)) }
-            }
 
             // A field's whole contents are incidental rather than chosen, so
             // they have to be worth something before they beat the window title.
@@ -401,6 +465,21 @@ final class GlanceModel: ObservableObject {
     func stopFollowing() {
         watch?.invalidate()
         watch = nil
+        // And forget what was typed.
+        //
+        // A typed query is a momentary override — "not this window, this" — and
+        // it lived in `query` until somebody cleared it by hand, which nobody
+        // ever did. The consequence was silent and permanent: `refresh()` reads
+        // the document only when nothing has been typed, so one search, once,
+        // pinned the panel to those words for the rest of the app's life.
+        // Selecting a paragraph and summoning Glance went on answering last
+        // Tuesday's question, with no sign that it had stopped looking at the
+        // screen.
+        //
+        // Cleared on dismissal rather than on open, so a panel put away and
+        // brought back is about what is in front of it, which is the thing
+        // Glance is for.
+        query = ""
     }
 
     /// Tick something off without leaving the panel.

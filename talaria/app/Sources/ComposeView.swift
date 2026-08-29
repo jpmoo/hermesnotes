@@ -169,8 +169,15 @@ final class ComposeModel: ObservableObject {
      */
     private func applySeed() {
         guard let seed, let type, let first = type.fields.first else { return }
-        let lines = seed.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        let head = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? seed
+        // Word ends its lines with a carriage return, and splitting on "\n"
+        // alone found none — so a two-line selection arrived as one line, the
+        // whole thing went into the title, and the split looked broken in
+        // exactly the application it had just been made to work in. Normalise
+        // first; "\r\n" before "\r" or every Windows-authored paragraph
+        // becomes two.
+        let flat = seed.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let lines = flat.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let head = lines.first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? flat
         let tail = lines.drop(while: { $0.trimmingCharacters(in: .whitespaces).isEmpty })
             .dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -178,12 +185,12 @@ final class ComposeModel: ObservableObject {
         // first line and hands the rest on.
         // A prose type has one place for everything, so nothing is split off.
         if isProse {
-            body = seed
+            body = flat
             return
         }
         let oneLine = first.kind == "text"
         guard oneLine, !tail.isEmpty else {
-            strings[first.key] = seed
+            strings[first.key] = flat
             return
         }
         strings[first.key] = head
@@ -194,7 +201,7 @@ final class ComposeModel: ObservableObject {
         } else {
             // Nowhere to put it. Keeping it in the first field is ugly and is
             // still better than a composer that silently ate half a selection.
-            strings[first.key] = seed
+            strings[first.key] = flat
         }
     }
 

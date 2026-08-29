@@ -1,3 +1,12 @@
+/**
+ * The three facts about an object that are not fields on it.
+ *
+ * A separate key in `by` rather than a reserved word among the field names,
+ * because types here are rows a person can rename and a field named `type` is
+ * therefore a matter of time.
+ */
+export const META_KEYS = new Set(["type", "created", "updated"]);
+
 /** The v0 profile vocabulary. Anything else is preserved and ignored. */
 export const V0_PROFILES = ["task", "event", "contact", "note"];
 

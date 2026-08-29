@@ -206,6 +206,15 @@ It should come back byte-identical.
 ## 7. Still to do
 
 - **The remaining drift in #5.**
+- **`talaria/acceptance/run.sh` has been passing vacuously.** Its stub producer
+  answers Hermes' old private routes and not `GET /interchange`, so steps 3 and 6
+  print "this producer does not implement GET /interchange" and step 8 — the
+  replayed-create check, which is the whole point of the scenario — dies on
+  `Cannot read properties of undefined (reading 'id')`. The script still ends
+  with "done" and exits 0, so nothing has flagged it. It went stale when the
+  daemon moved onto the binding; verified against `HEAD` as pre-existing rather
+  than caused by the `order` work. The stub needs the interchange routes, and the
+  runner needs to fail loudly instead of printing an error and carrying on.
 
 Both `url` items are done, and the fixture had a sting in it. `fixtures/address.json`
 already existed with all five cases — but it requires the `addresses` feature, and
@@ -233,3 +242,33 @@ it. Add `.claude/settings.local.json` to `.gitignore` either way; the
 
 There is also a `.claude/settings.local 2.json`, which is a sync conflict copy
 and carries the same contents.
+
+---
+
+## 9. A table with an "Edited" column served a 500 — **fixed**
+
+Found while testing the new `order` work against a live daemon, not by looking
+for it. `GET /board/:id` answered `500 Cannot read properties of undefined
+(reading 'slice')` for the Task Inbox, and only for that one.
+
+`cellValue` in `talaria/packages/daemon/src/server.ts` read `b.updatedAt` off the
+raw mirror row. Those rows are **interchange objects** now, and an interchange
+object spells it `updated`. So `b.updatedAt` was `undefined` and `.slice(0, 10)`
+threw, taking the whole board down — every card, every column, not just the cell.
+
+The same wrong name had a quiet twin beside it: a `created` column matched
+nothing at all and drew every cell blank, which nobody would have reported as a
+bug because a blank column reads like a column with no data in it.
+
+This is the third instance of one pattern in this codebase — a read still
+spelling a field the way Hermes' own rows spelled it, after the mirror moved onto
+the format. The other two are noted in `server.ts` itself: `membership_mode`
+becoming `membership.mode`, which made every board answer "not smart" and stop
+filtering, and `matrix_regions`, which drew four regions called "Region 1"
+through "Region 4". All three failed differently — a crash, a silent wrong
+answer, and visible nonsense — and all three came from the same place.
+
+`talaria/app/check.sh` did not catch it, and that is the more useful finding:
+its board check opened `boards().first`, which is a calendar. It opens **every**
+board now and reports the kinds it saw, because the kinds take different paths
+through that route and break separately.

@@ -116,7 +116,10 @@ function runCase(adapter, c, bySuiteId) {
       return { pass: got === c.expect, got };
     }
     case "order": {
-      const got = adapter.order(((env.collections ?? [])[0] ?? {}).members ?? []);
+      // The whole collection, not just its members: the arrangement is stated on
+      // the collection and read off the objects, so an adapter handed a bare
+      // member list can only ever answer the stored order.
+      const got = adapter.order((env.collections ?? [])[0] ?? {}, env.objects ?? [], env.types ?? []);
       return { pass: exact(got, c.expect), got };
     }
     case "nextOccurrence": {

@@ -63,18 +63,6 @@ limitations document can do.
 A snapshot is as fresh as the last export, which for a polling consumer is
 fine, and for one that has just written something is not.
 
-### No sort or grouping on a collection
-
-**Needed for:** Talaria's matrix and table views, which sort within a region and
-group by a property.
-
-**What the format has:** `position` for explicit order, and nothing else.
-
-**Why it matters:** the sort is a person's decision, held once and expected
-everywhere — the same class of thing as a semantic region, and the format
-already argues that class belongs in the data. A board that sorts by due date in
-one app and by title in another is not the same board.
-
 ### No hierarchy
 
 **Needed for:** any outliner. Logseq, Roam, Tana and Workflowy are outline-first
@@ -114,6 +102,52 @@ here.
 ---
 
 ## Closed
+
+### There is no sort or grouping on a collection — closed
+
+**Was:** `position` for explicit order and nothing else. Hermes kept sort and
+grouping under `hermes:table_sort`, `hermes:view_state` and
+`hermes:rollup_views` — this entry's own failure happening in the export, in the
+namespace v0.1 was going to want. Talaria read those private keys to draw its
+boards, which is the one thing the port existed not to do.
+
+**Now:** `order` on the collection, beside `placement` and `membership`, holding
+`sort` and `groupBy`.
+
+There is no `mode` flag. `sort` present means the stored order is a snapshot;
+absent, `position` is a decision somebody made by hand. The presence of the key
+is the whole statement, which turns out to handle the awkward case exactly
+right: Hermes has a saved sort that a user can switch off, and that state exports
+as no `sort` with the producer's own copy intact under its prefix.
+
+`by` is `{ field }`, `{ field, part }` or `{ meta }` rather than a bare string
+with `type` reserved. Types are user data here — rows a person can rename — so a
+field named `type` is a matter of time, and a reserved word costs a version bump
+the day it arrives. Reusing the shape profile mappings already use meant `part`
+came free, and `{ meta: "updated" }` gave Hermes' `edited` sort somewhere honest
+to land instead of a fake field.
+
+Two rules were worth writing down because every implementation decides them
+silently and differently: **a missing value sorts last in both directions**, and
+**ties fall through to `position`**. The first is what a person means by "sort by
+due date, descending" — furthest-out first, undated out of the way, not a screen
+of undated cards at the top. The second means a sort naming no tiebreak is still
+stable, rather than depending on which pair the consumer's sort algorithm
+happened to touch.
+
+`{ meta: "type" }` groups by id and sorts by name. The two want different things
+from one key and saying so is cheaper than letting each implementer pick.
+
+**What it does not carry:** column widths, view modes, chip counts. The line is
+the one `placement.semantic` already draws — sort and grouping change which
+objects a person sees first, which is a decision; how wide a column is drawn is
+furniture. And one genuine loss, reported rather than hidden: Hermes keeps an
+arrangement per *view*, the format carries one per collection, so a collection
+whose table and rollup disagree exports the one matching its kind and reports
+`order.per-view-dropped`. The real library has exactly one of those — a rollup
+whose 17 levels sort by due date while its top sorts alphabetically.
+
+→ `fixtures/sort.json`
 
 ### There is no tag write — closed
 

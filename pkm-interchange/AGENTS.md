@@ -332,6 +332,98 @@ A member is an object — `{ "object": "o_412", … }`. A bare id is legal short
 
 → `fixtures/placement.json`
 
+### The order a collection is shown in
+
+`position` gives every collection *an* order. `order` says when that order was
+not the point.
+
+```json
+"order": {
+  "sort": [
+    { "by": { "field": "schedule", "part": "end" }, "direction": "ascending" },
+    { "by": { "field": "title" }, "direction": "ascending" }
+  ],
+  "groupBy": { "meta": "type" }
+}
+```
+
+**`sort` present means the stored order is not authoritative.** Absent, `position`
+is the truth and a consumer that reorders is destroying something a person
+arranged by hand. There is no `mode` flag and no `manual` value: the presence of
+the key is the whole statement, the same way an absent `membership.mode` means
+`explicit`. A producer whose user has a saved sort switched off emits no `sort`
+and keeps its own under its own prefix, which is the honest reading of that
+state rather than a third mode to interpret.
+
+Positions are still emitted under a `sort`, and are still a snapshot worth
+having — a consumer that ignores `order` entirely renders by `position` and gets
+the sorted order as it stood at export. This is the same courtesy
+`membership.materialized` describes and it needs no flag either, because reading
+`sort` and reading `position` cannot disagree about *what to draw*, only about
+what to do when a value changes.
+
+**`by` names a field or a fact about the object, and says which.**
+
+```json
+{ "field": "due" }                        // a field key
+{ "field": "schedule", "part": "end" }    // half of a compound field
+{ "meta": "type" }                        // not a field at all
+```
+
+This is the shape a profile mapping already uses, reused deliberately. The
+alternative — a bare string with `type` reserved — costs a version bump the
+first time somebody names a field `type`, and types here are user data, so
+somebody will. `meta` in v0 is exactly `type`, `created` and `updated`; anything
+else is an error rather than a key to guess at.
+
+`direction` is `"ascending"` or `"descending"`, and defaults to ascending.
+
+**`{ "meta": "type" }` groups by id and sorts by name.** The two want different
+things from the same key and saying so is cheaper than letting each implementer
+pick. A group key has to be stable, so it is the type's id and a consumer looks
+up the name to draw the heading; nobody sorts a list by opaque ids, so as a sort
+key it orders by the type's `name` — which is what the heading says, and what a
+person reading "sorted by type" expects to see.
+
+**A missing value sorts last, in both directions.** This is the rule most worth
+writing down, because it is the one every implementation decides silently and
+differently. Sorting by due date descending should put the furthest-out dated
+thing at the top and the undated ones out of the way; putting them first because
+`undefined` compares low is a defensible reading of the data and a useless
+reading of the intent. An empty string is a missing value here, as everywhere
+else in this format.
+
+**Values compare byte-wise unless both are numbers.** ISO dates sort correctly
+under that rule, which is why the format asks for them; a locale-aware collation
+does not, and puts a different thing at the top of the list depending on where
+the reader is sitting. This is the same rule `position` already states, for the
+same reason.
+
+**Ties fall through to the next key, and then to `position`.** A sort that names
+no tiebreak is not thereby unstable — the stored order is the last resort, so two
+objects with the same due date come out in a stable order rather than whichever
+one the consumer's sort happened to touch first.
+
+**`groupBy` is one key, in the same vocabulary, and is orthogonal to `sort`.** A
+collection may be grouped and manually ordered within its groups; that is
+`groupBy` with no `sort`. Groups are ordered by their key under the same
+missing-last rule, and an object whose key is missing lands in a final group
+whose key is `null` rather than being dropped.
+
+**What does not belong here.** Column widths, view modes, chip counts, whether
+the header is sticky. The line is the one `placement.semantic` already draws:
+sort and grouping change *which objects a person sees first*, which is a
+decision; how wide a column is drawn is furniture, and belongs under the
+producer's own prefix where it will survive a round trip and bind nobody.
+
+**Losing it is a reduced import.** A consumer that cannot sort keeps the members
+and reports `order.sort`; one that cannot group reports `order.grouping`. This
+is the derivation rule pointed at a different derived thing: the members do not
+change, but the arrangement goes stale the moment a due date does, and a user
+who believes they still have a sorted list will not find out for weeks.
+
+→ `fixtures/sort.json`
+
 ---
 
 ## Derivations (L3)
@@ -780,13 +872,21 @@ object that exists with nothing to correct it short of a full re-read.
 
 ## Known limits of v0
 
-Two things a real library ran into that v0 does not solve, written down so they
-are not rediscovered as bugs.
+Three things a real library ran into that v0 does not solve, written down so
+they are not rediscovered as bugs.
 
 **`placement.semantic` is one flag for a whole collection.** A board can mix
 regions that copy their meaning onto the objects entering them with regions that
 keep it, and that is a per-region question. One flag is right often enough to
 ship and wrong on a board built both ways.
+
+**A sort key names one field, and some sorts name two.** "Alphabetical" in a
+tool that lets a note go untitled means *the title, or the first line of the
+body* — one key with a fallback. A sort key here names one field, so that
+travels as the title alone and an untitled note sorts as missing rather than by
+the words a person can actually see on the card. The producer reports it; a
+consumer cannot repair it. A key that names an ordered list of fields, first
+non-empty winning, is the smallest thing that would close it.
 
 **A canvas holds things that are not objects.** Sticky notes with no id, and
 connections drawn between them. They survive, as properties of the collection

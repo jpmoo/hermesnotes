@@ -1,4 +1,4 @@
-import { V0_PROFILES } from "./profiles.js";
+import { META_KEYS, V0_PROFILES } from "./profiles.js";
 
 /**
  * Structural validation, reported as codes.
@@ -18,6 +18,7 @@ const FEATURES = {
   relations: (e) => (e.relations ?? []).length > 0,
   placement: (e) => (e.collections ?? []).some((c) => c.placement),
   derivations: (e) => (e.collections ?? []).some((c) => c.membership?.mode === "query"),
+  ordering: (e) => (e.collections ?? []).some((c) => c.order?.sort || c.order?.groupBy),
   attachments: (e) =>
     (e.objects ?? []).some((o) =>
       Object.values(o.properties ?? {}).some((v) => v && typeof v === "object" && v.kind === "attachment"),
@@ -34,6 +35,25 @@ export function validate(envelope) {
 
   (envelope.collections ?? []).forEach((c, i) => {
     const at = `collections[${i}]`;
+
+    // A sort key that names nothing runs on nothing. It reads as a declaration
+    // and delivers an unsorted list, which is the same failure the profile
+    // mapping rule exists to catch and is just as invisible in a well-formed
+    // document.
+    const keys = [...(Array.isArray(c.order?.sort) ? c.order.sort : []), ...(c.order?.groupBy ? [{ by: c.order.groupBy }] : [])];
+    for (const spec of keys) {
+      const by = spec?.by;
+      const named =
+        by && typeof by === "object" &&
+        (typeof by.field === "string" ? by.field !== "" : META_KEYS.has(by.meta));
+      if (!named) fail("order.by-invalid", `${at}.order`);
+      // Spelled out, both of them. `desc` is what most producers store and it is
+      // not what this carries, so it fails here rather than being read as
+      // ascending by everything that does not recognise it.
+      if (spec.direction !== undefined && spec.direction !== "ascending" && spec.direction !== "descending") {
+        fail("order.direction-invalid", `${at}.order`);
+      }
+    }
     if (c.placement?.semantic === true) {
       // A region is a name, or an object carrying the name and the words a
       // person reads. Either is named; neither is a coordinate.

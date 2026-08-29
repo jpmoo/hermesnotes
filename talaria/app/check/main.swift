@@ -73,10 +73,21 @@ check("boards") {
     return "\(b.count) collections"
 }
 
-check("one board") {
-    guard let first = try Daemon.boards().first else { return "none to open" }
-    let (board, _, _) = try Daemon.board(first.id)
-    return "\(board.title) — \(board.regions.count) region(s), \(board.members.count) member(s)"
+check("every board") {
+    // Every one, not the first one. A table with an "Edited" column served a
+    // 500 for weeks — the route read `updatedAt` off rows that carry `updated`
+    // — and this check went on passing because the first board in the list was
+    // a calendar. One of each kind is the only sample that means anything here:
+    // the kinds take different paths through the route, and they break
+    // separately.
+    let all = try Daemon.boards()
+    if all.isEmpty { return "none to open" }
+    var seen: [String: Int] = [:]
+    for summary in all {
+        let (board, _, _) = try Daemon.board(summary.id)
+        seen[board.kind ?? "?", default: 0] += 1
+    }
+    return "\(all.count) board(s): " + seen.sorted { $0.key < $1.key }.map { "\($0.key) ×\($0.value)" }.joined(separator: ", ")
 }
 
 check("agenda") {

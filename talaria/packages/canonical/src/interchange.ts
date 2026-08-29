@@ -83,6 +83,15 @@ export interface InterchangeCollection {
   properties?: Record<string, unknown>;
   placement?: { semantic?: boolean; regions?: Region[] };
   membership?: { mode?: string; materialized?: boolean; query?: unknown };
+  /**
+   * How this collection is meant to be arranged, as against how its rows happen
+   * to be stored. `sort` present means `position` is a snapshot rather than a
+   * decision; absent, somebody dragged these into this order by hand.
+   */
+  order?: {
+    sort?: { by?: { field?: string; part?: string; meta?: string }; direction?: string }[];
+    groupBy?: { field?: string; part?: string; meta?: string };
+  };
   members?: { object?: string; position?: string; region?: string; context?: Record<string, unknown> }[];
 }
 

@@ -35,6 +35,6 @@ export const CONFORMANCE = {
   // same as not implementing it: `fixtures/address.json` requires the feature,
   // so all five of its cases were scoped away as not-applicable and had never
   // once run. A manifest is a promise in both directions.
-  features: ["series", "placement", "derivations", "relations", "attachments", "addresses"],
+  features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering"],
   unsupported: [] as string[],
 } as const;

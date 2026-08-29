@@ -308,6 +308,18 @@ In storage the two cases are identical: an object holding a position in a collec
 
 A region can be a bare name or `{ name, label }` when the thing a machine matches on is not the words a person reads. That distinction earns its place: producers derive the name by slugging the label, so a format with nowhere to keep the label makes the derivation lossy — and a board arrives with regions a consumer can match on and cannot render, drawing "Region 3" over somebody's own words.
 
+### The order in the file is not always the order that was meant
+
+`position` puts every collection's members in some order, and half the time that order is a decision — somebody dragged the cards where they wanted them. The other half it is the residue of a sort that ran before the export, and re-sorting it is the right thing rather than vandalism. As with placement, storage cannot tell you which.
+
+So a collection carries `order` when the arrangement is derived: `sort`, an ordered list of `{ by, direction }`, and `groupBy`. **Its presence is the whole statement** — no `mode`, no `manual` value. `sort` present means `position` is a snapshot you may recompute; absent means somebody put those there by hand and you should leave them alone.
+
+`by` names a field the way a profile mapping does — `{ "field": "due" }`, or `{ "field": "schedule", "part": "end" }` for half a datespan — or `{ "meta": … }` for the three things that are not fields: `type`, `created`, `updated`. A discriminated object rather than a bare string with `type` reserved, because types are user data here and a field named `type` is a matter of time.
+
+Two rules that every implementation otherwise decides silently and differently, so they are written down and tested: **a missing value sorts last in both directions**, and **ties fall through to the next key and then to `position`**. The first is what somebody means by "due date, descending" — the furthest-out thing first and the undated ones out of the way, not a screen of blanks at the top. The second means a sort with no named tiebreak is still stable.
+
+What does not go here: column widths, view modes, whether a heading sticks. Same line placement draws — sort and grouping change which objects a person sees first, and that is a decision; how wide a column is drawn is furniture, and belongs under your own prefix.
+
 ### A link is a link
 
 `{ from, to }`, and `to` is required. Everything a reader might go on to ask — what kind of thing is it, does it still exist, what is it called — is a question about the far end and belongs to the far end. A copy of the target's type on the edge falsifies itself the moment the target is retyped.

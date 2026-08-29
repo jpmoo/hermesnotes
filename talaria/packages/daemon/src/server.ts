@@ -37,20 +37,35 @@ import type { Sync } from "./sync.js";
  *   curl --unix-socket ~/Library/Application\ Support/Talaria/talaria.sock \
  *        'http://x/blocks?q=roofer'
  */
+/** A sort or grouping key, as the format names one. */
+export type By = { field?: string; part?: string; meta?: string };
+export type Order = { sort?: { by?: By; direction?: string }[]; groupBy?: By };
+
 /**
- * How a collection was told to group, if it was.
+ * A format sort key in the spelling the rest of this file already speaks.
  *
- * The setting lives in a different place per kind — a rollup keeps its
- * arrangement under `rollup_views.top`, everything else under `view_state` —
- * and reads either "type" or "prop:<key>".
+ * `"type"` and `"prop:<key>[.part]"` are what `groupLabelFor` and `valueUnder`
+ * read, and they were the producer's spelling because the producer's private
+ * view state was the only place this lived. It is on the collection now, so the
+ * translation happens once, here, and the two readers are unchanged.
  */
-function groupByOf(props: Record<string, unknown>, kind: string | null): string | null {
-  const src =
-    kind === "rollup"
-      ? ((props.rollup_views as Record<string, unknown> | undefined)?.top as Record<string, unknown> | undefined)
-      : (props.view_state as Record<string, unknown> | undefined);
-  const g = src?.groupBy;
-  return typeof g === "string" && g ? g : null;
+function keyOf(by: By | undefined): string | null {
+  if (!by) return null;
+  if (by.meta) return by.meta === "updated" ? "edited" : by.meta;
+  if (typeof by.field !== "string" || !by.field) return null;
+  return `prop:${by.field}${by.part ? `.${by.part}` : ""}`;
+}
+
+/**
+ * How a collection was told to arrange itself.
+ *
+ * This used to reach into `view_state` and `rollup_views.top` — the producer's
+ * own saved view, under a prefix this seam strips — because sorting and
+ * grouping were things the format could not say. They are `collection.order`
+ * now, so the read is the format's and works against any producer.
+ */
+function orderOf(row: { order?: Order }): Order {
+  return row.order ?? {};
 }
 
 /** A number, or null — canvas geometry arrives as numbers or not at all. */
@@ -570,6 +585,7 @@ export function buildServer(deps: {
       collectionKind: string | null;
       placement?: { regions?: Region[] };
       membership?: { mode?: string; query?: unknown };
+      order?: Order;
     };
     if (!row.collectionKind) {
       return reply.code(400).send({ error: "that block isn't a collection" });
@@ -701,10 +717,18 @@ export function buildServer(deps: {
       const b = JSON.parse(rawBlock) as {
         type?: string | null;
         properties: Record<string, unknown>;
-        updatedAt: string;
+        created?: string;
+        updated?: string;
       };
       const schema = b.type ? types().get(b.type) : null;
-      if (key === "edited") return b.updatedAt.slice(0, 10);
+      // `updated` and `created`, not `updatedAt`/`createdAt`. These rows are
+      // interchange objects now, and this read was still spelling them the way
+      // Hermes' own rows spelled them — so an "Edited" column threw on
+      // undefined and took the whole board down with a 500, while a "Created"
+      // one quietly drew every cell blank. The loud one and the silent one, from
+      // the same wrong name.
+      if (key === "edited") return String(b.updated ?? "").slice(0, 10);
+      if (key === "created") return String(b.created ?? "").slice(0, 10);
       const bare = key.startsWith("prop:") ? key.slice(5) : key;
       const [fieldKey, leg] = bare.split(".");
       if (!fieldKey) return "";
@@ -726,7 +750,8 @@ export function buildServer(deps: {
       return String(value);
     };
 
-    const grouping = groupByOf(props, row.collectionKind);
+    const arrangement = orderOf(row);
+    const grouping = keyOf(arrangement.groupBy);
     const cachedQuery = mirror.get(`query.${id}`);
     const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;
     // What makes a collection smart is the mode it was put in, not the presence
@@ -958,10 +983,92 @@ export function buildServer(deps: {
       }
     }
 
+    /**
+     * One sortable value off a card, by the same route `groupLabelFor` takes.
+     *
+     * The raw block rather than the canonical one, for the same reason: a sort
+     * can name any field on any type, and the canonical form deliberately keeps
+     * only what every surface needs. The *stored* value, not the label — a
+     * select sorts by the order somebody put its options in as often as not,
+     * and either way a heading's wording is not a sort key.
+     */
+    const valueUnder = (cardId: string, key: string | null): unknown => {
+      if (!key) return undefined;
+      const rawBlock = mirror.rawBlock(cardId);
+      if (!rawBlock) return undefined;
+      const b = JSON.parse(rawBlock) as { type?: string | null; properties?: Record<string, unknown> };
+      // The type's *name*: nobody sorts a list by opaque ids, and the name is
+      // what the heading says. Grouping wants the id and gets it elsewhere.
+      if (key === "type") return b.type ? (types().get(b.type)?.name ?? b.type) : undefined;
+      if (key === "created" || key === "edited") {
+        const c = canon([rawBlock])[0] as { createdAt?: string; updatedAt?: string } | undefined;
+        return key === "created" ? c?.createdAt : c?.updatedAt;
+      }
+      if (!key.startsWith("prop:")) return undefined;
+      const raw2 = key.slice(5);
+      for (const part of ["start", "end"]) {
+        if (raw2.endsWith(`.${part}`)) {
+          const v = b.properties?.[raw2.slice(0, -(part.length + 1))] as Record<string, unknown> | null;
+          return v?.[part];
+        }
+      }
+      return b.properties?.[raw2];
+    };
+
+    /**
+     * The collection's own arrangement, applied.
+     *
+     * The rows arrive in `position` order, which is the answer when the
+     * collection says nothing — somebody dragged them there. When it does say,
+     * that order becomes the tiebreak rather than the answer, so a sort naming
+     * no second key is still stable.
+     *
+     * Missing values go last in both directions. A list sorted by due date
+     * descending should show the furthest-out dated thing first and the undated
+     * ones at the bottom, not a screen of undated cards above everything real.
+     */
+    const arrange = <T extends { id: string }>(cards: T[]): T[] => {
+      const levels = arrangement.sort ?? [];
+      if (!levels.length) return cards;
+      const blank = (v: unknown) => v === undefined || v === null || v === "";
+      return [...cards].sort((x, y) => {
+        for (const lv of levels) {
+          const [a, b] = [valueUnder(x.id, keyOf(lv.by)), valueUnder(y.id, keyOf(lv.by))];
+          if (blank(a) || blank(b)) {
+            if (blank(a) && blank(b)) continue;
+            return blank(a) ? 1 : -1;
+          }
+          const c =
+            typeof a === "number" && typeof b === "number"
+              ? a < b
+                ? -1
+                : a > b
+                  ? 1
+                  : 0
+              : String(a) < String(b)
+                ? -1
+                : String(a) > String(b)
+                  ? 1
+                  : 0;
+          if (c) return lv.direction === "descending" ? -c : c;
+        }
+        return 0;
+      });
+    };
+
+    // A rollup's headings are its contents. It owns no memberships, so `members`
+    // below is empty by construction and the sort would reach nothing at all
+    // unless it is applied here as well.
+    if (isRollup && groups.length) {
+      const sorted = arrange(groups as { id: string }[]);
+      groups.length = 0;
+      groups.push(...sorted);
+    }
+
     const me = canon([raw])[0]!;
     // A sequence collection puts everything in one list; there are no regions to
     // put anything in, so what would have been "unplaced" is simply the contents.
-    const members = gridded ? [] : drawer.slice();
+    const members: unknown[] = gridded ? [] : arrange(drawer.slice() as { id: string }[]);
     // Named apart from the `placed` set above, which tracks something else
     // entirely: this is "has coordinates on the canvas".
     const positioned = members.filter((m) => (m as { x: number | null }).x !== null);

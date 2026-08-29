@@ -67,6 +67,41 @@ export interface ExportInput {
   origin?: string;
 }
 
+/**
+ * Hermes' sort-key spellings, in the format's vocabulary.
+ *
+ * Four private spellings and one prefix, all of which mean something a stranger
+ * can act on. `edited` becoming `{ meta: "updated" }` is the case `meta` exists
+ * for: it is a real sort key, it is not a field on anything, and a format
+ * carrying only field names would have had to drop it or invent a fake field.
+ *
+ * `.start` and `.end` are the only compound suffixes Hermes writes — the web
+ * app's `valueFor` recognises exactly those two — so splitting on them is not a
+ * guess about where a key ends.
+ */
+function sortKeyOf(key: string): { field?: string; part?: string; meta?: string } | null {
+  if (key === "created") return { meta: "created" };
+  if (key === "edited") return { meta: "updated" };
+  if (key === "type") return { meta: "type" };
+  // Not exactly the same key: Hermes falls back to the first line of the body
+  // for a block with no title, and the format has nowhere to say "this field, or
+  // that one". Reported rather than silently narrowed.
+  if (key === "alpha") return { field: "title" };
+  if (!key.startsWith("prop:")) return null;
+  const raw = key.slice(5);
+  for (const part of ["start", "end"]) {
+    if (raw.endsWith(`.${part}`)) return { field: raw.slice(0, -(part.length + 1)), part };
+  }
+  return { field: raw };
+}
+
+/** The view whose arrangement is the collection's, by kind. */
+function viewFor(kind: string, props: Record<string, unknown>): Record<string, unknown> | null {
+  if (kind === "table") return { sort: props.table_sort };
+  if (kind === "rollup") return (props.rollup_views as Record<string, unknown>)?.top as Record<string, unknown>;
+  return props.view_state as Record<string, unknown>;
+}
+
 export function toInterchange(input: ExportInput): {
   envelope: Record<string, unknown>;
   findings: Finding[];
@@ -313,6 +348,67 @@ export function toInterchange(input: ExportInput): {
     const cCarried = (carried[CARRY_KEY] ?? {}) as Record<string, unknown>;
     delete carried[CARRY_KEY];
 
+    /**
+     * How this collection is meant to be arranged, as opposed to how its rows
+     * happen to be stored.
+     *
+     * Hermes keeps this per *view* — a table's `table_sort`, a list's
+     * `view_state`, each level of a rollup — and the format carries one order
+     * per collection, so the view matching the collection's kind is the one that
+     * travels. Where another view on the same collection has its own, that is
+     * reported rather than merged: two arrangements cannot both be the answer to
+     * "what order is this in", and picking one silently is how a consumer ends
+     * up drawing a board in a table's sort.
+     *
+     * `sort_mode` is *not* consulted. It is written once at creation for every
+     * list and never touched again, so reading it as live state would mean
+     * every list in the library claims to be manually ordered. `view_state.manual`
+     * is the flag the app actually reads.
+     */
+    const view = viewFor(kind, props);
+    const order: Record<string, unknown> = {};
+    if (view && typeof view === "object") {
+      const levels = Array.isArray(view.sort) ? (view.sort as { key?: unknown; dir?: unknown }[]) : [];
+      // Manual means the stored order *is* the decision. Absent `sort` is how
+      // the format says that, so a saved-but-switched-off sort emits nothing
+      // here and survives under `hermes:view_state` where it came from.
+      if (view.manual !== true && levels.length) {
+        const sort = levels
+          .map((l) => {
+            const by = sortKeyOf(String(l.key ?? ""));
+            if (!by) return null;
+            if (String(l.key) === "alpha") {
+              note(
+                "order.alpha-is-title-or-body",
+                "format",
+                'Hermes\'s alphabetical sort reads a block\'s title or, when it has none, the first line of its body. The format\'s sort keys name one field, so this travels as the title alone and an untitled block sorts as missing rather than by the words a person actually sees. A "this field, or that one" sort key is the smallest thing that would close it.',
+              );
+            }
+            return { by, direction: l.dir === "desc" ? "descending" : "ascending" };
+          })
+          .filter(Boolean);
+        if (sort.length) order.sort = sort;
+      }
+      const grouped = typeof view.groupBy === "string" ? sortKeyOf(view.groupBy) : null;
+      if (grouped) order.groupBy = grouped;
+    }
+    // Anything else on this collection that also holds an arrangement. Counting
+    // rather than naming, because which view a producer keeps them on is its
+    // own business; that there was a second one is the part a consumer of this
+    // export cannot otherwise discover.
+    const arrangements = [
+      props.table_sort,
+      (props.view_state as Record<string, unknown>)?.sort,
+      ...Object.values((props.rollup_views ?? {}) as Record<string, { sort?: unknown }>).map((v) => v?.sort),
+    ].filter((v) => Array.isArray(v) && v.length > 0);
+    if (arrangements.length > 1) {
+      note(
+        "order.per-view-dropped",
+        "format",
+        "A collection holds a different sort on more than one of its views, and the format carries one order per collection. The view matching the collection's kind travelled; the others are still in this export under Hermes' own prefix, but nothing outside Hermes will read them as arrangements.",
+      );
+    }
+
     return {
       id: c.id,
       name: String(props.title ?? "Untitled"),
@@ -321,6 +417,12 @@ export function toInterchange(input: ExportInput): {
       ...cCarried,
       ...(Object.keys(carried).length ? { properties: carried } : {}),
       placement: gridded ? { semantic: true, regions: regionsOf(props) } : { semantic: false },
+      // Merged, not overwritten: `cCarried` may hold the part of an imported
+      // `order` this producer had nowhere to put, and it is spread above where
+      // a generated `order` would otherwise replace it wholesale.
+      ...(Object.keys(order).length || cCarried.order
+        ? { order: { ...((cCarried.order ?? {}) as Record<string, unknown>), ...order } }
+        : {}),
       membership: smart
         ? { mode: "query", materialized: false, query: props.filter_query ?? null }
         : { mode: "explicit" },

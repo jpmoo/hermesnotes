@@ -22,12 +22,22 @@ import {
   type PropertySchema,
   type Recurrence,
 } from "@hermes/shared";
-import { fromInterchange } from "./src/import.js";
+import { fromInterchange, hermesSortKey } from "./src/import.js";
 import { toInterchange } from "./src/map.js";
 import { CONFORMANCE } from "./src/conformance.js";
 import { validateEnvelope } from "./src/validate.js";
 
 type Type = { propertySchema?: PropertySchema; fields?: unknown[]; profiles?: Record<string, unknown> };
+type By = { field?: string; part?: string; meta?: string };
+type Order = { sort?: { by?: By; direction?: string }[]; groupBy?: By };
+type Block = {
+  id?: string;
+  type?: string;
+  content?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  properties?: Record<string, unknown>;
+};
 
 /**
  * A fixture type is the format's shape; Hermes' functions want a Hermes schema.
@@ -186,10 +196,85 @@ export const hermesAdapter = {
    * the one drop that generates a capital key is dropping at the top of a list,
    * so a card dragged to the first line came back at the bottom.
    */
-  order: (members: { object?: string; id?: string; position?: string }[]) =>
-    [...members]
-      .sort((a, b) => (String(a.position) < String(b.position) ? -1 : String(a.position) > String(b.position) ? 1 : 0))
-      .map((m) => m.object ?? m.id),
+  order: (
+    collection: { members?: ({ object?: string; id?: string; position?: string } | string)[]; order?: Order },
+    objects: Block[] = [],
+    types: { id?: string; name?: string }[] = [],
+  ) => {
+    const members = (collection?.members ?? []).map((m) => (typeof m === "string" ? { object: m } : m));
+    const byId = new Map(objects.map((o) => [o.id, o]));
+    const spec = collection?.order ?? {};
+    const byte = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+    const stored = [...members].sort((a, b) => byte(String(a.position ?? ""), String(b.position ?? "")));
+
+    /**
+     * The value under one key, reached the long way round.
+     *
+     * Deliberately through `hermesSortKey` and Hermes' own spellings rather than
+     * straight off the format's `{field, part}` — this is the claim being
+     * measured, and translating into the vocabulary the app sorts in is the only
+     * version of it that proves the two translators compose. Reading the format
+     * directly would pass these fixtures with the importer's mapping broken.
+     */
+    const valueOf = (o: Block | undefined, by: Order["groupBy"], forSort: boolean): unknown => {
+      const key = by ? hermesSortKey(by, "list") : null;
+      if (!key || !o) return undefined;
+      if (key === "created") return o.createdAt;
+      if (key === "edited") return o.updatedAt;
+      // A heading's words when sorting, the id when grouping — the id has to
+      // survive somebody renaming the type, and nobody sorts by one.
+      if (key === "type") return forSort ? (types.find((t) => t.id === o.type)?.name ?? o.type) : o.type;
+      const props = (o.properties ?? {}) as Record<string, unknown>;
+      if (key === "alpha") return props.title ?? o.content;
+      const raw = key.slice(5);
+      for (const part of ["start", "end"]) {
+        if (raw.endsWith(`.${part}`)) {
+          const v = props[raw.slice(0, -(part.length + 1))] as Record<string, unknown> | null;
+          return v?.[part];
+        }
+      }
+      return props[raw];
+    };
+
+    const blank = (v: unknown) => v === undefined || v === null || v === "";
+    const cmp = (a: unknown, b: unknown) =>
+      typeof a === "number" && typeof b === "number" ? (a < b ? -1 : a > b ? 1 : 0) : byte(String(a), String(b));
+
+    const arrange = (list: typeof stored) => {
+      const levels = Array.isArray(spec.sort) ? spec.sort : [];
+      if (!levels.length) return list;
+      return [...list].sort((x, y) => {
+        for (const lv of levels) {
+          const [a, b] = [valueOf(byId.get(x.object!), lv.by, true), valueOf(byId.get(y.object!), lv.by, true)];
+          // Missing last in both directions, so the reversal below must not
+          // reach it. A person sorting by due date descending wants the undated
+          // ones out of the way, not at the top.
+          if (blank(a) || blank(b)) {
+            if (blank(a) && blank(b)) continue;
+            return blank(a) ? 1 : -1;
+          }
+          const c = cmp(a, b);
+          if (c) return lv.direction === "descending" ? -c : c;
+        }
+        return 0;
+      });
+    };
+
+    if (!spec.groupBy) return arrange(stored).map((m) => m.object ?? m.id);
+
+    const buckets = new Map<unknown, typeof stored>();
+    for (const m of stored) {
+      const raw = valueOf(byId.get(m.object!), spec.groupBy, false);
+      const key = blank(raw) ? null : raw;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(m);
+    }
+    return {
+      groups: [...buckets.entries()]
+        .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : cmp(a, b)))
+        .map(([key, list]) => ({ key, members: arrange(list).map((m) => m.object ?? m.id) })),
+    };
+  },
 
   import: roundtrip,
   roundtrip,

@@ -24,6 +24,7 @@ const FEATURES: Record<string, (e: Env) => boolean> = {
   relations: (e) => (e.relations ?? []).length > 0,
   placement: (e) => (e.collections ?? []).some((c) => Boolean(c.placement)),
   derivations: (e) => (e.collections ?? []).some((c) => c.membership?.mode === "query"),
+  ordering: (e) => (e.collections ?? []).some((c) => Boolean(c.order?.sort || c.order?.groupBy)),
   attachments: (e) =>
     (e.objects ?? []).some((o) =>
       Object.values(o.properties ?? {}).some(
@@ -55,11 +56,17 @@ interface Env {
     placement?: { semantic?: boolean; regions?: (string | { name?: string; label?: string })[] };
     membership?: { mode?: string };
     members?: unknown[];
+    order?: {
+      sort?: { by?: { field?: string; part?: string; meta?: string }; direction?: string }[];
+      groupBy?: { field?: string; part?: string; meta?: string };
+    };
   }[];
   series?: { horizon?: number; rule?: Record<string, unknown> }[];
   relations?: { from?: string; to?: string; via?: string; field?: string }[];
   changes?: { op?: string; cause?: string }[];
 }
+
+const META_KEYS = new Set(["type", "created", "updated"]);
 
 export function validateEnvelope(envelope: unknown): { valid: boolean; errors: Invalid[] } {
   const e = (envelope ?? {}) as Env;
@@ -126,6 +133,23 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
   });
 
   (e.collections ?? []).forEach((c, i) => {
+    // A sort key naming nothing runs on nothing: it reads as a declaration and
+    // delivers an unsorted list, which is invisible in an otherwise well-formed
+    // document — the same failure the profile mapping rule exists to catch.
+    for (const spec of [
+      ...(Array.isArray(c.order?.sort) ? c.order.sort : []),
+      ...(c.order?.groupBy ? [{ by: c.order.groupBy, direction: undefined }] : []),
+    ]) {
+      const by = spec?.by;
+      const named =
+        by && typeof by === "object" &&
+        (typeof by.field === "string" ? by.field !== "" : META_KEYS.has(String(by.meta)));
+      if (!named) fail("order.by-invalid", `collections[${i}].order`);
+      if (spec.direction !== undefined && spec.direction !== "ascending" && spec.direction !== "descending") {
+        fail("order.direction-invalid", `collections[${i}].order`);
+      }
+    }
+
     if (c.placement?.semantic !== true) return;
     const named =
       Array.isArray(c.placement.regions) &&

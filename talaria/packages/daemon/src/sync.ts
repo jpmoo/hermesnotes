@@ -193,6 +193,12 @@ export class Sync {
         // sits in region 2 and has nothing to call it.
         placement: c.placement,
         membership: c.membership,
+        // The collection's arrangement, which nothing here interprets — the
+        // board route reads it. Listed explicitly like the two above, and worth
+        // noticing that this list is the standing hazard: it was exhaustive
+        // when it was written, and a key the format grows later goes nowhere
+        // and is missed by nothing.
+        order: c.order,
       })) as InterchangeObject[]),
     ];
 

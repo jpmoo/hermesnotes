@@ -1,0 +1,1246 @@
+{
+  "suite": "sort",
+  "level": 2,
+  "about": "The order a collection is shown in, when the stored order is not the point. The failure this suite exists to prevent is a sorted list arriving as a frozen arrangement that nobody knows has stopped being true.",
+  "requires": {
+    "features": [
+      "ordering"
+    ]
+  },
+  "cases": [
+    {
+      "id": "sort/absent-means-position",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            },
+            {
+              "object": "o_3",
+              "position": "a2"
+            }
+          ]
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_1",
+        "o_2",
+        "o_3"
+      ],
+      "why": "No `order` means the stored order is the truth. Someone arranged this by hand and a consumer that helpfully sorts it has destroyed the arrangement \u2014 there is nothing in the export to restore it from."
+    },
+    {
+      "id": "sort/sort-overrides-position",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_2",
+        "o_1"
+      ],
+      "why": "The positions say o_1 first and the sort says o_2 first. `sort` present is the statement that the stored order is a snapshot rather than a decision, so the sort wins. A consumer that renders positions here shows the order as it stood at export and calls it current."
+    },
+    {
+      "id": "sort/direction-defaults-ascending",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                }
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_2",
+        "o_1"
+      ],
+      "why": "`direction` is optional and ascending is the default, so a producer that omits it is saying the ordinary thing rather than saying nothing."
+    },
+    {
+      "id": "sort/descending",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "descending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_1",
+        "o_2"
+      ],
+      "why": "The plain case, here so that the two missing-value cases below cannot both pass by accident on an implementation that ignores direction entirely."
+    },
+    {
+      "id": "sort/missing-sorts-last-ascending",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            },
+            {
+              "object": "o_3",
+              "position": "a2"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_2",
+        "o_1",
+        "o_3"
+      ],
+      "why": "An object with no due date goes to the end. This is the easy half of the rule and most implementations get it for free, because undefined tends to compare high already."
+    },
+    {
+      "id": "sort/missing-sorts-last-descending",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            },
+            {
+              "object": "o_3",
+              "position": "a2"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "descending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_1",
+        "o_2",
+        "o_3"
+      ],
+      "why": "The half that is decided silently and differently everywhere. Missing sorts last in *both* directions: a person sorting by due date descending wants the furthest-out dated thing at the top and the undated ones out of the way. Flipping them to the front because undefined compares low is a defensible reading of the data and a useless reading of the intent."
+    },
+    {
+      "id": "sort/empty-string-is-missing",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_4",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Beta",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "title": "Alpha",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {
+              "title": "Gamma"
+            }
+          },
+          {
+            "id": "o_4",
+            "type": "t_task",
+            "properties": {
+              "title": "Delta",
+              "due": ""
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_2",
+        "o_4"
+      ],
+      "why": "A field that was opened and left alone holds \"\", and real libraries are full of them. An empty string is a missing value here as it is everywhere else in this format, so it sorts last rather than sorting before every real date."
+    },
+    {
+      "id": "sort/compound-part",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_5",
+              "position": "a0"
+            },
+            {
+              "object": "o_6",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "schedule",
+                  "part": "end"
+                }
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_5",
+            "type": "t_task",
+            "properties": {
+              "schedule": {
+                "start": "2026-01-01",
+                "end": "2026-06-01"
+              }
+            }
+          },
+          {
+            "id": "o_6",
+            "type": "t_task",
+            "properties": {
+              "schedule": {
+                "start": "2026-02-01",
+                "end": "2026-05-01"
+              }
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_6",
+        "o_5"
+      ],
+      "why": "One producer's single datespan is two sortable values. `part` names the half, exactly as a profile mapping does \u2014 sorting by the start of these gives the opposite answer, so an implementation that ignores `part` and sorts on the whole object fails here rather than passing by luck."
+    },
+    {
+      "id": "sort/ties-fall-to-next-key",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_7",
+              "position": "a0"
+            },
+            {
+              "object": "o_8",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              },
+              {
+                "by": {
+                  "field": "title"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_7",
+            "type": "t_task",
+            "properties": {
+              "title": "Zebra",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_8",
+            "type": "t_task",
+            "properties": {
+              "title": "Aardvark",
+              "due": "2026-03-01"
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_8",
+        "o_7"
+      ],
+      "why": "Two keys, and the first does not separate them. The list is ordered, not a set."
+    },
+    {
+      "id": "sort/ties-fall-to-position",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_7",
+              "position": "a1"
+            },
+            {
+              "object": "o_8",
+              "position": "a0"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_7",
+            "type": "t_task",
+            "properties": {
+              "title": "Zebra",
+              "due": "2026-03-01"
+            }
+          },
+          {
+            "id": "o_8",
+            "type": "t_task",
+            "properties": {
+              "title": "Aardvark",
+              "due": "2026-03-01"
+            }
+          }
+        ]
+      },
+      "expect": [
+        "o_8",
+        "o_7"
+      ],
+      "why": "A sort naming no tiebreak is not thereby unstable. The stored order is the last resort, so equal values come out in the order the producer held them rather than in whichever order the consumer's sort implementation happened to touch them \u2014 which is not stable across languages and is not stable across two runs in some of them."
+    },
+    {
+      "id": "sort/group-by-field",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            },
+            {
+              "object": "o_9",
+              "position": "a2"
+            }
+          ],
+          "order": {
+            "groupBy": {
+              "field": "status"
+            }
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "status": "doing"
+            }
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {
+              "status": "blocked"
+            }
+          },
+          {
+            "id": "o_9",
+            "type": "t_task",
+            "properties": {
+              "status": "doing"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "groups": [
+          {
+            "key": "blocked",
+            "members": [
+              "o_2"
+            ]
+          },
+          {
+            "key": "doing",
+            "members": [
+              "o_1",
+              "o_9"
+            ]
+          }
+        ]
+      },
+      "why": "Grouping with no sort. Members keep their stored order inside each group, because `groupBy` says how to bucket and says nothing about arrangement \u2014 the two are separate questions and a collection may answer only one of them."
+    },
+    {
+      "id": "sort/type-sorts-by-name-not-id",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "types": [
+          {
+            "id": "t_zeta",
+            "name": "Alpha",
+            "fields": []
+          },
+          {
+            "id": "t_alpha",
+            "name": "Zeta",
+            "fields": []
+          }
+        ],
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "meta": "type"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_alpha",
+            "properties": {}
+          },
+          {
+            "id": "o_2",
+            "type": "t_zeta",
+            "properties": {}
+          }
+        ]
+      },
+      "of": "collection",
+      "expect": [
+        "o_2",
+        "o_1"
+      ],
+      "why": "The ids and the names sort opposite ways round, deliberately. Nobody sorts a list by opaque ids: 'sorted by type' means the order of the words on the headings, so a sort key reads the type's name. Grouping is the other case and wants the id, because a group key has to survive somebody renaming the type \u2014 the same key, answering the two questions differently, which is why the format says so rather than leaving it to be discovered."
+    },
+    {
+      "id": "sort/group-by-type",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_2",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "groupBy": {
+              "meta": "type"
+            }
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {}
+          },
+          {
+            "id": "o_2",
+            "type": "t_task",
+            "properties": {}
+          }
+        ]
+      },
+      "expect": {
+        "groups": [
+          {
+            "key": "t_note",
+            "members": [
+              "o_1"
+            ]
+          },
+          {
+            "key": "t_task",
+            "members": [
+              "o_2"
+            ]
+          }
+        ]
+      },
+      "why": "The reason `by` is a discriminated object rather than a bare string with `type` reserved. A type is user data here \u2014 a row somebody can rename \u2014 so a field named `type` is a matter of time, and a reserved word would cost a version bump the day it arrives. The group key is the type id, which is stable; the name a person reads is looked up."
+    },
+    {
+      "id": "sort/missing-group-key-is-null-group",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            },
+            {
+              "object": "o_3",
+              "position": "a1"
+            }
+          ],
+          "order": {
+            "groupBy": {
+              "field": "status"
+            }
+          }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "status": "doing"
+            }
+          },
+          {
+            "id": "o_3",
+            "type": "t_task",
+            "properties": {}
+          }
+        ]
+      },
+      "expect": {
+        "groups": [
+          {
+            "key": "doing",
+            "members": [
+              "o_1"
+            ]
+          },
+          {
+            "key": null,
+            "members": [
+              "o_3"
+            ]
+          }
+        ]
+      },
+      "why": "An object that cannot be grouped is still a member. It lands in a final group keyed `null` \u2014 last, under the same missing-last rule as sorting \u2014 rather than being dropped, which is how a person loses work they can still see in the source tool."
+    },
+    {
+      "id": "sort/group-and-sort-within",
+      "level": 2,
+      "op": "order",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_a",
+              "position": "a0"
+            },
+            {
+              "object": "o_b",
+              "position": "a1"
+            },
+            {
+              "object": "o_c",
+              "position": "a2"
+            }
+          ],
+          "order": {
+            "groupBy": {
+              "field": "status"
+            },
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        },
+        "objects": [
+          {
+            "id": "o_a",
+            "type": "t_task",
+            "properties": {
+              "status": "doing",
+              "due": "2026-03-09"
+            }
+          },
+          {
+            "id": "o_b",
+            "type": "t_task",
+            "properties": {
+              "status": "doing",
+              "due": "2026-03-02"
+            }
+          },
+          {
+            "id": "o_c",
+            "type": "t_task",
+            "properties": {
+              "status": "blocked",
+              "due": "2026-03-05"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "groups": [
+          {
+            "key": "blocked",
+            "members": [
+              "o_c"
+            ]
+          },
+          {
+            "key": "doing",
+            "members": [
+              "o_b",
+              "o_a"
+            ]
+          }
+        ]
+      },
+      "why": "Both, together. The sort runs inside each group rather than across the whole collection and then getting bucketed \u2014 same members either way, but only one of them puts o_b above o_a under a heading."
+    },
+    {
+      "id": "sort/by-must-name-something",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            "o_1"
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {},
+                "direction": "ascending"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "order.by-invalid"
+          }
+        ]
+      },
+      "why": "A `by` naming neither a field nor a meta key is a sort that cannot run. It reads as a declaration and delivers nothing, which is the same failure the profile mapping rule exists to catch."
+    },
+    {
+      "id": "sort/meta-must-be-known",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            "o_1"
+          ],
+          "order": {
+            "groupBy": {
+              "meta": "colour"
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "order.by-invalid"
+          }
+        ]
+      },
+      "why": "`meta` in v0 is exactly type, created and updated. An unknown one is an error rather than a key to guess at \u2014 guessing is how a consumer ends up grouping by nothing and drawing one heading over the whole list."
+    },
+    {
+      "id": "sort/direction-must-be-known",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            "o_1"
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "desc"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "order.direction-invalid"
+          }
+        ]
+      },
+      "why": "Spelled out, both of them. `desc` is what most producers store internally and it is not what this format carries, so the abbreviation has to fail loudly here rather than being read as ascending by everything that does not recognise it."
+    },
+    {
+      "id": "sort/consumer-without-sorting",
+      "level": 2,
+      "op": "import",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ]
+          }
+        }
+      },
+      "when": {
+        "importInto": "a tool that shows lists in stored order only"
+      },
+      "with": {
+        "sorting": false
+      },
+      "simulated": true,
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "order.sort"
+        ]
+      },
+      "why": "Permitted \u2014 the members are all there and the positions are a snapshot of the right order, so the list looks correct on arrival. That is exactly why it has to be reported: it stops looking correct the first time a due date moves, and the user believing they still have a sorted list will not find out for weeks."
+    },
+    {
+      "id": "sort/consumer-without-grouping",
+      "level": 2,
+      "op": "import",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            }
+          ],
+          "order": {
+            "groupBy": {
+              "field": "status"
+            }
+          }
+        }
+      },
+      "when": {
+        "importInto": "a tool with no grouped views"
+      },
+      "with": {
+        "grouping": false
+      },
+      "simulated": true,
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "order.grouping"
+        ]
+      },
+      "why": "Separately reportable from the sort, because plenty of tools sort and do not group. One report for both would tell a user who lost their headings that their sort was dropped."
+    },
+    {
+      "id": "sort/capable-consumer-loses-nothing",
+      "level": 2,
+      "op": "import",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ],
+            "groupBy": {
+              "field": "status"
+            }
+          }
+        }
+      },
+      "expect": {
+        "fidelity": "full",
+        "reports": []
+      },
+      "why": "The other half of the pair above. A consumer that can do both reports nothing, so the two reports are evidence about the consumer rather than a warning attached to every collection carrying an order."
+    },
+    {
+      "id": "sort/unknown-order-key-survives",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_1",
+              "position": "a0"
+            }
+          ],
+          "order": {
+            "sort": [
+              {
+                "by": {
+                  "field": "due"
+                },
+                "direction": "ascending"
+              }
+            ],
+            "acme:stickyHeader": true,
+            "acme:collapsed": [
+              "doing"
+            ]
+          }
+        }
+      },
+      "when": {
+        "reexport": true
+      },
+      "expect": {
+        "result": {
+          "order": {
+            "acme:stickyHeader": true,
+            "acme:collapsed": [
+              "doing"
+            ]
+          }
+        }
+      },
+      "why": "`order` is open like everything else here. Whether a heading sticks to the top of the viewport is furniture, it belongs under the producer's prefix, and it comes back byte-identical \u2014 a consumer that rebuilds this block from the two keys it understands has broken the round-trip rule inside the one object that was added to make arrangement portable."
+    }
+  ]
+}

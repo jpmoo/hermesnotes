@@ -11,6 +11,25 @@ import type { Finding, HermesBlock, HermesMembership, HermesType } from "./types
  */
 
 /** Where an object's unmappable parts are kept, so a re-export can put them back. */
+/**
+ * The format's sort vocabulary in Hermes' spelling — the inverse of the
+ * exporter's `sortKeyOf`, and kind-aware because Hermes is.
+ *
+ * A list spells "by title" `alpha`; a table spells it `prop:title`, because a
+ * table sorts on its columns and its column list excludes the title. Mapping
+ * both to one spelling would round-trip one of them into the other, which is a
+ * silent change to somebody's saved view.
+ */
+export function hermesSortKey(by: { field?: string; part?: string; meta?: string }, kind: string): string | null {
+  if (by.meta === "created") return "created";
+  if (by.meta === "updated") return "edited";
+  if (by.meta === "type") return "type";
+  if (by.meta) return null;
+  if (typeof by.field !== "string" || !by.field) return null;
+  if (by.field === "title" && !by.part && kind !== "table") return "alpha";
+  return `prop:${by.field}${by.part ? `.${by.part}` : ""}`;
+}
+
 export const CARRY_KEY = "pkm:carried";
 
 /** Format value kinds against Hermes field types. */
@@ -210,10 +229,73 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     //
     // That is the shape of the failure worth remembering — an exhaustive
     // handler is only exhaustive until the format grows.
-    const COLLECTION_KEYS = new Set(["id", "name", "kind", "properties", "placement", "membership", "members"]);
+    const COLLECTION_KEYS = new Set(["id", "name", "kind", "properties", "placement", "membership", "members", "order"]);
     const cExtra: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(c)) if (!COLLECTION_KEYS.has(k)) cExtra[k] = v;
+    // `order` is open like every other object here, and consuming it is not a
+    // licence to rebuild it from the two keys this understands. Whatever else a
+    // producer wrote inside it — which headings are collapsed, whether one
+    // sticks to the top — is kept whole and merged back on the way out.
+    const orderRest = Object.fromEntries(
+      Object.entries((c.order ?? {}) as Record<string, unknown>).filter(([k]) => k !== "sort" && k !== "groupBy"),
+    );
+    if (Object.keys(orderRest).length) cExtra.order = orderRest;
     const smart = (c.membership as { mode?: string } | undefined)?.mode === "query";
+
+    /**
+     * The arrangement, landed on whichever view of this kind holds one.
+     *
+     * Consumed rather than carried, because it is regenerated from Hermes' own
+     * view state on the way out — leaving it in the carried bag as well would
+     * mean two answers in the same export, free to disagree the moment somebody
+     * changes the sort in the app.
+     *
+     * Absent `sort` is the format saying the stored order is the decision, so it
+     * arrives as `manual: true` rather than as an empty sort list. The two are
+     * not the same thing to the app: one pins the rows, the other sorts by
+     * nothing and lets a re-render reorder them.
+     */
+    const kindName = String(c.kind ?? "list");
+    const inOrder = (c.order ?? null) as {
+      sort?: { by?: { field?: string; part?: string; meta?: string }; direction?: string }[];
+      groupBy?: { field?: string; part?: string; meta?: string };
+    } | null;
+    const arrangement: Record<string, unknown> = {};
+    if (inOrder) {
+      const levels = (inOrder.sort ?? [])
+        .map((l) => {
+          const key = l.by ? hermesSortKey(l.by, kindName) : null;
+          return key ? { key, dir: l.direction === "descending" ? "desc" : "asc" } : null;
+        })
+        .filter(Boolean);
+      if ((inOrder.sort ?? []).length && levels.length < (inOrder.sort ?? []).length) {
+        note(
+          "order.sort-key-unmapped",
+          "hermes",
+          "A sort names a key Hermes has no spelling for, so that level was dropped and the collection arrives sorted by the levels that did map — which is a different order, not a missing feature.",
+        );
+      }
+      if (levels.length) arrangement.sort = levels;
+      arrangement.manual = (inOrder.sort ?? []).length === 0;
+      const g = inOrder.groupBy ? hermesSortKey(inOrder.groupBy, kindName) : null;
+      if (g && kindName !== "table") arrangement.groupBy = g;
+      if (inOrder.groupBy && (!g || kindName === "table")) {
+        note(
+          "order.grouping-dropped",
+          "hermes",
+          `This collection is grouped and Hermes' ${kindName} view has nowhere to put grouping, so it arrives as a flat arrangement. The members are all here; the headings somebody organised them under are not.`,
+        );
+      }
+    }
+    // Which view of Hermes' own holds it, by kind — the same choice the exporter
+    // makes in the other direction.
+    const arranged: Record<string, unknown> = !Object.keys(arrangement).length
+      ? {}
+      : kindName === "table"
+        ? { table_sort: arrangement.sort ?? [] }
+        : kindName === "rollup"
+          ? { rollup_views: { top: arrangement } }
+          : { view_state: arrangement };
 
     blocks.push({
       id: String(c.id),
@@ -225,6 +307,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
         ...(Object.keys(cExtra).length ? { [CARRY_KEY]: cExtra } : {}),
         title: String(c.name ?? "Untitled"),
         ...(regionDefs.length ? { matrix_regions: regionDefs } : {}),
+        ...arranged,
         membership_mode: smart ? "smart" : "explicit",
         ...(smart ? { filter_query: (c.membership as { query?: unknown }).query ?? null } : {}),
       },

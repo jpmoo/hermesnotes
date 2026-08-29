@@ -21,9 +21,11 @@ Four things in one pnpm monorepo, in the order they depend on each other:
 - `pkm-interchange/fixtures/README.md` — the case grammar and the eleven adapter
   operations. Anything measuring an implementation goes through this.
 - `pkm-interchange/README.md` — the human-facing introduction to the format.
-- `LIMITS.md` (in `pkm-interchange/`) — **seven things a real client needed and
-  the format could not say.** This is the v0.1 backlog and nothing links to it
-  yet. Read it before proposing any format change.
+- `LIMITS.md` (in `pkm-interchange/`) — **what a real client needed and the
+  format could not say.** Three open, three closed, and two that turned out
+  not to be limits; the closed ones are kept with their reasoning, because how a
+  limit was answered is the useful part. This is the
+  v0.1 backlog. Read it before proposing any format change.
 - `docs/hermes-notes-v2-design-doc.md` — the block data model. Section 3's rule
   is the one that matters: *no per-type hardcoded logic.*
 - `docs/hermes-notes-v2-architecture.md` — stack, auth, embeddings, setup wizard.

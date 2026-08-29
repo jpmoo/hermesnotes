@@ -18,6 +18,109 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixt
 
 const MUTANTS = [
   {
+    // The obvious reading of "sort by type", and the one that puts a list in an
+    // order with no visible logic: type ids are uuids in most producers, so the
+    // headings come out shuffled and every user reports it as a bug in sorting.
+    name: "sorts by type id rather than by the type's name",
+    caught: "sort/type-sorts-by-name-not-id",
+    patch: (a) => ({
+      ...a,
+      order: (collection, objects, types) => a.order(collection, objects, []),
+    }),
+  },
+  {
+    // The one every implementation decides silently and differently. Reversing
+    // the whole comparison — missing values included — is what you get for free
+    // from `-compare(a, b)`, and it puts every undated task at the top of a list
+    // sorted by due date descending.
+    name: "reverses missing values along with everything else when sorting descending",
+    caught: "sort/missing-sorts-last-descending",
+    patch: (a) => ({
+      ...a,
+      order: (collection, objects) => {
+        const spec = (collection?.order?.sort ?? [])[0];
+        if (!spec || collection?.order?.groupBy) return a.order(collection, objects);
+        const flat = { ...collection, order: { sort: [{ ...spec, direction: "ascending" }] } };
+        const asc = a.order(flat, objects);
+        return spec.direction === "descending" ? [...asc].reverse() : asc;
+      },
+    }),
+  },
+  {
+    // The stored order thrown away rather than kept as the last resort. Passes
+    // every case with distinct values and reorders equal ones by whatever the
+    // engine's sort happened to do, which differs between runtimes and is not
+    // stable in all of them.
+    name: "does not fall back to position when two objects sort equal",
+    caught: "sort/ties-fall-to-position",
+    patch: (a) => ({
+      ...a,
+      order: (collection, objects) =>
+        a.order(
+          {
+            ...collection,
+            members: (collection?.members ?? []).map((m) =>
+              typeof m === "string" ? m : { ...m, position: undefined },
+            ),
+          },
+          objects,
+        ),
+    }),
+  },
+  {
+    // `part` ignored and the whole compound value compared instead. A datespan
+    // object stringifies to something with the start in it, so sorting by the
+    // end of a span quietly sorts by its start.
+    name: "sorts on a compound field whole, ignoring which half was named",
+    caught: "sort/compound-part",
+    patch: (a) => ({
+      ...a,
+      order: (collection, objects) =>
+        a.order(
+          {
+            ...collection,
+            order: collection?.order && {
+              ...collection.order,
+              sort: (collection.order.sort ?? []).map((sp) => ({ ...sp, by: { field: sp.by?.field } })),
+            },
+          },
+          (objects ?? []).map((o) => ({
+            ...o,
+            properties: Object.fromEntries(
+              Object.entries(o.properties ?? {}).map(([k, v]) => [
+                k, v && typeof v === "object" && !Array.isArray(v) ? JSON.stringify(v) : v,
+              ]),
+            ),
+          })),
+        ),
+    }),
+  },
+  {
+    // Grouping applied after a global sort rather than inside each bucket. Same
+    // members, same groups, and the order under each heading is wrong.
+    name: "drops members whose grouping key is missing",
+    caught: "sort/missing-group-key-is-null-group",
+    patch: (a) => ({
+      ...a,
+      order: (collection, objects) => {
+        const got = a.order(collection, objects);
+        if (!got?.groups) return got;
+        return { groups: got.groups.filter((g) => g.key !== null) };
+      },
+    }),
+  },
+  {
+    // The arrangement dropped without a word. The list arrives looking right,
+    // because the positions are a snapshot of the sorted order, and stops being
+    // right the first time a due date moves.
+    name: "drops a sort it cannot run without reporting it",
+    caught: "sort/consumer-without-sorting",
+    patch: (a) => ({
+      ...a,
+      import: (env, caps) => a.import(env, { ...caps, sorting: undefined }),
+    }),
+  },
+  {
     // The obvious wrong implementation, and the one the verb exists to prevent:
     // treat the tags a caller named as the caller's whole intended list. Every
     // tag the writer had never heard of disappears, silently, on a write that

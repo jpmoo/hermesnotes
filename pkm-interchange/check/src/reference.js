@@ -1,4 +1,4 @@
-import { isComplete, profilesOf, read } from "./profiles.js";
+import { META_KEYS, isComplete, profilesOf, read } from "./profiles.js";
 import { nextOccurrence } from "./recurrence.js";
 import { validate } from "./validate.js";
 
@@ -69,6 +69,13 @@ export function importEnvelope(envelope, capabilities = {}) {
       // report that matters.
       for (const m of c.members ?? []) if (m && typeof m === "object") delete m.context;
     }
+
+    // Sort and grouping are derived, like a query's membership, and are lost the
+    // same way. The list arrives looking correct — the positions are a snapshot
+    // of the sorted order — which is exactly why silence here is the wrong
+    // answer: it stops being correct the first time a due date moves.
+    if (c.order?.sort && capabilities.sorting === false) say("order.sort");
+    if (c.order?.groupBy && capabilities.grouping === false) say("order.grouping");
 
     const membership = c.membership ?? {};
     if (membership.mode === "query" && membership.materialized === false) {
@@ -262,14 +269,117 @@ export function follow(feed = []) {
   };
 }
 
+/** An empty string is not a value here either. */
+const missing = (v) => v === undefined || v === null || v === "";
+
 /**
+ * One sortable value, named the way a profile mapping names a field.
+ *
+ * `{field}` and `{field, part}` are the shape profiles already use, reused
+ * rather than reinvented. `{meta}` is the escape hatch for the handful of things
+ * that are not in the property bag, and it is a separate key rather than a
+ * reserved word so that a producer whose user named a field `type` — which is a
+ * matter of time, since types here are rows somebody can rename — does not
+ * collide with it.
+ */
+export function valueAt(object, by, types = []) {
+  if (!by || typeof by !== "object") return undefined;
+  if (by.meta !== undefined) {
+    if (!META_KEYS.has(by.meta)) return undefined;
+    // A type sorts by the name on the heading, not by the id under it. Grouping
+    // wants the opposite and gets it below, from the raw value: a group key has
+    // to survive somebody renaming the type.
+    if (by.meta === "type" && by.sortByName) {
+      return (types ?? []).find((t) => t.id === object?.type)?.name ?? object?.type;
+    }
+    return object?.[by.meta];
+  }
+  if (typeof by.field !== "string") return undefined;
+  const v = object?.properties?.[by.field];
+  if (v === null || v === undefined) return undefined;
+  return by.part ? v?.[by.part] : v;
+}
+
+/** Byte-wise unless both are numbers — the same rule `position` states. */
+function compareValues(a, b) {
+  if (typeof a === "number" && typeof b === "number") return a < b ? -1 : a > b ? 1 : 0;
+  const [x, y] = [String(a), String(b)];
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/**
+ * Compare two objects on one sort key.
+ *
+ * Direction is applied to the comparison and deliberately *not* to the
+ * missing-value rule: absent sorts last in both directions, because a person
+ * sorting by due date descending wants the furthest-out dated thing at the top
+ * and the undated ones out of the way. Folding missing into the reversal is the
+ * bug this is written out longhand to avoid.
+ */
+function compareOn(a, b, spec, types) {
+  const by = spec?.by?.meta === "type" ? { ...spec.by, sortByName: true } : spec?.by;
+  const [x, y] = [valueAt(a, by, types), valueAt(b, by, types)];
+  const [mx, my] = [missing(x), missing(y)];
+  if (mx || my) return mx && my ? 0 : mx ? 1 : -1;
+  const c = compareValues(x, y);
+  return spec?.direction === "descending" ? -c : c;
+}
+
+/**
+ * What order to show a collection in.
+ *
  * Ordering tokens compare byte-wise. Under a language-aware collation "Zz" sorts
  * before "a0" and the top of every list is wrong.
+ *
+ * Answers ids in order, or groups of them when the collection says to group.
+ * Two shapes for one question because they are one question: a consumer asking
+ * for the arrangement wants the buckets and the order inside them together, and
+ * splitting it into two calls leaves them to re-derive how the two interact.
  */
-export function order(members) {
-  return [...members]
-    .sort((a, b) => (String(a.position) < String(b.position) ? -1 : String(a.position) > String(b.position) ? 1 : 0))
-    .map((m) => m.object ?? m.id);
+export function order(collection, objects = [], types = []) {
+  const members = (collection?.members ?? []).map((m) => (typeof m === "string" ? { object: m } : m));
+  const byId = new Map((objects ?? []).map((o) => [o.id, o]));
+  const spec = collection?.order ?? {};
+
+  // Stored order first, always. It is the answer when there is no sort, and the
+  // last resort when there is: a sort naming no tiebreak is not thereby
+  // unstable, because the producer's order decides rather than whichever pair
+  // the consumer's sort algorithm happened to touch first.
+  const stored = [...members].sort((a, b) =>
+    compareValues(String(a.position ?? ""), String(b.position ?? "")),
+  );
+
+  const sorts = Array.isArray(spec.sort) ? spec.sort : [];
+  const arrange = (list) =>
+    !sorts.length
+      ? list
+      : [...list].sort((a, b) => {
+          for (const s of sorts) {
+            const c = compareOn(byId.get(a.object), byId.get(b.object), s, types);
+            if (c) return c;
+          }
+          // Zero, and the list is already in stored order — a stable sort does
+          // the rest. This is the tiebreak, not an absence of one.
+          return 0;
+        });
+
+  if (!spec.groupBy) return arrange(stored).map((m) => m.object ?? m.id);
+
+  const buckets = new Map();
+  for (const m of stored) {
+    const raw = valueAt(byId.get(m.object), spec.groupBy);
+    // An object that cannot be grouped is still a member. It gets a group rather
+    // than being dropped, which is how somebody loses work they can still see in
+    // the tool they exported from.
+    const key = missing(raw) ? null : raw;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(m);
+  }
+  return {
+    groups: [...buckets.entries()]
+      .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : compareValues(a, b)))
+      .map(([key, list]) => ({ key, members: arrange(list).map((m) => m.object ?? m.id) })),
+  };
 }
 
 export const adapter = {
@@ -279,7 +389,7 @@ export const adapter = {
   // implementation declares what it actually does and is measured on that.
   conformance: {
     profiles: ["task", "event", "contact", "note"],
-    features: ["series", "placement", "derivations", "relations", "attachments", "addresses"],
+    features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering"],
   },
   validate,
   profilesOf,

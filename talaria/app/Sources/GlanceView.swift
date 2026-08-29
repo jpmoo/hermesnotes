@@ -279,6 +279,14 @@ final class GlanceModel: ObservableObject {
     @Published var question: String?
     /// Where the question came from — the document, its title, or typed here.
     @Published var source: String?
+    /// What the document is *called*, when the question came from inside it.
+    ///
+    /// Shown beside the question rather than instead of it. Glance asks about a
+    /// document's contents by preference — that is the whole point, since an
+    /// untitled draft is exactly when you cannot find the note you are reaching
+    /// for — but one truncated line of body text sitting next to a small
+    /// "document" badge reads like a filename, and got read as one.
+    @Published var documentName: String?
     @Published var error: String?
     @Published var busy = false
     /// What the person typed, when they want to ask something other than the window.
@@ -311,13 +319,21 @@ final class GlanceModel: ObservableObject {
         // document itself, and the words still go no further than this machine.
         Focused.recordTrust()
         let document = typed.isEmpty ? Focused.text() : nil
-        // The window's own title, when the document will not show itself. Read
-        // here rather than left to the daemon: what the daemon can reach is the
-        // application's *name*, which is how Glance came to spend a fortnight
-        // asking the library about "Google Chrome".
-        let title = (typed.isEmpty && document == nil) ? Focused.windowTitle() : nil
+        // The window's own title. Read here rather than left to the daemon:
+        // what the daemon can reach is the application's *name*, which is how
+        // Glance came to spend a fortnight asking the library about "Google
+        // Chrome".
+        //
+        // Read even when the document answered, because then it is not the
+        // question — it is the answer to "which document?", which the question
+        // alone cannot give you once it is a line of prose.
+        let title = typed.isEmpty ? Focused.windowTitle() : nil
         Task.detached(priority: .userInitiated) { [weak self] in
             let ask = typed.isEmpty ? (document ?? title) : typed
+            // Only worth naming when the question came from inside the
+            // document. When the title *is* the question, printing it twice
+            // says nothing.
+            let named = document != nil ? title : nil
             let answer = try? Daemon.glance(query: ask)
             await MainActor.run {
                 guard let self else { return }
@@ -332,6 +348,7 @@ final class GlanceModel: ObservableObject {
                 // supplied one it calls that "asked", which would be a lie
                 // about a document nobody typed into a search box.
                 self.source = document != nil ? "document" : (title != nil ? "title" : answer.source)
+                self.documentName = named
                 self.error = answer.error
             }
         }
@@ -499,6 +516,16 @@ struct GlanceView: View {
                 // list is unreadable without knowing what it answered — and
                 // because seeing your own document text quoted back is the
                 // clearest possible statement of what was read.
+                if let name = model.documentName {
+                    Text(name)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    Text("·")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
                 Text(model.question ?? "…")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)

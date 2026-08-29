@@ -446,6 +446,10 @@ Membership can be stated or computed, and the difference is not cosmetic.
 
 A consumer with no query engine may import a `materialized: false` collection as explicit **only if it reports the downgrade.**
 
+**And the snapshot has to be the query's answer.** Obvious enough to go unsaid, which is why it is said here: a producer whose collection holds *both* a query and objects somebody placed by hand will reach for the placements, because a placement is a decision and a snapshot is only a courtesy. Both halves of that are true and the conclusion is wrong — a consumer entitled to read `members` as what the query returns will draw a board full of things the producer does not show. The real case that taught this was a matrix exporting 37 members under a query matching 16, arriving with 21 completed tasks on it.
+
+A placement whose object the query no longer returns is not a member and cannot travel as one. It is still a decision somebody made, so keep it under your own prefix and read it back on import; the alternative is that completing a task forgets which quadrant it was in.
+
 → `fixtures/derivation.json`
 
 ---

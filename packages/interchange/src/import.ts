@@ -217,6 +217,21 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
         v,
       ]),
     );
+    /**
+     * The placements the collection's query no longer returns.
+     *
+     * A card dropped in "urgent-important" and since completed is not a member —
+     * the query does not return it — so the export could not carry it as one and
+     * put it under the producer's prefix instead. Taken off `carried` here
+     * rather than read out later, because the block below spreads `carried` into
+     * its properties and a key removed after that has already been copied.
+     *
+     * Restored as membership rows, because the alternative is that completing a
+     * task silently forgets which quadrant somebody decided it belonged in, and
+     * un-completing it puts the card back on the board with nowhere to go.
+     */
+    const unmatched = (carried.unmatched_placements ?? []) as Record<string, unknown>[];
+    delete carried.unmatched_placements;
     // A collection's own top-level keys, which until now went nowhere.
     //
     // Objects have carried their unrecognised keys since level 2 was claimed;
@@ -309,7 +324,18 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
         ...(regionDefs.length ? { matrix_regions: regionDefs } : {}),
         ...arranged,
         membership_mode: smart ? "smart" : "explicit",
-        ...(smart ? { filter_query: (c.membership as { query?: unknown }).query ?? null } : {}),
+        // `materialized` had nowhere to land, so every imported query came back
+        // as a live one. Harmless until the exporter started asking — a
+        // materialized query's members *are* the truth, and reading it as
+        // dynamic meant re-exporting it looked for an answer nobody had computed
+        // and shipped an empty collection where somebody had deliberately frozen
+        // a set.
+        ...(smart
+          ? {
+              filter_query: (c.membership as { query?: unknown }).query ?? null,
+              smart_mode: (c.membership as { materialized?: boolean }).materialized ? "snapshot" : "dynamic",
+            }
+          : {}),
       },
       archivedAt: null,
       createdAt: new Date(0).toISOString(),
@@ -317,7 +343,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       tags: [],
     });
 
-    for (const m of (c.members ?? []) as Record<string, unknown>[]) {
+    for (const m of [...((c.members ?? []) as Record<string, unknown>[]), ...unmatched]) {
       const region = typeof m.region === "string" ? names.indexOf(m.region) : -1;
       // Only a *semantic* region is a judgment somebody made and a placement
       // that has to land somewhere. On a board whose columns are drawn from a

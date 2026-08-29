@@ -322,6 +322,8 @@ export function toInterchange(input: ExportInput): {
       };
     });
 
+    const placedBy = new Map(members.map((m) => [m.object, m]));
+
     // Everything else the collection carries — a canvas's notes and edges, a
     // table's columns, a rollup's levels, saved view state — travels untouched.
     // Naming five keys and dropping the rest is precisely the failure the
@@ -343,6 +345,46 @@ export function toInterchange(input: ExportInput): {
       // solved privately under the name v0.1 will want.
       carried[k.includes(":") ? k : `hermes:${k}`] = v;
     }
+    /**
+     * Where each placed object sits, so the query's answer can carry regions.
+     *
+     * And what the answer leaves behind: a card somebody dropped in "urgent-
+     * important" that has since been completed still has a membership row, and
+     * that row is a decision a person made. It is not a member any more — the
+     * query does not return it and Hermes does not draw it — so it cannot travel
+     * as one. It travels under Hermes' own prefix instead, which is what the
+     * prefix is for, and comes back on import.
+     */
+    // A dynamic query nobody evaluated — past the export's cap, or one that
+    // threw. The rows go out unchanged and are said to be unverified.
+    //
+    // Emptying it was the first attempt, on the reasoning that no answer beats a
+    // wrong one. That is right for a matrix whose rows are placements and wrong
+    // for the case the whole project is about: a collection imported from
+    // another tool, whose members are that tool's snapshot — already a query's
+    // answer, and good — which Hermes cannot recompute because the query has
+    // conditions Hermes has never heard of. Emptying it there destroys the one
+    // thing a stranger managed to hand over. The rarer hazard is not worth the
+    // commoner loss, so it is reported instead.
+    const dynamic = smart && props.smart_mode !== "snapshot";
+    const unevaluated = dynamic && !evaluated && members.length > 0;
+    const unmatched = smart && evaluated ? members.filter((m) => !new Set(evaluated).has(m.object)) : [];
+    if (unevaluated) {
+      note(
+        "derivation.query-not-evaluated",
+        "hermes",
+        "This collection's query was not run for this export — past the cap on how many are evaluated, or it failed — so its members are the previous answer rather than a current one. A consumer with a query engine should re-run it and not trust this list, which is what `materialized: false` already tells it to do.",
+      );
+    }
+    if (unmatched.length) {
+      carried["hermes:unmatched_placements"] = unmatched;
+      note(
+        "placement.filtered-out-of-its-own-collection",
+        "format",
+        "An object placed in a region no longer matches the collection's query, so it is not a member and its region has nowhere to travel as one. The placement is a decision somebody made and it is kept under the producer's prefix, but nothing outside that producer can read it — a consumer that imported this library and handed it back would return the board with those placements erased.",
+      );
+    }
+
     // What an import had nowhere to put comes back out as the keys it arrived
     // as, the same way an object's carried bag does.
     const cCarried = (carried[CARRY_KEY] ?? {}) as Record<string, unknown>;
@@ -426,13 +468,23 @@ export function toInterchange(input: ExportInput): {
       membership: smart
         ? { mode: "query", materialized: false, query: props.filter_query ?? null }
         : { mode: "explicit" },
-      // A dynamic smart collection has no membership rows, so `members` would
-      // otherwise be empty and say nothing. Explicit rows still win where both
-      // exist — a matrix can hold a query *and* cards somebody placed by hand,
-      // and those placements are stated fact rather than snapshot.
-      members: smart && members.length === 0 && evaluated
-        ? evaluated.map((object) => ({ object }))
-        : members,
+      // Beside `materialized: false`, `members` *is* the query's answer — the
+      // format says so, and a consumer that cannot run the query is entitled to
+      // read it that way. So it is the answer, with a region attached to each
+      // object that has been placed.
+      //
+      // It used to be the membership rows whenever there were any, on the
+      // reasoning that a placement is stated fact and a snapshot is only a
+      // courtesy. Both halves of that are true and the conclusion was still
+      // wrong: it shipped 37 members under a query that matched 16 of them, so
+      // the Eisenhower matrix arrived carrying 21 completed tasks and a pile of
+      // things whose dates had fallen out of range. Not a rendering fault at the
+      // far end — the export said those objects were what the query returned.
+      //
+      // Taking the query's answer also keeps the cards that match but have not
+      // been placed yet, which are exactly the ones a board offers you to drag
+      // in. Filtering the rows instead would have dropped them.
+      members: smart && evaluated ? evaluated.map((object) => placedBy.get(object) ?? { object }) : members,
     };
   });
 

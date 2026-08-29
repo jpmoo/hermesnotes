@@ -97,6 +97,19 @@ enum Focused {
                   app.bundleIdentifier != Bundle.main.bundleIdentifier
             else { return }
             previousApp = app
+            // And ask the browsers to start building a tree now rather than
+            // when somebody presses a hotkey. Setting the flag at read time is
+            // too late by design — the renderer builds it across processes, a
+            // beat after being asked — so the first read still finds nothing.
+            // Here it is seconds early, which is the difference between a
+            // composer that seeds on the second try and one that seeds.
+            //
+            // Only the applications that need it. A tree is not free, and
+            // turning one on in everything somebody switches to would be a cost
+            // paid by every app for the sake of four.
+            if let id = app.bundleIdentifier, copyable.contains(id) {
+                _ = handle(app)
+            }
         }
     }
 
@@ -118,6 +131,38 @@ enum Focused {
      already holds; anything slower than this is not slow, it is stuck.
      */
     private static let axTimeout: Float = 0.5
+
+    /**
+     A handle on another application, ready to be read.
+
+     Two things every read here needs, which each site was doing for itself —
+     which is how they came to disagree.
+
+     The timeout is the older of the two. The newer is `AXManualAccessibility`:
+     Chromium and Firefox build their web-content tree lazily, when they believe
+     an assistive technology is listening — VoiceOver announces itself with
+     `AXEnhancedUserInterface`, and everyone else is expected to set this. Until
+     something does, the tree is a handful of anonymous shells.
+
+     The helper binary has done this since it was written. These in-process
+     reads never did, so Glance could see a Firefox window with a selection in
+     it — that comes back through the clipboard, which needs no tree — and
+     nothing at all without one, because the window it would have taken a title
+     from did not exist as far as the accessibility API was concerned. The same
+     shape as the messaging timeout: a fix that landed in the helper and was
+     never carried across.
+
+     Setting it and reading immediately is the one thing that does not work —
+     the renderer builds the tree across processes, a beat later. Which is
+     survivable here: the flag sticks, so the next read finds a tree, and Glance
+     re-reads every four seconds while it is open.
+     */
+    private static func handle(_ app: NSRunningApplication) -> AXUIElement {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, axTimeout)
+        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        return axApp
+    }
 
     /// The application to read, unless it is one we have promised not to.
     private static func readableFront() -> NSRunningApplication? {
@@ -146,8 +191,7 @@ enum Focused {
     static func selection(allowCopy: Bool = false) -> String? {
         if let mine = ownSelection() { return mine }
         guard let app = readableFront() else { return nil }
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(axApp, axTimeout)
+        let axApp = handle(app)
         if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
             let element = unsafeBitCast(focused, to: AXUIElement.self)
             if let v = attr(element, kAXSelectedTextAttribute as String) as? String {
@@ -181,8 +225,7 @@ enum Focused {
      */
     static func windowTitle() -> String? {
         guard let app = readableFront() else { return nil }
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(axApp, axTimeout)
+        let axApp = handle(app)
         guard let raw = attr(axApp, kAXFocusedWindowAttribute as String) else { return nil }
         let window = unsafeBitCast(raw, to: AXUIElement.self)
         guard let title = attr(window, kAXTitleAttribute as String) as? String else { return nil }
@@ -404,8 +447,7 @@ enum Focused {
         if let selected = selection(allowCopy: allowCopy) { return selected }
 
         guard let app = readableFront() else { return nil }
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(axApp, axTimeout)
+        let axApp = handle(app)
         if let focused = attr(axApp, kAXFocusedUIElementAttribute as String) {
             let element = unsafeBitCast(focused, to: AXUIElement.self)
 

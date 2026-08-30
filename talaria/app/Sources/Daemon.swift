@@ -50,6 +50,10 @@ enum Daemon {
         let cursor: String?
         let blocks: Int
         let freshness: String
+        /// Where Hermes lives. It has been in this payload since the beginning
+        /// and was never decoded, because nothing here had to build a URL on it
+        /// until the desk needed the address of a block's own page.
+        let origin: String?
     }
 
     struct Item: Decodable {
@@ -693,6 +697,88 @@ enum Daemon {
             throw Failure(description: "the daemon isn't answering (curl exit \(task.terminationStatus))")
         }
         return data
+    }
+
+    /// `post`, with a method. The scratchpad is written with PUT because it
+    /// replaces the page rather than adding to it.
+    private static func send(_ method: String, _ path: String, _ body: [String: Any]) throws -> Data {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = [
+            "-s", "--unix-socket", socketPath, "-X", method,
+            "-H", "content-type: application/json", "--data-binary", "@-",
+            "http://talaria" + path,
+        ]
+        let stdin = Pipe(), out = Pipe()
+        task.standardInput = stdin
+        task.standardOutput = out
+        task.standardError = Pipe()
+        try task.run()
+        stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: body))
+        stdin.fileHandleForWriting.closeFile()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else {
+            throw Failure(description: "the daemon isn't answering (curl exit \(task.terminationStatus))")
+        }
+        return data
+    }
+
+    // MARK: The desk
+
+    /// Today's page, as Hermes holds it. Not an interchange object — a daily
+    /// note is one producer's idea and the format has no word for it.
+    struct Scratchpad: Decodable {
+        let date: String
+        let id: String
+        let content: String
+        let version: Int
+    }
+
+    struct SaveResult: Decodable {
+        let ok: Bool?
+        let version: Int?
+        let error: String?
+    }
+
+    struct WorkspaceWindow: Decodable {
+        let id: Int
+        let app: String
+        let bundleId: String?
+        let title: String
+    }
+
+    struct Workspace: Decodable {
+        let name: String
+        let focused: Bool
+        let windows: [WorkspaceWindow]
+    }
+
+    static func scratchpad() throws -> Scratchpad {
+        try JSONDecoder().decode(Scratchpad.self, from: get("/scratchpad"))
+    }
+
+    static func saveScratchpad(id: String, content: String, version: Int) throws -> SaveResult {
+        try JSONDecoder().decode(
+            SaveResult.self,
+            from: send("PUT", "/scratchpad", ["id": id, "content": content, "version": version])
+        )
+    }
+
+    private struct WorkspaceList: Decodable { let workspaces: [Workspace] }
+
+    static func workspaces() throws -> [Workspace] {
+        try JSONDecoder().decode(WorkspaceList.self, from: get("/workspaces")).workspaces
+    }
+
+    @discardableResult
+    static func focusWorkspace(_ name: String) throws -> Bool {
+        // The name goes in the path and can be anything somebody typed into a
+        // config file — "Writ/Reading" has a slash in it, which is a path
+        // separator to everything in between here and the route.
+        let escaped = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? name
+        let out = try send("POST", "/workspace/\(escaped)", [:])
+        return (try? JSONDecoder().decode(SaveResult.self, from: out))?.ok ?? false
     }
 
     static func health() throws -> Health {

@@ -7985,3 +7985,22 @@ mark[data-from]::before {
   text-transform: uppercase;
   color: var(--muted);
 }
+
+/* The scratchpad on its own, for Talaria's desk.
+   
+   No shell around it, so this supplies the padding the page would otherwise
+   have given it, and lets the editor take the full height of whatever it is
+   embedded in — a quarter of a screen, in the only thing that uses this. */
+.embed-scratchpad {
+  height: 100%;
+  overflow-y: auto;
+  padding: 10px 12px 14px;
+  background: transparent;
+}
+.embed-scratchpad.embed-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted, #888);
+  font-size: 12px;
+}

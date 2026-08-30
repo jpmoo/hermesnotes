@@ -409,7 +409,14 @@ struct ComposeView: View {
             Divider().opacity(0.35)
             footer
         }
-        .frame(width: 480, height: 560)
+        // Its own size as a panel, and whatever it is given as a quadrant. The
+        // fields inside keep their measured widths — the alignment work that
+        // made every row line up is not something a wider container should
+        // undo — so a bigger frame gives the form more room around it and more
+        // of its own scroll view, which is what a form in a quarter of a screen
+        // needs.
+        .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
+               minHeight: 320, idealHeight: 560, maxHeight: .infinity)
         .background(VisualEffect(radius: 0))
     }
 
@@ -506,12 +513,15 @@ struct ComposeView: View {
     }
 
     private var footer: some View {
+        // No caption beside the button.
+        //
+        // It read "Saved to Hermes Notes as a Task" and sat inches from a button
+        // reading "Save", in the past tense, before anything had been saved —
+        // so the honest reading of the two together was that the thing was
+        // already done and the button was for something else. The type picker at
+        // the top already says what is being made, and where it goes is the
+        // whole premise of the app.
         HStack(spacing: 8) {
-            if let t = model.type?.display {
-                Text("Saved to Hermes Notes as a \(t)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
             Spacer(minLength: 6)
             if model.busy { ProgressView().controlSize(.small).scaleEffect(0.7) }
             Button("Save") { model.save(onDone: onSaved) }

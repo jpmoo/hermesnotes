@@ -120,6 +120,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var assistantHotkey: Hotkey?
     private var glanceHotkey: Hotkey?
     private var glanceWindow: NSPanel?
+    private var deskWindow: NSPanel?
+    private let scratchpadModel = ScratchpadModel()
+    private let workspacesModel = WorkspacesModel()
+    private var deskHotkey: Hotkey?
     private var settingsWindow: NSPanel?
     private var composeWindow: NSPanel?
     private var composeHotkey: Hotkey?
@@ -309,21 +313,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = item.button {
-            // An SF Symbol rather than the logo.
+            // The wing, as a vector.
             //
-            // The mark is line art of two speech bubbles behind a wing, and at
-            // the 18 points a menu bar gives you it does not survive: undilated
-            // it drew eleven meaningful pixels of a possible 324, and thickened
-            // enough to see it became a blob. Symbols are drawn for this size.
-            // This one is the same two overlapping bubbles, which is as close to
-            // the mark as legibility allows.
-            let symbolName = Self.configured("menuBarSymbol") ?? "bubble.left.and.bubble.right"
-            if let sym = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Hermes Notes") {
+            // The old mark was line art of two speech bubbles behind a wing and
+            // did not survive 18 points: undilated it drew eleven meaningful
+            // pixels of a possible 324, and thickened enough to see it became a
+            // blob. So this used an SF Symbol instead. A solid silhouette is a
+            // different proposition — it reads at menu bar size — and a PDF
+            // template is sharp on any display without shipping four sizes.
+            //
+            // A configured `menuBarSymbol` still wins, because somebody who
+            // named a symbol meant it.
+            let named = Self.configured("menuBarSymbol")
+            if named == nil,
+               let wing = NSImage(contentsOfFile: Bundle.main.bundlePath + "/Contents/Resources/MenuBar.pdf") {
+                wing.isTemplate = true // so macOS inverts it for a dark menu bar
+                wing.size = NSSize(width: 18, height: 18)
+                button.image = wing
+                NSLog("talaria: status item using the wing")
+            } else if let sym = NSImage(systemSymbolName: named ?? "bubble.left.and.bubble.right",
+                                        accessibilityDescription: "Hermes Notes") {
                 sym.isTemplate = true // so macOS inverts it for a dark menu bar
                 button.image = sym.withSymbolConfiguration(
                     NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)
                 ) ?? sym
-                NSLog("talaria: status item using symbol '\(symbolName)'")
+                NSLog("talaria: status item using symbol '\(named ?? "bubble.left.and.bubble.right")'")
             } else if let icon = NSImage(contentsOfFile: Bundle.main.bundlePath + "/Contents/Resources/MenuBar.png") {
                 icon.isTemplate = true
                 icon.size = NSSize(width: 18, height: 18)
@@ -385,6 +399,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         glanceHotkey = register("glanceHotkey", "shift+opt+g") { [weak self] in self?.toggleGlanceWindow() }
         composeHotkey = nil
         composeHotkey = register("composeHotkey", "shift+opt+h") { [weak self] in self?.toggleComposeWindow() }
+        deskHotkey = nil
+        deskHotkey = register("deskHotkey", "shift+opt+t") { [weak self] in self?.toggleDeskWindow() }
     }
 
     /// One shortcut, from config or from the default, saying so when it can't
@@ -441,6 +457,194 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.setFrameAutosaveName("talaria.glance")
         glanceWindow = panel
         return panel
+    }
+
+    /**
+     The desk: the whole screen, frosted, with everything on it.
+
+     A panel rather than a window for the same reason the others are — it must
+     be able to appear over a full-screen application without shoving it aside,
+     and `.canJoinAllSpaces` is what stops it being a thing that lives in one
+     workspace. It covers the screen the pointer is on, not every screen: a
+     second display is where somebody put the thing they are looking at.
+     */
+    private func deskPanel() -> NSPanel {
+        if let w = deskWindow { return w }
+        let panel = DeskPanel(
+            contentRect: NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900),
+            // Not `.nonactivatingPanel`, which the other panels use.
+            //
+            // That style means "do not take the keyboard", which is right for
+            // Glance — a widget about whatever you are working in — and exactly
+            // wrong here. The desk has a scratchpad and a composer in it. With
+            // it set, Escape and every other keystroke went past the desk to
+            // the application underneath, so pressing Escape to dismiss this
+            // cancelled whatever was behind it instead. Which is worse than not
+            // dismissing: it does something, somewhere else, invisibly.
+            // Titled, with the title bar made invisible — not borderless.
+            //
+            // A borderless panel is not a window as far as a tiling manager is
+            // concerned: it never appears in `aerospace list-windows`, so this
+            // app's float rule never applies to it. With `focus-follows-mouse`
+            // on, AeroSpace then focused the managed window *under* the
+            // pointer — whatever the desk was covering — so the desk lost the
+            // keyboard the instant the mouse moved, and Escape went to the
+            // application underneath. Clicking the desk first fixed it, which
+            // is exactly the shape of "something else keeps taking the focus
+            // back".
+            //
+            // A titled window is seen, matched by the float rule, left where it
+            // is, and focused when the pointer is over it — which it always is,
+            // because it covers the screen.
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        panel.onCancel = { [weak self] in self?.hideDesk() }
+        // The flags a panel needs before AppKit will hand it the keyboard.
+        //
+        // `canBecomeKey` on the subclass says this window is willing; these say
+        // the *app* is. Without `isFloatingPanel` and a level it is allowed to
+        // be key at, activation went through and the window still came up
+        // unfocused behind the application it was covering — so keystrokes went
+        // there instead, and Escape cancelled whatever was underneath.
+        // A title bar exists so the window manager can see a window. Nothing
+        // should be drawn for it.
+        panel.title = "Talaria Desk"
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        // The frost. An effect view behind the content rather than a SwiftUI
+        // material on it: this has to blur the *desktop*, which is behind the
+        // window, and only a window-level effect view sees through to that.
+        let frost = NSVisualEffectView()
+        frost.material = .hudWindow
+        frost.blendingMode = .behindWindow
+        frost.state = .active
+        let host = NSHostingView(rootView: DeskView(
+            scratchpad: scratchpadModel,
+            workspaces: workspacesModel,
+            compose: composeModel,
+            glance: glanceModel,
+            onPickWorkspace: { [weak self] name in
+                self?.workspacesModel.focus(name)
+                // Going somewhere is leaving here. Staying open over the
+                // workspace you just asked to see would be covering up the
+                // thing you asked for.
+                self?.hideDesk()
+            }
+        ))
+        // The window decides the size, not the content.
+        //
+        // An NSHostingView publishes its SwiftUI view's fitting size as layout
+        // constraints, and pinned to the window's edges that is a demand rather
+        // than a description: the composer's own minimum grew the panel to
+        // 1470×1060 on a 1470×956 screen, so a quarter of the screen was
+        // computed from a rectangle a hundred points taller than the screen and
+        // the bottom row was drawn past the bottom of it. `sizingOptions = []`
+        // is the switch that stops it asking, and springs rather than
+        // constraints keep it filling whatever the window happens to be.
+        if #available(macOS 13.0, *) { host.sizingOptions = [] }
+        host.translatesAutoresizingMaskIntoConstraints = true
+        host.frame = frost.bounds
+        host.autoresizingMask = [.width, .height]
+        frost.addSubview(host)
+        panel.contentView = frost
+        deskWindow = panel
+        return panel
+    }
+
+    func toggleDeskWindow() {
+        let panel = deskPanel()
+        if panel.isVisible {
+            hideDesk()
+            return
+        }
+        // Read the world before covering it up, the same order every panel here
+        // uses: what Glance is about is whatever this is about to sit on top of.
+        Focused.forgetCopied()
+        composeModel.load(seed: Focused.selection(allowCopy: true))
+        scratchpadModel.load()
+        workspacesModel.load()
+
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
+            ?? NSScreen.main
+        // The visible frame, not the whole screen.
+        //
+        // A panel at this level draws under the menu bar rather than over it,
+        // so a full-screen frame put the top of the scratchpad behind it and
+        // the bottom row past the bottom of the screen. `visibleFrame` is the
+        // rectangle macOS says is actually usable — below the menu bar, above
+        // the Dock — which is what "covers the screen" has to mean for
+        // something you are meant to type into.
+        if let screen { panel.setFrame(screen.visibleFrame, display: true) }
+
+        // Activating, unlike Glance: this is a surface to type into — a
+        // scratchpad and a composer — and a panel that cannot take the keyboard
+        // would be a picture of one.
+        // A regular application, for as long as the desk is up.
+        //
+        // This app is `LSUIElement` — no Dock icon, no menu of its own — and
+        // recent macOS declines activation requests from an accessory app that
+        // the user did not click on. A global hotkey is not a click as far as
+        // the window server is concerned, so `activate` returned having done
+        // nothing: the panel became Talaria's key window while Talaria itself
+        // stayed in the background, and every keystroke went to the application
+        // underneath. Which is how pressing Escape over the desk cancelled
+        // something behind it.
+        //
+        // Switching policy is the documented way for an accessory app to take
+        // the foreground. It is put back on the way out, so the Dock icon lasts
+        // exactly as long as the window that needed it.
+        NSApp.setActivationPolicy(.regular)
+        // A regular application, for as long as the desk is up.
+        //
+        // This app is `LSUIElement` — no Dock icon, no menu of its own — and
+        // recent macOS declines an activation request from an accessory app the
+        // user did not click on. A global hotkey is not a click as far as the
+        // window server is concerned, so `activate` returned having done
+        // nothing: the panel became Talaria's key window while Talaria itself
+        // stayed in the background, and every keystroke went to the application
+        // underneath. Which is how pressing Escape over a full-screen overlay
+        // cancelled something behind it instead of dismissing it.
+        //
+        // Switching policy is the documented way for an accessory app to take
+        // the foreground. It is put back on the way out, so the Dock icon lasts
+        // exactly as long as the window that needed it.
+        NSApp.setActivationPolicy(.regular)
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.makeFirstResponder(panel.contentView)
+        glanceModel.startFollowing()
+        watchForDismissal(panel) { [weak self] in self?.hideDesk() }
+    }
+
+    private func hideDesk() {
+        guard let panel = deskWindow else { return }
+        stopWatchingForDismissal(panel)
+        glanceModel.stopFollowing()
+        // Whatever was typed goes now. A debounce timer dies with the panel, and
+        // a paragraph lost to closing the thing you wrote it in would be the
+        // worst bug in here.
+        scratchpadModel.flush()
+        panel.orderOut(nil)
+        // Back to a background app. Leaving it regular would put a Dock icon and
+        // a menu bar on something meant to have neither.
+        NSApp.setActivationPolicy(.accessory)
+        // Back to being a background app. Leaving it regular would put a Dock
+        // icon and a menu bar on a thing that is meant to have neither.
+        NSApp.setActivationPolicy(.accessory)
     }
 
     func toggleGlanceWindow() {

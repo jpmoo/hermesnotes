@@ -643,3 +643,110 @@ export class FrontmostWatcher {
     }
   }
 }
+
+/**
+ * Where the aerospace binary is, tried in the usual places.
+ *
+ * Shared with `frontmostFromAerospace`, which had this list inline first. A
+ * second copy would have been a second thing to update the day somebody
+ * installs it somewhere new.
+ */
+export function aerospaceCandidates(cliPath?: string): string[] {
+  return cliPath
+    ? [cliPath]
+    : [
+        "/opt/homebrew/bin/aerospace",
+        "/usr/local/bin/aerospace",
+        `${process.env.HOME}/.local/bin/aerospace`,
+      ];
+}
+
+export interface WorkspaceWindow {
+  id: number;
+  app: string;
+  bundleId: string | null;
+  title: string;
+}
+
+export interface WorkspaceSummary {
+  name: string;
+  focused: boolean;
+  windows: WorkspaceWindow[];
+}
+
+/**
+ * Every workspace, and what is in it.
+ *
+ * Windows are listed with their ids because that is what a thumbnail is taken
+ * of: a window parked off-screen by a tiling manager still has a backing store,
+ * so it can be captured without being shown — which is the whole reason a
+ * picture of a workspace you are not looking at is possible at all.
+ *
+ * Empty workspaces are kept. A workspace with nothing in it is still somewhere
+ * to go, and leaving it out of the list would make the one place you want to
+ * move a window *to* the one place you cannot click.
+ */
+export async function workspaces(cliPath?: string): Promise<WorkspaceSummary[]> {
+  const { execFile } = await import("node:child_process");
+  const run = (bin: string, args: string[]): Promise<string> =>
+    new Promise((resolve) =>
+      execFile(bin, args, { timeout: 3000, maxBuffer: 1 << 20 }, (err, stdout) =>
+        resolve(err ? "" : stdout),
+      ),
+    );
+
+  for (const bin of aerospaceCandidates(cliPath)) {
+    const names = (await run(bin, ["list-workspaces", "--all"]))
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!names.length) continue;
+
+    const focused = (await run(bin, ["list-workspaces", "--focused"])).trim();
+    // One call for every window rather than one per workspace: the format
+    // carries which workspace each is in, and a shell round trip per workspace
+    // is latency nobody needs on a panel that opens under a hotkey.
+    const rows = (
+      await run(bin, [
+        "list-windows",
+        "--all",
+        "--format",
+        "%{workspace}\t%{window-id}\t%{app-bundle-id}\t%{app-name}\t%{window-title}",
+      ])
+    )
+      .split("\n")
+      .map((line) => line.split("\t"))
+      .filter((parts) => parts.length >= 5);
+
+    const byWorkspace = new Map<string, WorkspaceWindow[]>();
+    for (const [ws, id, bundleId, app, ...rest] of rows) {
+      const n = Number(id);
+      if (!Number.isFinite(n)) continue;
+      const list = byWorkspace.get(ws!) ?? [];
+      // The remainder joined back up: a window title may contain a tab, and
+      // taking only the fifth field would truncate exactly the string most
+      // likely to have one in it.
+      list.push({ id: n, app: app ?? "", bundleId: bundleId || null, title: rest.join("\t") });
+      byWorkspace.set(ws!, list);
+    }
+
+    return names.map((name) => ({
+      name,
+      focused: name === focused,
+      windows: byWorkspace.get(name) ?? [],
+    }));
+  }
+  return [];
+}
+
+/** Go to a workspace. Returns whether the manager accepted it. */
+export async function focusWorkspace(name: string, cliPath?: string): Promise<boolean> {
+  const { execFile } = await import("node:child_process");
+  for (const bin of aerospaceCandidates(cliPath)) {
+    const ok = await new Promise<boolean>((resolve) =>
+      execFile(bin, ["workspace", name], { timeout: 3000 }, (err) => resolve(!err)),
+    );
+    if (ok) return true;
+  }
+  return false;
+}

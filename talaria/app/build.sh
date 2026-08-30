@@ -56,6 +56,20 @@ mkdir -p "$APP/Contents/Resources"
 python3 "$HERE/make-icon.py" "$REPO_ROOT/../assets/HermesLogo.png" "$APP/Contents/Resources"
 rm -rf "$APP/Contents/Resources/Talaria.iconset"
 
+# The menu bar mark, which is not the app icon and never was.
+#
+# A PDF rather than a PNG: it is one path, it has to look right at 18 points on
+# a Retina display and on a display that is not, and a vector template is the
+# only thing that does both without shipping four sizes. `isTemplate` in the app
+# is what makes macOS invert it for a dark menu bar.
+if command -v rsvg-convert >/dev/null 2>&1; then
+  rsvg-convert -f pdf -w 36 -h 36 "$HERE/MenuBar.svg" -o "$APP/Contents/Resources/MenuBar.pdf"
+else
+  # Not fatal: the app falls back to an SF Symbol, which is what it used before
+  # there was a mark that survived the size.
+  echo "    (no rsvg-convert — menu bar falls back to its symbol)"
+fi
+
 if [ -d "$HERE/Talaria.icon" ]; then
   # The modern path. macOS 26 treats a bare .icns or a hand-built asset catalog
   # as legacy and wraps it — shrinking the artwork and drawing it inside a
@@ -96,7 +110,7 @@ xcrun swiftc \
   -target arm64-apple-macos14.0 \
   -framework AppKit -framework WebKit -framework CoreSpotlight -framework UniformTypeIdentifiers -framework ApplicationServices \
   -o "$APP/Contents/MacOS/Talaria" \
-  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Theme.swift" "$HERE/Sources/HermesWindow.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/MirrorWatch.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AgendaView.swift" "$HERE/Sources/GlanceView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/ComposeView.swift" "$HERE/Sources/Settings.swift" "$HERE/Sources/SettingsView.swift" "$HERE/Sources/main.swift"
+  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Theme.swift" "$HERE/Sources/HermesWindow.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/MirrorWatch.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AgendaView.swift" "$HERE/Sources/GlanceView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/ComposeView.swift" "$HERE/Sources/DeskView.swift" "$HERE/Sources/Settings.swift" "$HERE/Sources/SettingsView.swift" "$HERE/Sources/main.swift"
 
 # A second, tiny binary rather than a function in the app.
 #

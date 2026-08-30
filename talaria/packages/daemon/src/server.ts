@@ -17,7 +17,7 @@ import {
   type InterchangeType,
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
-import { ContextRecord, FrontmostWatcher, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS } from "./context.js";
+import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, workspaces } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { regionNameAt, type Interchange } from "./interchange.js";
@@ -1398,6 +1398,63 @@ export function buildServer(deps: {
       })),
     ),
   );
+
+  /**
+   * Today's scratchpad, and a way to write it back.
+   *
+   * Deliberately *not* through the interchange binding. A daily note is one
+   * producer's idea — the format has no concept of "the page for a date", which
+   * is `LIMITS.md`'s third open entry — so reaching for Hermes' own route here
+   * is the honest move rather than a shortcut, and it is confined to these two
+   * handlers where somebody can find it.
+   *
+   * Live, not from the mirror: this is a thing being typed into, and a copy
+   * that is thirty seconds behind would overwrite what somebody wrote in the
+   * web app while they were looking at it.
+   */
+  app.get("/scratchpad", async (req, reply) => {
+    const { date } = z
+      .object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+      .parse(req.query);
+    const day = date ?? new Date().toLocaleDateString("en-CA");
+    try {
+      const note = await hermes.dailyNote(day);
+      return { date: day, id: note.id, content: note.content ?? "", version: note.version };
+    } catch (err) {
+      // Unreachable is ordinary for this daemon; say so rather than 500.
+      return reply.code(503).send({ error: (err as Error).message, date: day });
+    }
+  });
+
+  app.put("/scratchpad", async (req, reply) => {
+    const { id, content, version } = z
+      .object({ id: z.string().uuid(), content: z.string().max(200_000), version: z.number().int() })
+      .parse(req.body);
+    try {
+      // The version goes with it, so a page edited in the web app while this
+      // one was open is refused rather than silently flattened.
+      const out = (await hermes.patchBlock(id, { version, content })) as { version?: number };
+      return { ok: true, version: out?.version ?? version + 1 };
+    } catch (err) {
+      const message = (err as Error).message;
+      return reply.code(/409/.test(message) ? 409 : 503).send({ ok: false, error: message });
+    }
+  });
+
+  /**
+   * The workspaces, and what is in each.
+   *
+   * Window ids are the point: a window a tiling manager has parked off-screen
+   * still has a backing store, so the app can take a picture of a workspace
+   * nobody is looking at. Without the ids there is nothing to photograph.
+   */
+  app.get("/workspaces", async () => ({ workspaces: await workspaces(config.aerospaceCli) }));
+
+  app.post("/workspace/:name", async (req, reply) => {
+    const { name } = z.object({ name: z.string().min(1).max(128) }).parse(req.params);
+    const ok = await focusWorkspace(name, config.aerospaceCli);
+    return ok ? { ok } : reply.code(502).send({ ok, error: "the window manager did not accept that" });
+  });
 
   app.post("/sync", async (req) => {
     const { full } = z.object({ full: z.coerce.boolean().optional() }).parse(req.query);

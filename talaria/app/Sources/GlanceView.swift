@@ -750,7 +750,11 @@ struct GlanceView: View {
                 }
             }
         }
-        .frame(width: 380, height: 420)
+        // Its own size when it is a panel, and whatever it is given when it is
+        // a quadrant. A fixed frame meant that embedded in the desk it drew a
+        // 380-point card in a 700-point space and looked like a mistake.
+        .frame(minWidth: 300, idealWidth: 380, maxWidth: .infinity,
+               minHeight: 200, idealHeight: 420, maxHeight: .infinity)
         .background(VisualEffect(radius: 16))
         .overlay(
             // A hairline rather than a border. It is what separates the panel

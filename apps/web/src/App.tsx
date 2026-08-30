@@ -17,6 +17,7 @@ import { PreferencesProvider, usePreferences } from "./lib/preferences.tsx";
 import { AiConfigProvider } from "./lib/ai-config.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { CollectionsPage } from "./pages/CollectionsPage.tsx";
+import { EmbedScratchpadPage } from "./pages/EmbedScratchpadPage.tsx";
 import { CollectionView } from "./pages/CollectionView.tsx";
 import { AllBlocksPage } from "./pages/AllBlocksPage.tsx";
 import { ArchivePage } from "./pages/ArchivePage.tsx";
@@ -90,6 +91,23 @@ function Shell() {
     "--section-text": c.text ?? "var(--accent-ink)",
     "--section-icon": c.icon ?? "currentColor",
   } as CSSProperties;
+
+  // An embed is the page and nothing else.
+  //
+  // Talaria's desk puts today's scratchpad in a quarter of a laptop screen. A
+  // navigation rail, a nav bar and a right panel do not fit in that, and a
+  // second copy of this app's chrome inside this app's own companion would be
+  // absurd — so anything under `/embed/` skips the shell entirely and renders
+  // bare. Checked before the shell is built rather than hidden with CSS
+  // afterwards, so none of it mounts, subscribes or fetches.
+  if (pathname.startsWith("/embed/")) {
+    return (
+      <Routes>
+        <Route path="/embed/scratchpad" element={<EmbedScratchpadPage />} />
+        <Route path="/embed/scratchpad/:date" element={<EmbedScratchpadPage />} />
+      </Routes>
+    );
+  }
 
   const shellClass =
     `app-shell${leftPinned ? " left-pinned" : ""}${rightPinned ? " right-pinned" : ""}` +

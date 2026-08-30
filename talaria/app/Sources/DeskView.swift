@@ -498,6 +498,13 @@ struct DeskView: View {
         // and sits flush under the menu bar on one that has.
         .padding(.top, max(Self.margin, insets.top))
         .padding(.bottom, max(Self.margin, insets.bottom))
+        // AppKit reports a safe area for the title bar of a
+        // `fullSizeContentView` window, and SwiftUI honours it — so a second
+        // inset of about thirty points was being added under the one this view
+        // already applies for the menu bar, and the first pane sat 65 points
+        // down instead of 33. The window's chrome is hidden and the clearance
+        // is computed here; there is nothing for a safe area to protect.
+        .ignoresSafeArea()
     }
 }
 
@@ -521,4 +528,21 @@ final class DeskPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     override func cancelOperation(_ sender: Any?) { onCancel?() }
+
+    /**
+     Take the frame that was asked for.
+
+     AppKit moves a *titled* window down so its title bar cannot sit under the
+     menu bar. This one is titled only so a tiling manager can see it — the bar
+     is hidden and nothing is drawn for it — but the constraint applies anyway:
+     asked for the screen's own rectangle, the window came back 33 points lower
+     and still a full screen tall, so it hung off the bottom by exactly the
+     height of the menu bar and left a band of nothing at the top. Which read as
+     two separate layout bugs and was one refusal.
+
+     Overriding this is the documented way to say the window means it.
+     */
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
 }

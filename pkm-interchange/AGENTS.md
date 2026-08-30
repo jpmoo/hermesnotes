@@ -289,6 +289,53 @@ Clamping is only implementable at all with `byMonthDay`: clamping without knowin
 
 ---
 
+## Containment (L2)
+
+Some applications are outlines. A block sits *inside* another block, in order,
+and the nesting is the document rather than a view of it — Logseq, Roam, Tana
+and Workflowy are all built that way, which is a large fraction of this genre.
+
+```json
+{ "id": "o_child", "type": "t_note", "parent": "o_parent", "position": "a1" }
+```
+
+`parent` is the id of the object this one is inside. An object with no `parent`
+is a root. `position` orders it among its siblings and is the same opaque
+ordering token collections use: **compare byte-wise, do not parse it as a
+number**, and do not regenerate it on import.
+
+**Containment is not membership and not a relation.** A collection says *these
+things are in this list*; an edge says *this thing refers to that one*; neither
+says *this block is the third thing inside that block*. An outline approximated
+with reference fields keeps the edges and loses the order and the containment,
+which is what it means to say the tree was smuggled rather than expressed.
+
+**The same object may be a child and a member.** A block nested under another
+can also sit in a collection, and it carries a `position` in each — one among
+its siblings, one among that collection's members. They are different orderings
+of different things that happen to share a spelling, because they are the same
+idea applied twice.
+
+**A cycle is invalid.** An object that is its own ancestor describes no document
+and hangs any consumer that walks it, so it is a structural error rather than
+something to cope with: `hierarchy.cycle`.
+
+**A parent that names nothing here is not an error.** A `since` read is a
+delta and will routinely carry a child whose parent has not changed. A consumer
+that cannot find the parent treats the object as a root for now and asks again;
+it must not drop it, and it must not invent a placeholder parent.
+
+**Flattening is permitted and must be reported.** A consumer with no notion of
+containment may import an outline as a flat list — refusing helps nobody — but
+the nesting is what the document *was*, so this is `reduced` fidelity reporting
+`hierarchy`. Keep the `parent` and `position` keys whatever you do with them:
+the round-trip rule applies here as everywhere, and a tool that flattens an
+outline and hands it back should hand back the outline.
+
+→ `fixtures/hierarchy.json`
+
+---
+
 ## Collections and placement (L2)
 
 A collection is a container with members. Its `kind` is a hint about rendering. Its `placement` is the part that matters.

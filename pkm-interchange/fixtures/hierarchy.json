@@ -1,0 +1,474 @@
+{
+  "suite": "hierarchy",
+  "level": 2,
+  "about": "Outlines: an object inside another object, in order. The failure this suite exists to prevent is a tree arriving as a list with no sign that it ever was one.",
+  "requires": {
+    "features": [
+      "hierarchy"
+    ]
+  },
+  "cases": [
+    {
+      "id": "hierarchy/an-outline-is-parents-and-positions",
+      "level": 2,
+      "op": "outline",
+      "given": {
+        "objects": [
+          {
+            "id": "o_a",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a"
+            },
+            "position": "a0"
+          },
+          {
+            "id": "o_b",
+            "type": "t_note",
+            "properties": {
+              "title": "o_b"
+            },
+            "position": "a1"
+          },
+          {
+            "id": "o_a2",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a2"
+            },
+            "parent": "o_a",
+            "position": "b1"
+          },
+          {
+            "id": "o_a1",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a1"
+            },
+            "parent": "o_a",
+            "position": "b0"
+          },
+          {
+            "id": "o_a3",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a3"
+            },
+            "parent": "o_a",
+            "position": "b2"
+          },
+          {
+            "id": "o_a2x",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a2x"
+            },
+            "parent": "o_a2",
+            "position": "c0"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "o_a",
+          "children": [
+            {
+              "id": "o_a1",
+              "children": []
+            },
+            {
+              "id": "o_a2",
+              "children": [
+                {
+                  "id": "o_a2x",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "id": "o_a3",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": "o_b",
+          "children": []
+        }
+      ],
+      "why": "The whole of it: an object names the object it is inside and its place among that object's children. No `children` array anywhere \u2014 a parent pointer cannot disagree with itself, and a list of children on the parent can disagree with the parents on the children."
+    },
+    {
+      "id": "hierarchy/siblings-sort-byte-wise",
+      "level": 2,
+      "op": "outline",
+      "given": {
+        "objects": [
+          {
+            "id": "o_r",
+            "type": "t_note",
+            "properties": {
+              "title": "o_r"
+            },
+            "position": "a0"
+          },
+          {
+            "id": "o_z",
+            "type": "t_note",
+            "properties": {
+              "title": "o_z"
+            },
+            "parent": "o_r",
+            "position": "Zz"
+          },
+          {
+            "id": "o_x",
+            "type": "t_note",
+            "properties": {
+              "title": "o_x"
+            },
+            "parent": "o_r",
+            "position": "a0"
+          },
+          {
+            "id": "o_y",
+            "type": "t_note",
+            "properties": {
+              "title": "o_y"
+            },
+            "parent": "o_r",
+            "position": "a0V"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "o_r",
+          "children": [
+            {
+              "id": "o_z",
+              "children": []
+            },
+            {
+              "id": "o_x",
+              "children": []
+            },
+            {
+              "id": "o_y",
+              "children": []
+            }
+          ]
+        }
+      ],
+      "why": "The same rule collection members follow, and the same failure if it is broken: under a language-aware collation 'Zz' sorts after 'a0' and the top of the outline is wrong. These tokens are compared, never parsed."
+    },
+    {
+      "id": "hierarchy/a-missing-parent-is-a-root-for-now",
+      "level": 2,
+      "op": "outline",
+      "given": {
+        "objects": [
+          {
+            "id": "o_kid",
+            "type": "t_note",
+            "properties": {
+              "title": "o_kid"
+            },
+            "parent": "o_absent",
+            "position": "a0"
+          },
+          {
+            "id": "o_top",
+            "type": "t_note",
+            "properties": {
+              "title": "o_top"
+            },
+            "position": "a1"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "id": "o_kid",
+          "children": []
+        },
+        {
+          "id": "o_top",
+          "children": []
+        }
+      ],
+      "why": "A `since` read is a delta and will routinely carry a child whose parent has not changed and is therefore not in the payload. Dropping it loses somebody's writing over a detail of transport; inventing a placeholder parent puts a node in their outline that they did not write. It stands at the root until the parent turns up."
+    },
+    {
+      "id": "hierarchy/a-cycle-is-invalid",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "title": "o_1"
+            },
+            "parent": "o_2",
+            "position": "a0"
+          },
+          {
+            "id": "o_2",
+            "type": "t_note",
+            "properties": {
+              "title": "o_2"
+            },
+            "parent": "o_1",
+            "position": "a0"
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "hierarchy.cycle"
+          }
+        ]
+      },
+      "why": "An object that is its own ancestor describes no document and hangs anything that walks it. Not a fidelity question and not something to cope with \u2014 a consumer that meets one has already been given a broken export, and the only useful thing to do is say so."
+    },
+    {
+      "id": "hierarchy/self-parent-is-a-cycle-too",
+      "level": 2,
+      "op": "validate",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "title": "o_1"
+            },
+            "parent": "o_1",
+            "position": "a0"
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "hierarchy.cycle"
+          }
+        ]
+      },
+      "why": "The one-node case, which a walker looking only for repeats two steps apart will miss."
+    },
+    {
+      "id": "hierarchy/flattening-must-be-reported",
+      "level": 2,
+      "op": "import",
+      "given": {
+        "objects": [
+          {
+            "id": "o_a",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a"
+            },
+            "position": "a0"
+          },
+          {
+            "id": "o_b",
+            "type": "t_note",
+            "properties": {
+              "title": "o_b"
+            },
+            "position": "a1"
+          },
+          {
+            "id": "o_a2",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a2"
+            },
+            "parent": "o_a",
+            "position": "b1"
+          },
+          {
+            "id": "o_a1",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a1"
+            },
+            "parent": "o_a",
+            "position": "b0"
+          },
+          {
+            "id": "o_a3",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a3"
+            },
+            "parent": "o_a",
+            "position": "b2"
+          },
+          {
+            "id": "o_a2x",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a2x"
+            },
+            "parent": "o_a2",
+            "position": "c0"
+          }
+        ]
+      },
+      "when": {
+        "importInto": "a tool with no notion of containment"
+      },
+      "with": {
+        "hierarchy": false
+      },
+      "simulated": true,
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "hierarchy"
+        ]
+      },
+      "why": "Importing an outline as a flat list is permitted, because refusing helps nobody. Doing it quietly is not: the nesting is what the document *was*, and a person who exported an outline and imported a list has lost the structure and been told nothing."
+    },
+    {
+      "id": "hierarchy/a-flattener-still-gives-it-back",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "objects": [
+          {
+            "id": "o_a",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a"
+            },
+            "position": "a0"
+          },
+          {
+            "id": "o_b",
+            "type": "t_note",
+            "properties": {
+              "title": "o_b"
+            },
+            "position": "a1"
+          },
+          {
+            "id": "o_a2",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a2"
+            },
+            "parent": "o_a",
+            "position": "b1"
+          },
+          {
+            "id": "o_a1",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a1"
+            },
+            "parent": "o_a",
+            "position": "b0"
+          },
+          {
+            "id": "o_a3",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a3"
+            },
+            "parent": "o_a",
+            "position": "b2"
+          },
+          {
+            "id": "o_a2x",
+            "type": "t_note",
+            "properties": {
+              "title": "o_a2x"
+            },
+            "parent": "o_a2",
+            "position": "c0"
+          }
+        ]
+      },
+      "when": {
+        "importInto": "a tool with no notion of containment",
+        "reexport": true
+      },
+      "with": {
+        "hierarchy": false
+      },
+      "expect": {
+        "result": {
+          "objects": [
+            {
+              "id": "o_a2x",
+              "parent": "o_a2",
+              "position": "c0"
+            }
+          ]
+        }
+      },
+      "why": "The round-trip rule, on the keys a flat tool has no use for. It may draw a list and must still hand back a tree, because the alternative is that opening somebody's outline in the wrong application destroys it."
+    },
+    {
+      "id": "hierarchy/containment-is-not-membership",
+      "level": 2,
+      "op": "outline",
+      "given": {
+        "objects": [
+          {
+            "id": "o_p",
+            "type": "t_note",
+            "properties": {
+              "title": "o_p"
+            },
+            "position": "a0"
+          },
+          {
+            "id": "o_c",
+            "type": "t_note",
+            "properties": {
+              "title": "o_c"
+            },
+            "parent": "o_p",
+            "position": "b5"
+          }
+        ],
+        "collection": {
+          "id": "c_1",
+          "name": "A list",
+          "members": [
+            {
+              "object": "o_c",
+              "position": "a0"
+            },
+            {
+              "object": "o_p",
+              "position": "a1"
+            }
+          ]
+        }
+      },
+      "of": "envelope",
+      "expect": [
+        {
+          "id": "o_p",
+          "children": [
+            {
+              "id": "o_c",
+              "children": []
+            }
+          ]
+        }
+      ],
+      "why": "The same two objects, nested one way and listed the other, with a different position in each. A collection says what is in a list; a parent says what a thing is inside. Reading either as the other gives a document nobody wrote."
+    }
+  ]
+}

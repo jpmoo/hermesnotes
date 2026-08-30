@@ -36,5 +36,21 @@ export const CONFORMANCE = {
   // so all five of its cases were scoped away as not-applicable and had never
   // once run. A manifest is a promise in both directions.
   features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering"],
-  unsupported: [] as string[],
+  /**
+   * What this producer does not do, said out loud.
+   *
+   * `hierarchy` is here because Hermes is flat: blocks and collections, with a
+   * rollup built from reference fields rather than stored containment. It can
+   * carry somebody else's outline — the round-trip rule sees to that, and the
+   * stranger's library round-trips 234 leaves with none lost — and it cannot
+   * draw one, which is a different claim and has to be a different word.
+   *
+   * Worth knowing that a feature in this list is scoped away when the suite
+   * measures this producer, so the hierarchy cases run against the reference
+   * and not against Hermes. That is correct and it is also the exact shape of
+   * the `addresses` mistake, where a feature was omitted from `features` while
+   * being emitted — so: absent from `features` means "not in this data", and
+   * present in `unsupported` means "this software cannot".
+   */
+  unsupported: ["hierarchy"] as string[],
 } as const;

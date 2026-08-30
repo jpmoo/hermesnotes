@@ -19,6 +19,7 @@ const FEATURES = {
   placement: (e) => (e.collections ?? []).some((c) => c.placement),
   derivations: (e) => (e.collections ?? []).some((c) => c.membership?.mode === "query"),
   ordering: (e) => (e.collections ?? []).some((c) => c.order?.sort || c.order?.groupBy),
+  hierarchy: (e) => (e.objects ?? []).some((o) => o.parent !== undefined),
   attachments: (e) =>
     (e.objects ?? []).some((o) =>
       Object.values(o.properties ?? {}).some((v) => v && typeof v === "object" && v.kind === "attachment"),
@@ -31,6 +32,24 @@ export function validate(envelope) {
 
   if (typeof envelope.format === "string" && !/^pkm-interchange\/\d+$/.test(envelope.format)) {
     fail("envelope.format", "format");
+  }
+
+  // An object that is its own ancestor describes no document and hangs anything
+  // that walks it. Checked by walking up from each object rather than by
+  // colouring the graph, because the answer wanted is "is there a cycle", and a
+  // walk that has taken more steps than there are objects has found one.
+  {
+    const parents = new Map((envelope.objects ?? []).map((o) => [o.id, o.parent]));
+    for (const [id] of parents) {
+      let at = parents.get(id);
+      for (let steps = 0; at !== undefined && steps <= parents.size; steps += 1) {
+        if (at === id) {
+          fail("hierarchy.cycle", `objects[${id}]`);
+          break;
+        }
+        at = parents.get(at);
+      }
+    }
   }
 
   (envelope.collections ?? []).forEach((c, i) => {

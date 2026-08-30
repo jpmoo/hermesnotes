@@ -102,6 +102,13 @@ export function importEnvelope(envelope, capabilities = {}) {
     }
   }
 
+  if (capabilities.hierarchy === false && (doc.objects ?? []).some((o) => o.parent !== undefined)) {
+    // The keys survive — the round-trip rule does not bend for a consumer that
+    // cannot use them — but the document arrives as a list, and the nesting is
+    // what it was.
+    say("hierarchy");
+  }
+
   if (capabilities.relations === false && (doc.relations ?? []).length) say("relations");
 
   if (capabilities.references === "single") {
@@ -382,6 +389,38 @@ export function order(collection, objects = [], types = []) {
   };
 }
 
+/**
+ * The outline: roots in order, each with its children in order.
+ *
+ * Built from parent pointers rather than from any list of children, because a
+ * parent pointer cannot disagree with itself. A `children` array on the parent
+ * and a `parent` on the child are two statements of one fact, and the day they
+ * differ there is no way to tell which is the document.
+ *
+ * An object whose parent is not here stands at the root. A `since` read is a
+ * delta and will routinely carry a child whose parent has not changed — losing
+ * it would lose somebody's writing over a detail of transport, and inventing a
+ * placeholder parent would put a node in their outline that they did not write.
+ */
+export function outline(objects = []) {
+  const present = new Set(objects.map((o) => o.id));
+  const byParent = new Map();
+  for (const o of objects) {
+    const key = o.parent !== undefined && present.has(o.parent) ? o.parent : null;
+    byParent.set(key, [...(byParent.get(key) ?? []), o]);
+  }
+  // Byte-wise, like every other ordering token here. A language-aware collation
+  // puts "Zz" after "a0" and the top of the outline is wrong.
+  const sorted = (list) =>
+    [...list].sort((a, b) => {
+      const [x, y] = [String(a.position ?? ""), String(b.position ?? "")];
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+  const build = (parent) =>
+    sorted(byParent.get(parent) ?? []).map((o) => ({ id: o.id, children: build(o.id) }));
+  return build(null);
+}
+
 export const adapter = {
   // It exists to stand in for other tools, so it can be asked to lack anything.
   simulates: ["*"],
@@ -389,13 +428,14 @@ export const adapter = {
   // implementation declares what it actually does and is measured on that.
   conformance: {
     profiles: ["task", "event", "contact", "note"],
-    features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering"],
+    features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering", "hierarchy"],
   },
   validate,
   profilesOf,
   read,
   isComplete,
   order,
+  outline,
   nextOccurrence,
   import: importEnvelope,
   roundtrip,

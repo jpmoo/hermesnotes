@@ -1,31 +1,84 @@
 {
   "format": "pkm-interchange/0",
-  "producer": { "name": "example-pkm", "version": "0.1.0", "stableIds": true },
-  "conformance": {
-    "profiles": ["task", "note", "contact"],
-    "features": ["series", "placement", "relations", "derivations"],
-    "unsupported": ["attachments"]
+  "producer": {
+    "name": "example-pkm",
+    "version": "0.1.0",
+    "stableIds": true
   },
-
+  "conformance": {
+    "profiles": [
+      "task",
+      "note",
+      "contact"
+    ],
+    "features": [
+      "series",
+      "placement",
+      "relations",
+      "derivations",
+      "hierarchy"
+    ],
+    "unsupported": [
+      "attachments"
+    ]
+  },
   "types": [
     {
       "id": "t_task",
       "name": "Task",
       "fields": [
-        { "key": "title", "kind": "text", "required": true },
-        { "key": "dates", "kind": "datespan", "startLabel": "Available", "endLabel": "Due" },
-        { "key": "status", "kind": "enum", "options": ["todo", "doing", "done", "dropped"] },
-        { "key": "notes", "kind": "richtext" },
-        { "key": "owner", "kind": "reference", "targetType": "t_person" },
-        { "key": "estimate", "kind": "number", "units": "minutes" }
+        {
+          "key": "title",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "dates",
+          "kind": "datespan",
+          "startLabel": "Available",
+          "endLabel": "Due"
+        },
+        {
+          "key": "status",
+          "kind": "enum",
+          "options": [
+            "todo",
+            "doing",
+            "done",
+            "dropped"
+          ]
+        },
+        {
+          "key": "notes",
+          "kind": "richtext"
+        },
+        {
+          "key": "owner",
+          "kind": "reference",
+          "targetType": "t_person"
+        },
+        {
+          "key": "estimate",
+          "kind": "number",
+          "units": "minutes"
+        }
       ],
       "profiles": {
         "task": {
           "title": "title",
-          "start": { "field": "dates", "part": "start" },
-          "due": { "field": "dates", "part": "end" },
+          "start": {
+            "field": "dates",
+            "part": "start"
+          },
+          "due": {
+            "field": "dates",
+            "part": "end"
+          },
           "status": "status",
-          "completeValues": ["done", "dropped"]
+          "completeValues": [
+            "done",
+            "dropped"
+          ]
         }
       }
     },
@@ -33,54 +86,120 @@
       "id": "t_note",
       "name": "Note",
       "fields": [
-        { "key": "title", "kind": "text" },
-        { "key": "body", "kind": "richtext" }
+        {
+          "key": "title",
+          "kind": "text"
+        },
+        {
+          "key": "body",
+          "kind": "richtext"
+        }
       ],
-      "profiles": { "note": { "title": "title", "body": "body" } }
+      "profiles": {
+        "note": {
+          "title": "title",
+          "body": "body"
+        }
+      }
     },
     {
       "id": "t_person",
       "name": "Person",
       "fields": [
-        { "key": "name", "kind": "text", "required": true },
-        { "key": "email", "kind": "text" },
-        { "key": "org", "kind": "reference", "targetType": "t_org" }
+        {
+          "key": "name",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "email",
+          "kind": "text"
+        },
+        {
+          "key": "org",
+          "kind": "reference",
+          "targetType": "t_org"
+        }
       ],
-      "profiles": { "contact": { "name": "name", "email": "email" } }
+      "profiles": {
+        "contact": {
+          "name": "name",
+          "email": "email"
+        }
+      }
     },
     {
       "id": "t_org",
       "name": "Organization",
       "fields": [
-        { "key": "name", "kind": "text", "required": true },
-        { "key": "kind", "kind": "enum", "options": ["org", "person"] }
+        {
+          "key": "name",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "kind",
+          "kind": "enum",
+          "options": [
+            "org",
+            "person"
+          ]
+        }
       ],
-      "profiles": { "contact": { "name": "name", "kind": "kind" } }
+      "profiles": {
+        "contact": {
+          "name": "name",
+          "kind": "kind"
+        }
+      }
     },
     {
       "id": "t_reading",
       "name": "Reading",
       "fields": [
-        { "key": "title", "kind": "text" },
-        { "key": "author", "kind": "text" },
-        { "key": "url", "kind": "url" },
-        { "key": "verdict", "kind": "enum", "options": ["unread", "skimmed", "read", "abandoned"] }
+        {
+          "key": "title",
+          "kind": "text"
+        },
+        {
+          "key": "author",
+          "kind": "text"
+        },
+        {
+          "key": "url",
+          "kind": "url"
+        },
+        {
+          "key": "verdict",
+          "kind": "enum",
+          "options": [
+            "unread",
+            "skimmed",
+            "read",
+            "abandoned"
+          ]
+        }
       ],
       "profiles": {}
     }
   ],
-
   "objects": [
     {
       "id": "o_review",
       "type": "t_task",
       "properties": {
         "title": "Weekly review",
-        "dates": { "start": "2026-08-25", "end": "2026-08-26" },
+        "dates": {
+          "start": "2026-08-25",
+          "end": "2026-08-26"
+        },
         "status": "todo",
         "estimate": 45
       },
-      "tags": ["admin", "ritual"],
+      "tags": [
+        "admin",
+        "ritual"
+      ],
       "archived": false,
       "created": "2026-08-19T15:55:06Z",
       "updated": "2026-08-19T15:55:06Z"
@@ -90,7 +209,10 @@
       "type": "t_task",
       "properties": {
         "title": "Weekly review",
-        "dates": { "start": "2026-08-18", "end": "2026-08-19" },
+        "dates": {
+          "start": "2026-08-18",
+          "end": "2026-08-19"
+        },
         "status": "done"
       },
       "completedAt": "2026-08-19T15:55:06Z",
@@ -103,12 +225,16 @@
       "type": "t_task",
       "properties": {
         "title": "Draft the interchange spec",
-        "dates": { "end": "2026-09-15" },
+        "dates": {
+          "end": "2026-09-15"
+        },
         "status": "doing",
         "owner": "o_jeff",
         "notes": "Fixtures first. The prose is commentary."
       },
-      "tags": ["writing"],
+      "tags": [
+        "writing"
+      ],
       "archived": false,
       "created": "2026-08-23T11:00:00Z",
       "updated": "2026-08-23T11:00:00Z"
@@ -118,9 +244,11 @@
       "type": "t_note",
       "properties": {
         "title": "Why anchoring is a topology question",
-        "body": "Schedule-anchored recurrence is a set generator — a pure function of rule and start. Completion-anchored recurrence is a state machine: the next occurrence depends on an event that has not happened. Only one future instance is ever knowable, which is why horizon must be 1."
+        "body": "Schedule-anchored recurrence is a set generator \u2014 a pure function of rule and start. Completion-anchored recurrence is a state machine: the next occurrence depends on an event that has not happened. Only one future instance is ever knowable, which is why horizon must be 1."
       },
-      "tags": ["writing"],
+      "tags": [
+        "writing"
+      ],
       "archived": false,
       "created": "2026-08-23T11:20:00Z",
       "updated": "2026-08-23T11:20:00Z"
@@ -128,7 +256,11 @@
     {
       "id": "o_jeff",
       "type": "t_person",
-      "properties": { "name": "J. Moore", "email": "jeff@example.invalid", "org": "o_district" },
+      "properties": {
+        "name": "J. Moore",
+        "email": "jeff@example.invalid",
+        "org": "o_district"
+      },
       "archived": false,
       "created": "2026-01-04T08:00:00Z",
       "updated": "2026-01-04T08:00:00Z"
@@ -136,7 +268,10 @@
     {
       "id": "o_district",
       "type": "t_org",
-      "properties": { "name": "Example School District", "kind": "org" },
+      "properties": {
+        "name": "Example School District",
+        "kind": "org"
+      },
       "archived": false,
       "created": "2026-01-04T08:00:00Z",
       "updated": "2026-01-04T08:00:00Z"
@@ -154,9 +289,47 @@
       "archived": false,
       "created": "2026-08-20T19:00:00Z",
       "updated": "2026-08-21T07:30:00Z"
+    },
+    {
+      "id": "o_outline",
+      "type": "t_note",
+      "position": "a0",
+      "properties": {
+        "title": "Reorganising the induction week",
+        "body": "Where this is going."
+      }
+    },
+    {
+      "id": "o_outline_1",
+      "type": "t_note",
+      "parent": "o_outline",
+      "position": "b0",
+      "properties": {
+        "title": "Day one",
+        "body": "Tour, accounts, lunch with the team."
+      }
+    },
+    {
+      "id": "o_outline_2",
+      "type": "t_note",
+      "parent": "o_outline",
+      "position": "b1",
+      "properties": {
+        "title": "Day two",
+        "body": "Systems, then the first standup."
+      }
+    },
+    {
+      "id": "o_outline_2a",
+      "type": "t_note",
+      "parent": "o_outline_2",
+      "position": "c0",
+      "properties": {
+        "title": "Who runs the standup",
+        "body": "Rotate it after the first fortnight."
+      }
     }
   ],
-
   "series": [
     {
       "id": "s_review",
@@ -164,14 +337,20 @@
         "anchor": "schedule",
         "freq": "weekly",
         "interval": 1,
-        "byWeekday": ["WE"],
-        "end": { "type": "never" }
+        "byWeekday": [
+          "WE"
+        ],
+        "end": {
+          "type": "never"
+        }
       },
       "horizon": 1,
-      "instances": ["o_review_prev", "o_review"]
+      "instances": [
+        "o_review_prev",
+        "o_review"
+      ]
     }
   ],
-
   "collections": [
     {
       "id": "c_quarter",
@@ -179,49 +358,99 @@
       "kind": "matrix",
       "placement": {
         "semantic": true,
-        "regions": ["urgent-important", "urgent-later", "calm-important", "calm-later"]
+        "regions": [
+          "urgent-important",
+          "urgent-later",
+          "calm-important",
+          "calm-later"
+        ]
       },
-      "membership": { "mode": "explicit" },
+      "membership": {
+        "mode": "explicit"
+      },
       "members": [
-        { "object": "o_spec", "region": "calm-important", "position": "a0" },
-        { "object": "o_review", "region": "urgent-later", "position": "a1" }
+        {
+          "object": "o_spec",
+          "region": "calm-important",
+          "position": "a0"
+        },
+        {
+          "object": "o_review",
+          "region": "urgent-later",
+          "position": "a1"
+        }
       ]
     },
     {
       "id": "c_writing",
       "name": "Writing desk",
       "kind": "canvas",
-      "placement": { "semantic": false },
-      "membership": { "mode": "explicit" },
+      "placement": {
+        "semantic": false
+      },
+      "membership": {
+        "mode": "explicit"
+      },
       "members": [
-        { "object": "o_spec", "context": { "x": 120, "y": 80 } },
-        { "object": "o_note_anchor", "context": { "x": 420, "y": 210, "collapsed": true } }
+        {
+          "object": "o_spec",
+          "context": {
+            "x": 120,
+            "y": 80
+          }
+        },
+        {
+          "object": "o_note_anchor",
+          "context": {
+            "x": 420,
+            "y": 210,
+            "collapsed": true
+          }
+        }
       ]
     },
     {
       "id": "c_active",
       "name": "In flight",
       "kind": "list",
-      "placement": { "semantic": false },
+      "placement": {
+        "semantic": false
+      },
       "membership": {
         "mode": "query",
         "materialized": false,
         "query": {
           "match": "all",
           "conditions": [
-            { "field": "status", "op": "eq", "value": "doing" },
-            { "kind": "tag", "tag": "writing", "op": "include" }
+            {
+              "field": "status",
+              "op": "eq",
+              "value": "doing"
+            },
+            {
+              "kind": "tag",
+              "tag": "writing",
+              "op": "include"
+            }
           ]
         }
       },
-      "members": ["o_spec"]
+      "members": [
+        "o_spec"
+      ]
     }
   ],
-
   "relations": [
-    { "from": "o_note_anchor", "to": "o_spec", "type": "supports" },
-    { "from": "o_reading_1", "to": "o_note_anchor", "type": "informs" }
+    {
+      "from": "o_note_anchor",
+      "to": "o_spec",
+      "type": "supports"
+    },
+    {
+      "from": "o_reading_1",
+      "to": "o_note_anchor",
+      "type": "informs"
+    }
   ],
-
   "findings": []
 }

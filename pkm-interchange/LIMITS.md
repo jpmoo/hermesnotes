@@ -63,30 +63,6 @@ limitations document can do.
 A snapshot is as fresh as the last export, which for a polling consumer is
 fine, and for one that has just written something is not.
 
-### No hierarchy
-
-**Needed for:** any outliner. Logseq, Roam, Tana and Workflowy are outline-first
-— a block sits *inside* another block, in order, and the nesting is the document
-rather than a view of it.
-
-**What the format has:** nothing that says containment. `relations` gives an
-edge, `collections` give membership with `position`, and neither says "this
-block is the third child of that one". A tree can be approximated with reference
-fields, which is what Hermes does, and an approximation is what it stays: the
-edges are there and the order and the containment are not.
-
-**How this one was found, which is the part worth keeping:** not by porting.
-Every other entry in this file arrived because Talaria needed something and
-Hermes could not say it — and that only ever surfaces gaps *both* of them feel.
-Hermes is flat blocks plus collections, so neither would ever notice this one.
-It came from asking what a different shape of application would need, and the
-answer is a large fraction of the genre.
-
-**The evidence is in Hermes' own export.** A rollup — its one hierarchical
-collection — goes out as `members: []` with the whole structure inside a
-`rollup` property. The hierarchy is not expressed, it is smuggled, and a
-consumer gets a collection it knows is a rollup and cannot draw.
-
 ### A note identified by a date
 
 **Needed for:** appending a line to today's daily note.
@@ -102,6 +78,45 @@ here.
 ---
 
 ## Closed
+
+### No hierarchy — closed
+
+**Was:** nothing that says containment. `relations` gave an edge, `collections`
+gave membership with `position`, and neither said "this block is the third
+thing inside that one". Hermes' own rollup went out as `members: []` with the
+structure smuggled inside a private property.
+
+**Now:** `parent` and `position` on an object. A parent pointer and the same
+opaque ordering token collections already use; an object with no parent is a
+root.
+
+No `children` array, deliberately. A list on the parent and a pointer on the
+child are two statements of one fact, and the day they disagree there is no way
+to tell which one is the document.
+
+Three rules that are the whole of the design. A **cycle is invalid** — an object
+that is its own ancestor describes no document and hangs anything that walks it.
+A **parent that names nothing in this payload is not an error**, because a
+`since` read is a delta and will routinely carry a child whose parent has not
+changed; the object stands at the root until the parent turns up, and must
+neither be dropped nor given an invented placeholder. And **flattening is
+permitted and must be reported**: a consumer with no containment may draw a list
+and still has to hand the tree back, or opening somebody's outline in the wrong
+application destroys it.
+
+**This is the entry that matters most, and not because outlines are important.**
+Every other limit here arrived because Talaria needed something Hermes could not
+say, which only ever surfaces gaps *both* of them feel. This one came from
+asking what a different shape of application would need. Hermes does not
+implement it and says so in `unsupported`, so the hierarchy cases are scoped
+away when the suite measures Hermes and run against the reference instead.
+
+The proof is `foreign`. The example library — a stranger's, from a producer that
+is not Hermes — now contains an outline, and it round-trips through Hermes with
+**234 leaves in and none lost**, on a feature Hermes cannot draw. A format that
+only carried what its first producer happened to store would have dropped it.
+
+→ `fixtures/hierarchy.json`
 
 ### There is no sort or grouping on a collection — closed
 

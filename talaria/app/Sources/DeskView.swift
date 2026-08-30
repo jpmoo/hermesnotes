@@ -20,11 +20,16 @@ import WebKit
 /**
  Today's scratchpad, live.
 
- The one surface here that reaches past the interchange binding, and the only
- one entitled to: a daily note is Hermes' own idea. The format has no word for
- "the page for a date" — it is `LIMITS.md`'s third open entry — so there is
- nothing to be spec-compliant *with*, and pretending otherwise would mean
- inventing a private extension and calling it a standard.
+ The one surface here that reaches past the interchange binding, and the reason
+ is worth stating correctly, because the obvious reason is the wrong one.
+
+ It is not that the format cannot say "the page for a date". That is a real gap
+ — `LIMITS.md`'s third open entry — and it is not what forced this. What forced
+ it is that the page renders: markdown, checkboxes, the `@` and `#` pickers,
+ piping into a block. Reimplementing that in Swift would be weeks of work whose
+ only possible outcome is a second editor that drifts from the first, so this
+ embeds the first one. A format could have handed over the *content* of today's
+ note and it would not have helped, because the content was never the hard part.
 
  Read live rather than from the mirror, because this is a thing being typed
  into. A copy thirty seconds behind would overwrite whatever somebody wrote in

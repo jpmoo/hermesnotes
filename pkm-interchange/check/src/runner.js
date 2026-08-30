@@ -122,6 +122,10 @@ function runCase(adapter, c, bySuiteId) {
       const got = adapter.order((env.collections ?? [])[0] ?? {}, env.objects ?? [], env.types ?? []);
       return { pass: exact(got, c.expect), got };
     }
+    case "outline": {
+      const got = adapter.outline(env.objects ?? []);
+      return { pass: exact(got, c.expect), got };
+    }
     case "nextOccurrence": {
       const s = (env.series ?? [])[0];
       let instance = given.instance;

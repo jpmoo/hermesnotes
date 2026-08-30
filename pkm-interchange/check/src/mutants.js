@@ -18,6 +18,79 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixt
 
 const MUTANTS = [
   {
+    // The outliner bug everyone writes once: sort siblings with the language's
+    // own comparison. "Zz" lands after "a0" and the top of the outline is wrong.
+    name: "orders siblings by locale rather than byte-wise",
+    caught: "hierarchy/siblings-sort-byte-wise",
+    patch: (a) => ({
+      ...a,
+      outline: (objects) => {
+        const collated = [...objects].sort((x, y) =>
+          String(x.position ?? "").localeCompare(String(y.position ?? "")),
+        );
+        // Positions rewritten in collated order, so the reference's own byte-wise
+        // sort reproduces the locale one.
+        return a.outline(collated.map((o, i) => ({ ...o, position: String(i).padStart(4, "0") })));
+      },
+    }),
+  },
+  {
+    // A child whose parent is not in this payload, dropped. Looks tidy and
+    // silently loses writing on every delta read, which is most reads.
+    name: "drops an object whose parent is not in the payload",
+    caught: "hierarchy/a-missing-parent-is-a-root-for-now",
+    patch: (a) => ({
+      ...a,
+      outline: (objects) => {
+        const present = new Set(objects.map((o) => o.id));
+        return a.outline(objects.filter((o) => o.parent === undefined || present.has(o.parent)));
+      },
+    }),
+  },
+  {
+    // Cycle detection that looks only one step up. Catches a self-parent and
+    // walks forever on any longer loop — which is the case that matters.
+    name: "only notices a cycle when an object is its own parent",
+    caught: "hierarchy/a-cycle-is-invalid",
+    patch: (a) => ({
+      ...a,
+      validate: (env) => {
+        const got = a.validate(env);
+        const real = (env.objects ?? []).some((o) => o.parent === o.id);
+        const errors = got.errors.filter((e) => e.code !== "hierarchy.cycle" || real);
+        return { valid: errors.length === 0, errors };
+      },
+    }),
+  },
+  {
+    // Flattened without a word. The list looks fine; the document is gone.
+    name: "flattens an outline without reporting it",
+    caught: "hierarchy/flattening-must-be-reported",
+    patch: (a) => ({
+      ...a,
+      import: (env, caps) => a.import(env, { ...caps, hierarchy: undefined }),
+    }),
+  },
+  {
+    // Keys a flat tool has no use for, tidied away on the way out. Opening
+    // somebody's outline in the wrong application destroys it.
+    name: "a flattener drops parent and position on re-export",
+    caught: "hierarchy/a-flattener-still-gives-it-back",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        if (caps.hierarchy === false) {
+          for (const o of out.result.objects ?? []) {
+            delete o.parent;
+            delete o.position;
+          }
+        }
+        return out;
+      },
+    }),
+  },
+  {
     // The obvious reading of "sort by type", and the one that puts a list in an
     // order with no visible logic: type ids are uuids in most producers, so the
     // headings come out shuffled and every user reports it as a bug in sorting.

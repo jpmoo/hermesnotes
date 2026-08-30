@@ -50,7 +50,7 @@ runner can act on it.
 
 ## Operations
 
-An implementation is testable when it can answer these eleven. They are the whole
+An implementation is testable when it can answer these twelve. They are the whole
 adapter surface; a producer that only writes files implements the first two and
 declares the rest unsupported, and the last two are only asked of something with
 a live binding.
@@ -62,6 +62,7 @@ a live binding.
 | `read` | `type`, `object`, `args.key` | one profile value — `title`, `due`, `status` |
 | `isComplete` | `type`, `object` | boolean |
 | `order` | `collection`, `objects`, `types` | member ids in order, or `{ groups }` when it groups |
+| `outline` | `objects` | roots in order, each `{ id, children }`, nested |
 | `nextOccurrence` | `series`, `instance`, `when` | `{ start?, due? }` or `null` |
 | `import` | `export`, `with` | `{ result, fidelity, reports }` |
 | `roundtrip` | `export`, `with` | import, then serialize, then compare |
@@ -110,6 +111,7 @@ is meant.
 | `remapIds: true` | keys objects by its own ids internally |
 | `sorting: false` | shows a list in its stored order and cannot derive one |
 | `grouping: false` | no grouped views — a flat list is all it draws |
+| `hierarchy: false` | no containment — an outline arrives as a flat list |
 
 The pair `placement/semantic-must-survive` and `placement/view-may-be-dropped`
 run with **identical** capabilities and expect opposite fidelity. That is the
@@ -132,6 +134,7 @@ without matching an error message.
 | `placement.coordinates-not-semantic` | semantic placement must name regions |
 | `order.by-invalid` | a sort or grouping key naming neither a field nor a known `meta` |
 | `order.direction-invalid` | a direction that is not `ascending` or `descending` |
+| `hierarchy.cycle` | an object that is its own ancestor |
 | `series.completion-horizon` | `horizon` must be 1 when `anchor` is `completion` |
 | `series.completion-byweekday` | `byWeekday` is meaningless with `anchor: completion` |
 | `series.month-end-required` | monthly and yearly rules must declare `monthEnd` |

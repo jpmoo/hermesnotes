@@ -180,6 +180,22 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     };
   });
 
+  // An outline, arriving at an application that has no containment.
+  //
+  // Hermes keeps `parent` and `position` — they go into the carried bag and come
+  // back out byte-identical, which is why a stranger's outline survives a round
+  // trip here — and it cannot draw one. The blocks land as a flat list. That is
+  // permitted and it is a loss, and the loss has to be said: somebody who
+  // exported an outline and opened it here has a document whose structure is
+  // present in the file and absent from the screen.
+  if (((envelope.objects ?? []) as { parent?: unknown }[]).some((o) => o.parent !== undefined)) {
+    note(
+      "hierarchy.flattened",
+      "hermes",
+      "This library nests objects inside one another and Hermes is flat, so the blocks arrive as a list. The `parent` and `position` keys are kept and travel back out intact — an export from here will still be an outline — but nothing in this app reads them, so the structure cannot be seen or edited while it is here.",
+    );
+  }
+
   const memberships: HermesMembership[] = [];
   for (const c of inCollections) {
     // A region is a name, or a name and the words a person reads. This cast

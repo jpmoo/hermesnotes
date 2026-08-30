@@ -686,6 +686,17 @@ struct GlanceView: View {
     /// "further out" to find a date should not also unfurl everything the
     /// embedder scored badly.
     @State private var open: Set<Daemon.GlanceSection> = []
+    /// Sections somebody has deliberately closed.
+    ///
+    /// `firstOpen` unfolds the first section with anything in it when the main
+    /// list is empty, so a panel that has something to say never opens looking
+    /// like it has nothing. That was written as an override rather than a
+    /// default, and an override cannot be argued with: clicking the header
+    /// removed the section from `open` — where it had never been, because
+    /// `firstOpen` was what opened it — and it stayed open. "Further out or
+    /// undated" could not be closed at all, which is the one section that is
+    /// always the one showing when the main list is empty.
+    @State private var shut: Set<Daemon.GlanceSection> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -740,7 +751,7 @@ struct GlanceView: View {
                                 // what you probably do not want under what you
                                 // probably do; with nothing above it, it is
                                 // just hiding.
-                                if open.contains(section) || firstOpen == section {
+                                if isOpen(section) {
                                     ForEach(hits) { hit in row(hit) }
                                 }
                             }
@@ -854,11 +865,24 @@ struct GlanceView: View {
     }
 
     /// One collapsible divider.
+    /// Whether a section is showing: what somebody chose, and failing that what
+    /// `firstOpen` suggests. A deliberate close outranks the suggestion.
+    private func isOpen(_ section: Daemon.GlanceSection) -> Bool {
+        guard !shut.contains(section) else { return false }
+        return open.contains(section) || firstOpen == section
+    }
+
     private func fold(_ section: Daemon.GlanceSection, _ hits: [Daemon.GlanceHit]) -> some View {
-        let isOpen = open.contains(section) || firstOpen == section
+        let isOpen = isOpen(section)
         let name = label(section, hits)
         return Button {
-            if isOpen { open.remove(section) } else { open.insert(section) }
+            if isOpen {
+                open.remove(section)
+                shut.insert(section)
+            } else {
+                shut.remove(section)
+                open.insert(section)
+            }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: isOpen ? "chevron.down" : "chevron.right")

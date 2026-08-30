@@ -7997,6 +7997,23 @@ mark[data-from]::before {
   padding: 10px 12px 14px;
   background: transparent;
 }
+/* The page itself, out of the way.
+   
+   `body` carries the app's background, which is the right thing on every route
+   that is a page and the wrong thing on one that is a panel inside somebody
+   else's window. The card was made transparent first and the quadrant stayed
+   white, because what was white was never the card — it was the page behind it.
+   Talaria's web view draws no background of its own, so with these transparent
+   the frost comes through.
+   
+   Scoped with `:has()` rather than a body class, so it cannot leak onto a real
+   page even if the route is ever visited in a browser. */
+html:has(.embed-scratchpad),
+body:has(.embed-scratchpad),
+body:has(.embed-scratchpad) #root {
+  background: transparent;
+}
+
 /* The card, softened onto the frost.
    
    Everywhere else in Hermes a block is a white card on a page, and the contrast

@@ -345,12 +345,21 @@ private struct WorkspacesPane: View {
             let pictureH = max(24, height - caption - spacing)
             VStack(alignment: .leading, spacing: spacing) {
                 ZStack {
+                    // A hollow in the surface rather than a panel on top of
+                    // it: at 0.06 of the foreground colour an empty tile reads
+                    // as a recess, and the frost behind still shows.
                     RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.primary.opacity(0.06))
+                        .fill(Color.primary.opacity(0.04))
                     if let shot = model.shots[space.name] {
+                        // A photograph is opaque by nature, and four of them at
+                        // full strength turned this quadrant into a contact
+                        // sheet stuck to the glass. Slightly sunk into the
+                        // surface instead — still legible as a picture of a
+                        // workspace, no longer the brightest thing on the desk.
                         Image(nsImage: shot)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                            .opacity(0.82)
                     } else if WorkspacesModel.others(space).isEmpty {
                         Text("empty")
                             .font(Theme.chrome(10))
@@ -517,7 +526,7 @@ struct DeskView: View {
                     // that builds itself from a type's declared fields is
                     // precisely the duplication this project keeps not doing.
                     DeskPane(title: "New block") {
-                        ComposeView(model: compose)
+                        ComposeView(model: compose, standalone: false)
                     }
                     .frame(width: w, height: h)
                 }

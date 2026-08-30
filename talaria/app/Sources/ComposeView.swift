@@ -365,6 +365,11 @@ final class ComposeModel: ObservableObject {
 
 struct ComposeView: View {
     @ObservedObject var model: ComposeModel
+    /// Whether this is a window of its own, or a quadrant of the desk. A window
+    /// needs an opaque surface to hold a form against a desktop; a quadrant is
+    /// already inside one, and painting a second sheet over the frost is what
+    /// stopped the desk being frosted where the form was.
+    var standalone = true
     /// Called with the new block's title once it has been handed to the daemon.
     var onSaved: (String) -> Void = { _ in }
     @FocusState private var firstField: Bool
@@ -417,7 +422,7 @@ struct ComposeView: View {
         // needs.
         .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
                minHeight: 320, idealHeight: 560, maxHeight: .infinity)
-        .background(VisualEffect(radius: 0))
+        .background(standalone ? AnyView(VisualEffect(radius: 0)) : AnyView(Color.clear))
     }
 
     private var unsupported: [String]? {
@@ -449,7 +454,7 @@ struct ComposeView: View {
         switch field.kind {
         case "text":
             labelled(field.display) {
-                ClearableField(text: binding(field.key))
+                ClearableField(text: binding(field.key), plain: !standalone)
             }
         case "richtext":
             // The body is bound to `content` rather than to a property, and is
@@ -469,10 +474,7 @@ struct ComposeView: View {
             }
         case "number":
             labelled(field.display) {
-                TextField("", text: binding(field.key))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12))
-                    .frame(width: 90)
+                ClearableField(text: binding(field.key), width: 90, plain: !standalone)
             }
         case "enum":
             labelled(field.display) {
@@ -547,6 +549,14 @@ struct ComposeView: View {
 
     private var fieldBackground: some View {
         RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05))
+    }
+
+    /// What `.roundedBorder` draws, approximately, for the standalone window
+    /// where an opaque field is the right thing.
+    private var bezel: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color(nsColor: .textBackgroundColor))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
     }
 
     private func binding(_ key: String) -> Binding<String> {
@@ -646,13 +656,29 @@ private struct DateLeg: View {
 private struct ClearableField: View {
     @Binding var text: String
     var width: CGFloat = Field.width
+    /// Draw the field's own surface instead of AppKit's bezel, which is opaque
+    /// and therefore wrong over a frosted panel.
+    var plain = false
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            TextField("", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 12))
-                .frame(width: width)
+            // Two whole fields rather than one with a swapped style: a
+            // `TextFieldStyle` has no type-erased form, so the branch has to be
+            // above it.
+            if plain {
+                TextField("", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .frame(width: width)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
+            } else {
+                TextField("", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
+                    .frame(width: width)
+            }
             if !text.isEmpty {
                 Button {
                     text = ""

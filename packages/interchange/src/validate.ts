@@ -16,7 +16,7 @@ export interface Invalid {
   path: string;
 }
 
-const PROFILES = ["task", "event", "contact", "note"];
+const PROFILES = ["task", "event", "contact", "note", "journal"];
 
 /** Features a manifest is expected to declare, and how to spot each in the data. */
 const FEATURES: Record<string, (e: Env) => boolean> = {

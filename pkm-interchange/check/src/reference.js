@@ -102,6 +102,24 @@ export function importEnvelope(envelope, capabilities = {}) {
     }
   }
 
+  {
+    const byDay = new Map();
+    for (const t of doc.types ?? []) {
+      const key = t?.profiles?.journal?.date;
+      if (!key) continue;
+      for (const o of doc.objects ?? []) {
+        if (o.type !== t.id) continue;
+        const on = o.properties?.[key];
+        if (on === undefined || on === "") continue;
+        byDay.set(on, (byDay.get(on) ?? 0) + 1);
+      }
+    }
+    // Not resolved here. Choosing between two pages for one day is a person's
+    // decision, and choosing silently is how the one with the writing in it
+    // ends up behind the empty one.
+    if ([...byDay.values()].some((n) => n > 1)) say("journal.duplicate");
+  }
+
   if (capabilities.hierarchy === false && (doc.objects ?? []).some((o) => o.parent !== undefined)) {
     // The keys survive — the round-trip rule does not bend for a consumer that
     // cannot use them — but the document arrives as a list, and the nesting is
@@ -421,13 +439,37 @@ export function outline(objects = []) {
   return build(null);
 }
 
+/**
+ * The page for a date, or nothing.
+ *
+ * A journal object is found by its declared profile and its mapped field, never
+ * by the shape of its title. A note called "2026-08-30" is a note somebody
+ * named after a day; the producer says which types are journals by declaring
+ * the profile, and that is the only evidence there is.
+ *
+ * Answers nothing for a date nobody has opened. Producers create these lazily,
+ * so most dates have no page, and the nearest one is somebody else's day.
+ */
+export function journalFor(types = [], objects = [], date) {
+  const journals = new Set(
+    types.filter((t) => t?.profiles?.journal?.date).map((t) => t.id),
+  );
+  const byId = new Map(types.map((t) => [t.id, t]));
+  const hits = objects.filter((o) => {
+    if (!journals.has(o.type)) return false;
+    const key = byId.get(o.type).profiles.journal.date;
+    return o.properties?.[key] === date;
+  });
+  return hits.length ? hits[0].id : null;
+}
+
 export const adapter = {
   // It exists to stand in for other tools, so it can be asked to lack anything.
   simulates: ["*"],
   // And it claims everything, so nothing is scoped away from it. A real
   // implementation declares what it actually does and is measured on that.
   conformance: {
-    profiles: ["task", "event", "contact", "note"],
+    profiles: ["task", "event", "contact", "note", "journal"],
     features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering", "hierarchy"],
   },
   validate,
@@ -436,6 +478,7 @@ export const adapter = {
   isComplete,
   order,
   outline,
+  journalFor,
   nextOccurrence,
   import: importEnvelope,
   roundtrip,

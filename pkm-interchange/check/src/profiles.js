@@ -8,7 +8,7 @@
 export const META_KEYS = new Set(["type", "created", "updated"]);
 
 /** The v0 profile vocabulary. Anything else is preserved and ignored. */
-export const V0_PROFILES = ["task", "event", "contact", "note"];
+export const V0_PROFILES = ["task", "event", "contact", "note", "journal"];
 
 /**
  * Which v0 profiles a type declares, in the order it declared them.

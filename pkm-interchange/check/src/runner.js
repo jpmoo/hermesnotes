@@ -122,6 +122,10 @@ function runCase(adapter, c, bySuiteId) {
       const got = adapter.order((env.collections ?? [])[0] ?? {}, env.objects ?? [], env.types ?? []);
       return { pass: exact(got, c.expect), got };
     }
+    case "journal": {
+      const got = adapter.journalFor(env.types ?? [], env.objects ?? [], c.args.date);
+      return { pass: exact(got ?? null, c.expect ?? null), got };
+    }
     case "outline": {
       const got = adapter.outline(env.objects ?? []);
       return { pass: exact(got, c.expect), got };

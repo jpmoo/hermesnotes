@@ -63,21 +63,42 @@ limitations document can do.
 A snapshot is as fresh as the last export, which for a polling consumer is
 fine, and for one that has just written something is not.
 
-### A note identified by a date
-
-**Needed for:** appending a line to today's daily note.
-
-**What the format has:** nothing. "The note for 2026-08-25" is a query, and the
-format has no query language — the same gap as derivations, arriving from the
-other direction.
-
-**What Talaria does:** `GET /today/:date/note`. Worth noting that the daily note
-is one of the most portable ideas in this genre and one of the least sayable
-here.
-
 ---
 
 ## Closed
+
+### A note identified by a date — closed
+
+**Was:** nothing. "The note for 2026-08-25" was described here as a query, and
+the format has no query language — so this looked like it had to wait for one.
+
+**Now:** a `journal` profile, mapping `date` onto the field that holds the day.
+
+**The entry had the wrong frame, which is why it sat open.** A daily note is not
+a search. It is an object with a date identity — Obsidian's daily note, Logseq's
+journal, Roam's daily note, Tana's day node — and calling it a query made a
+shared query language a prerequisite for the most ordinary feature in the genre.
+Profiles already exist to map a producer's own fields onto a shared vocabulary;
+this needed no new machinery at all, only the right description.
+
+Found by declaration and never by title. A note somebody named after a day is
+not that day's page, and guessing from the shape of a title is how a tool starts
+appending to somebody's meeting notes.
+
+Duplicates are reported, not resolved. Producers create these lazily and one
+that has raced with itself ends up with two pages for a date — Hermes has its
+own version of this in `findOrCreateNote`. Choosing between them silently is how
+the one with somebody's morning in it ends up behind the empty one.
+
+**What it cost Hermes to say it, which is the useful part.** Hermes marks a
+daily note with a `today_note` property that no type declared — so the date a
+whole feature is built on travelled as an unexplained string, and a `journal`
+mapping onto it would have been refused by the format's own rule that a mapping
+must land. The exporter declares the field now. The same fault as the missing
+`title` on text types, found the same way: by trying to say something true and
+discovering the export could not.
+
+→ `fixtures/journal.json`
 
 ### No hierarchy — closed
 

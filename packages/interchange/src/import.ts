@@ -180,6 +180,35 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     };
   });
 
+  // Two pages for one day.
+  //
+  // Producers make these lazily and one that has raced with itself ends up with
+  // a pair. Hermes has its own version of this — `findOrCreateNote` picks a
+  // survivor when it finds duplicates — and picking is exactly what an import
+  // must not do quietly: the one with somebody's morning in it is as likely to
+  // be the one that loses.
+  {
+    const seen = new Map<string, number>();
+    for (const t of (envelope.types ?? []) as { id?: string; profiles?: Record<string, { date?: string }> }[]) {
+      const key = t.profiles?.journal?.date;
+      if (!key) continue;
+      for (const o of (envelope.objects ?? []) as { type?: string; properties?: Record<string, unknown> }[]) {
+        if (o.type !== t.id) continue;
+        const on = o.properties?.[key];
+        if (typeof on !== "string" || !on) continue;
+        seen.set(on, (seen.get(on) ?? 0) + 1);
+      }
+    }
+    const doubled = [...seen.entries()].filter(([, n]) => n > 1).map(([day]) => day);
+    if (doubled.length) {
+      note(
+        "journal.duplicate",
+        "format",
+        `More than one page exists for ${doubled.length === 1 ? `the day ${doubled[0]}` : `${doubled.length} days`}. Which one is the day's page is a question this import cannot answer and has not tried to: both are here, and a person has to say which.`,
+      );
+    }
+  }
+
   // An outline, arriving at an application that has no containment.
   //
   // Hermes keeps `parent` and `position` — they go into the carried bag and come

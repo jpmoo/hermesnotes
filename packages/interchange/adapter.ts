@@ -276,10 +276,53 @@ export const hermesAdapter = {
     };
   },
 
+  /**
+   * The page for a date.
+   *
+   * Found through the declared profile, never by matching a title against a
+   * date — a note somebody named after a day is not that day's page, and
+   * guessing is how a tool starts appending to the wrong document. Hermes marks
+   * its own with a `today_note` property and the exporter now declares it, so
+   * this reads the same mapping a stranger's library would offer.
+   */
+  journalFor: (
+    types: { id?: string; profiles?: Record<string, { date?: string }> }[],
+    objects: { id?: string; type?: string; properties?: Record<string, unknown> }[],
+    date: string,
+  ) => {
+    const mapped = new Map(
+      types.filter((t) => t.profiles?.journal?.date).map((t) => [t.id, t.profiles!.journal!.date!]),
+    );
+    const hit = objects.find((o) => {
+      const key = mapped.get(o.type);
+      return key !== undefined && o.properties?.[key] === date;
+    });
+    return hit?.id ?? null;
+  },
+
   import: roundtrip,
   roundtrip,
 
-  profilesOf: (type: Type) => hermesProfilesOf(asSchema(type)).map((p) => p.name),
+  /**
+   * Which v0 profiles a type declares.
+   *
+   * Hermes works its own out from its schema — a status field with complete
+   * values makes a task, and so on — which is right for a Hermes type and blind
+   * to a type that simply *says* what it is. A stranger's library declares
+   * `profiles` outright, and `journal` is the first of them Hermes cannot infer
+   * from a schema at all: nothing about a date field says "this is the page for
+   * that day", only the producer saying so does.
+   *
+   * So: what the type declared, in the order it declared it, and Hermes'
+   * inference for the ones it did not.
+   */
+  profilesOf: (type: Type) => {
+    const declared = Object.keys((type.profiles ?? {}) as Record<string, unknown>).filter((p) =>
+      ["task", "event", "contact", "note", "journal"].includes(p),
+    );
+    if (declared.length) return declared;
+    return hermesProfilesOf(asSchema(type)).map((p) => p.name);
+  },
 
   read: (
     type: Type,

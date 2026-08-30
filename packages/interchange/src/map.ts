@@ -115,6 +115,15 @@ export function toInterchange(input: ExportInput): {
 
   const queryMembers = input.queryMembers;
   const typeById = new Map(input.types.map((t) => [t.id, t]));
+  // Which types have a page-for-a-date among their objects. Computed from the
+  // data rather than configured, because being a journal is a fact about what a
+  // type is used for here and not about what Hermes thinks the type is.
+  const journalTypes = new Set(
+    input.blocks
+      .filter((b) => (b.properties as Record<string, unknown> | undefined)?.today_note !== undefined)
+      .map((b) => b.blockTypeId)
+      .filter((id): id is string => Boolean(id)),
+  );
   const blockById = new Map(input.blocks.map((b) => [b.id, b]));
   const live = input.blocks.filter((b) => !b.collectionKind);
   const collections = input.blocks.filter((b) => b.collectionKind);
@@ -149,8 +158,23 @@ export function toInterchange(input: ExportInput): {
     if (t.isText && !fields.some((f) => f.key === "title")) {
       fields.unshift({ key: "title", kind: "text" });
     }
+    // The page for a date, said out loud.
+    //
+    // Hermes marks a daily note with a `today_note` property holding the day,
+    // and that property is on the objects and on no type — so the date a whole
+    // feature is built around arrived as an unexplained string. The same fault
+    // as the missing `title` above and the same fix: the type says what its
+    // objects carry.
+    //
+    // Declared only for types that actually have one, because a `journal`
+    // profile on every text type would claim that any note is a day's page.
+    if (journalTypes.has(t.id) && !fields.some((f) => f.key === "today_note")) {
+      fields.push({ key: "today_note", kind: "date" });
+    }
+
     const declared = profilesOf(schema, { isText: t.isText });
     const profiles: Record<string, unknown> = {};
+    if (journalTypes.has(t.id)) profiles.journal = { date: "today_note" };
     for (const p of declared) {
       profiles[p.name] = p.map;
       if (p.derived) {

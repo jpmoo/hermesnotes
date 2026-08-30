@@ -175,13 +175,44 @@ There is deliberately **no recurrence value kind**. Recurrence is not a value; s
 
 A profile declaration maps a producer's own fields onto a vocabulary a stranger can consume. It is a *mapping*, not a claim of identity — a type named `Chore` or `Errand` or `明日の仕事` declaring the `task` profile is consumable by any task-aware tool.
 
-v0 profiles: `task`, `event`, `contact`, `note`.
+v0 profiles: `task`, `event`, `contact`, `note`, `journal`.
 
 A type may declare several. A type may declare none, in which case consumers can still read its fields generically and must not guess.
 
 **A mapping must land.** Wherever a v0 profile names one of the producer's fields, that field has to be declared on the type. A mapping onto a field that does not exist reads as a declaration and delivers nothing: the consumer that trusts it gets `undefined` and cannot tell that from a task with no due date. It is the one way to claim level 1 while providing none of it, and nothing else in an export gives it away — the document is well-formed and the profile is spelled correctly.
 
 Three things inside a profile are not field names, and none of them is checked this way: a list of values such as `completeValues`; the halves of a compound field, named as `{ "field": "dates", "part": "start" }`, where the rule applies to `field`; and `content`, the one reserved slot outside the property bag. Profiles outside the v0 vocabulary are carried and not interpreted, so their mappings are not checked either.
+
+#### The page for a date
+
+```json
+"profiles": { "note": { "title": "title", "content": "content" },
+              "journal": { "date": "on" } }
+```
+
+A journal object is the page for a day: Obsidian's daily note, Logseq's journal,
+Roam's daily note, Tana's day node, and the same idea under a different name in
+most of the rest. It is one of the most portable ideas in this genre and, until
+now, one of the least sayable here.
+
+`date` names the field holding the day, as `YYYY-MM-DD`. That is the whole
+mapping. A journal object is almost always a `note` as well, and a type may
+declare both — this profile adds the one thing `note` cannot say, which is
+*which day this is*.
+
+Deliberately not a query. "The note for 2026-08-25" reads like a search and is
+not one: it is an object with a date identity, and treating it as a search would
+have made a shared query language a prerequisite for the most ordinary feature
+in the genre. A consumer with no query engine finds it by looking, and a producer
+with a route for it is offering a shortcut rather than the only way in.
+
+**One page per day is expected, and duplicates are not a consumer's to resolve.**
+Producers create these lazily, and a producer that has raced with itself can end
+up with two pages for one date. A consumer that finds several must not silently
+pick one — that is how somebody's morning notes vanish behind an identical,
+empty page — so it reports `journal.duplicate` and shows what it found.
+
+→ `fixtures/journal.json`
 
 → `fixtures/profile.json`
 

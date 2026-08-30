@@ -29,7 +29,7 @@ export const CONFORMANCE = {
    * that. Retrofitting the other forty would be a nicety.
    */
   bindings: ["file", "http", "mcp"],
-  profiles: ["task", "note"],
+  profiles: ["task", "note", "journal"],
   // `addresses` was missing while `url` was being emitted on every object and
   // every collection, which is under-claiming — and under-claiming measures the
   // same as not implementing it: `fixtures/address.json` requires the feature,

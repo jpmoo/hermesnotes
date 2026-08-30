@@ -18,6 +18,46 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixt
 
 const MUTANTS = [
   {
+    // The obvious shortcut, and the one that appends to somebody's meeting
+    // notes: find the daily page by matching a title against a date.
+    name: "finds the daily page by its title rather than its declared profile",
+    caught: "journal/only-a-journal-type-answers",
+    patch: (a) => ({
+      ...a,
+      journalFor: (types, objects, date) =>
+        objects.find((o) => Object.values(o.properties ?? {}).includes(date))?.id ?? null,
+    }),
+  },
+  {
+    // Two pages for one day, one of them picked in silence. The one with the
+    // writing in it is the one that disappears.
+    name: "picks a page when a date has two, without saying so",
+    caught: "journal/duplicates-are-reported-not-resolved",
+    patch: (a) => ({
+      ...a,
+      import: (env, caps) => {
+        const out = a.import(env, caps);
+        const reports = out.reports.filter((r) => r !== "journal.duplicate");
+        return { ...out, reports, fidelity: reports.length ? "reduced" : "full" };
+      },
+    }),
+  },
+  {
+    // A date nobody has opened, answered with the nearest page there is.
+    // Somebody's writing lands under the wrong day.
+    name: "answers a date with no page using the closest one it has",
+    caught: "journal/a-day-nobody-has-opened",
+    patch: (a) => ({
+      ...a,
+      journalFor: (types, objects, date) => {
+        const hit = a.journalFor(types, objects, date);
+        if (hit) return hit;
+        const journals = new Set(types.filter((t) => t?.profiles?.journal?.date).map((t) => t.id));
+        return objects.find((o) => journals.has(o.type))?.id ?? null;
+      },
+    }),
+  },
+  {
     // The outliner bug everyone writes once: sort siblings with the language's
     // own comparison. "Zz" lands after "a0" and the top of the outline is wrong.
     name: "orders siblings by locale rather than byte-wise",

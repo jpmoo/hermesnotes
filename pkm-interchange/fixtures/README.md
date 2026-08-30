@@ -50,7 +50,7 @@ runner can act on it.
 
 ## Operations
 
-An implementation is testable when it can answer these twelve. They are the whole
+An implementation is testable when it can answer these thirteen. They are the whole
 adapter surface; a producer that only writes files implements the first two and
 declares the rest unsupported, and the last two are only asked of something with
 a live binding.
@@ -63,6 +63,7 @@ a live binding.
 | `isComplete` | `type`, `object` | boolean |
 | `order` | `collection`, `objects`, `types` | member ids in order, or `{ groups }` when it groups |
 | `outline` | `objects` | roots in order, each `{ id, children }`, nested |
+| `journal` | `types`, `objects`, `args.date` | the id of that day's page, or null |
 | `nextOccurrence` | `series`, `instance`, `when` | `{ start?, due? }` or `null` |
 | `import` | `export`, `with` | `{ result, fidelity, reports }` |
 | `roundtrip` | `export`, `with` | import, then serialize, then compare |

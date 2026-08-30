@@ -1,0 +1,326 @@
+{
+  "suite": "journal",
+  "level": 1,
+  "about": "The page for a date. The failure this suite exists to prevent is a daily note being found by guessing at titles, or a duplicate quietly hiding somebody's writing.",
+  "requires": {
+    "profiles": [
+      "journal"
+    ]
+  },
+  "cases": [
+    {
+      "id": "journal/the-page-for-a-date",
+      "level": 1,
+      "op": "journal",
+      "given": {
+        "types": [
+          {
+            "id": "t_day",
+            "name": "Daily page",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              },
+              {
+                "key": "on",
+                "kind": "date"
+              },
+              {
+                "key": "body",
+                "kind": "richtext"
+              }
+            ],
+            "profiles": {
+              "note": {
+                "title": "title",
+                "content": "content"
+              },
+              "journal": {
+                "date": "on"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_29",
+            "type": "t_day",
+            "properties": {
+              "title": "2026-08-29",
+              "on": "2026-08-29"
+            }
+          },
+          {
+            "id": "o_30",
+            "type": "t_day",
+            "properties": {
+              "title": "2026-08-30",
+              "on": "2026-08-30"
+            }
+          }
+        ]
+      },
+      "args": {
+        "date": "2026-08-30"
+      },
+      "expect": "o_30",
+      "why": "The whole feature. A daily note is an object with a date identity, not a search \u2014 which is why this needs no query language, and why it took a profile rather than a new mechanism."
+    },
+    {
+      "id": "journal/a-day-nobody-has-opened",
+      "level": 1,
+      "op": "journal",
+      "given": {
+        "types": [
+          {
+            "id": "t_day",
+            "name": "Daily page",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              },
+              {
+                "key": "on",
+                "kind": "date"
+              },
+              {
+                "key": "body",
+                "kind": "richtext"
+              }
+            ],
+            "profiles": {
+              "note": {
+                "title": "title",
+                "content": "content"
+              },
+              "journal": {
+                "date": "on"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_29",
+            "type": "t_day",
+            "properties": {
+              "title": "2026-08-29",
+              "on": "2026-08-29"
+            }
+          }
+        ]
+      },
+      "args": {
+        "date": "2026-08-30"
+      },
+      "expect": null,
+      "why": "Nothing, rather than the nearest one. Producers create these lazily, so a date with no page is the ordinary state of most dates, and answering with yesterday's page would put somebody's writing under the wrong day."
+    },
+    {
+      "id": "journal/only-a-journal-type-answers",
+      "level": 1,
+      "op": "journal",
+      "given": {
+        "types": [
+          {
+            "id": "t_day",
+            "name": "Daily page",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              },
+              {
+                "key": "on",
+                "kind": "date"
+              },
+              {
+                "key": "body",
+                "kind": "richtext"
+              }
+            ],
+            "profiles": {
+              "note": {
+                "title": "title",
+                "content": "content"
+              },
+              "journal": {
+                "date": "on"
+              }
+            }
+          },
+          {
+            "id": "t_note",
+            "name": "Note",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              }
+            ],
+            "profiles": {
+              "note": {
+                "title": "title"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_x",
+            "type": "t_note",
+            "properties": {
+              "title": "2026-08-30"
+            }
+          },
+          {
+            "id": "o_30",
+            "type": "t_day",
+            "properties": {
+              "title": "2026-08-30",
+              "on": "2026-08-30"
+            }
+          }
+        ]
+      },
+      "args": {
+        "date": "2026-08-30"
+      },
+      "expect": "o_30",
+      "why": "A note whose title happens to be a date is not the page for that day. The producer says which types are journals by declaring the profile; nothing else is evidence, and guessing from the shape of a title is how a tool starts appending to somebody's meeting notes."
+    },
+    {
+      "id": "journal/duplicates-are-reported-not-resolved",
+      "level": 1,
+      "op": "import",
+      "given": {
+        "types": [
+          {
+            "id": "t_day",
+            "name": "Daily page",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              },
+              {
+                "key": "on",
+                "kind": "date"
+              },
+              {
+                "key": "body",
+                "kind": "richtext"
+              }
+            ],
+            "profiles": {
+              "note": {
+                "title": "title",
+                "content": "content"
+              },
+              "journal": {
+                "date": "on"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_a",
+            "type": "t_day",
+            "properties": {
+              "title": "2026-08-30",
+              "on": "2026-08-30"
+            }
+          },
+          {
+            "id": "o_b",
+            "type": "t_day",
+            "properties": {
+              "title": "2026-08-30",
+              "on": "2026-08-30"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "fidelity": "reduced",
+        "reports": [
+          "journal.duplicate"
+        ]
+      },
+      "why": "Producers create these lazily and one that has raced with itself ends up with two pages for a day. Picking one silently is how somebody's morning notes vanish behind an identical empty page; the consumer says what it found and lets a person choose."
+    },
+    {
+      "id": "journal/a-mapping-must-land-here-too",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "type": {
+          "id": "t_bad",
+          "name": "Daily",
+          "fields": [
+            {
+              "key": "title",
+              "kind": "text"
+            }
+          ],
+          "profiles": {
+            "journal": {
+              "date": "on"
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "profile.field-not-declared"
+          }
+        ]
+      },
+      "why": "The same rule every other profile follows, and worth a case of its own because this is the profile most likely to be bolted onto a type whose date lives in an undeclared property. A mapping onto a field that does not exist reads as a declaration and delivers undefined."
+    },
+    {
+      "id": "journal/a-journal-is-usually-a-note-as-well",
+      "level": 1,
+      "op": "profilesOf",
+      "given": {
+        "type": {
+          "id": "t_day",
+          "name": "Daily page",
+          "fields": [
+            {
+              "key": "title",
+              "kind": "text"
+            },
+            {
+              "key": "on",
+              "kind": "date"
+            },
+            {
+              "key": "body",
+              "kind": "richtext"
+            }
+          ],
+          "profiles": {
+            "note": {
+              "title": "title",
+              "content": "content"
+            },
+            "journal": {
+              "date": "on"
+            }
+          }
+        }
+      },
+      "expect": [
+        "note",
+        "journal"
+      ],
+      "why": "Both, in the order the type declared them. `journal` adds the one thing `note` cannot say \u2014 which day this is \u2014 and replaces nothing, so a consumer that has never heard of journals still reads it as a note with a body."
+    }
+  ]
+}

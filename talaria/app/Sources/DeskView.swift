@@ -37,6 +37,10 @@ final class ScratchpadModel: ObservableObject {
     @Published var date = ""
     /// The block's own page in Hermes. Everything else here exists to find it.
     @Published var pageURL: URL?
+    /// How many times the desk has been opened. The web view reloads when this
+    /// moves, which is what makes a stale page impossible without making an
+    /// in-progress sentence impossible too.
+    @Published var generation = 0
 
     private var id: String?
     private var version = 0
@@ -46,6 +50,7 @@ final class ScratchpadModel: ObservableObject {
 
     func load() {
         loading = true
+        generation += 1
         Task.detached(priority: .userInitiated) { [weak self] in
             let got = try? Daemon.scratchpad()
             await MainActor.run {
@@ -107,6 +112,14 @@ final class ScratchpadModel: ObservableObject {
  */
 private struct HermesEmbed: NSViewRepresentable {
     let url: URL
+    /// Bumped every time the desk opens. See `updateNSView`.
+    let generation: Int
+
+    final class Coordinator {
+        var loaded: Int = -1
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -120,11 +133,20 @@ private struct HermesEmbed: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
-        // Only when it is actually a different page. Reloading on every SwiftUI
-        // update would throw away what somebody was typing, once a second.
-        if view.url?.absoluteString != url.absoluteString, view.isLoading == false {
-            view.load(URLRequest(url: url))
-        }
+        // Once per opening, and not once per SwiftUI update.
+        //
+        // The panel is built once and kept, so the web view inside it outlives
+        // any number of openings — which meant it loaded the page on the first
+        // ⌥⇧T and never again. A day rolling over, a note edited in the browser,
+        // or the application itself being redeployed all left this showing
+        // something from hours ago. Reloading on every update instead would
+        // throw away what somebody was typing, several times a second.
+        //
+        // So it is tied to the count of openings: a fresh look each time the
+        // desk appears, and never while it is up.
+        guard context.coordinator.loaded != generation || view.url == nil else { return }
+        context.coordinator.loaded = generation
+        view.load(URLRequest(url: url))
     }
 }
 
@@ -134,7 +156,7 @@ private struct ScratchpadPane: View {
     var body: some View {
         DeskPane(title: "Scratchpad", subtitle: model.date, note: model.status) {
             if let url = model.pageURL {
-                HermesEmbed(url: url)
+                HermesEmbed(url: url, generation: model.generation)
             } else if model.loading {
                 DeskPlaceholder("reading today's page")
             } else {

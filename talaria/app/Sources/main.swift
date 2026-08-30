@@ -121,6 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var glanceHotkey: Hotkey?
     private var glanceWindow: NSPanel?
     private var deskWindow: NSPanel?
+    /// What the menu bar and the Dock are covering, so the content can clear
+    /// them while the frost still reaches the edges of the screen.
+    private let deskInsets = DeskInsets()
     private let scratchpadModel = ScratchpadModel()
     private let workspacesModel = WorkspacesModel()
     private var deskHotkey: Hotkey?
@@ -532,16 +535,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         frost.blendingMode = .behindWindow
         frost.state = .active
         let host = NSHostingView(rootView: DeskView(
+            insets: deskInsets,
             scratchpad: scratchpadModel,
             workspaces: workspacesModel,
             compose: composeModel,
             glance: glanceModel,
             onPickWorkspace: { [weak self] name in
-                self?.workspacesModel.focus(name)
-                // Going somewhere is leaving here. Staying open over the
-                // workspace you just asked to see would be covering up the
-                // thing you asked for.
+                // Leave first, then go. Going somewhere is leaving here — but
+                // the order matters more than it looks.
+                //
+                // Switching first did switch: the daemon accepted it and
+                // AeroSpace moved. Then the desk closed, this app went back to
+                // being an accessory, and macOS handed the foreground to
+                // whatever had it before — an application living on the
+                // workspace we had just left, which AeroSpace duly followed
+                // back. The click worked and its effect was undone a moment
+                // later by the dismissal, which is indistinguishable from the
+                // click doing nothing.
+                //
+                // So: dismiss, let the handover settle, then ask. A tenth of a
+                // second is the smallest delay that reliably lands after
+                // AppKit's own activation work.
                 self?.hideDesk()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self?.workspacesModel.focus(name)
+                }
             }
         ))
         // The window decides the size, not the content.
@@ -579,15 +597,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
             ?? NSScreen.main
-        // The visible frame, not the whole screen.
+        // The whole screen for the frost, the usable part for the content.
         //
-        // A panel at this level draws under the menu bar rather than over it,
-        // so a full-screen frame put the top of the scratchpad behind it and
-        // the bottom row past the bottom of the screen. `visibleFrame` is the
-        // rectangle macOS says is actually usable — below the menu bar, above
-        // the Dock — which is what "covers the screen" has to mean for
-        // something you are meant to type into.
-        if let screen { panel.setFrame(screen.visibleFrame, display: true) }
+        // `visibleFrame` alone left a strip of desktop between the menu bar and
+        // the top of the panel — a seam, on the one surface whose whole idea is
+        // to be a sheet over everything. The window covers the screen now and
+        // the panes are inset by exactly the chrome they would otherwise hide
+        // behind, so the blur runs edge to edge and nothing is underneath the
+        // menu bar or the Dock.
+        if let screen {
+            panel.setFrame(screen.frame, display: true)
+            deskInsets.top = screen.frame.maxY - screen.visibleFrame.maxY
+            deskInsets.bottom = screen.visibleFrame.minY - screen.frame.minY
+        }
 
         // Activating, unlike Glance: this is a surface to type into — a
         // scratchpad and a composer — and a panel that cannot take the keyboard

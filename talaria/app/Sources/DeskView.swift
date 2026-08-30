@@ -421,7 +421,17 @@ private struct DeskPlaceholder: View {
 
 // MARK: - The desk itself
 
+/// What the menu bar and Dock take out of the screen. Observed rather than
+/// passed by value because the window is built once and can move to a screen
+/// with different chrome.
+@MainActor
+final class DeskInsets: ObservableObject {
+    @Published var top: CGFloat = 0
+    @Published var bottom: CGFloat = 0
+}
+
 struct DeskView: View {
+    @ObservedObject var insets: DeskInsets
     @ObservedObject var scratchpad: ScratchpadModel
     @ObservedObject var workspaces: WorkspacesModel
     @ObservedObject var compose: ComposeModel
@@ -446,9 +456,14 @@ struct DeskView: View {
         //
         // Each of them already scrolls internally, which is what absorbs the
         // difference when a form is taller than a quarter of a screen.
+        // The reader measures what is left after the insets, rather than the
+        // whole window with the insets subtracted again inside it. Doing both
+        // was the bug: the quadrants were computed correctly and then pushed
+        // down by padding that had already been accounted for, so the bottom
+        // row ran off the screen by exactly the height of the menu bar.
         GeometryReader { geo in
-            let w = (geo.size.width - Self.margin * 2 - Self.gap) / 2
-            let h = (geo.size.height - Self.margin * 2 - Self.gap) / 2
+            let w = (geo.size.width - Self.gap) / 2
+            let h = (geo.size.height - Self.gap) / 2
             VStack(spacing: Self.gap) {
                 HStack(spacing: Self.gap) {
                     ScratchpadPane(model: scratchpad).frame(width: w, height: h)
@@ -470,8 +485,19 @@ struct DeskView: View {
                         .frame(width: w, height: h)
                 }
             }
-            .padding(Self.margin)
         }
+        // The frost reaches the edges of the screen; the panes clear the chrome
+        // that is drawn over them.
+        .padding(.horizontal, Self.margin)
+        // The larger of the two, not the sum.
+        //
+        // Adding a margin on top of the menu bar's height put a 51-point band
+        // of bare frost above the first pane — the chrome's height is already
+        // the clearance, and a margin as well is a second one. Taking the
+        // larger keeps the ordinary inset on a screen with no chrome to clear
+        // and sits flush under the menu bar on one that has.
+        .padding(.top, max(Self.margin, insets.top))
+        .padding(.bottom, max(Self.margin, insets.bottom))
     }
 }
 

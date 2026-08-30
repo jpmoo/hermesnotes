@@ -7997,6 +7997,25 @@ mark[data-from]::before {
   padding: 10px 12px 14px;
   background: transparent;
 }
+/* The card, softened onto the frost.
+   
+   Everywhere else in Hermes a block is a white card on a page, and the contrast
+   is what separates it from what is around it. Here what is around it is a
+   frosted panel over somebody's desktop, and an opaque white rectangle in the
+   corner of that reads as a different application showing through rather than
+   as part of the surface. So the card keeps its shape and gives up its fill:
+   the border and radius still say "this is the block", and the blur behind it
+   comes through. */
+.embed-scratchpad .card {
+  background: transparent;
+  box-shadow: none;
+  border-color: color-mix(in srgb, currentColor 12%, transparent);
+}
+.embed-scratchpad .card:focus-within {
+  /* Still worth marking, just not with a slab of white. */
+  border-color: color-mix(in srgb, var(--accent, #5fa4b5) 45%, transparent);
+}
+
 .embed-scratchpad.embed-empty {
   display: flex;
   align-items: center;

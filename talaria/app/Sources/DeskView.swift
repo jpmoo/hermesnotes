@@ -217,17 +217,36 @@ final class WorkspacesModel: ObservableObject {
                 guard let shot = Self.picture(of: space) else { continue }
                 await MainActor.run { self?.shots[space.name] = shot }
             }
-            await MainActor.run { self?.denied = (self?.shots.isEmpty ?? true) && got.contains { !$0.windows.isEmpty } }
+            await MainActor.run { self?.denied = (self?.shots.isEmpty ?? true) && got.contains { !Self.others($0).isEmpty } }
         }
     }
 
     /// The largest window in a workspace, which is the one that says where you
     /// were. Compositing every window into a little diagram was the other
     /// option and it produces a picture of a layout rather than of work.
+    /**
+     What is in a workspace, not counting us.
+
+     The desk is a real window in whichever workspace it was opened in — it has
+     to be, or the tiling manager cannot see it and will not leave it alone — and
+     it covers the screen, which made it the largest window in the focused
+     workspace and therefore the one photographed. So the tile for the workspace
+     you are in showed a picture of the panel you were looking at, nested inside
+     itself.
+
+     Our own windows are dropped from the count and the icons as well, for the
+     same reason: a workspace's tile should say what is there to go back to, and
+     this app's panels are not that.
+     */
+    nonisolated static func others(_ space: Daemon.Workspace) -> [Daemon.WorkspaceWindow] {
+        let mine = Bundle.main.bundleIdentifier
+        return space.windows.filter { $0.bundleId != mine }
+    }
+
     nonisolated private static func picture(of space: Daemon.Workspace) -> NSImage? {
         var best: NSImage?
         var bestArea: CGFloat = 0
-        for window in space.windows {
+        for window in others(space) {
             guard
                 let shot = CGWindowListCreateImage(
                     .null,
@@ -332,7 +351,7 @@ private struct WorkspacesPane: View {
                         Image(nsImage: shot)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                    } else if space.windows.isEmpty {
+                    } else if WorkspacesModel.others(space).isEmpty {
                         Text("empty")
                             .font(Theme.chrome(10))
                             .foregroundStyle(.tertiary)
@@ -340,7 +359,7 @@ private struct WorkspacesPane: View {
                         // No picture: the applications themselves, which is
                         // still enough to recognise a workspace by.
                         HStack(spacing: 4) {
-                            ForEach(Array(space.windows.prefix(4).enumerated()), id: \.offset) { _, window in
+                            ForEach(Array(WorkspacesModel.others(space).prefix(4).enumerated()), id: \.offset) { _, window in
                                 if let icon = Self.icon(for: window.bundleId) {
                                     Image(nsImage: icon).resizable().frame(width: 22, height: 22)
                                 }
@@ -360,7 +379,7 @@ private struct WorkspacesPane: View {
                 HStack(spacing: 5) {
                     Text(space.name).font(Theme.chrome(11, weight: .medium)).lineLimit(1)
                     Spacer(minLength: 0)
-                    Text(space.windows.isEmpty ? "—" : "\(space.windows.count)")
+                    Text(WorkspacesModel.others(space).isEmpty ? "—" : "\(WorkspacesModel.others(space).count)")
                         .font(Theme.chrome(10))
                         .foregroundStyle(.secondary)
                 }
@@ -369,7 +388,7 @@ private struct WorkspacesPane: View {
         }
         .buttonStyle(.plain)
         .frame(width: width, height: height)
-        .help(space.windows.map(\.app).joined(separator: ", "))
+        .help(WorkspacesModel.others(space).map(\.app).joined(separator: ", "))
     }
 
     private static func icon(for bundleId: String?) -> NSImage? {

@@ -681,6 +681,9 @@ final class GlanceModel: ObservableObject {
 
 struct GlanceView: View {
     @ObservedObject var model: GlanceModel
+    /// Whether this is a floating panel of its own, or a quadrant of the desk.
+    /// Only a panel needs a blur and an edge; a quadrant is already inside one.
+    var standalone = true
     @FocusState private var searching: Bool
     /// Which of the folded sections are open. Independent, because opening
     /// "further out" to find a date should not also unfurl everything the
@@ -766,13 +769,18 @@ struct GlanceView: View {
         // 380-point card in a 700-point space and looked like a mistake.
         .frame(minWidth: 300, idealWidth: 380, maxWidth: .infinity,
                minHeight: 200, idealHeight: 420, maxHeight: .infinity)
-        .background(VisualEffect(radius: 16))
+        // Its own panel chrome, only when it *is* a panel.
+        //
+        // The blur and the hairline are what separate a floating widget from
+        // the document behind it. Inside the desk there is no document behind
+        // it — there is a pane, which has already drawn a card with its own
+        // corners — so this drew a second rounded rectangle inside the first
+        // and left a curved line under the pane's heading, for no reason a
+        // reader could see.
+        .background(standalone ? AnyView(VisualEffect(radius: 16)) : AnyView(Color.clear))
         .overlay(
-            // A hairline rather than a border. It is what separates the panel
-            // from a light document behind it; any heavier and the thing starts
-            // looking like a dialog again.
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(standalone ? 0.08 : 0), lineWidth: 0.5)
         )
     }
 

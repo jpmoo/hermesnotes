@@ -435,7 +435,11 @@ private struct DeskPane<Content: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: Theme.cardRadius)
-                .fill(.background.opacity(0.55))
+                // Enough to hold text against a busy desktop and no more. At
+                // 0.55 the panes read as four opaque cards over a blur; the
+                // point of the frost is that you can still see roughly what is
+                // behind it.
+                .fill(.background.opacity(0.35))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardRadius)
@@ -519,7 +523,7 @@ struct DeskView: View {
                 }
                 HStack(spacing: Self.gap) {
                     DeskPane(title: "Glance") {
-                        GlanceView(model: glance)
+                        GlanceView(model: glance, standalone: false)
                     }
                     .frame(width: w, height: h)
                     WorkspacesPane(model: workspaces, onPick: onPickWorkspace)

@@ -357,6 +357,65 @@ export class Sync {
     }
   }
 
+  /**
+   * Take in an answer about one collection.
+   *
+   * Deliberately not `store`, which replaces the memberships of every block it
+   * is handed because a full read carries every collection a block is in. This
+   * read carries one, so going through `store` would tell the mirror those
+   * blocks belong to nothing else and empty every other board they were on.
+   *
+   * So: the objects are written without touching their memberships, the types
+   * come along in case a member is of a kind never seen before, and this
+   * collection's rows are replaced on their own.
+   */
+  absorbCollection(env: Envelope): void {
+    const collection = (env.collections ?? [])[0];
+    if (!collection) return;
+    this.storeTypes(env);
+
+    const types = this.typeIndex();
+    const series = seriesByObject(env.series as Series[] | undefined);
+    this.mirror.putBlocks(
+      (env.objects ?? []).map((o) => {
+        const c = toCanonical(o, o.type ? types.get(o.type) : undefined, {
+          appOrigin: this.appOrigin,
+          collectionKind: (o.collectionKind as string | undefined) ?? null,
+          series: series.get(o.id) ?? null,
+        });
+        return {
+          id: o.id,
+          raw: JSON.stringify({ ...o, canonical: c }),
+          updatedAt: c.updatedAt,
+          archived: Boolean(o.archived),
+          title: c.title,
+          body: c.body ?? "",
+          kind: c.kind,
+          typeId: o.type ?? null,
+          noteDate: c.noteDate,
+          // Absent, not empty: empty means "in no collections", which is a
+          // claim this read is in no position to make.
+        };
+      }),
+    );
+
+    const names = (collection.placement?.regions ?? []).map(regionName);
+    this.mirror.replaceMembers(
+      collection.id,
+      (collection.members ?? [])
+        .filter((m) => m.object)
+        .map((m) => {
+          const index = m.region ? names.indexOf(m.region) : -1;
+          return {
+            blockId: m.object!,
+            position: m.position ?? null,
+            region: m.region ?? null,
+            context: index >= 0 ? { ...(m.context ?? {}), region: index } : (m.context ?? {}),
+          };
+        }),
+    );
+  }
+
   /** Throw away what we know and read it all again. */
   async full(): Promise<SyncOutcome> {
     this.mirror.set(SEAM, null);

@@ -30,42 +30,54 @@ into an API for one product.
 
 ## Open
 
-### `derivations` names the feature and not the query
-
-**Needed for:** smart collections. Talaria asks Hermes which blocks a saved
-filter matches (`POST /blocks/query`), because the filter language — types,
-tags, properties, relative dates, nested groups — is Hermes'.
-
-**What the format has:** `membership.mode: "query"` on a collection, which says
-*this list is computed* and nothing about what computes it.
-
-**Why it is not obviously fixable:** a shared query language is a large piece of
-design, and the wrong one is worse than none. Two smaller moves would carry most
-of the value: let a producer ship the *evaluated membership* alongside the
-declaration, so a consumer can render a smart list it cannot recompute; or let
-the query travel opaquely with a named dialect, so a consumer knows to ask the
-producer rather than guess.
-
-**Meanwhile:** the producer ships the evaluated set as the snapshot the format
-already allows beside `materialized: false` — the query stays the truth, the
-members are a courtesy, and a consumer must not treat them as authoritative.
-That is enough to *render* a smart collection without a query engine, which is
-what a consumer actually needs, and it is why Talaria no longer asks Hermes to
-run the query.
-
-This sentence used to claim the membership already arrived evaluated. It did
-not: Hermes shipped `members: []` on every dynamic smart collection, and
-Talaria reached past the binding to `POST /blocks/query` for all of them. The
-line made the limit sound smaller than it was, which is the worst thing a
-limitations document can do.
-
-**What is still missing:** a way to ask for a re-evaluation through the binding.
-A snapshot is as fresh as the last export, which for a polling consumer is
-fine, and for one that has just written something is not.
+Nothing outstanding that a real client has been blocked by. The three that
+were here are below, with what each cost to answer; the one remaining piece of
+unfinished business is named at the end of the first.
 
 ---
 
 ## Closed
+
+### `derivations` named the feature and not the query — closed enough to say so
+
+**Was:** `membership.mode: "query"` said *this list is computed* and nothing
+about what computes it. The entry proposed two smaller moves in place of a
+shared query language, and both have now happened.
+
+**The first, already done:** the producer ships the evaluated set as the
+snapshot the format permits beside `materialized: false`. That is what lets a
+consumer render a smart collection it cannot recompute, and it is why Talaria
+stopped asking Hermes to run queries for it.
+
+**The second, now:** `GET /interchange/collections/{id}`, which answers with
+that collection's membership evaluated at the moment it is asked.
+
+**Why a cursor could not do this, which is the part worth keeping.** `since`
+tells you what *changed*, and a computed membership changes without anything
+changing: a task whose date falls into range today was not edited, so no feed
+carries it and no cursor moves past it. A follower doing everything right — every
+change absorbed, no event missed — still ends up holding a list that quietly
+stopped being true. There was no way to ask. Now there is one.
+
+**What it is deliberately not.** A shared query language. Understanding somebody
+else's saved search and getting a fresh answer out of it are two problems, and
+only the second is small: any producer with saved searches can run its own and
+say what came back, while agreeing a language to express them in is a design
+nobody has got right yet, where the wrong answer is worse than none. The query
+still travels opaquely. What changed is that a consumer no longer has to
+understand it to keep a list current.
+
+The route carries the members as objects and their types, not a list of ids — a
+consumer asks it precisely *because* it cannot run the query, so ids it has
+nothing to resolve against would be an answer both current and unusable. That is
+`collection.member-not-carried`.
+
+**What is still open**, and is the honest remainder of this entry: the query
+itself is still opaque, so a consumer cannot show a person *why* something is in
+a list, or edit the rule. That needs a shared language and is a v0.2 question at
+the earliest.
+
+→ `fixtures/operational.json`
 
 ### A note identified by a date — closed
 

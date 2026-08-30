@@ -91,7 +91,15 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
     guarded.get("/interchange", async (req, reply) => {
       const userId = requireUser(req);
       const q = z
-        .object({ since: z.string().optional(), profile: z.string().optional() })
+        .object({
+          since: z.string().optional(),
+          profile: z.string().optional(),
+          // One collection, evaluated now. See the route below, which is the
+          // documented spelling of this — the parameter exists so there is one
+          // implementation rather than two, not because anybody should reach
+          // for it directly.
+          collection: z.string().uuid().optional(),
+        })
         .parse(req.query);
 
       // Where this answer was taken. The change log's high-water mark, so it
@@ -214,7 +222,12 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       const queryMembers = new Map<string, string[]>();
       let evaluated = 0;
       const SMART_QUERY_CAP = 80;
-      for (const c of rows) {
+      // The one that was asked for goes first. Otherwise a library with more
+      // than eighty saved searches could answer this route with a stale list
+      // for the single collection somebody asked to have refreshed, which is
+      // the one thing it is for.
+      const ordered = q.collection ? [...rows].sort((a, b) => (a.id === q.collection ? -1 : b.id === q.collection ? 1 : 0)) : rows;
+      for (const c of ordered) {
         if (evaluated >= SMART_QUERY_CAP) break;
         if (!c.collectionKind) continue;
         const props = (c.properties ?? {}) as Record<string, unknown>;
@@ -273,7 +286,61 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         origin: env.PUBLIC_BASE?.replace(/\/$/, "") ?? `${req.protocol}://${req.hostname}`,
       });
 
-      return { ...narrow(envelope, delta, q.profile), cursor, findings };
+      const answer = { ...narrow(envelope, delta, q.profile), cursor, findings } as Record<string, unknown> & {
+        types?: { id: string }[];
+        objects?: { id: string; type?: string }[];
+        collections?: { id: string; members?: (string | { object?: string })[] }[];
+      };
+      if (!q.collection) return answer;
+
+      /**
+       * One collection, with what it needs to be drawn.
+       *
+       * The members as objects and those objects' types, because a consumer
+       * asks this *because* it cannot run the query — a list of ids it has
+       * nothing to resolve against is an answer that is current and unusable.
+       * `collection.member-not-carried` is the rule, and this is the code it
+       * exists to keep honest.
+       */
+      const only = (answer.collections ?? []).find((c) => c.id === q.collection);
+      if (!only) return reply.code(404).send({ error: "no such collection" });
+      const wanted = new Set(
+        (only.members ?? [])
+          .map((m) => (typeof m === "string" ? m : m?.object))
+          .filter((id): id is string => Boolean(id)),
+      );
+      const objects = (answer.objects ?? []).filter((o) => wanted.has(o.id));
+      const used = new Set(objects.map((o) => o.type).filter(Boolean));
+      return {
+        ...answer,
+        types: (answer.types ?? []).filter((t) => used.has(t.id)),
+        objects,
+        collections: [only],
+      };
+    });
+
+    /**
+     * What a collection holds now.
+     *
+     * The one route a consumer with no query engine needs and a cursor cannot
+     * replace: a computed membership changes without anything changing, so a
+     * follower catching up on every event still holds a list that quietly
+     * stopped being true. A task whose date fell into range today was not
+     * edited.
+     *
+     * Delegated rather than reimplemented, like every other verb here. The
+     * evaluation, the narrowing rules, the addresses and the findings all live
+     * in the read above; this is its documented spelling.
+     */
+    guarded.get("/interchange/collections/:id", async (req, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/interchange?collection=${id}`,
+        headers: { authorization: req.headers.authorization ?? "" },
+        cookies: (req.cookies ?? {}) as Record<string, string>,
+      });
+      return reply.code(res.statusCode).send(res.json());
     });
 
     /**

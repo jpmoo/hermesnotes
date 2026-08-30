@@ -335,6 +335,39 @@ export class Mirror {
   }
 
   /** What's in a collection, in position order, with where each sits. */
+  /**
+   * Replace one collection's membership rows and nothing else.
+   *
+   * Distinct from what `putBlocks` does, and the distinction is the whole
+   * reason this exists. That replaces the memberships of each *block* it is
+   * given, because a full sync carries every collection a block is in. A read
+   * of one collection carries one, so absorbing it that way would tell the
+   * mirror that these blocks belong to nothing else — and quietly empty every
+   * other board they were on.
+   */
+  replaceMembers(
+    collectionId: string,
+    rows: { blockId: string; position: string | null; region: string | null; context: unknown }[],
+  ): void {
+    const add = this.db.prepare(
+      `INSERT INTO memberships (collection_id, block_id, position, region, context, hidden)
+       VALUES (?, ?, ?, ?, ?, 0)
+       ON CONFLICT(collection_id, block_id) DO UPDATE SET
+         position = excluded.position, region = excluded.region, context = excluded.context`,
+    );
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare("DELETE FROM memberships WHERE collection_id = ?").run(collectionId);
+      for (const r of rows) {
+        add.run(collectionId, r.blockId, r.position, r.region, JSON.stringify(r.context ?? {}));
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
   membersOf(collectionId: string): { raw: string; region: string | null; position: string | null; context: string }[] {
     return this.db
       .prepare(

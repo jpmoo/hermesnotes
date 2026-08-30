@@ -768,6 +768,24 @@ export function buildServer(deps: {
      * and ships no snapshot, which is legal and is the only case it was ever
      * for.
      */
+    // Ask the producer what this collection holds right now.
+    //
+    // A board is opened to be looked at, and its membership may have moved
+    // without anything changing: a task whose date fell into range today was
+    // not edited, so no cursor advanced past it and a catch-up would have said
+    // "nothing new". One read, on the collection being drawn, rather than a
+    // full sync of the library to find out.
+    //
+    // Best effort throughout. A producer that has not implemented the verb, or
+    // one that is unreachable, leaves the mirror exactly as it was — which is
+    // the answer a board has always had and is never worse than not drawing.
+    try {
+      const fresh = (await deps.ix.collection(id)) as { collections?: unknown[] };
+      if (fresh.collections?.length) sync.absorbCollection(fresh as never);
+    } catch {
+      // Offline, or a producer without the verb. Both mean "draw what we have".
+    }
+
     const shipped = mirror.membersOf(id).length > 0;
     const cachedQuery = shipped ? null : mirror.get(`query.${id}`);
     const matching = cachedQuery ? new Set(JSON.parse(cachedQuery) as string[]) : null;

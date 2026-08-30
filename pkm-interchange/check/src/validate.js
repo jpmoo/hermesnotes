@@ -73,6 +73,24 @@ export function validate(envelope) {
         fail("order.direction-invalid", `${at}.order`);
       }
     }
+    // A collection answered on its own has to carry what it names.
+    //
+    // The same failure as a narrowed read that forgot its types, one level up.
+    // A consumer asks for a collection's current membership *because* it cannot
+    // run the query, so a list of ids it has nothing to resolve against is an
+    // answer that is both current and unusable.
+    //
+    // Only when the objects are there to be checked against: a whole-library
+    // read carries everything, and a `since` delta legitimately mentions a
+    // member it did not need to resend.
+    if ((envelope.objects ?? []).length) {
+      const have = new Set((envelope.objects ?? []).map((o) => o.id));
+      const named = (c.members ?? []).map((m) => (typeof m === "string" ? m : m?.object));
+      if (named.length && named.every((id) => id !== undefined) && !named.every((id) => have.has(id))) {
+        fail("collection.member-not-carried", `${at}.members`);
+      }
+    }
+
     if (c.placement?.semantic === true) {
       // A region is a name, or an object carrying the name and the words a
       // person reads. Either is named; neither is a coordinate.

@@ -70,7 +70,7 @@
           }
         }
       },
-      "why": "The round-trip rule at write time. An agent that has never heard of energyLevel must be able to change a title without destroying it — and an agent is exactly what will be doing most of the writing. A format that guarantees unknown fields survive an export but not a write has guaranteed nothing."
+      "why": "The round-trip rule at write time. An agent that has never heard of energyLevel must be able to change a title without destroying it \u2014 and an agent is exactly what will be doing most of the writing. A format that guarantees unknown fields survive an export but not a write has guaranteed nothing."
     },
     {
       "id": "operational/unset-is-the-only-way-to-remove",
@@ -129,7 +129,7 @@
           }
         }
       },
-      "why": "A producer that versions its objects must refuse a patch written against an older version rather than merging it in. Merging looks helpful and is how one client's edit silently reverts another's — the writer believes it landed, and nothing anywhere says otherwise. Refusing is the only answer that gives the caller a chance to re-read and try again."
+      "why": "A producer that versions its objects must refuse a patch written against an older version rather than merging it in. Merging looks helpful and is how one client's edit silently reverts another's \u2014 the writer believes it landed, and nothing anywhere says otherwise. Refusing is the only answer that gives the caller a chance to re-read and try again."
     },
     {
       "id": "operational/write-that-loses-something-says-so",
@@ -224,7 +224,7 @@
         ],
         "gone": []
       },
-      "why": "Rows arrive in order, so the last row about an object is the current one — in both directions. Letting a delete outrank everything after it is defensible right up until something legitimately comes back, and then the follower's copy is missing an object that exists, with nothing to correct it until a full re-read."
+      "why": "Rows arrive in order, so the last row about an object is the current one \u2014 in both directions. Letting a delete outrank everything after it is defensible right up until something legitimately comes back, and then the follower's copy is missing an object that exists, with nothing to correct it until a full re-read."
     },
     {
       "id": "operational/deletion-is-reported",
@@ -283,7 +283,7 @@
           }
         ]
       },
-      "why": "Only the object itself can be deleted. A membership, a tag, a placement going away is an update to the object that had it — and `delete` is a word every follower treats as final. A feed that reports a child row's own operation will announce a live object as gone every time somebody drags a card between two columns, because that is a membership removed and re-added."
+      "why": "Only the object itself can be deleted. A membership, a tag, a placement going away is an update to the object that had it \u2014 and `delete` is a word every follower treats as final. A feed that reports a child row's own operation will announce a live object as gone every time somebody drags a card between two columns, because that is a membership removed and re-added."
     },
     {
       "id": "operational/child-change-survives-as-an-update",
@@ -316,7 +316,7 @@
         ],
         "gone": []
       },
-      "why": "The same card move, reported correctly: two updates, and the object is still there afterwards. This case and the one above are the two halves of one bug, and the bug is worth stating plainly because it is invisible in testing — everything works until somebody uses a board."
+      "why": "The same card move, reported correctly: two updates, and the object is still there afterwards. This case and the one above are the two halves of one bug, and the bug is worth stating plainly because it is invisible in testing \u2014 everything works until somebody uses a board."
     },
     {
       "id": "operational/manifest-names-its-roles",
@@ -343,7 +343,7 @@
           }
         ]
       },
-      "why": "A level is earned per role. Producing a valid file and consuming one are different achievements, and being safe to write to is a third — most tools in this genre can do the first and not the second. A manifest that reports one number is hiding which of the three it means."
+      "why": "A level is earned per role. Producing a valid file and consuming one are different achievements, and being safe to write to is a third \u2014 most tools in this genre can do the first and not the second. A manifest that reports one number is hiding which of the three it means."
     },
     {
       "id": "operational/operating-requires-a-live-binding",
@@ -422,7 +422,70 @@
           }
         ]
       },
-      "why": "A read narrowed by profile or by cursor answers with a subset, and this is the subset that filtered the types and forgot the objects still point at them. o_2 arrives as a bag of keys with nothing to say which one is a title — worse than being left out, because it looks like data. Narrowing is permission to send fewer objects, never permission to send objects nobody can read."
+      "why": "A read narrowed by profile or by cursor answers with a subset, and this is the subset that filtered the types and forgot the objects still point at them. o_2 arrives as a bag of keys with nothing to say which one is a title \u2014 worse than being left out, because it looks like data. Narrowing is permission to send fewer objects, never permission to send objects nobody can read."
+    },
+    {
+      "id": "operational/a-collection-read-carries-its-members",
+      "level": 4,
+      "op": "validate",
+      "given": {
+        "types": [
+          {
+            "id": "t_task",
+            "name": "Task",
+            "fields": [
+              {
+                "key": "title",
+                "kind": "text"
+              }
+            ],
+            "profiles": {
+              "task": {
+                "title": "title"
+              }
+            }
+          }
+        ],
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_task",
+            "properties": {
+              "title": "Ring the roofer"
+            }
+          }
+        ],
+        "collection": {
+          "id": "c_1",
+          "name": "In flight",
+          "membership": {
+            "mode": "query",
+            "materialized": false,
+            "query": {
+              "match": "all",
+              "conditions": []
+            }
+          },
+          "members": [
+            {
+              "object": "o_1"
+            },
+            {
+              "object": "o_missing"
+            }
+          ]
+        }
+      },
+      "of": "envelope",
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "collection.member-not-carried"
+          }
+        ]
+      },
+      "why": "Asking a collection what it holds now and getting back a list of ids is the same failure as a narrowed read that forgot its types, one level up: the answer is current and unusable. A consumer asks this route precisely because it cannot run the query, so it has nothing else to resolve the ids against."
     }
   ]
 }

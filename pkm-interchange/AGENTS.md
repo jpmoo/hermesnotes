@@ -718,6 +718,44 @@ A producer may return more than was asked for. Narrowing is permission to send
 less, never an obligation, and a producer that finds filtering expensive should
 send everything rather than get it wrong.
 
+### Asking a collection what it holds now
+
+```
+GET /interchange/collections/{id}
+```
+
+Answers an envelope narrowed to one collection: the collection, the objects it
+holds, and the types those objects need. A read, so it is safe to repeat.
+
+**Its membership is evaluated at the moment it is asked.** That is the whole
+point of it. A cursor tells you what has *changed*, and a computed collection's
+membership changes without anything changing: a task whose due date falls into
+range today was not edited, so no feed carries it and no cursor moves past it. A
+follower doing everything right — catching up on every change, never missing an
+event — still holds a list that quietly stopped being true. This is the only way
+to ask.
+
+**It does not make the query authoritative.** `membership.mode` stays `query`
+and `materialized` stays `false`. A fresh answer is still a snapshot; it is
+merely a snapshot from a second ago rather than from the last export, and a
+consumer must no more freeze this one into an explicit list than the other.
+
+**A producer that cannot re-evaluate answers 404 or 405.** That is not an error
+and must not be reported as one: it is a producer that has not implemented this
+verb, which is a condition that ends by itself when it is upgraded. A consumer
+treats it exactly as it treats any other verb the far end does not offer, and
+falls back to the snapshot it already has.
+
+**What this deliberately is not.** A shared query language. Understanding
+somebody else's saved search and getting a fresh answer out of it are two
+different problems, and only the second one is small: any producer with saved
+searches can run its own and say what came back, while agreeing on a language to
+express them in is a design nobody has got right yet and the wrong one is worse
+than none. `membership.query` still travels opaquely, and this route means a
+consumer no longer has to understand it to keep a smart list current.
+
+→ `fixtures/operational.json`
+
 ### Bringing an object into being
 
 ```

@@ -22,9 +22,10 @@ Four things in one pnpm monorepo, in the order they depend on each other:
   operations. Anything measuring an implementation goes through this.
 - `pkm-interchange/README.md` — the human-facing introduction to the format.
 - `LIMITS.md` (in `pkm-interchange/`) — **what a real client needed and the
-  format could not say.** Three open, three closed, and two that turned out
-  not to be limits; the closed ones are kept with their reasoning, because how a
-  limit was answered is the useful part. This is the
+  format could not say.** None open, six closed, and two that turned out not to
+  be limits; the closed ones are kept with their reasoning, because how a limit
+  was answered is the useful part, and the one genuinely unfinished thing — a
+  shared query language — is named at the end of the first. This is the
   v0.1 backlog. Read it before proposing any format change.
 - `docs/hermes-notes-v2-design-doc.md` — the block data model. Section 3's rule
   is the one that matters: *no per-type hardcoded logic.*

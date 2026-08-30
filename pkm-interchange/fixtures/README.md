@@ -136,6 +136,7 @@ without matching an error message.
 | `order.by-invalid` | a sort or grouping key naming neither a field nor a known `meta` |
 | `order.direction-invalid` | a direction that is not `ascending` or `descending` |
 | `hierarchy.cycle` | an object that is its own ancestor |
+| `collection.member-not-carried` | a collection answered alone, naming members it did not send |
 | `series.completion-horizon` | `horizon` must be 1 when `anchor` is `completion` |
 | `series.completion-byweekday` | `byWeekday` is meaningless with `anchor: completion` |
 | `series.month-end-required` | monthly and yearly rules must declare `monthEnd` |

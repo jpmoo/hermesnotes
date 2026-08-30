@@ -150,6 +150,26 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
       }
     }
 
+    // A collection answered on its own has to carry what it names.
+    //
+    // The same failure as a narrowed read that forgot its types, one level up.
+    // A consumer asks for a collection's current membership *because* it cannot
+    // run the query, so a list of ids it has nothing to resolve against is an
+    // answer that is both current and unusable.
+    //
+    // Only when the objects are there to be checked against: a whole-library
+    // read carries everything, and a `since` delta legitimately mentions a
+    // member it did not need to resend.
+    if ((e.objects ?? []).length) {
+      const have = new Set((e.objects ?? []).map((o) => o.id));
+      const listed = ((c.members ?? []) as (string | { object?: string })[]).map((m) =>
+        typeof m === "string" ? m : m?.object,
+      );
+      if (listed.length && listed.every((id) => id !== undefined) && !listed.every((id) => have.has(id!))) {
+        fail("collection.member-not-carried", `collections[${i}].members`);
+      }
+    }
+
     if (c.placement?.semantic !== true) return;
     const named =
       Array.isArray(c.placement.regions) &&

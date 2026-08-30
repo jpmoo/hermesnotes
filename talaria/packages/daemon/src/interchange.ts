@@ -258,6 +258,24 @@ export class Interchange {
   }
 
   /**
+   * What one collection holds now.
+   *
+   * The verb a cursor cannot replace. `since` says what *changed*, and a
+   * computed membership changes without anything changing — a task whose date
+   * fell into range today was not edited, so no feed carries it and no cursor
+   * moves past it. A follower doing everything right still ends up holding a
+   * list that quietly stopped being true, which is exactly what the boards were
+   * doing before this existed.
+   *
+   * Throws `UnsupportedError` on a producer that has not implemented it, which
+   * the caller treats as "keep the snapshot I already have" rather than as a
+   * failure: it is a condition that ends when the far end is upgraded.
+   */
+  collection(id: string): Promise<Record<string, unknown>> {
+    return this.req<Record<string, unknown>>("GET", `/interchange/collections/${id}`);
+  }
+
+  /**
    * Move an object to a named region of a collection.
    *
    * A name, never a coordinate. `urgent-important` survives being read by

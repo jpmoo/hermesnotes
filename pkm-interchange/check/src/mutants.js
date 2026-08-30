@@ -18,6 +18,20 @@ const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixt
 
 const MUTANTS = [
   {
+    // A collection answered on its own, as a list of ids. Current, and useless
+    // to the one consumer that had to ask — the one that cannot run the query.
+    name: "answers a collection read with ids it does not carry the objects for",
+    caught: "operational/a-collection-read-carries-its-members",
+    patch: (a) => ({
+      ...a,
+      validate: (env) => {
+        const got = a.validate(env);
+        const errors = got.errors.filter((e) => e.code !== "collection.member-not-carried");
+        return { valid: errors.length === 0, errors };
+      },
+    }),
+  },
+  {
     // The obvious shortcut, and the one that appends to somebody's meeting
     // notes: find the daily page by matching a title against a date.
     name: "finds the daily page by its title rather than its declared profile",

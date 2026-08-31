@@ -393,6 +393,26 @@ struct CanvasDocument: Equatable, Codable {
 }
 
 /**
+ A canvas in one file.
+
+ The working canvas is a JSON document beside a directory of pictures, which is
+ right for something written every few seconds and read by a person. A canvas
+ somebody saves and sends somewhere is a different job: it has to be one thing,
+ or half of it arrives.
+
+ So the pictures come inside, as base64, which is exactly the trade refused for
+ the working file and exactly right here. That file is written on every drag and
+ nobody would ever read a megabyte of it; this one is written when somebody asks
+ and its whole purpose is to survive being copied.
+ */
+struct CanvasExport: Codable {
+    var document: CanvasDocument
+    /// By the name the document refers to them by. `Data` is base64 in JSON,
+    /// which is what makes this one file rather than a folder.
+    var images: [String: Data] = [:]
+}
+
+/**
  Where the canvas keeps what is on it.
 
  One method each way and nothing else, because everything else is somebody's
@@ -420,6 +440,13 @@ protocol CanvasStore {
     func image(named: String) -> Data?
     /// Throw a picture away. Only ever called for one nothing refers to.
     func forget(image name: String)
+    /// Put a copy somewhere out of the way, under a name of its own.
+    ///
+    /// Used once: immediately before a load replaces everything. Loading is the
+    /// only thing here that destroys a canvas without asking, and the file panel
+    /// is a poor confirmation — somebody choosing a file has said which file,
+    /// not that the one they have is finished with.
+    func archive(_ document: CanvasDocument, as name: String)
 }
 
 /**
@@ -438,6 +465,7 @@ final class MemoryCanvasStore: CanvasStore {
     }
     func image(named: String) -> Data? { images[named] }
     func forget(image name: String) { images[name] = nil }
+    func archive(_ document: CanvasDocument, as name: String) {}
 }
 
 /**
@@ -535,6 +563,13 @@ final class FileCanvasStore: CanvasStore {
     func forget(image name: String) {
         guard safe(name) else { return }
         try? FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(name))
+    }
+
+    func archive(_ document: CanvasDocument, as name: String) {
+        let to = url.deletingLastPathComponent().appendingPathComponent(name)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? encoder.encode(document).write(to: to, options: .atomic)
     }
 
     /// A name from the document, so it must not be able to address anything
@@ -733,10 +768,21 @@ final class CanvasModel: ObservableObject {
         return nil
     }
 
-    /// Which region a click landed in, if any. Innermost first, so a region
-    /// inside a region is reachable.
-    func region(at point: CGPoint) -> CanvasRegion? {
+    /**
+     Which region a point is in. Innermost first, so a region inside a region is
+     reachable.
+
+     `excluding` is not a convenience. A region being dragged travels under the
+     pointer, so it always contains it — and "innermost" then means the dragged
+     one whenever it is the smaller of the two. Dropping a small region onto a
+     big one therefore found only itself and connected nothing, while the same
+     two the other way round worked perfectly. One direction working and the
+     other not is what that looks like from outside, and it is not obviously a
+     size question until you go looking.
+     */
+    func region(at point: CGPoint, excluding: UUID? = nil) -> CanvasRegion? {
         regions
+            .filter { $0.id != excluding }
             .compactMap { r in box(of: r).map { (r, $0) } }
             .filter { $0.1.contains(point) }
             .min { $0.1.width * $0.1.height < $1.1.width * $1.1.height }?.0
@@ -832,6 +878,71 @@ final class CanvasModel: ObservableObject {
             items[at].x += delta.width
             items[at].y += delta.height
         }
+    }
+
+    /**
+     The whole canvas as one value, pictures included.
+
+     Anything whose bytes have gone missing is left out rather than exported as
+     an empty entry — a saved file with a name in it and nothing behind the name
+     is a file that loads to a hole.
+     */
+    func export() -> CanvasExport {
+        var images: [String: Data] = [:]
+        for item in items {
+            guard let name = item.image, let data = store.image(named: name) else { continue }
+            images[name] = data
+        }
+        return CanvasExport(document: CanvasDocument(items: items, links: links, regions: regions),
+                            images: images)
+    }
+
+    /**
+     Replace everything with what was in a file.
+
+     Pictures are written back under fresh names and the items are pointed at
+     them, rather than keeping the names they arrived with. Two canvases saved on
+     two machines can hold the same name for two different pictures, and a load
+     that trusted the name would show one of them in both places.
+
+     The canvas being replaced is put aside first. Loading is the only thing here
+     that destroys a canvas, and a file panel is a poor confirmation: choosing a
+     file says which file, not that the one you have is finished with. There is a
+     question in front of this as well — this is what is left if the answer to it
+     was wrong.
+     */
+    func load(_ export: CanvasExport) {
+        store.archive(CanvasDocument(items: items, links: links, regions: regions),
+                      as: "canvas-replaced.json")
+        for item in items { if let name = item.image { store.forget(image: name) } }
+
+        var renamed: [String: String] = [:]
+        for (name, data) in export.images {
+            let ext = (name as NSString).pathExtension
+            if let fresh = store.keep(image: data, extension: ext.isEmpty ? "png" : ext) {
+                renamed[name] = fresh
+            }
+        }
+        items = export.document.items.map { item in
+            var copy = item
+            if let old = item.image { copy.image = renamed[old] }
+            return copy
+        }
+        // A picture whose bytes did not come with the file leaves an item that
+        // would draw as an empty box. Dropped, rather than kept as a hole.
+        items.removeAll { $0.image != nil && $0.image.flatMap(store.image(named:)) == nil }
+
+        let present = Set(items.map(\.id))
+        regions = export.document.regions
+            .map { var r = $0; r.members = r.members.filter(present.contains); return r }
+            .filter { !$0.members.isEmpty }
+        let anchors = present.union(regions.map(\.id))
+        links = export.document.links.filter { anchors.contains($0.from) && anchors.contains($0.to) }
+
+        editing = nil
+        draft = ""
+        clearSelection()
+        persist()
     }
 
     /// Everything, gone. Pictures too — a canvas-images directory full of files
@@ -1521,6 +1632,124 @@ enum ImagePicker {
     }
 }
 
+/// Saving, and the one that replaces everything.
+enum CanvasFile: String, CaseIterable, Identifiable {
+    case save
+    case load
+
+    var id: String { rawValue }
+    var name: String { self == .save ? "Save…" : "Load…" }
+    var symbol: String { self == .save ? "square.and.arrow.down" : "square.and.arrow.up" }
+}
+
+enum CanvasFiles {
+    /// Where to write it. Nil when the panel was dismissed, which is a decision
+    /// and not a failure.
+    static func destination() -> URL? {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "Canvas.json"
+        panel.prompt = "Save"
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    static func source() -> URL? {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.json]
+        panel.prompt = "Load"
+        return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    static func write(_ export: CanvasExport, to url: URL) -> String? {
+        do {
+            let encoder = JSONEncoder()
+            // Readable, like the working file. A canvas somebody sends to
+            // somebody else is still a document, and a document that can be
+            // opened in a text editor can be repaired in one.
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(export).write(to: url, options: .atomic)
+            return nil
+        } catch {
+            return "That canvas could not be saved"
+        }
+    }
+
+    /// The canvas, or why not. A tuple rather than `Result`, because the
+    /// failure here is a sentence for a person rather than an error anything
+    /// catches.
+    static func read(_ url: URL) -> (canvas: CanvasExport?, trouble: String?) {
+        guard let data = try? Data(contentsOf: url) else { return (nil, "That file could not be read") }
+        if let export = try? JSONDecoder().decode(CanvasExport.self, from: data) {
+            return (export, nil)
+        }
+        // A working canvas.json is a document rather than an export. Reading one
+        // is obviously what somebody means by picking it, and refusing on a
+        // technicality would be refusing the file this app writes itself.
+        if let document = try? JSONDecoder().decode(CanvasDocument.self, from: data) {
+            return (CanvasExport(document: document, images: [:]), nil)
+        }
+        return (nil, "That file is not a canvas")
+    }
+}
+
+/// Save or load, offered beside the button.
+private struct FileMenu: View {
+    /// Which entry has been asked about but not confirmed.
+    @Binding var confirming: CanvasFile?
+    let pick: (CanvasFile) -> Void
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(CanvasFile.allCases) { entry in
+                let asking = confirming == entry
+                Button {
+                    // Loading replaces everything, so it asks first — before the
+                    // file panel, because the question is about losing what is
+                    // here and not about which file. Saving takes nothing away
+                    // and asks nothing.
+                    if entry == .load, !asking {
+                        confirming = .load
+                    } else {
+                        confirming = nil
+                        pick(entry)
+                    }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: asking ? "exclamationmark.triangle.fill" : entry.symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 16)
+                        Text(asking ? "Sure?" : entry.name).font(Theme.chrome(11))
+                        Spacer(minLength: 0)
+                    }
+                    .frame(width: 116, height: 24)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(asking ? Theme.danger : Color.primary.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+            }
+            if confirming == .load {
+                Text("Replaces this canvas")
+                    .font(Theme.chrome(9))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 116, alignment: .leading)
+                    .padding(.bottom, 2)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(.background.opacity(0.92))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+        )
+    }
+}
+
 /// The two places a picture comes from, offered beside the tool.
 private struct ImageMenu: View {
     let pick: (ImageSource) -> Void
@@ -1580,6 +1809,9 @@ private struct CanvasToolStrip: View {
     /// How far through clearing the canvas somebody is: nothing, asked once,
     /// asked twice.
     @Binding var clearStep: Int
+    @Binding var fileMenuOpen: Bool
+    @Binding var confirmingFile: CanvasFile?
+    let file: (CanvasFile) -> Void
     let clear: () -> Void
     let track: (CanvasTool, CGPoint) -> Void
     let drop: (CanvasTool, CGPoint) -> Void
@@ -1681,6 +1913,37 @@ private struct CanvasToolStrip: View {
             // every tool in it. The one greedy view in a column of fixed ones
             // decides the column.
             Divider().frame(width: 40).padding(.top, 2)
+
+            // Above clear and under the divider: the two things that are about
+            // the canvas as a whole rather than about anything on it.
+            Button { fileMenuOpen.toggle() } label: {
+                VStack(spacing: 2) {
+                    Image(systemName: "tray.and.arrow.down")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("File").font(Theme.chrome(9, weight: .medium))
+                }
+                .frame(width: 56, height: 38)
+                .overlay(alignment: .bottomLeading) { SubmenuCorner() }
+                .contentShape(Rectangle())
+                .foregroundStyle(fileMenuOpen ? Theme.accent : Color.secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(fileMenuOpen ? Color.primary.opacity(0.08) : Color.clear)
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Save this canvas to a file, or load one")
+            .overlay(alignment: .topTrailing) {
+                if fileMenuOpen {
+                    FileMenu(confirming: $confirmingFile) { entry in
+                        fileMenuOpen = false
+                        file(entry)
+                    }
+                    .fixedSize()
+                    .chrome($overChrome)
+                    .offset(x: -68)
+                }
+            }
             Button {
                 if clearStep == 1 { clear(); clearStep = 0 } else { clearStep = 1 }
             } label: {
@@ -2008,6 +2271,8 @@ struct CanvasSurface: View {
     /// How far through clearing the canvas somebody is. Reset by a click
     /// anywhere else, like every other question this surface asks.
     @State private var clearStep = 0
+    @State private var fileMenuOpen = false
+    @State private var confirmingFile: CanvasFile?
     /// Which thing's inspector is open, if any. One at a time, and tied to the
     /// selection: an inspector for something that is no longer selected is a
     /// panel editing a thing nobody can see.
@@ -2201,6 +2466,9 @@ struct CanvasSurface: View {
                     armed: $armed,
                     overChrome: $overChrome,
                     clearStep: $clearStep,
+                    fileMenuOpen: $fileMenuOpen,
+                    confirmingFile: $confirmingFile,
+                    file: { entry in handleFile(entry) },
                     clear: { model.clearAll() },
                     track: { _, at in toolPoint = local(at, geo) },
                     drop: { which, at in dropped(which, at: at, in: geo) },
@@ -2257,8 +2525,7 @@ struct CanvasSurface: View {
         // Then a region — but never one that holds the thing being carried.
         // Joining something to the box it is already inside is a line from a
         // thing to itself, drawn the long way round.
-        if let region = model.region(at: here),
-           region.id != moving,
+        if let region = model.region(at: here, excluding: moving),
            !region.members.contains(moving) {
             return region.id
         }
@@ -2579,6 +2846,19 @@ struct CanvasSurface: View {
         // dangerous one is furthest out and the other is not in the way of it.
         info.position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
         remove.position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
+    }
+
+    /// Save the canvas to a file, or replace it with one.
+    private func handleFile(_ entry: CanvasFile) {
+        switch entry {
+        case .save:
+            guard let url = CanvasFiles.destination() else { return }
+            if let bad = CanvasFiles.write(model.export(), to: url) { trouble = bad }
+        case .load:
+            guard let url = CanvasFiles.source() else { return }
+            let read = CanvasFiles.read(url)
+            if let canvas = read.canvas { model.load(canvas) } else { trouble = read.trouble }
+        }
     }
 
     /// A tool let go somewhere on the canvas.
@@ -3094,6 +3374,8 @@ struct CanvasSurface: View {
                         confirmingGroupDelete = false
                         clearStep = 0
                         addingTo = nil
+                        fileMenuOpen = false
+                        confirmingFile = nil
                         // A click anywhere else closes it, which is what a menu
                         // does and what somebody who opened it by accident will
                         // try first. A picture nobody chose is abandoned the

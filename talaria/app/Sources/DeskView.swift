@@ -420,6 +420,13 @@ private struct DeskPane<Content: View>: View {
     let title: String
     var subtitle: String?
     var note: String?
+    /// Whether what is behind the window shows through this pane.
+    ///
+    /// Scoped to the pane rather than to the desk: the frost is the point of the
+    /// overlay, and the one place somebody wants it gone is the surface they are
+    /// working *on* — a canvas with a stranger's window ghosting through it is
+    /// a canvas with something drawn on it that nobody drew.
+    var opaque = false
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -452,8 +459,9 @@ private struct DeskPane<Content: View>: View {
                 // Enough to hold text against a busy desktop and no more. At
                 // 0.55 the panes read as four opaque cards over a blur; the
                 // point of the frost is that you can still see roughly what is
-                // behind it.
-                .fill(.background.opacity(0.35))
+                // behind it. Opaque only where somebody has asked for it.
+                .fill(opaque ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+                             : AnyShapeStyle(.background.opacity(0.35)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardRadius)
@@ -556,11 +564,18 @@ struct DeskView: View {
                     quadrants(w: (geo.size.width - Self.gap) / 2,
                               h: (geo.size.height - Self.gap) / 2)
                         .frame(width: geo.size.width, height: geo.size.height)
-                    CanvasSurface(chrome: chrome)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .overlay(alignment: .bottomTrailing) {
-                            CanvasControls(chrome: chrome).padding(16)
-                        }
+                    // A region, like a quadrant, filling the page instead of a
+                    // quarter of it. The canvas needs an edge for the same
+                    // reason the panes do: without one it is the whole screen
+                    // and there is nothing to say where the surface stops and
+                    // the desktop showing through it begins.
+                    DeskPane(title: "Canvas", opaque: !chrome.seeThrough) {
+                        CanvasSurface(chrome: chrome)
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        CanvasControls(chrome: chrome).padding(14)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
                 .frame(width: geo.size.width * 2, alignment: .leading)
                 .offset(x: -CGFloat(chrome.surface.rawValue) * geo.size.width)
@@ -602,10 +617,6 @@ struct DeskView: View {
         // down instead of 33. The window's chrome is hidden and the clearance
         // is computed here; there is nothing for a safe area to protect.
         .ignoresSafeArea()
-        // Opaque when somebody has asked for the desktop to stop showing
-        // through. Behind the content and in front of the frost, so the blur
-        // stays available the moment it is switched back on.
-        .background(chrome.seeThrough ? Color.clear : Color(nsColor: .windowBackgroundColor))
     }
 
     /**
@@ -767,6 +778,31 @@ final class DeskChrome: ObservableObject {
         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { self.surface = surface }
     }
 
+    /**
+     The desk has been put away.
+
+     Which surface you were on is kept, deliberately and explicitly: closing the
+     desk on the canvas and reopening it on the quadrants would make ⌥⇧T a way of
+     losing your place. So is the canvas viewport, and so are the grid and
+     transparency switches — those are settings, and a setting that forgets is
+     not one.
+
+     This lives only as long as the app does. Nothing here is written to disk,
+     because "where I was" is a fact about an afternoon rather than about a
+     person, and a canvas restored to yesterday's corner on Monday morning is
+     furniture nobody asked for.
+
+     What is *not* kept is the strip. It is up because somebody just swiped, and
+     a desk reopened hours later opening with a row of chrome already showing —
+     and a timer left over from the last session about to fade it — is the state
+     of a gesture that is long over.
+     */
+    func closed() {
+        hideStrip?.invalidate()
+        hideStrip = nil
+        stripShowing = false
+    }
+
     func zoom(to value: CGFloat) {
         // Far enough out to lose a big drawing and far enough in to work on a
         // detail, and no further: past these the pan arithmetic stops being
@@ -776,6 +812,49 @@ final class DeskChrome: ObservableObject {
 }
 
 // MARK: - The canvas
+
+/**
+ The pointer, said in the pointer.
+
+ A canvas is a thing you grab, and the cursor is where that gets communicated:
+ an open hand over it, a closed one while you are pulling it about, a pointing
+ finger the moment a button goes down on something. SwiftUI has no vocabulary
+ for this, so the cursor is set on an AppKit view underneath and the gesture
+ above tells it which one.
+
+ `cursorUpdate` rather than `resetCursorRects`: rects are recalculated by the
+ window at moments of its own choosing, which is fine for a static cursor and
+ useless for one that changes mid-drag.
+ */
+private struct CursorArea: NSViewRepresentable {
+    let cursor: NSCursor
+
+    final class Tracking: NSView {
+        var cursor: NSCursor = .arrow {
+            didSet {
+                guard cursor != oldValue else { return }
+                // The pointer is already inside; nothing will ask again until it
+                // moves, so it is set now as well as declared for later.
+                cursor.set()
+                window?.invalidateCursorRects(for: self)
+            }
+        }
+        override func resetCursorRects() { addCursorRect(bounds, cursor: cursor) }
+        override func cursorUpdate(with event: NSEvent) { cursor.set() }
+        override var acceptsFirstResponder: Bool { false }
+        // Transparent to everything else: this view exists to answer one
+        // question and must not take a click away from the gesture above it.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> Tracking {
+        let v = Tracking()
+        v.cursor = cursor
+        return v
+    }
+
+    func updateNSView(_ view: Tracking, context: Context) { view.cursor = cursor }
+}
 
 /**
  An infinite canvas, currently with nothing on it.
@@ -797,6 +876,16 @@ private struct CanvasSurface: View {
     /// the whole gesture from the origin and the canvas leaps.
     @State private var panAtStart: CGSize?
     @State private var zoomAtStart: CGFloat?
+    @State private var pressing = false
+    @State private var dragging = false
+
+    /// Open over the canvas, pointing the instant a button goes down, closed
+    /// once that press starts pulling the canvas about.
+    private var cursor: NSCursor {
+        if dragging { return .closedHand }
+        if pressing { return .pointingHand }
+        return .openHand
+    }
 
     var body: some View {
         ZStack {
@@ -807,20 +896,33 @@ private struct CanvasSurface: View {
             Color.clear
                 .scaleEffect(chrome.zoom)
                 .offset(chrome.pan)
+            CursorArea(cursor: cursor)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .gesture(
-            DragGesture(minimumDistance: 1)
+            DragGesture(minimumDistance: 0)
                 .onChanged { value in
+                    pressing = true
+                    // A press is not yet a drag. Below this it is somebody
+                    // clicking and the pointer says so; past it they are pulling
+                    // the canvas and it becomes a fist.
+                    if abs(value.translation.width) > 3 || abs(value.translation.height) > 3 {
+                        dragging = true
+                    }
+                    guard dragging else { return }
                     let base = panAtStart ?? chrome.pan
                     if panAtStart == nil { panAtStart = base }
                     chrome.pan = CGSize(width: base.width + value.translation.width,
                                         height: base.height + value.translation.height)
                 }
-                .onEnded { _ in panAtStart = nil }
+                .onEnded { _ in
+                    panAtStart = nil
+                    pressing = false
+                    dragging = false
+                }
         )
-        .gesture(
+        .simultaneousGesture(
             MagnificationGesture()
                 .onChanged { value in
                     let base = zoomAtStart ?? chrome.zoom
@@ -862,47 +964,70 @@ private struct CanvasSurface: View {
     }
 }
 
-/// The zoom readout, its two buttons, and the two switches that belong with it.
+/**
+ The zoom readout, its two buttons, and the two switches that belong with it.
+
+ The switches were in a menu behind the percentage and nobody found them, which
+ is the whole argument against putting a setting somewhere it has to be
+ discovered. They are buttons now, lit when they are on, sitting next to the
+ thing they affect.
+ */
 private struct CanvasControls: View {
     @ObservedObject var chrome: DeskChrome
 
     var body: some View {
         HStack(spacing: 2) {
-            button("minus") { chrome.zoom(to: chrome.zoom / 1.25) }
-            Menu {
-                // The percentage is a button as well as a label: the one thing
-                // anybody wants from a zoom readout is to be told it is 100%
-                // again.
-                Button("Actual size") { withAnimation(.easeOut(duration: 0.18)) { chrome.zoom(to: 1) } }
-                Button("Fit") {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        chrome.zoom(to: 1)
-                        chrome.pan = .zero
-                    }
+            toggle("squareshape.dotted.squareshape", on: chrome.grid, help: "Dotted grid") {
+                chrome.grid.toggle()
+            }
+            toggle("rectangle.on.rectangle.slash", on: !chrome.seeThrough, help: "Hide what is behind") {
+                chrome.seeThrough.toggle()
+            }
+            Divider().frame(height: 14).padding(.horizontal, 3)
+            button("minus", help: "Zoom out") { chrome.zoom(to: chrome.zoom / 1.25) }
+            // The one thing anybody wants from a zoom readout is to be told it
+            // is 100% again, so the number is the button that does it.
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    chrome.zoom(to: 1)
+                    chrome.pan = .zero
                 }
-                Divider()
-                Toggle("Dotted grid", isOn: $chrome.grid)
-                Toggle("See windows behind", isOn: $chrome.seeThrough)
             } label: {
                 Text("\(Int((chrome.zoom * 100).rounded()))%")
                     .font(Theme.chrome(11, weight: .medium))
                     .monospacedDigit()
-                    .frame(width: 46)
+                    .frame(width: 44, height: 18)
+                    .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            button("plus") { chrome.zoom(to: chrome.zoom * 1.25) }
+            .buttonStyle(.plain)
+            .help("Back to actual size")
+            button("plus", help: "Zoom in") { chrome.zoom(to: chrome.zoom * 1.25) }
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 5)
         .padding(.vertical, 3)
         .background(
-            Capsule().fill(.background.opacity(0.5))
+            Capsule().fill(.background.opacity(0.65))
                 .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
         )
     }
 
-    private func button(_ symbol: String, _ act: @escaping () -> Void) -> some View {
+    private func toggle(_ symbol: String, on: Bool, help: String, _ act: @escaping () -> Void) -> some View {
+        Button(action: act) {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 22, height: 18)
+                .contentShape(Rectangle())
+                .foregroundStyle(on ? Theme.accent : Color.secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(on ? Color.primary.opacity(0.08) : .clear)
+                )
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+
+    private func button(_ symbol: String, help: String, _ act: @escaping () -> Void) -> some View {
         Button { withAnimation(.easeOut(duration: 0.14)) { act() } } label: {
             Image(systemName: symbol)
                 .font(.system(size: 10, weight: .semibold))
@@ -910,5 +1035,6 @@ private struct CanvasControls: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(help)
     }
 }

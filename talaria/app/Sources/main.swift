@@ -718,6 +718,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // a paragraph lost to closing the thing you wrote it in would be the
         // worst bug in here.
         scratchpadModel.flush()
+        // Which surface you were on survives this; the strip does not. See
+        // `DeskChrome.closed`.
+        deskChrome.closed()
         if let deskScroll { NSEvent.removeMonitor(deskScroll) }
         deskScroll = nil
         deskSwipeAccumulated = 0

@@ -30,7 +30,21 @@ import SwiftUI
  the disclosure arrow. Measured, not derived — nothing will tell you.
  */
 enum Field {
-    static let width: CGFloat = 480 - 36 - 96 - 10
+    /**
+     The narrowest the form can be drawn and still hold its fields.
+
+     A real constraint rather than a preference: the fields below are laid out at
+     a fixed width so that every row lines up, and that width is worked out from
+     this number. Anything narrower does not compress the form, it clips it.
+
+     It exists because the number was written down twice and the two copies
+     disagreed. The fields were sized from 480 and the window declared it could
+     go to 420, so the window went to 420 — a hosting controller sizes to the
+     minimum it is given — and the fields, still 338 wide in a 278-wide space,
+     ran off the right-hand edge. One constant, both users.
+     */
+    static let formWidth: CGFloat = 480
+    static let width: CGFloat = formWidth - 36 - 96 - 10
     static let menuInset: CGFloat = 47
 
     /// How a list of choices is ordered. `localizedStandardCompare` is the
@@ -420,7 +434,12 @@ struct ComposeView: View {
         // undo — so a bigger frame gives the form more room around it and more
         // of its own scroll view, which is what a form in a quarter of a screen
         // needs.
-        .frame(minWidth: 420, idealWidth: 480, maxWidth: .infinity,
+        // In a window, the form's own width is the floor — there is nothing
+        // below it but clipping. In a desk quadrant it is not, because the pane
+        // has a scroll view and a floor there would push the pane beside it off
+        // the screen, which is the failure the quadrant layout already had once.
+        .frame(minWidth: standalone ? Field.formWidth : 420,
+               idealWidth: Field.formWidth, maxWidth: .infinity,
                minHeight: 320, idealHeight: 560, maxHeight: .infinity)
         .background(standalone ? AnyView(VisualEffect(radius: 0)) : AnyView(Color.clear))
     }

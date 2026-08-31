@@ -951,8 +951,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func composePanel() -> NSPanel {
         if let w = composeWindow { return w }
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 560),
-            styleMask: [.titled, .closable, .utilityWindow],
+            contentRect: NSRect(x: 0, y: 0, width: Field.formWidth, height: 560),
+            // Resizable, which it was not. A form that has been made too small
+            // to hold its own fields and cannot be dragged wider again is a
+            // window somebody is simply stuck in.
+            styleMask: [.titled, .closable, .resizable, .utilityWindow],
             backing: .buffered,
             defer: false
         )
@@ -971,7 +974,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         )
+        // Enforced by AppKit as well as declared in SwiftUI, because the
+        // restored frame below is applied by AppKit and would otherwise not be
+        // checked against anything.
+        panel.contentMinSize = NSSize(width: Field.formWidth, height: 320)
         panel.setFrameAutosaveName("talaria.compose")
+        // A frame saved by an earlier build can be smaller than the form can be
+        // drawn, and restoring it would put the window straight back into the
+        // state this is fixing — a saved size outlives the bug that made it.
+        //
+        // Height as well as width, and for the same cause rather than for
+        // tidiness: a hosting controller sizes its window to the *minimum* the
+        // view will accept, so the panel opened at 320 points of content and
+        // the autosave kept it. A form pinned to its own floor in both
+        // directions is not a size anybody chose.
+        //
+        // Only when it is sitting exactly on the floor. A window somebody has
+        // deliberately made small is theirs, and restoring 560 over the top of
+        // that would be this code overruling a person about their own window.
+        let content = panel.contentRect(forFrameRect: panel.frame)
+        if content.width < Field.formWidth || content.height <= 320 {
+            panel.setContentSize(NSSize(width: max(content.width, Field.formWidth),
+                                        height: content.height <= 320 ? 560 : content.height))
+        }
         panel.center()
         composeWindow = panel
         return panel

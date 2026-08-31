@@ -21,6 +21,13 @@ enum TextAlign: String, Codable, CaseIterable, Identifiable {
         case .trailing: return .trailing
         }
     }
+    var appKit: NSTextAlignment {
+        switch self {
+        case .leading: return .left
+        case .center: return .center
+        case .trailing: return .right
+        }
+    }
     var frame: Alignment {
         switch self {
         case .leading: return .leading

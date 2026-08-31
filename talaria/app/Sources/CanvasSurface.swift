@@ -1025,11 +1025,15 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     }
 
     /// Whether it has a menu behind it, which is what the corner marker says.
-    var hasMenu: Bool { true }
+    ///
+    /// A picture no longer does. It used to, on the reasoning that a menu click
+    /// has no position — which was true, and the wrong thing to fix. The fix is
+    /// to give it a position: drag it like everything else, and ask where the
+    /// picture comes from once it has landed somewhere.
+    var hasMenu: Bool { self == .text }
 
-    /// Whether dragging it places something. A picture comes from a menu and
-    /// has no drag: there is nothing to carry until it has been chosen.
-    var draggable: Bool { self == .text }
+    /// Everything drags. It is the one gesture on this strip that says where.
+    var draggable: Bool { true }
 }
 
 /**
@@ -1393,7 +1397,6 @@ private struct CanvasItemView: View {
     /// Told the words; decides the box. Only a bare label has one.
     let fit: (String) -> Void
 
-    @FocusState private var focused: Bool
 
     /// Chrome is drawn in screen terms, not canvas terms.
     ///
@@ -1447,43 +1450,27 @@ private struct CanvasItemView: View {
                     // distorted one is a drag somebody made.
                     .frame(width: item.w, height: item.h)
             } else if editing {
-                TextField("", text: $draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .focused($focused)
-                    // Return commits, and has to be caught before the field
-                    // sees it. `onSubmit` is the obvious spelling and does not
-                    // fire on a vertical-axis field on macOS: the axis is what
-                    // makes the words wrap in the box, and it also makes Return
-                    // mean "new line". Both are wanted, so the key is taken
-                    // first and the field never learns it was pressed.
-                    //
-                    // Unless Shift is down, in which case it is handed straight
-                    // back and the field does what it would have done anyway.
-                    // That is the whole implementation of a line break: not
-                    // inserting one, but declining to intercept the key that
-                    // already means one.
-                    .onKeyPress(keys: [.return]) { press in
-                        guard !press.modifiers.contains(.shift) else { return .ignored }
-                        commit()
-                        return .handled
-                    }
-                    .multilineTextAlignment(item.hAlign.swiftUI)
-                    .foregroundStyle(Hex.color(item.textColor) ?? .primary)
-                    .onAppear { focused = true }
-                    // The box follows the words as they are written, not only
-                    // when they are finished — a caret that runs out of its own
-                    // box mid-sentence is the thing this is for.
-                    .onChange(of: draft) { now in fit(now) }
-                    // Losing focus is "clicking away", which commits by the same
-                    // rule as Return. Both are somebody saying they are done;
-                    // neither is somebody saying to throw it away.
-                    .onChange(of: focused) { now in if !now { commit() } }
+                // An NSTextView underneath, and it had to be. A SwiftUI field
+                // cannot say where the selection is, and every one of bold,
+                // italic and underline is "wrap what is selected" — without it
+                // ⌘B would mean "put two asterisks at the end and hope", which
+                // is not the feature.
+                MarkdownField(
+                    text: $draft,
+                    commit: commit,
+                    changed: fit,
+                    align: item.hAlign.appKit,
+                    color: NSColor(Hex.color(item.textColor) ?? .primary)
+                )
             } else {
-                Text(item.text)
+                // Rendered, not raw: the markers are what somebody typed and
+                // the emphasis is what they meant. Links are live, which is the
+                // one thing on this canvas that leaves it.
+                Text(CanvasText.attributed(item.text))
                     .font(.system(size: 12))
                     .multilineTextAlignment(item.hAlign.swiftUI)
                     .foregroundStyle(Hex.color(item.textColor) ?? .primary)
+                    .tint(Theme.accent)
                     .fixedSize(horizontal: false, vertical: true)
                     // Room to breathe inside a shape, and none around a bare
                     // label — a label with padding is a label that does not
@@ -1652,6 +1639,10 @@ struct CanvasSurface: View {
     /// Said out loud when a picture could not be added, rather than drawing an
     /// empty box and letting somebody work out why.
     @State private var trouble: String?
+    /// A picture tool has been dropped and is waiting to be told where the
+    /// picture comes from. Both points: where to draw the question, and where
+    /// the picture goes once it is answered.
+    @State private var askingImage: (screen: CGPoint, canvas: CGPoint)?
 
     /// Decoded pictures, by the item that shows them. Rebuilt when the set of
     /// pictures changes and not once per frame — decoding a screenshot inside a
@@ -1726,6 +1717,18 @@ struct CanvasSurface: View {
                         .background(Circle().fill(.background.opacity(0.8)))
                         .position(at)
                         .allowsHitTesting(false)
+                }
+
+                if let asking = askingImage {
+                    ImageMenu { source in
+                        askingImage = nil
+                        add(source, at: asking.canvas)
+                    }
+                    .fixedSize()
+                    .chrome($overChrome)
+                    // Just below and right of where it landed, so the question
+                    // is not sitting on top of the place the answer will go.
+                    .position(x: asking.screen.x + 66, y: asking.screen.y + 34)
                 }
 
                 CursorArea(cursor: cursor)
@@ -1809,16 +1812,15 @@ struct CanvasSurface: View {
                             guard here.x < geo.size.width - Self.stripWidth else { return }
                             model.addText(at: canvasPoint(here, in: geo.size), shape: shape)
                         case .image:
-                            // Not draggable — it arrives from its menu, because
-                            // there is nothing to carry until one has been
-                            // chosen. Listed rather than defaulted so the next
-                            // tool added has to say what a drag of it means.
-                            break
+                            guard here.x < geo.size.width - Self.stripWidth else { return }
+                            // Where, then what. The question of which picture is
+                            // asked at the point it was dropped, so the answer
+                            // arrives where the drag ended rather than in the
+                            // middle of the screen.
+                            askingImage = (here, canvasPoint(here, in: geo.size))
                         }
                     },
-                    pickImage: { source in
-                        add(source, centreOf: geo.size)
-                    }
+                    pickImage: { _ in }
                 )
                 .padding(.trailing, 10)
             }
@@ -1883,14 +1885,13 @@ struct CanvasSurface: View {
     }
 
     /**
-     A picture, in the middle of what somebody is looking at.
+     A picture, where the tool was let go.
 
-     The middle because a menu click carries no position — which is the argument
-     for dragging the other tools, and the honest consequence of not being able
-     to drag this one. The canvas origin or a corner would be no better and
-     might be off screen entirely.
+     The question of which picture is asked after the drag rather than before it,
+     so the gesture that says *where* is the same one every other tool uses and
+     the answer lands exactly where it was dropped.
      */
-    private func add(_ source: ImageSource, centreOf size: CGSize) {
+    private func add(_ source: ImageSource, at where_: CGPoint) {
         let picked: PickedImage?
         switch source {
         case .clipboard: picked = ImagePicker.fromClipboard()
@@ -1902,8 +1903,7 @@ struct CanvasSurface: View {
                 : "That file could not be read as a picture"
             return
         }
-        let middle = canvasPoint(CGPoint(x: size.width / 2, y: size.height / 2), in: size)
-        if !model.addImage(picked.data, extension: picked.ext, pixelSize: picked.pixelSize, at: middle) {
+        if !model.addImage(picked.data, extension: picked.ext, pixelSize: picked.pixelSize, at: where_) {
             trouble = "That picture could not be saved"
         }
     }
@@ -2234,8 +2234,10 @@ struct CanvasSurface: View {
                         confirmingDelete = nil
                         // A click anywhere else closes it, which is what a menu
                         // does and what somebody who opened it by accident will
-                        // try first.
+                        // try first. A picture nobody chose is abandoned the
+                        // same way.
                         openMenu = nil
+                        askingImage = nil
                     }
                     panAtStart = nil
                     pressing = false

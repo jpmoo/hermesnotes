@@ -20,7 +20,7 @@ import SwiftUI
  the work — which is exactly the thing worth finding out, and impossible to find
  out from a surface that was drawn around the answer.
  */
-struct CanvasItem: Identifiable, Equatable {
+struct CanvasItem: Identifiable, Equatable, Codable {
     let id: UUID
     var x: CGFloat
     var y: CGFloat
@@ -58,17 +58,80 @@ protocol CanvasStore {
 }
 
 /**
- The canvas, for as long as the app is running.
-
- Not a placeholder to be embarrassed about: the desk deliberately forgets where
- it was across a reboot, and until this is wired to something durable a canvas
- that survived a restart would be the only part of the desk that did. It matches
- what everything around it promises.
+ The canvas, for as long as the app is running. For tests, and for a canvas
+ nobody wants kept.
  */
 final class MemoryCanvasStore: CanvasStore {
     private var items: [CanvasItem] = []
     func load() -> [CanvasItem] { items }
     func save(_ items: [CanvasItem]) { self.items = items }
+}
+
+/**
+ The canvas, on disk.
+
+ One JSON file beside the config and the mirror, in Talaria's own directory. A
+ file you can `cat`, copy to another machine, and delete when you want the
+ canvas gone — which is worth more than a canvas hidden in a defaults database,
+ for the same reason the config is a file.
+
+ Unlike everything else on the desk, this survives a reboot. That is a
+ deliberate difference rather than an inconsistency: which pane you were looking
+ at is a fact about an afternoon, and a diagram somebody drew is work.
+
+ **Written by rename.** The bytes go to a neighbouring file and that file is
+ moved over this one, so a crash or a power cut during a write leaves the
+ previous canvas intact rather than half of two. Saving happens once per
+ gesture — on a commit, on a drag letting go — never per frame, so this is a
+ handful of writes a minute and not a hundred a second.
+
+ **A file that will not parse is moved aside, not deleted.** A canvas that fails
+ to load is somebody's work that this version could not read, and the one thing
+ it must not do is quietly start empty over the top of it.
+ */
+final class FileCanvasStore: CanvasStore {
+    private let url: URL
+
+    init(url: URL = FileCanvasStore.defaultURL) {
+        self.url = url
+    }
+
+    static var defaultURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Application Support/Talaria/canvas.json")
+    }
+
+    func load() -> [CanvasItem] {
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return [] }
+        do {
+            return try JSONDecoder().decode([CanvasItem].self, from: data)
+        } catch {
+            // Kept, under a name that says what happened. Starting empty is the
+            // right thing to draw and the wrong thing to write, and without this
+            // the first save would overwrite whatever could not be read.
+            let aside = url.deletingPathExtension().appendingPathExtension("unreadable.json")
+            try? FileManager.default.removeItem(at: aside)
+            try? FileManager.default.moveItem(at: url, to: aside)
+            NSLog("talaria: canvas.json could not be read (\(error)) — kept as \(aside.lastPathComponent)")
+            return []
+        }
+    }
+
+    func save(_ items: [CanvasItem]) {
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            let encoder = JSONEncoder()
+            // Readable on purpose. The file is small, somebody will open it, and
+            // a diff of one moved item should be one line rather than the whole
+            // canvas on a single line.
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(items).write(to: url, options: .atomic)
+        } catch {
+            NSLog("talaria: could not save the canvas (\(error))")
+        }
+    }
 }
 
 /**
@@ -94,7 +157,7 @@ final class CanvasModel: ObservableObject {
 
     private let store: CanvasStore
 
-    init(store: CanvasStore = MemoryCanvasStore()) {
+    init(store: CanvasStore = FileCanvasStore()) {
         self.store = store
         items = store.load()
     }
@@ -522,8 +585,12 @@ struct CanvasSurface: View {
     /// once that press starts pulling the canvas about.
     private var cursor: NSCursor {
         if tool != nil { return .crosshair }
-        if dragging { return .closedHand }
-        if pressing { return .pointingHand }
+        // Pulling something — the canvas itself, or one thing on it.
+        if dragging || movingId != nil { return .closedHand }
+        // Over a thing, or pressed on the canvas. Both are "this click will do
+        // something to what is under you", which is what a pointing finger has
+        // always meant.
+        if pressing || model.hovered != nil { return .pointingHand }
         return .openHand
     }
 
@@ -715,7 +782,24 @@ struct CanvasSurface: View {
             else if model.hovered == item.id { model.hovered = nil }
         }
         .gesture(
-            DragGesture(minimumDistance: 0)
+            // Screen coordinates, and it matters twice over.
+            //
+            // A drag reports its translation in its own coordinate space, and
+            // this view's space is *moving* — it is offset by the very position
+            // being dragged. So each frame measured from a new origin, the
+            // translation came out short, and the item trailed the pointer
+            // instead of following it. The classic shape of this bug, and it
+            // does not look like a coordinate problem; it looks like something
+            // is slow.
+            //
+            // The second is the scale. Local space inside `scaleEffect` is
+            // already in canvas units, so dividing by the zoom as well moved
+            // the item at a fraction of pointer speed — right at 100% and
+            // increasingly wrong on either side of it.
+            //
+            // Global space is neither scaled nor moving. One conversion, at the
+            // end, and both faults are gone.
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .onChanged { value in
                     guard !editing else { return }
                     if movingId == nil {
@@ -723,10 +807,7 @@ struct CanvasSurface: View {
                         moveOrigin = CGPoint(x: item.x, y: item.y)
                     }
                     guard let from = moveOrigin else { return }
-                    // The translation is in screen points and the item lives in
-                    // canvas points, so it is divided by the zoom. Without this
-                    // an item dragged at 4× runs four times as far as the
-                    // pointer, which reads as the canvas being broken.
+                    // Screen points into canvas points, once.
                     model.move(
                         item.id,
                         to: CGPoint(x: from.x + value.translation.width / chrome.zoom,
@@ -785,7 +866,10 @@ struct CanvasSurface: View {
                 // this the corner is just another part of the item to drag —
                 // which is a resize handle that moves things.
                 .highPriorityGesture(
-                    DragGesture(minimumDistance: 0)
+                    // Global, for the reason the move above is: a grip sits on
+                    // the corner of the box it is resizing, so its own space
+                    // moves as the box changes under it.
+                    DragGesture(minimumDistance: 0, coordinateSpace: .global)
                         .onChanged { value in
                             if resizing == nil {
                                 resizing = (item.id, corner, item.rect)

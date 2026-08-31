@@ -2265,7 +2265,21 @@ private struct CanvasItemView: View {
                     .padding(item.shape == .plain ? 0 : 10)
                     // Room for the mark, only when there is one.
                     .padding(.leading, badge == nil ? 0 : 16)
-                    .frame(maxWidth: .infinity, alignment: item.hAlign.frame)
+                    // The height is what makes vertical alignment work, and its
+                    // absence is what stopped it working.
+                    //
+                    // A scroll view takes all the height it is offered and pins
+                    // its content to the top, so the alignment on the frame
+                    // *around* the scroll view never got a say — middle and
+                    // bottom had been drawing exactly like top since the day
+                    // words were allowed to overflow. Giving the content a
+                    // minimum of the box's own height puts the argument back
+                    // inside the scroll view, where it can be had: shorter than
+                    // the box and the words sit where they were told to; taller
+                    // and the minimum does nothing and it scrolls, which is the
+                    // case the scroll view was added for.
+                    .frame(maxWidth: .infinity, minHeight: item.h,
+                           alignment: combined(item.hAlign, item.vAlign))
                 }
                 .scrollDisabled(item.image != nil)
             }

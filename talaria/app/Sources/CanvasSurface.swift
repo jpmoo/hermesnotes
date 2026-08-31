@@ -110,34 +110,47 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         }
     }
 
+    private static let bodyFont = NSFont.systemFont(ofSize: 12)
+
     /**
-     How big a bare label is: exactly as big as what it says.
+     How big a new label starts: one line, as wide as its words.
 
-     A text item has no size anybody chose — it is words on a canvas, and a box
-     around them that is bigger or smaller than they are is a box that shows.
-     So the size is measured from the text rather than stored as an intention,
-     and it is kept in step as the words are typed rather than only at the end,
-     because a caret that runs out of its own box while somebody is still
-     writing in it is worse than a box that grows.
-
-     Measured with the same font it is drawn in. A number worked out from a
-     character count would drift on every letter that is not an average one.
-
-     The minimum is a caret's worth of room. An item with nothing in it yet is
-     about to have something in it, and a zero-width box has nowhere to put the
-     cursor.
+     Only ever used for the first moment of one. After that the width is
+     whatever somebody has dragged it to and the height is `leastHeight` below.
+     The minimum is a caret's worth of room, because an item with nothing in it
+     yet is about to have something in it and a zero-width box has nowhere to
+     put the cursor.
      */
     static func measure(_ text: String) -> CGSize {
-        let font = NSFont.systemFont(ofSize: 12)
         let lines = text.isEmpty ? [""] : text.components(separatedBy: .newlines)
         let widest = lines
-            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .map { ($0 as NSString).size(withAttributes: [.font: bodyFont]).width }
             .max() ?? 0
-        let lineHeight = font.ascender - font.descender + font.leading
-        return CGSize(
-            width: max(widest.rounded(.up) + 4, 24),
-            height: max((lineHeight * CGFloat(lines.count)).rounded(.up) + 2, 18)
-        )
+        return CGSize(width: max(widest.rounded(.up) + 4, 24), height: leastHeight(of: text, at: 24))
+    }
+
+    /**
+     The least tall this box may be, given the words in it and how wide it is.
+
+     A floor, not a size. The box may be bigger than its text — somebody may
+     want room round a label, or may be lining it up with something else — and
+     the only thing it may not be is too small to show what it says. So this is
+     what a resize is clamped to and what the box grows to as the words are
+     typed, and neither of those ever makes it smaller than it was.
+
+     Wrapped, not measured a line at a time. The words reflow inside whatever
+     width the box has, so the question is not how long the text is but how many
+     lines it turns into at *this* width — narrow the box and the same sentence
+     needs more height, which is exactly the case that has to keep up.
+     */
+    static func leastHeight(of text: String, at width: CGFloat) -> CGFloat {
+        let usable = max(width - 4, 8)
+        let measured = (text.isEmpty ? " " : text as String).boundingRect(
+            with: CGSize(width: usable, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: bodyFont]
+        ).height
+        return max(measured.rounded(.up) + 2, 18)
     }
 
     init(id: UUID, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, text: String, shape: CanvasShape = .plain) {
@@ -359,9 +372,10 @@ final class CanvasModel: ObservableObject {
         // meaning anything again.
         let present = Set(document.items.map(\.id))
         links = document.links.filter { present.contains($0.from) && present.contains($0.to) }
-        // A canvas written before labels sized themselves has boxes that do not
-        // match their words. Brought into line on the way in rather than left to
-        // be noticed as a stray gap beside somebody's text.
+        // A canvas whose labels are too short for their own text — because the
+        // font changed, or an older build measured differently — is grown into
+        // range on the way in. Never shrunk: a box somebody made roomy on
+        // purpose is not a mistake to correct.
         for item in items where item.shape == .plain {
             fitToText(item.id, text: item.text)
         }
@@ -487,17 +501,22 @@ final class CanvasModel: ObservableObject {
     }
 
     /**
-     Keep a bare label the size of what it says.
+     Keep a label tall enough for what it says.
 
-     Called as the words change rather than only when they are committed, and it
-     grows about the item's own top-left rather than its centre — text that
-     shuffled sideways under the caret with every letter would be unusable.
+     Grows and never shrinks. The size of the text is a floor rather than the
+     answer: a box may be bigger than its words — somebody may want room round a
+     label, or be lining it up with something beside it — and the only thing it
+     may not be is too small to show them.
+
+     Height only. The width is whatever somebody dragged it to, and taking that
+     back because a word was deleted would undo a decision they made on purpose.
+     Called as the words are typed rather than only when they are finished,
+     because a caret disappearing off the bottom of its own box mid-sentence is
+     the thing this exists to stop.
      */
     func fitToText(_ id: UUID, text: String) {
         guard let at = items.firstIndex(where: { $0.id == id }), items[at].shape == .plain else { return }
-        let size = CanvasItem.measure(text)
-        items[at].w = size.width
-        items[at].h = size.height
+        items[at].h = max(items[at].h, CanvasItem.leastHeight(of: text, at: items[at].w))
     }
 
     func move(_ id: UUID, to origin: CGPoint) {
@@ -515,6 +534,15 @@ final class CanvasModel: ObservableObject {
         var box = rect
         box.size.width = max(box.size.width, Self.minimumSize.width)
         box.size.height = max(box.size.height, Self.minimumSize.height)
+        // Bigger, freely. Smaller, only down to what the words need at the width
+        // it now has — and narrowing a box reflows its text taller, so the floor
+        // moves while the drag is happening rather than being a fixed number.
+        if items[at].shape == .plain {
+            box.size.height = max(
+                box.size.height,
+                CanvasItem.leastHeight(of: items[at].text, at: box.size.width)
+            )
+        }
         items[at].rect = box
     }
 
@@ -1578,10 +1606,7 @@ struct CanvasSurface: View {
         )
 
         .overlay {
-            // No grips on a bare label: its size is its words, and a handle
-            // that fights the thing computing the size is a control that does
-            // not work rather than a control that does something else.
-            if selected, item.shape != .plain { handles(item) }
+            if selected { handles(item) }
         }
         .frame(width: item.w, height: item.h)
         .offset(x: item.x + item.w / 2, y: item.y + item.h / 2)

@@ -290,6 +290,83 @@ struct CanvasLink: Identifiable, Equatable, Codable {
 }
 
 /**
+ What is selected. One value, because it can only ever be one of these.
+ */
+enum CanvasSelection: Equatable {
+    case none
+    case items(Set<UUID>)
+    case link(UUID)
+    case region(UUID)
+}
+
+/**
+ A group of things, drawn as a box around them.
+
+ **It has no rectangle.** The box is worked out from what is inside it, every
+ time it is drawn, and that single decision is most of the feature: moving
+ something within a region expands the region because the region *is* the extent
+ of its members, not because anything watches for the move and grows a stored
+ box. A stored box would need maintaining on every drag, every resize, every
+ delete, and would be wrong for the one frame nobody tested.
+
+ What it does own is what it is called and how it is drawn, because those are
+ decisions somebody made rather than consequences of where things are.
+ */
+struct CanvasRegion: Identifiable, Equatable, Codable {
+    let id: UUID
+    var members: [UUID]
+    var title: String = ""
+
+    /// Across only. A region's name sits above the box on one line, so there is
+    /// no "down" for it to be aligned in — offering one would be a control with
+    /// nowhere to put the answer.
+    var hAlign: TextAlign = .leading
+    var textColor: String?
+    var fill: String?
+    var stroke: String?
+    var strokeWidth: CGFloat = 1.5
+    var strokeStyle: LineStyle = .dashed
+
+    /// How far the box stands off the things inside it.
+    static let padding: CGFloat = 18
+    /// The band above it the name is written in.
+    static let titleHeight: CGFloat = 18
+
+    init(id: UUID, members: [UUID]) {
+        self.id = id
+        self.members = members
+    }
+
+    /// By hand, like the rest of this file, so a field added later does not make
+    /// every canvas written before it unreadable.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        members = try c.decode([UUID].self, forKey: .members)
+        title = try c.decodeIfPresent(String.self, forKey: .title) ?? ""
+        hAlign = try c.decodeIfPresent(TextAlign.self, forKey: .hAlign) ?? .leading
+        textColor = try c.decodeIfPresent(String.self, forKey: .textColor)
+        fill = try c.decodeIfPresent(String.self, forKey: .fill)
+        stroke = try c.decodeIfPresent(String.self, forKey: .stroke)
+        strokeWidth = try c.decodeIfPresent(CGFloat.self, forKey: .strokeWidth) ?? 1.5
+        strokeStyle = try c.decodeIfPresent(LineStyle.self, forKey: .strokeStyle) ?? .dashed
+    }
+
+    /// The box, given where its members are now.
+    ///
+    /// Nothing when it holds nothing that still exists — a region whose contents
+    /// have all been deleted is not an empty box floating on the canvas, it is a
+    /// region that is over.
+    static func box(of members: [CGRect]) -> CGRect? {
+        guard var box = members.first else { return nil }
+        for r in members.dropFirst() { box = box.union(r) }
+        // Only the padding. The name is written above this, outside it, so the
+        // box is the extent of the things and a margin — nothing else.
+        return box.insetBy(dx: -padding, dy: -padding)
+    }
+}
+
+/**
  Everything on the canvas, as one thing to save.
 
  A document rather than two lists side by side, because a link naming an item
@@ -299,6 +376,20 @@ struct CanvasLink: Identifiable, Equatable, Codable {
 struct CanvasDocument: Equatable, Codable {
     var items: [CanvasItem] = []
     var links: [CanvasLink] = []
+    var regions: [CanvasRegion] = []
+
+    init(items: [CanvasItem] = [], links: [CanvasLink] = [], regions: [CanvasRegion] = []) {
+        self.items = items
+        self.links = links
+        self.regions = regions
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = try c.decodeIfPresent([CanvasItem].self, forKey: .items) ?? []
+        links = try c.decodeIfPresent([CanvasLink].self, forKey: .links) ?? []
+        regions = try c.decodeIfPresent([CanvasRegion].self, forKey: .regions) ?? []
+    }
 }
 
 /**
@@ -327,6 +418,8 @@ protocol CanvasStore {
     func keep(image: Data, extension ext: String) -> String?
     /// The bytes back, or nothing if they are no longer there.
     func image(named: String) -> Data?
+    /// Throw a picture away. Only ever called for one nothing refers to.
+    func forget(image name: String)
 }
 
 /**
@@ -344,6 +437,7 @@ final class MemoryCanvasStore: CanvasStore {
         return name
     }
     func image(named: String) -> Data? { images[named] }
+    func forget(image name: String) { images[name] = nil }
 }
 
 /**
@@ -434,12 +528,22 @@ final class FileCanvasStore: CanvasStore {
     }
 
     func image(named: String) -> Data? {
-        // A name from the document, so it must not be able to address anything
-        // outside the directory it belongs to. A file written by hand — or a
-        // canvas copied from somewhere else — is not automatically trustworthy
-        // just because it is on this machine.
-        guard !named.contains("/"), !named.contains("..") else { return nil }
+        guard safe(named) else { return nil }
         return try? Data(contentsOf: imageDirectory.appendingPathComponent(named))
+    }
+
+    func forget(image name: String) {
+        guard safe(name) else { return }
+        try? FileManager.default.removeItem(at: imageDirectory.appendingPathComponent(name))
+    }
+
+    /// A name from the document, so it must not be able to address anything
+    /// outside the directory it belongs to. A file written by hand — or a canvas
+    /// copied from somewhere else — is not automatically trustworthy just
+    /// because it is on this machine. It matters more for deleting than for
+    /// reading: the worst a bad name could do above is fail.
+    private func safe(_ name: String) -> Bool {
+        !name.contains("/") && !name.contains("..") && !name.isEmpty
     }
 
     func save(_ document: CanvasDocument) {
@@ -470,13 +574,45 @@ final class FileCanvasStore: CanvasStore {
 final class CanvasModel: ObservableObject {
     @Published private(set) var items: [CanvasItem] = []
     @Published private(set) var links: [CanvasLink] = []
-    /// A selected line. Never both this and `selected` — one selection, two
-    /// kinds of thing it can be on.
-    @Published private(set) var selectedLink: UUID?
+    @Published private(set) var regions: [CanvasRegion] = []
     /// Under the pointer. Highlighted, and nothing more.
     @Published var hovered: UUID?
     /// Clicked. Gets the resize handles.
-    @Published private(set) var selected: UUID?
+    /**
+     What is selected, as one value.
+
+     Four shapes rather than four fields. "Never more than one kind at once" was
+     an invariant kept by every caller remembering to clear the others, and that
+     had a bug in it the first time it was written — so it is a single value now
+     and the compiler keeps it.
+
+     Items are a *set*, because a marquee selects several and one is just a set
+     of one. Everything that used to ask "is this the selected item" asks whether
+     the set contains it, and nothing needs to know which case it came from.
+     */
+    @Published private(set) var selection: CanvasSelection = .none
+
+    /// The one selected item, when there is exactly one. What the inspector and
+    /// the resize grips are about — neither means anything for six at once.
+    var selected: UUID? {
+        if case .items(let ids) = selection, ids.count == 1 { return ids.first }
+        return nil
+    }
+
+    var selectedItems: Set<UUID> {
+        if case .items(let ids) = selection { return ids }
+        return []
+    }
+
+    var selectedLink: UUID? {
+        if case .link(let id) = selection { return id }
+        return nil
+    }
+
+    var selectedRegion: UUID? {
+        if case .region(let id) = selection { return id }
+        return nil
+    }
     /// Being typed into. At most one, and it is never also `selected` — a thing
     /// you are writing in does not also need corners to drag.
     @Published var editing: UUID?
@@ -494,7 +630,14 @@ final class CanvasModel: ObservableObject {
         // kept — it would be saved back out and outlive every chance of ever
         // meaning anything again.
         let present = Set(document.items.map(\.id))
-        links = document.links.filter { present.contains($0.from) && present.contains($0.to) }
+        // A region keeps only the members that are still here, and a region left
+        // holding nothing is over rather than empty.
+        regions = document.regions
+            .map { var r = $0; r.members = r.members.filter(present.contains); return r }
+            .filter { !$0.members.isEmpty }
+        // Either end may be a region, so both kinds count as still existing.
+        let anchors = present.union(regions.map(\.id))
+        links = document.links.filter { anchors.contains($0.from) && anchors.contains($0.to) }
         // A canvas whose labels are too short for their own text — because the
         // font changed, or an older build measured differently — is grown into
         // range on the way in. Never shrunk: a box somebody made roomy on
@@ -504,7 +647,7 @@ final class CanvasModel: ObservableObject {
         }
     }
 
-    private func persist() { store.save(CanvasDocument(items: items, links: links)) }
+    private func persist() { store.save(CanvasDocument(items: items, links: links, regions: regions)) }
 
     func item(_ id: UUID) -> CanvasItem? { items.first { $0.id == id } }
 
@@ -519,19 +662,22 @@ final class CanvasModel: ObservableObject {
      with a bug in it somewhere.
      */
     func select(item id: UUID?) {
-        selected = id
-        selectedLink = nil
+        selection = id.map { .items([$0]) } ?? .none
+    }
+
+    func select(items ids: Set<UUID>) {
+        selection = ids.isEmpty ? .none : .items(ids)
     }
 
     func select(link id: UUID?) {
-        selectedLink = id
-        selected = nil
+        selection = id.map { .link($0) } ?? .none
     }
 
-    func clearSelection() {
-        selected = nil
-        selectedLink = nil
+    func select(region id: UUID?) {
+        selection = id.map { .region($0) } ?? .none
     }
+
+    func clearSelection() { selection = .none }
 
     /**
      Connect two items, arrow pointing at the one that was dropped on.
@@ -565,6 +711,125 @@ final class CanvasModel: ObservableObject {
     func restyle(_ id: UUID, _ change: (inout CanvasItem) -> Void) {
         guard let at = items.firstIndex(where: { $0.id == id }) else { return }
         change(&items[at])
+        persist()
+    }
+
+    /// The box a region occupies right now, or nothing if it holds nothing.
+    func box(of region: CanvasRegion) -> CGRect? {
+        CanvasRegion.box(of: region.members.compactMap { item($0)?.rect })
+    }
+
+    /**
+     Where a thing is, whatever kind of thing it is.
+
+     A connector's two ends are ids and nothing else. Making a region joinable
+     therefore needed one function rather than a second kind of link: everything
+     that draws a line asks where its ends are, and this is the only place that
+     has to know a region is not an item.
+     */
+    func rect(of id: UUID) -> CGRect? {
+        if let item = item(id) { return item.rect }
+        if let region = regions.first(where: { $0.id == id }) { return box(of: region) }
+        return nil
+    }
+
+    /// Which region a click landed in, if any. Innermost first, so a region
+    /// inside a region is reachable.
+    func region(at point: CGPoint) -> CanvasRegion? {
+        regions
+            .compactMap { r in box(of: r).map { (r, $0) } }
+            .filter { $0.1.contains(point) }
+            .min { $0.1.width * $0.1.height < $1.1.width * $1.1.height }?.0
+    }
+
+    /**
+     Put a box around these.
+
+     Nothing clever about which things: a region holds exactly what was selected
+     when it was made. Growing to contain something dragged into it happens on
+     its own, because the box is the extent of its members and moving a member
+     changes that extent — no watching, no maintenance, nothing to be wrong for
+     one frame.
+     */
+    @discardableResult
+    func addRegion(around ids: Set<UUID>) -> UUID? {
+        let held = items.filter { ids.contains($0.id) }.map(\.id)
+        guard !held.isEmpty else { return nil }
+        let region = CanvasRegion(id: UUID(), members: held)
+        regions.append(region)
+        selection = .region(region.id)
+        persist()
+        return region.id
+    }
+
+    func restyleRegion(_ id: UUID, _ change: (inout CanvasRegion) -> Void) {
+        guard let at = regions.firstIndex(where: { $0.id == id }) else { return }
+        change(&regions[at])
+        persist()
+    }
+
+    /// The box goes; what was in it stays. A region is a way of talking about
+    /// things, and removing the way of talking about them is not removing them.
+    func removeRegion(_ id: UUID) {
+        regions.removeAll { $0.id == id }
+        // Lines drawn to the box go with the box. What was inside it stays, and
+        // so does anything joined to those things directly.
+        links.removeAll { $0.from == id || $0.to == id }
+        if selectedRegion == id { clearSelection() }
+        persist()
+    }
+
+    /// Put something in a box it was dropped into. Already in it is not an
+    /// error — it is a card moved about inside its own region, which is most of
+    /// the moves anybody makes once a region exists.
+    func join(region id: UUID, item: UUID) {
+        guard let at = regions.firstIndex(where: { $0.id == id }) else { return }
+        guard !regions[at].members.contains(item) else { return }
+        regions[at].members.append(item)
+        persist()
+    }
+
+    /// Everything in a region, moved together.
+    func moveRegion(_ id: UUID, by delta: CGSize) {
+        guard let region = regions.first(where: { $0.id == id }) else { return }
+        for member in region.members {
+            guard let at = items.firstIndex(where: { $0.id == member }) else { continue }
+            items[at].x += delta.width
+            items[at].y += delta.height
+        }
+    }
+
+    /// Several at once, for a marquee drag.
+    func moveItems(_ ids: Set<UUID>, by delta: CGSize) {
+        for id in ids {
+            guard let at = items.firstIndex(where: { $0.id == id }) else { continue }
+            items[at].x += delta.width
+            items[at].y += delta.height
+        }
+    }
+
+    /// Everything, gone. Pictures too — a canvas-images directory full of files
+    /// nothing refers to is rubbish left behind by a thing that said it cleared.
+    func clearAll() {
+        for item in items { if let name = item.image { store.forget(image: name) } }
+        items = []
+        links = []
+        regions = []
+        editing = nil
+        draft = ""
+        clearSelection()
+        persist()
+    }
+
+    func deleteItems(_ ids: Set<UUID>) {
+        items.removeAll { ids.contains($0.id) }
+        links.removeAll { ids.contains($0.from) || ids.contains($0.to) }
+        let emptied = regions.filter { $0.members.allSatisfy(ids.contains) }.map(\.id)
+        regions = regions
+            .map { var r = $0; r.members = r.members.filter { !ids.contains($0) }; return r }
+            .filter { !$0.members.isEmpty }
+        links.removeAll { emptied.contains($0.from) || emptied.contains($0.to) }
+        clearSelection()
         persist()
     }
 
@@ -606,7 +871,7 @@ final class CanvasModel: ObservableObject {
 
     func removeLink(_ id: UUID) {
         links.removeAll { $0.id == id }
-        if selectedLink == id { selectedLink = nil }
+        if selectedLink == id { clearSelection() }
         persist()
     }
 
@@ -794,7 +1059,12 @@ final class CanvasModel: ObservableObject {
         items.removeAll { $0.id == id }
         // A line to something that is gone is a line to nowhere.
         links.removeAll { $0.from == id || $0.to == id }
-        if selected == id { selected = nil }
+        let emptied = regions.filter { $0.members == [id] }.map(\.id)
+        regions = regions
+            .map { var r = $0; r.members = r.members.filter { $0 != id }; return r }
+            .filter { !$0.members.isEmpty }
+        links.removeAll { emptied.contains($0.from) || emptied.contains($0.to) }
+        if selectedItems.contains(id) { select(items: selectedItems.subtracting([id])) }
         if editing == id { editing = nil }
         persist()
     }
@@ -1000,6 +1270,7 @@ private extension View {
 enum CanvasTool: String, CaseIterable, Identifiable {
     case text
     case image
+    case select
 
     var id: String { rawValue }
 
@@ -1007,6 +1278,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
         switch self {
         case .text: return "textformat"
         case .image: return "photo"
+        case .select: return "rectangle.dashed"
         }
     }
 
@@ -1014,6 +1286,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
         switch self {
         case .text: return "Text"
         case .image: return "Image"
+        case .select: return "Select"
         }
     }
 
@@ -1021,6 +1294,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
         switch self {
         case .text: return "Drag onto the canvas to write"
         case .image: return "Add a picture from the clipboard or a file"
+        case .select: return "Click, then drag a box around things"
         }
     }
 
@@ -1032,8 +1306,13 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     /// picture comes from once it has landed somewhere.
     var hasMenu: Bool { self == .text }
 
-    /// Everything drags. It is the one gesture on this strip that says where.
-    var draggable: Bool { true }
+    /// Everything drags except the selector, which is a mode rather than a
+    /// thing: there is nothing to carry onto the canvas, and the drag it cares
+    /// about is the one that happens afterwards, on the canvas itself.
+    var draggable: Bool { self != .select }
+
+    /// Whether clicking it turns something on until it is clicked again.
+    var isMode: Bool { self == .select }
 }
 
 /**
@@ -1269,10 +1548,34 @@ private struct CanvasToolStrip: View {
     /// Which tool's menu is showing, if any. One at a time: two open menus
     /// beside each other is two lists competing for the same click.
     @Binding var openMenu: CanvasTool?
+    /// A mode tool that is currently on.
+    @Binding var armed: CanvasTool?
     @Binding var overChrome: Int
+    /// How far through clearing the canvas somebody is: nothing, asked once,
+    /// asked twice.
+    @Binding var clearStep: Int
+    let clear: () -> Void
     let track: (CanvasTool, CGPoint) -> Void
     let drop: (CanvasTool, CGPoint) -> Void
     let pickImage: (ImageSource) -> Void
+
+    private var clearLabel: some View {
+        VStack(spacing: 2) {
+            Image(systemName: clearStep == 0 ? "trash" : "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .medium))
+            Text(clearStep == 0 ? "Clear" : (clearStep == 1 ? "Sure?" : "Erase all"))
+                .font(Theme.chrome(9, weight: clearStep == 0 ? .medium : .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(width: 56, height: 38)
+        .contentShape(Rectangle())
+        .foregroundStyle(clearStep == 0 ? Color.secondary : Theme.danger)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(clearStep == 0 ? Color.clear : Theme.danger.opacity(0.12))
+        )
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -1297,10 +1600,12 @@ private struct CanvasToolStrip: View {
                     if tool.hasMenu { SubmenuCorner() }
                 }
                 .contentShape(Rectangle())
-                .foregroundStyle(dragging == tool || openMenu == tool ? Theme.accent : Color.secondary)
+                .foregroundStyle(dragging == tool || openMenu == tool || armed == tool
+                                 ? Theme.accent : Color.secondary)
                 .background(
                     RoundedRectangle(cornerRadius: 7)
-                        .fill(dragging == tool || openMenu == tool ? Color.primary.opacity(0.08) : .clear)
+                        .fill(dragging == tool || openMenu == tool || armed == tool
+                              ? Color.primary.opacity(0.08) : .clear)
                 )
                 .help(tool.hint)
                 .gesture(
@@ -1322,12 +1627,38 @@ private struct CanvasToolStrip: View {
                             if moved {
                                 openMenu = nil
                                 drop(tool, value.location)
+                            } else if tool.isMode {
+                                openMenu = nil
+                                armed = armed == tool ? nil : tool
                             } else {
                                 openMenu = openMenu == tool ? nil : tool
                             }
                         }
                 )
             }
+            /**
+             Clear the whole canvas, asked twice.
+
+             Twice because it is the only control here that destroys work
+             somebody cannot get back by repeating a gesture — a deleted card is
+             one drag to redraw, a cleared canvas is an afternoon. Two different
+             questions rather than the same one twice, so the second is read
+             rather than clicked through: the first asks whether, the second says
+             how much.
+
+             At the bottom, below a divider, away from the tools. It is not a
+             tool and should not be reachable by the slip of the hand that
+             reaches for one.
+             */
+            Divider().padding(.horizontal, 8).padding(.top, 2)
+            Button {
+                clearStep = clearStep >= 2 ? 0 : clearStep + 1
+                if clearStep == 0 { clear() }
+            } label: {
+                clearLabel
+            }
+            .buttonStyle(.plain)
+            .help(clearStep == 0 ? "Erase everything on this canvas" : "Click again — this cannot be undone")
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 4)
@@ -1350,6 +1681,9 @@ private struct CanvasToolStrip: View {
                     .chrome($overChrome)
                     .offset(x: -68)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
+            case .select:
+                // A mode has nothing behind it.
+                EmptyView()
             case .image:
                 ImageMenu { source in
                     openMenu = nil
@@ -1612,6 +1946,11 @@ struct CanvasSurface: View {
     @State private var overChrome = 0
     /// The item whose delete has been asked for but not yet confirmed.
     @State private var confirmingDelete: UUID?
+    /// The group delete has been asked for but not answered.
+    @State private var confirmingGroupDelete = false
+    /// How far through clearing the canvas somebody is. Reset by a click
+    /// anywhere else, like every other question this surface asks.
+    @State private var clearStep = 0
     /// Which thing's inspector is open, if any. One at a time, and tied to the
     /// selection: an inspector for something that is no longer selected is a
     /// panel editing a thing nobody can see.
@@ -1636,6 +1975,17 @@ struct CanvasSurface: View {
     /// and a canvas reopened tomorrow should not still be armed with a triangle.
     @State private var shape: CanvasShape = .plain
     @State private var openMenu: CanvasTool?
+    /// The selector, when it is on. A mode, so it stays on until it is turned
+    /// off or used — a person drawing three boxes round three groups should not
+    /// have to click the tool three times.
+    @State private var armed: CanvasTool?
+    /// The marquee being dragged, in canvas coordinates.
+    @State private var marquee: CGRect?
+    @State private var marqueeStart: CGPoint?
+    /// The region being dragged, and how far it has gone so far — a drag reports
+    /// its total travel, so the model is told the difference each frame.
+    @State private var draggingRegion: UUID?
+    @State private var regionOrigin: CGSize?
     /// Said out loud when a picture could not be added, rather than drawing an
     /// empty box and letting somebody work out why.
     @State private var trouble: String?
@@ -1664,7 +2014,7 @@ struct CanvasSurface: View {
     /// Open over the canvas, pointing the instant a button goes down, closed
     /// once that press starts pulling the canvas about.
     private var cursor: NSCursor {
-        if tool != nil { return .crosshair }
+        if tool != nil || armed == .select { return .crosshair }
         // Pulling something — the canvas itself, or one thing on it.
         if dragging || movingId != nil { return .closedHand }
         // Over a thing, or pressed on the canvas. Both are "this click will do
@@ -1682,7 +2032,10 @@ struct CanvasSurface: View {
                 // in the stack, so a press on an item reaches the item — which
                 // is what stops "drag to move this" and "drag to move the
                 // canvas" being the same gesture.
-                background(geo.size)
+                background(geo)
+
+                // Under everything: a region is the ground the rest sits on.
+                regionLayer(geo)
 
                 // Under the items, so a line runs behind the boxes it joins
                 // rather than across their faces.
@@ -1694,60 +2047,23 @@ struct CanvasSurface: View {
                 // guide you cannot use to place that box.
                 guideLayer(geo.size)
 
-                // Above the items, and only while one is selected.
-                if let id = model.selected, let item = model.item(id) {
-                    itemDelete(item, in: geo.size)
-                }
-
-                // The handle sits above everything it might otherwise hide
-                // behind, and only exists while a line is selected.
-                if let id = model.selectedLink,
-                   let link = model.links.first(where: { $0.id == id }),
-                   let g = geometry(of: link) {
-                    handleControls(for: link, g: g, in: geo.size)
-                }
-
-                // The ghost. Drawn over everything, because a tool being carried
-                // is not on the canvas yet and should not look as though it is.
-                if let tool, let at = toolPoint {
-                    Image(systemName: tool == .text ? shape.symbol : tool.symbol)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.accent)
-                        .padding(6)
-                        .background(Circle().fill(.background.opacity(0.8)))
-                        .position(at)
-                        .allowsHitTesting(false)
-                }
-
-                if let asking = askingImage {
-                    ImageMenu { source in
-                        askingImage = nil
-                        add(source, at: asking.canvas)
-                    }
-                    .fixedSize()
-                    .chrome($overChrome)
-                    // Just below and right of where it landed, so the question
-                    // is not sitting on top of the place the answer will go.
-                    .position(x: asking.screen.x + 66, y: asking.screen.y + 34)
-                }
-
-                CursorArea(cursor: cursor)
-
-                // A picture that did not arrive has to say why. The alternative
-                // is a menu item that sometimes does nothing, which is
-                // indistinguishable from a menu item that is broken.
-                if let trouble {
-                    Text(trouble)
-                        .font(Theme.chrome(11))
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Capsule().fill(.background.opacity(0.9)))
-                        .overlay(Capsule().strokeBorder(Theme.danger.opacity(0.5), lineWidth: 1))
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
-                        .task {
-                            try? await Task.sleep(nanoseconds: 3_200_000_000)
-                            withAnimation(.easeOut(duration: 0.3)) { self.trouble = nil }
-                        }
+                // Everything that floats over the drawing, in one group.
+                //
+                // A view builder takes ten children and this stack wanted
+                // twelve. Past that it does not fail with "too many" — it hands
+                // the type checker an expression it will not finish, and says
+                // so about a line that is not the problem.
+                Group {
+                    // Whatever the selection is, its own buttons. Several at
+                    // once get one menu rather than a set each — twelve little
+                    // crosses over six boxes is not an offer, it is confetti.
+                    selectionChrome(geo)
+                    linkChrome(geo.size)
+                    carriedTool
+                    imageQuestion
+                    marqueeBox(geo.size)
+                    CursorArea(cursor: cursor)
+                    troubleNote
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1820,26 +2136,12 @@ struct CanvasSurface: View {
                     dragging: $tool,
                     shape: $shape,
                     openMenu: $openMenu,
+                    armed: $armed,
                     overChrome: $overChrome,
+                    clearStep: $clearStep,
+                    clear: { model.clearAll() },
                     track: { _, at in toolPoint = local(at, geo) },
-                    drop: { which, at in
-                        let here = local(at, geo)
-                        toolPoint = nil
-                        switch which {
-                        case .text:
-                            // Ignore a drop that never left the strip: that is a
-                            // click on a tool, and a click has nowhere to put one.
-                            guard here.x < geo.size.width - Self.stripWidth else { return }
-                            model.addText(at: canvasPoint(here, in: geo.size), shape: shape)
-                        case .image:
-                            guard here.x < geo.size.width - Self.stripWidth else { return }
-                            // Where, then what. The question of which picture is
-                            // asked at the point it was dropped, so the answer
-                            // arrives where the drag ended rather than in the
-                            // middle of the screen.
-                            askingImage = (here, canvasPoint(here, in: geo.size))
-                        }
-                    },
+                    drop: { which, at in dropped(which, at: at, in: geo) },
                     pickImage: { _ in }
                 )
                 .padding(.trailing, 10)
@@ -1863,7 +2165,20 @@ struct CanvasSurface: View {
      */
     private func dropTarget(under screen: CGPoint, moving: UUID, in geo: GeometryProxy) -> UUID? {
         let here = canvasPoint(local(screen, geo), in: geo.size)
-        return model.items.reversed().first { $0.id != moving && $0.rect.contains(here) }?.id
+        // An item first: a region is mostly the things it holds, and dropping on
+        // one of those means that one, not the box around it.
+        if let hit = model.items.reversed().first(where: { $0.id != moving && $0.rect.contains(here) }) {
+            return hit.id
+        }
+        // Then a region — but never one that holds the thing being carried.
+        // Joining something to the box it is already inside is a line from a
+        // thing to itself, drawn the long way round.
+        if let region = model.region(at: here),
+           region.id != moving,
+           !region.members.contains(moving) {
+            return region.id
+        }
+        return nil
     }
 
     /**
@@ -1937,8 +2252,8 @@ struct CanvasSurface: View {
 
     /// The shape of a line, or nothing if either end has gone.
     private func geometry(of link: CanvasLink) -> LinkGeometry? {
-        guard let a = model.item(link.from), let b = model.item(link.to) else { return nil }
-        return LinkGeometry.of(from: a.rect, to: b.rect, bend: link.bend)
+        guard let a = model.rect(of: link.from), let b = model.rect(of: link.to) else { return nil }
+        return LinkGeometry.of(from: a, to: b, bend: link.bend)
     }
 
     /**
@@ -2022,6 +2337,71 @@ struct CanvasSurface: View {
     }
 
     /**
+     The boxes drawn round groups.
+
+     Each one asks where its members are, every time. That is the whole of
+     "expands to contain what is moved": nothing watches for a move, because the
+     box is not a thing that could be out of date — it is the extent of what is
+     inside it, computed now.
+
+     Drawn as views rather than into a `Canvas` because a region carries a title
+     that can be styled and aligned like any other text, and text in a canvas
+     context is a second text renderer to keep in step with the first.
+     */
+    @ViewBuilder
+    private func regionLayer(_ geo: GeometryProxy) -> some View {
+        ZStack {
+            ForEach(model.regions) { region in
+                if let box = model.box(of: region) {
+                    let chosen = model.selectedRegion == region.id
+                    let weight = region.strokeWidth / chrome.zoom
+                    let aimed = linkTarget == region.id
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10 / chrome.zoom)
+                            .fill(aimed ? Theme.accent.opacity(0.14) : (Hex.color(region.fill) ?? .clear))
+                        if region.strokeWidth > 0 {
+                            RoundedRectangle(cornerRadius: 10 / chrome.zoom)
+                                .strokeBorder(
+                                    chosen || aimed
+                                        ? Theme.accent
+                                        : (Hex.color(region.stroke) ?? .primary.opacity(0.35)),
+                                    style: StrokeStyle(
+                                        lineWidth: chosen || aimed
+                                            ? max(weight, 2 / chrome.zoom)
+                                            : weight,
+                                        dash: aimed ? [] : region.strokeStyle.dash(weight)
+                                    )
+                                )
+                        }
+                    }
+                    .frame(width: box.width, height: box.height)
+                    // The name, above the box rather than in it. One line: it is
+                    // a label for a group and not a paragraph, and a name that
+                    // wrapped would push the box down away from the things it is
+                    // drawn around.
+                    .overlay(alignment: region.hAlign.frame) {
+                        if !region.title.isEmpty {
+                            Text(CanvasText.attributed(region.title))
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .foregroundStyle(Hex.color(region.textColor) ?? .secondary)
+                                .padding(.horizontal, 4 / chrome.zoom)
+                                .offset(y: -(box.height / 2) - CanvasRegion.titleHeight / 2)
+                        }
+                    }
+                    .offset(x: box.midX, y: box.midY)
+                }
+            }
+        }
+        .scaleEffect(chrome.zoom)
+        .offset(chrome.pan)
+        // The region is clicked through the background, which knows what is on
+        // top of it. A region that took its own clicks would take them from the
+        // things inside it, which is the opposite of what it is for.
+        .allowsHitTesting(false)
+    }
+
+    /**
      The lines that appear while something is being dragged into place.
 
      Drawn in screen space like the connectors and the grid, so a guide is one
@@ -2084,7 +2464,7 @@ struct CanvasSurface: View {
             get: { inspecting == item.id },
             set: { if !$0 { inspecting = nil } }
         ), arrowEdge: .trailing) {
-            CanvasInspector(model: model, item: model.item(item.id) ?? item, link: nil)
+            CanvasInspector(model: model, item: model.item(item.id) ?? item, link: nil, region: nil)
         }
 
         let remove = Button {
@@ -2121,6 +2501,226 @@ struct CanvasSurface: View {
         // dangerous one is furthest out and the other is not in the way of it.
         info.position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
         remove.position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
+    }
+
+    /// A tool let go somewhere on the canvas.
+    private func dropped(_ which: CanvasTool, at screen: CGPoint, in geo: GeometryProxy) {
+        let here = local(screen, geo)
+        toolPoint = nil
+        // Ignore a drop that never left the strip: that is a click on a tool,
+        // and a click has nowhere to put one.
+        guard here.x < geo.size.width - Self.stripWidth else { return }
+        switch which {
+        case .text:
+            model.addText(at: canvasPoint(here, in: geo.size), shape: shape)
+        case .select:
+            // Armed by a click, not placed by a drag. Nothing to drop.
+            break
+        case .image:
+            // Where, then what. The question of which picture is asked at the
+            // point it was dropped, so the answer arrives where the drag ended.
+            askingImage = (here, canvasPoint(here, in: geo.size))
+        }
+    }
+
+    /// The grip and buttons on a selected connector.
+    @ViewBuilder
+    private func linkChrome(_ size: CGSize) -> some View {
+        if let id = model.selectedLink,
+           let link = model.links.first(where: { $0.id == id }),
+           let g = geometry(of: link) {
+            handleControls(for: link, g: g, in: size)
+        }
+    }
+
+    /// The ghost under the pointer. Drawn over everything, because a tool being
+    /// carried is not on the canvas yet and should not look as though it is.
+    @ViewBuilder
+    private var carriedTool: some View {
+        if let tool, let at = toolPoint {
+            Image(systemName: tool == .text ? shape.symbol : tool.symbol)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.accent)
+                .padding(6)
+                .background(Circle().fill(.background.opacity(0.8)))
+                .position(at)
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// Where a dropped picture should come from, asked where it landed.
+    @ViewBuilder
+    private var imageQuestion: some View {
+        if let asking = askingImage {
+            ImageMenu { source in
+                askingImage = nil
+                add(source, at: asking.canvas)
+            }
+            .fixedSize()
+            .chrome($overChrome)
+            // Just below and right of where it landed, so the question is not
+            // sitting on top of the place the answer will go.
+            .position(x: asking.screen.x + 66, y: asking.screen.y + 34)
+        }
+    }
+
+    /// The box being dragged round things, while it is being dragged.
+    @ViewBuilder
+    private func marqueeBox(_ size: CGSize) -> some View {
+        if let box = marquee {
+            let a = screenPoint(CGPoint(x: box.minX, y: box.minY), in: size)
+            let b = screenPoint(CGPoint(x: box.maxX, y: box.maxY), in: size)
+            Rectangle()
+                .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                .background(Rectangle().fill(Theme.accent.opacity(0.07)))
+                .frame(width: abs(b.x - a.x), height: abs(b.y - a.y))
+                .position(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// A picture that did not arrive has to say why. The alternative is a menu
+    /// item that sometimes does nothing, which is indistinguishable from a menu
+    /// item that is broken.
+    @ViewBuilder
+    private var troubleNote: some View {
+        if let trouble {
+            Text(trouble)
+                .font(Theme.chrome(11))
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Capsule().fill(.background.opacity(0.9)))
+                .overlay(Capsule().strokeBorder(Theme.danger.opacity(0.5), lineWidth: 1))
+                .transition(.opacity)
+                .allowsHitTesting(false)
+                .task {
+                    try? await Task.sleep(nanoseconds: 3_200_000_000)
+                    withAnimation(.easeOut(duration: 0.3)) { self.trouble = nil }
+                }
+        }
+    }
+
+    /// The buttons that belong to whatever is selected — one item, several, or a
+    /// region. Lifted out of the main stack: SwiftUI type-checks a view builder
+    /// as one expression, and that one had grown past what the compiler will do
+    /// in reasonable time.
+    @ViewBuilder
+    private func selectionChrome(_ geo: GeometryProxy) -> some View {
+        if let id = model.selected, let item = model.item(id) {
+            itemDelete(item, in: geo.size)
+        }
+        if model.selectedItems.count > 1 {
+            groupMenu(model.selectedItems, in: geo.size)
+        }
+        if let id = model.selectedRegion,
+           let region = model.regions.first(where: { $0.id == id }),
+           let box = model.box(of: region) {
+            regionButtons(region, box: box, in: geo.size)
+        }
+    }
+
+    /// What to do with several things at once, offered above them.
+    @ViewBuilder
+    private func groupMenu(_ ids: Set<UUID>, in size: CGSize) -> some View {
+        let boxes = ids.compactMap { model.item($0)?.rect }
+        if let box = boxes.dropFirst().reduce(boxes.first) { got, next in got?.union(next) } {
+            let at = screenPoint(CGPoint(x: box.midX, y: box.minY), in: size)
+            let asking = confirmingGroupDelete
+            HStack(spacing: 4) {
+                Button("Create region") {
+                    model.addRegion(around: ids)
+                    confirmingGroupDelete = false
+                }
+                .font(Theme.chrome(11))
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+
+                Divider().frame(height: 12)
+
+                Button(asking ? "Delete \(ids.count)?" : "Delete") {
+                    if asking {
+                        model.deleteItems(ids)
+                        confirmingGroupDelete = false
+                    } else {
+                        confirmingGroupDelete = true
+                    }
+                }
+                .font(Theme.chrome(11, weight: asking ? .semibold : .regular))
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.danger)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                Capsule().fill(.background.opacity(0.92))
+                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.16), radius: 8, y: 2)
+            )
+            .chrome($overChrome)
+            .position(x: at.x, y: at.y - 20)
+        }
+    }
+
+    /// A region's own two buttons, at its top-right like an item's.
+    @ViewBuilder
+    private func regionButtons(_ region: CanvasRegion, box: CGRect, in size: CGSize) -> some View {
+        let corner = screenPoint(CGPoint(x: box.maxX, y: box.minY), in: size)
+        let asking = confirmingDelete == region.id
+        Button {
+            inspecting = inspecting == region.id ? nil : region.id
+        } label: {
+            Image(systemName: "info")
+                .font(.system(size: 8, weight: .bold))
+                .frame(width: 13, height: 13)
+                .contentShape(Rectangle())
+                .foregroundStyle(.white)
+                .background(Circle().fill(inspecting == region.id ? Theme.accent : Color.secondary))
+        }
+        .buttonStyle(.plain)
+        .help("Appearance")
+        .chrome($overChrome)
+        .popover(isPresented: Binding(
+            get: { inspecting == region.id },
+            set: { if !$0 { inspecting = nil } }
+        ), arrowEdge: .trailing) {
+            CanvasInspector(
+                model: model,
+                item: nil,
+                link: nil,
+                region: model.regions.first { $0.id == region.id } ?? region
+            )
+        }
+        .position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
+
+        Button {
+            if asking {
+                model.removeRegion(region.id)
+                confirmingDelete = nil
+                inspecting = nil
+            } else {
+                confirmingDelete = region.id
+            }
+        } label: {
+            Group {
+                if asking {
+                    // Says what it will not do, because that is the part
+                    // somebody hesitating is unsure about.
+                    Text("Remove box?")
+                        .font(Theme.chrome(10, weight: .semibold))
+                        .padding(.horizontal, 7).frame(height: 16)
+                } else {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .bold))
+                        .frame(width: 13, height: 13)
+                }
+            }
+            .contentShape(Rectangle())
+            .foregroundStyle(.white)
+            .background(Capsule().fill(Theme.danger))
+        }
+        .buttonStyle(.plain)
+        .help(asking ? "Click again — the things inside stay" : "Remove this region")
+        .chrome($overChrome)
+        .position(x: corner.x + (asking ? 34 : 9), y: corner.y - 9)
     }
 
     /// The midpoint grip, and the one button that undoes a line.
@@ -2180,7 +2780,8 @@ struct CanvasSurface: View {
                 CanvasInspector(
                     model: model,
                     item: nil,
-                    link: model.links.first { $0.id == link.id } ?? link
+                    link: model.links.first { $0.id == link.id } ?? link,
+                    region: nil
                 )
             }
             .position(x: at.x - 1, y: at.y - 14)
@@ -2214,7 +2815,8 @@ struct CanvasSurface: View {
     // MARK: Layers
 
     @ViewBuilder
-    private func background(_ size: CGSize) -> some View {
+    private func background(_ geo: GeometryProxy) -> some View {
+        let size = geo.size
         ZStack {
             if chrome.grid { grid }
             Color.clear
@@ -2223,6 +2825,41 @@ struct CanvasSurface: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
+                    // A box being drawn round things, rather than the canvas
+                    // being pulled about. The selector is a mode and this is
+                    // what the mode changes: the same drag means something else.
+                    if armed == .select {
+                        let now = canvasPoint(value.location, in: size)
+                        let start = marqueeStart ?? now
+                        if marqueeStart == nil { marqueeStart = start }
+                        marquee = CGRect(
+                            x: min(start.x, now.x), y: min(start.y, now.y),
+                            width: abs(now.x - start.x), height: abs(now.y - start.y)
+                        )
+                        return
+                    }
+                    // Dragging a region drags what is in it.
+                    if let id = draggingRegion {
+                        let base = regionOrigin ?? .zero
+                        let want = CGSize(width: value.translation.width / chrome.zoom,
+                                          height: value.translation.height / chrome.zoom)
+                        model.moveRegion(id, by: CGSize(width: want.width - base.width,
+                                                        height: want.height - base.height))
+                        regionOrigin = want
+                        // A region carried onto something joins to it, the same
+                        // gesture and the same rule as one card onto another.
+                        linkTarget = dropTarget(under: value.location, moving: id, in: geo)
+                        return
+                    }
+                    if model.selectedRegion != nil, draggingRegion == nil, !dragging,
+                       let id = model.selectedRegion,
+                       let region = model.regions.first(where: { $0.id == id }),
+                       let box = model.box(of: region),
+                       box.contains(canvasPoint(value.startLocation, in: size)) {
+                        draggingRegion = id
+                        regionOrigin = .zero
+                        return
+                    }
                     pressing = true
                     // A press is not yet a drag. Below this it is somebody
                     // clicking and the pointer says so; past it they are pulling
@@ -2246,6 +2883,42 @@ struct CanvasSurface: View {
                                         height: base.height + value.translation.height)
                 }
                 .onEnded { value in
+                    if armed == .select {
+                        // Everything the box touches. Touching rather than
+                        // wholly containing, because a box drawn round a group
+                        // is drawn round roughly a group, and leaving out the
+                        // one card whose corner stuck out is not what anybody
+                        // meant by it.
+                        if let box = marquee, box.width > 2 || box.height > 2 {
+                            model.select(items: Set(
+                                model.items.filter { $0.rect.intersects(box) }.map(\.id)
+                            ))
+                        }
+                        marquee = nil
+                        marqueeStart = nil
+                        // Off after one use. A mode that stays on is a mode
+                        // somebody forgets is on, and the next ordinary drag
+                        // draws a box instead of moving the canvas.
+                        armed = nil
+                        return
+                    }
+                    if let id = draggingRegion {
+                        if let onto = linkTarget, let travelled = regionOrigin {
+                            // Back where it came from, and a line left behind.
+                            // Exactly what dropping one card on another does,
+                            // and it has to be exactly that or the two gestures
+                            // would mean different things by the same motion.
+                            model.moveRegion(id, by: CGSize(width: -travelled.width, height: -travelled.height))
+                            model.link(from: id, to: onto)
+                            model.clearSelection()
+                        } else {
+                            model.settled()
+                        }
+                        draggingRegion = nil
+                        regionOrigin = nil
+                        linkTarget = nil
+                        return
+                    }
                     // A press on the background that never became a drag is
                     // "clicking away": it finishes whatever was being typed and
                     // drops the selection. This is the other half of the rule
@@ -2257,8 +2930,18 @@ struct CanvasSurface: View {
                     // also the only click that can make one.
                     if !dragging {
                         model.commitEdit()
-                        model.select(link: hitLink(at: value.location, in: size))
+                        let here = canvasPoint(value.location, in: size)
+                        if let link = hitLink(at: value.location, in: size) {
+                            model.select(link: link)
+                        } else if let region = model.region(at: here) {
+                            // Only where no item is — the inside of a region is
+                            // mostly the things it holds, and clicking one of
+                            // those means the thing, not the box round it.
+                            model.select(region: region.id)
+                        }
                         confirmingDelete = nil
+                        confirmingGroupDelete = false
+                        clearStep = 0
                         // A click anywhere else closes it, which is what a menu
                         // does and what somebody who opened it by accident will
                         // try first. A picture nobody chose is abandoned the
@@ -2306,7 +2989,7 @@ struct CanvasSurface: View {
     @ViewBuilder
     private func itemView(_ item: CanvasItem, in geo: GeometryProxy) -> some View {
         let editing = model.editing == item.id
-        let selected = model.selected == item.id
+        let selected = model.selectedItems.contains(item.id)
 
         CanvasItemView(
             item: item,
@@ -2374,7 +3057,21 @@ struct CanvasSurface: View {
                 }
                 .onEnded { value in
                     let moved = abs(value.translation.width) > 3 || abs(value.translation.height) > 3
-                    if moved, let onto = linkTarget, let from = moveOrigin {
+                    if moved, let onto = linkTarget,
+                       model.regions.contains(where: { $0.id == onto }) {
+                        // Into a region, not onto it. Carrying a card into a box
+                        // means putting it in the box — it stays exactly where
+                        // it was let go and the region grows to include it,
+                        // which it does by itself, because the box is the extent
+                        // of what it holds.
+                        //
+                        // This is the one drop that is not a connection. Dropping
+                        // a *region* onto something still joins them: the region
+                        // is the thing being carried then, and there is nothing
+                        // for it to be put inside.
+                        model.join(region: onto, item: item.id)
+                        model.settled()
+                    } else if moved, let onto = linkTarget, let from = moveOrigin {
                         // Dropped on something. The gesture said "this one goes
                         // with that one", not "this one goes here", so the box
                         // goes back where it came from and a line is what is
@@ -2423,7 +3120,10 @@ struct CanvasSurface: View {
         )
 
         .overlay {
-            if selected { handles(item) }
+            // Grips only when it is the one thing selected. Six boxes with
+            // twenty-four corners between them is not a control, and a resize
+            // that meant "all of these" is a different feature nobody asked for.
+            if model.selected == item.id { handles(item) }
         }
         .frame(width: item.w, height: item.h)
         .offset(x: item.x + item.w / 2, y: item.y + item.h / 2)

@@ -283,11 +283,13 @@ struct CanvasInspector: View {
     /// Exactly one of these.
     var item: CanvasItem?
     var link: CanvasLink?
+    var region: CanvasRegion?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             if let item { itemControls(item) }
             if let link { linkControls(link) }
+            if let region { regionControls(region) }
         }
         .padding(12)
         .frame(width: 268)
@@ -381,6 +383,63 @@ struct CanvasInspector: View {
             style: Binding(
                 get: { link.style },
                 set: { v in model.restyleLink(link.id) { $0.style = v } }
+            )
+        )
+    }
+
+    // MARK: A region
+
+    /**
+     A region has a name and a box, and nothing else to say.
+
+     No shape — it is the extent of what it holds and that is not a choice — and
+     no size, for the same reason. What is left is the same questions as an item:
+     what it is called, where the name sits, and how the box is drawn.
+     */
+    @ViewBuilder
+    private func regionControls(_ region: CanvasRegion) -> some View {
+        Row(label: "Name") {
+            TextField("", text: Binding(
+                get: { region.title },
+                set: { v in model.restyleRegion(region.id) { $0.title = v } }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .font(Theme.chrome(11))
+            .frame(width: 150)
+        }
+        Row(label: "Align") {
+            Segmented(options: TextAlign.allCases, symbol: { $0.symbol }, chosen: Binding(
+                get: { region.hAlign },
+                set: { v in model.restyleRegion(region.id) { $0.hAlign = v } }
+            ))
+        }
+        Row(label: "Text") {
+            ColorWell(label: "Text", hex: Binding(
+                get: { region.textColor },
+                set: { v in model.restyleRegion(region.id) { $0.textColor = v } }
+            ), placeholder: .secondary)
+        }
+        Divider().opacity(0.4)
+        Row(label: "Background") {
+            ColorWell(label: "Background", hex: Binding(
+                get: { region.fill },
+                set: { v in model.restyleRegion(region.id) { $0.fill = v } }
+            ), placeholder: Theme.accent.opacity(0.08))
+        }
+        Row(label: "Border") {
+            ColorWell(label: "Border", hex: Binding(
+                get: { region.stroke },
+                set: { v in model.restyleRegion(region.id) { $0.stroke = v } }
+            ), placeholder: .primary.opacity(0.35))
+        }
+        weightAndStyle(
+            width: Binding(
+                get: { region.strokeWidth },
+                set: { v in model.restyleRegion(region.id) { $0.strokeWidth = v } }
+            ),
+            style: Binding(
+                get: { region.strokeStyle },
+                set: { v in model.restyleRegion(region.id) { $0.strokeStyle = v } }
             )
         )
     }

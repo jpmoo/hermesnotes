@@ -1792,6 +1792,26 @@ struct CanvasSurface: View {
                 if inspecting != nil, inspecting != now, model.selected != inspecting { inspecting = nil }
             }
             .onChange(of: openMenu) { _ in forgetChrome() }
+            /**
+             Closing the inspector closes the colour panel.
+
+             `NSColorPanel` is shared and persistent: it is one panel for the
+             whole application, it stays up until something closes it, and it
+             remembers whatever it was last pointed at. So a well opened once
+             left it hanging around, and the next well found a panel already
+             open — which is why picking a colour felt like it was showing the
+             last thing rather than this one.
+
+             Tied to the inspector rather than to the pick itself, because the
+             pick is continuous. Closing it on the first change would mean the
+             panel shut the instant somebody touched the colour wheel, which is
+             one drag into choosing rather than the end of it.
+             */
+            .onChange(of: inspecting) { now in
+                guard now == nil, NSColorPanel.sharedColorPanelExists,
+                      NSColorPanel.shared.isVisible else { return }
+                NSColorPanel.shared.close()
+            }
             // Keyed on which items have pictures, not on the items themselves —
             // otherwise every drag of anything would reload every picture.
             .onChange(of: model.items.compactMap(\.image)) { _ in loadPictures() }
@@ -1981,12 +2001,19 @@ struct CanvasSurface: View {
                 // angle instead of showing a notch at the point.
                 let d = g.arrival
                 let tip = end
-                let back = CGPoint(x: tip.x - d.dx * 9, y: tip.y - d.dy * 9)
+                // Sized from the line it ends. A head that stayed 9 points long
+                // while the line grew to 8 looked like a pin stuck in the end of
+                // a pipe. Six and three times the weight keeps the same
+                // proportions the default had, and a floor so a hairline still
+                // arrives at something.
+                let head_len = max(width * 6, 5)
+                let head_half = max(width * 3, 2.5)
+                let back = CGPoint(x: tip.x - d.dx * head_len, y: tip.y - d.dy * head_len)
                 let side = CGVector(dx: -d.dy, dy: d.dx)
                 var head = Path()
                 head.move(to: tip)
-                head.addLine(to: CGPoint(x: back.x + side.dx * 4.5, y: back.y + side.dy * 4.5))
-                head.addLine(to: CGPoint(x: back.x - side.dx * 4.5, y: back.y - side.dy * 4.5))
+                head.addLine(to: CGPoint(x: back.x + side.dx * head_half, y: back.y + side.dy * head_half))
+                head.addLine(to: CGPoint(x: back.x - side.dx * head_half, y: back.y - side.dy * head_half))
                 head.closeSubpath()
                 context.fill(head, with: .color(colour))
             }

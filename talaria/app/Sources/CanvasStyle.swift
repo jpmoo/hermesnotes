@@ -55,13 +55,6 @@ enum LineStyle: String, Codable, CaseIterable, Identifiable {
     case solid, dashed, double
     var id: String { rawValue }
     var name: String { rawValue.capitalized }
-    var symbol: String {
-        switch self {
-        case .solid: return "minus"
-        case .dashed: return "line.3.horizontal.decrease"
-        case .double: return "equal"
-        }
-    }
 
     /// The dash pattern, scaled to the weight so a dashed hairline and a dashed
     /// thick line look like the same idea rather than two different ones.
@@ -167,17 +160,19 @@ private struct Row<Content: View>: View {
     }
 }
 
-/// A row of icons, one of which is chosen.
-private struct Segmented<T: Hashable & Identifiable>: View {
+/// A row of choices, one of which is picked. The label is whatever the thing
+/// being chosen is best shown as — usually a symbol, and for a line style the
+/// line itself.
+private struct Segmented<T: Hashable & Identifiable, Label: View>: View {
     let options: [T]
-    let symbol: (T) -> String
     @Binding var chosen: T
+    @ViewBuilder let label: (T) -> Label
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options) { option in
                 Button { chosen = option } label: {
-                    Image(systemName: symbol(option))
+                    label(option)
                         .font(.system(size: 11, weight: .medium))
                         .frame(width: 26, height: 20)
                         .contentShape(Rectangle())
@@ -190,6 +185,50 @@ private struct Segmented<T: Hashable & Identifiable>: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+}
+
+private extension Segmented where Label == Image {
+    /// The common case: a row of SF Symbols.
+    ///
+    /// The label is a bare `Image` and the font is applied in the body below.
+    /// It was written the other way round for a moment — `Image(...).font(...)`
+    /// forced to `Label` — which compiles and traps, because a modified image is
+    /// not an `Image`.
+    init(options: [T], symbol: @escaping (T) -> String, chosen: Binding<T>) {
+        self.init(options: options, chosen: chosen) { Image(systemName: symbol($0)) }
+    }
+}
+
+/**
+ A line style, drawn as that line.
+
+ It was three SF Symbols, and the one for dashed was `line.3.horizontal.decrease`
+ — the filter glyph. Three horizontal bars of decreasing length, which does not
+ look dashed and, worse, is nearly the same picture as the centre-align icon two
+ rows above it in the same panel. A control that sets how a line is drawn should
+ show the line.
+ */
+private struct LineStyleGlyph: View {
+    let style: LineStyle
+
+    var body: some View {
+        Canvas { context, size in
+            let y = size.height / 2
+            let inset: CGFloat = 3
+            func line(_ offset: CGFloat, dash: [CGFloat]) {
+                var path = Path()
+                path.move(to: CGPoint(x: inset, y: y + offset))
+                path.addLine(to: CGPoint(x: size.width - inset, y: y + offset))
+                context.stroke(path, with: .color(.primary), style: StrokeStyle(lineWidth: 1.6, dash: dash))
+            }
+            switch style {
+            case .solid: line(0, dash: [])
+            case .dashed: line(0, dash: [3.5, 2.5])
+            case .double: line(-2, dash: []); line(2, dash: [])
+            }
+        }
+        .frame(width: 20, height: 12)
     }
 }
 
@@ -363,7 +402,7 @@ struct CanvasInspector: View {
             }
         }
         Row(label: "Style") {
-            Segmented(options: LineStyle.allCases, symbol: { $0.symbol }, chosen: style)
+            Segmented(options: LineStyle.allCases, chosen: style) { LineStyleGlyph(style: $0) }
         }
     }
 

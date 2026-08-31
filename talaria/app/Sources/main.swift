@@ -757,6 +757,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Which surface you were on survives this; the strip does not. See
         // `DeskChrome.closed`.
         deskChrome.closed()
+        // The colour panel is shared and outlives whatever opened it, so a desk
+        // put away with one up leaves a floating panel over an empty desktop
+        // pointed at something nobody can see.
+        if NSColorPanel.sharedColorPanelExists, NSColorPanel.shared.isVisible {
+            NSColorPanel.shared.close()
+        }
         NSLog("talaria: desk hidden on \(deskChrome.surface.name)")
         if let deskScroll { NSEvent.removeMonitor(deskScroll) }
         deskScroll = nil
@@ -842,17 +848,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
          asking whether the panel is on screen at all, rather than by trying to
          classify the click.
          */
-        let modalUp = {
-            if NSApp.modalWindow != nil { return true }
-            return NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible
-        }
+        let modalUp = { NSApp.modalWindow != nil }
+        /// The colour panel is up somewhere, which matters to the global
+        /// monitor: the eyedropper takes over the screen, so the click that
+        /// picks a colour lands in another application.
+        let pickingColour = { NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible }
         let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
-            guard !modalUp() else { return }
+            guard !modalUp(), !pickingColour() else { return }
             Task { @MainActor in onHide() }
         }
         let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) {
             event in
-            if modalUp() { return event }
+            // A click *in* the colour panel, specifically — not "any click
+            // while it happens to be open". Suppressing everything would mean a
+            // panel left open makes the desk undismissable, and the only way to
+            // close the panel is through the desk.
+            if modalUp() || event.window is NSColorPanel { return event }
             if event.type == .keyDown {
                 // 53 is Escape. Swallowed, so it does not also reach whatever is
                 // behind — dismissing a panel should not cancel a dialog too.

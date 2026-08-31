@@ -588,10 +588,19 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
     if (Object.keys(set).length === 0) return { ok: true };
     set.version = sql`${memberships.version} + 1`;
-    await db
+    const touched = await db
       .update(memberships)
       .set(set)
-      .where(and(eq(memberships.collectionId, id), eq(memberships.blockId, blockId)));
+      .where(and(eq(memberships.collectionId, id), eq(memberships.blockId, blockId)))
+      .returning({ id: memberships.id });
+    // A write that changed nothing must not answer as though it did.
+    //
+    // Patching a membership that does not exist updates no rows, and this used
+    // to return `{ ok: true }` for it. That is the worst possible answer: a card
+    // dragged out of a smart matrix's drawer has no membership row, so the move
+    // reported success and the card stayed exactly where it was, with nothing
+    // anywhere to say why. Silence is what made it take months to find.
+    if (touched.length === 0) throw notFound("membership");
     return { ok: true };
   });
 }

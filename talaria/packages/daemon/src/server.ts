@@ -1717,11 +1717,33 @@ export function buildServer(deps: {
       // A region name, through the binding. Which cell that is on the grid is
       // this producer's business and stops at its edge.
       const board = mirror.rawBlock(intent.collectionId);
-      const answer = await ix.place(
-        intent.collectionId,
-        intent.blockId,
-        intent.region === null ? null : regionNameAt(board ? JSON.parse(board) : null, intent.region),
-      );
+      const region =
+        intent.region === null ? null : regionNameAt(board ? JSON.parse(board) : null, intent.region);
+
+      /**
+       * On the board first, then in a cell.
+       *
+       * Two verbs because they answer two different questions, and the second
+       * one cannot answer the first. A card dragged out of a smart matrix's
+       * drawer has no membership row at all — the drawer holds what the query
+       * matched, not what anybody placed — and patching a membership that does
+       * not exist updates nothing and answers `ok`. So the card stayed in the
+       * drawer, the write reported success, and nothing anywhere said why.
+       *
+       * That was true from the day Talaria moved onto the binding: the helper
+       * that used to join first is still in `hermes.ts` with a comment
+       * describing this exact case, and the port simply stopped calling it.
+       * There was no verb in the format to replace it with until now.
+       *
+       * `PUT` is safe to send every time — it creates the membership if there
+       * is none and deliberately changes nothing if there is, which is why it
+       * can be sent without first asking whether it is needed. Asking would
+       * mean trusting the mirror's idea of membership, and the mirror's idea of
+       * membership is exactly what is wrong in the case this fixes.
+       */
+      const joined = await ix.addMember(intent.collectionId, intent.blockId);
+      if (!joined.ok) throw new HermesError(400, "that block could not be added to this board");
+      const answer = await ix.place(intent.collectionId, intent.blockId, region);
       if (!answer.ok) throw new HermesError(400, "that region is not on this board");
       // What the region does to what lands in it — the tag, and the status if
       // it sets one. Without this a board records an arrangement instead of

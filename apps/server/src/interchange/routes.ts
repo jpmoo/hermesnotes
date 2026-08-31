@@ -1,7 +1,6 @@
 import { blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
 import {
   CONFORMANCE,
-  memberWrite,
   narrow,
   patchCollectionProps,
   placeMember,
@@ -632,6 +631,34 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
     };
 
     /**
+     * Whether there is a membership row, asked of the rows.
+     *
+     * Not of the exported `members`, which is what this used to do and is
+     * exactly wrong for the case that matters. A smart collection exports the
+     * *query's answer* as its members — the format permits that beside
+     * `materialized: false`, and says outright that a consumer must not treat it
+     * as authoritative — so a card the query matches appears in that list
+     * whether or not anybody ever placed it. Deciding "already a member" from
+     * it meant a `PUT` at a card in a smart matrix's drawer answered
+     * `created: false` and created nothing, and the card stayed in the drawer.
+     *
+     * The split is the point: the *vocabulary* of a collection — which regions
+     * it declares, whether its placement is semantic — comes from the exported
+     * document, because that is where the format keeps it. The *fact* of a
+     * membership comes from the table that holds memberships. Reading its own
+     * state to answer a question the format defines is not business logic; it is
+     * the binding knowing where it lives.
+     */
+    const hasMembership = async (collection: string, object: string): Promise<boolean> => {
+      const [row] = await db
+        .select({ id: memberships.id })
+        .from(memberships)
+        .where(and(eq(memberships.collectionId, collection), eq(memberships.blockId, object)))
+        .limit(1);
+      return Boolean(row);
+    };
+
+    /**
      * `region` is a Hermes key inside the context bag, and must not be reachable
      * through the furniture door.
      *
@@ -710,11 +737,12 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       const col = await collectionAsRead(req, collection);
       if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
 
-      const members = (col.members ?? []) as ({ object?: string } | string)[];
-      const current = members.find((m) => (typeof m === "string" ? m : m?.object) === object);
-      if (!current) return reply.code(404).send({ ok: false, reports: ["member.not-a-member"] });
-
-      const decided = placeMember(col, typeof current === "string" ? { object: current } : current, body);
+      if (!(await hasMembership(collection, object))) {
+        return reply.code(404).send({ ok: false, reports: ["member.not-a-member"] });
+      }
+      // The placement rules only need to know what the collection declares; the
+      // merge itself happens in Hermes' own route, against the row.
+      const decided = placeMember(col, { object }, body);
       if (!decided.ok) {
         return reply
           .code(decided.conflict ? 409 : 400)
@@ -758,10 +786,14 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       const col = await collectionAsRead(req, collection);
       if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
 
-      const decided = memberWrite(col, object, "put", body);
-      if (!decided.ok) return reply.code(400).send({ ok: false, reports: decided.reports });
-      if (!decided.created) {
-        return reply.code(200).send({ ok: true, fidelity: "full", reports: [], created: false, member: decided.member });
+      // The rules first — a region the collection never declared is refused
+      // whether or not this would have created anything.
+      const rules = placeMember(col, { object }, body);
+      if (!rules.ok) return reply.code(400).send({ ok: false, reports: rules.reports });
+      if (await hasMembership(collection, object)) {
+        // It succeeded once. This is the caller asking again because it never
+        // heard so, and a `PUT` never edits.
+        return reply.code(200).send({ ok: true, fidelity: "full", reports: [], created: false });
       }
 
       const added = await app.inject({
@@ -789,7 +821,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           return reply.code(placed.statusCode).send({ ok: false, reports: ["placement.refused"] });
         }
       }
-      return reply.code(201).send({ ok: true, fidelity: "full", reports: [], created: true, member: decided.member });
+      return reply.code(201).send({ ok: true, fidelity: "full", reports: [], created: true, member: rules.member });
     });
 
     /**
@@ -811,8 +843,11 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       const col = await collectionAsRead(req, collection);
       if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
 
-      const decided = memberWrite(col, object, "delete");
-      if (!decided.removed) return { ok: true, fidelity: "full", reports: [], removed: false };
+      if (!(await hasMembership(collection, object))) {
+        // Not a member, and the caller wanted it not to be. That is the state it
+        // asked for, so it is a success that changed nothing.
+        return { ok: true, fidelity: "full", reports: [], removed: false };
+      }
 
       const gone = await app.inject({
         method: "DELETE",

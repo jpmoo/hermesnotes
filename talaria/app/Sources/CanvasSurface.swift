@@ -2641,27 +2641,35 @@ struct CanvasSurface: View {
     private var buttonScale: CGFloat { min(max(chrome.zoom, 0.5), 2) }
 
     /**
-     Where one of a node's buttons sits, counting back from the corner.
+     The row of buttons above a thing's top-right corner.
 
-     Every distance here is multiplied by the same scale, which is the whole
-     point: the buttons grew with the zoom while the gaps between them did not,
-     because the offset from the corner was scaled and the base was not. They
-     drifted together as you zoomed in and apart as you zoomed out, which reads
-     as the row being loose rather than as a deliberate size.
+     One stack rather than each button positioned by arithmetic, and the
+     arithmetic is why. Each was placed by counting slots back from the corner,
+     with a hand-written allowance for the delete button growing into the word
+     "Sure?" — and that allowance was a guess at how wide the word is. It was
+     too small, so asking to delete something slid the capsule left over the
+     buttons beside it.
 
-     `slot` counts outward from the corner — 0 is the one nearest it, which is
-     delete, because the dangerous one goes furthest from where the others are
-     reached from.
+     The guess is not fixable by a better number. "Sure?" is text in the user's
+     system font at a size that scales with the zoom, and the only thing that
+     knows how wide it is is the thing that lays it out. So it lays it out: an
+     `HStack` measures its own contents, and the row is pinned by its *trailing*
+     edge — which is what should not move — inside a lane wide enough for
+     anything it might hold. The lane has no background, so the empty part of it
+     catches nothing.
      */
-    private func buttonAt(_ corner: CGPoint, slot: Int, asking: Bool) -> CGPoint {
-        let unit = 17 * buttonScale
-        // Asking widens the delete button into a word, and everything to its
-        // left has to move over by the difference rather than by a guess.
-        let widened = asking ? 13 * buttonScale : 0
-        return CGPoint(
-            x: corner.x + 9 * buttonScale + widened - CGFloat(slot) * (unit + widened / 2),
-            y: corner.y - 9 * buttonScale
-        )
+    private func buttonRow<Content: View>(
+        at corner: CGPoint,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        // Where the outermost button's right edge sits: the same place it sat
+        // when each of these was positioned by hand.
+        let edge = corner.x + 15.5 * buttonScale
+        let lane: CGFloat = 400
+        return HStack(spacing: 4 * buttonScale) { content() }
+            .fixedSize()
+            .frame(width: lane, alignment: .trailing)
+            .position(x: edge - lane / 2, y: corner.y - 9 * buttonScale)
     }
 
     private var cursor: NSCursor {
@@ -3358,14 +3366,15 @@ struct CanvasSurface: View {
         .help(asking ? "Click again to delete" : "Delete this")
         .chrome($overChrome)
 
-        // Both just outside the top-right corner, where they are not over the
-        // thing one of them would remove. Info to the left of delete, so the
-        // dangerous one is furthest out and the other is not in the way of it.
-        if item.image == nil {
-            toHermes.position(buttonAt(corner, slot: 2, asking: asking))
+        // All just outside the top-right corner, where they are not over the
+        // thing one of them would remove. Delete is the outermost, so the
+        // dangerous one is furthest from where the others are reached from —
+        // and so that the one which changes width does it away from the rest.
+        buttonRow(at: corner) {
+            if item.image == nil { toHermes }
+            info
+            remove
         }
-        info.position(buttonAt(corner, slot: 1, asking: asking))
-        remove.position(buttonAt(corner, slot: 0, asking: asking))
     }
 
     /// Save the canvas to a file, or replace it with one.
@@ -3619,12 +3628,12 @@ struct CanvasSurface: View {
         }
     }
 
-    /// A region's own two buttons, at its top-right like an item's.
-    @ViewBuilder
+    /// A region's own three buttons, at its top-right like an item's.
     private func regionButtons(_ region: CanvasRegion, box: CGRect, in size: CGSize) -> some View {
         let corner = screenPoint(CGPoint(x: box.maxX, y: box.minY), in: size)
         let asking = confirmingDelete == region.id
-        Button {
+
+        let info = Button {
             inspecting = inspecting == region.id ? nil : region.id
         } label: {
             Image(systemName: "info")
@@ -3637,13 +3646,12 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help("Appearance")
         .chrome($overChrome)
-        .position(buttonAt(corner, slot: 2, asking: asking))
 
         // The discoverable half of "put things in a box". ⌘-dropping does the
         // same thing faster once somebody knows about it; this is how they find
         // out there is anything to know, and it is also the only way to take one
         // thing *out* of a region without deleting it.
-        Button {
+        let add = Button {
             addingTo = addingTo == region.id ? nil : region.id
         } label: {
             Image(systemName: "plus")
@@ -3656,9 +3664,8 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help(addingTo == region.id ? "Click things to add or remove them" : "Add things to this region")
         .chrome($overChrome)
-        .position(buttonAt(corner, slot: 1, asking: asking))
 
-        Button {
+        let remove = Button {
             if asking {
                 model.removeRegion(region.id)
                 confirmingDelete = nil
@@ -3669,9 +3676,13 @@ struct CanvasSurface: View {
         } label: {
             Group {
                 if asking {
+                    // Scaled, like everything else in this row. It was not, so
+                    // a region's confirmation stayed one size while the buttons
+                    // beside it grew with the zoom.
                     Text("Sure?")
-                        .font(Theme.chrome(10, weight: .semibold))
-                        .padding(.horizontal, 7).frame(height: 16)
+                        .font(Theme.chrome(10 * buttonScale, weight: .semibold))
+                        .padding(.horizontal, 7 * buttonScale)
+                        .frame(height: 16 * buttonScale)
                 } else {
                     Image(systemName: "xmark")
                         .font(.system(size: 7 * buttonScale, weight: .bold))
@@ -3685,7 +3696,12 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help(asking ? "Click again — the things inside stay" : "Remove this region")
         .chrome($overChrome)
-        .position(buttonAt(corner, slot: 0, asking: asking))
+
+        return buttonRow(at: corner) {
+            info
+            add
+            remove
+        }
     }
 
     /// The midpoint grip, and the one button that undoes a line.
@@ -3910,7 +3926,21 @@ struct CanvasSurface: View {
                             // Only where no item is — the inside of a region is
                             // mostly the things it holds, and clicking one of
                             // those means the thing, not the box round it.
+                            //
+                            // And the empty part of a region is not empty
+                            // canvas. It is the region: a box drawn round
+                            // things has an inside, and clicking the inside is
+                            // how you get hold of the box.
                             model.select(region: region.id)
+                        } else {
+                            // Nothing here. The comment above this block has
+                            // always said a click on the background drops the
+                            // selection and the code never did it — there was
+                            // no `else`, so a click on bare canvas hit none of
+                            // the branches and quietly left whatever was
+                            // selected selected.
+                            model.clearSelection()
+                            inspecting = nil
                         }
                         confirmingDelete = nil
                         confirmingGroupDelete = false

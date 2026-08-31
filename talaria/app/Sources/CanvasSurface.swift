@@ -1490,6 +1490,12 @@ struct CanvasSurface: View {
     @State private var overChrome = 0
     /// The item whose delete has been asked for but not yet confirmed.
     @State private var confirmingDelete: UUID?
+    /// What is currently lining up, drawn while the drag lasts and gone the
+    /// moment it ends. A guide that outlives its gesture is a line on the canvas
+    /// nobody drew.
+    @State private var guides: [Snap.Guide] = []
+    /// Whether the connector being bent is currently held straight.
+    @State private var straightened = false
 
     /// Controls that vanish under the pointer never report leaving it. These are
     /// the moments a control disappears — the selection changing takes the grips
@@ -1553,6 +1559,10 @@ struct CanvasSurface: View {
                 lines(geo.size)
 
                 content(geo)
+
+                // Over everything, because a guide that a box can cover is a
+                // guide you cannot use to place that box.
+                guideLayer(geo.size)
 
                 // Above the items, and only while one is selected.
                 if let id = model.selected, let item = model.item(id) {
@@ -1785,7 +1795,10 @@ struct CanvasSurface: View {
                 let control = screenPoint(g.control, in: size)
                 let chosen = model.selectedLink == link.id
                 let under = hoveredLink == link.id
-                let colour: Color = chosen ? Theme.accent : .primary.opacity(under ? 0.85 : 0.55)
+                let held = straightened && model.selectedLink == link.id
+                let colour: Color = held
+                    ? Theme.snapGuide
+                    : (chosen ? Theme.accent : .primary.opacity(under ? 0.85 : 0.55))
                 let width: CGFloat = chosen ? 2 : (under ? 2 : 1.5)
 
                 var path = Path()
@@ -1806,6 +1819,34 @@ struct CanvasSurface: View {
                 head.addLine(to: CGPoint(x: back.x - side.dx * 4.5, y: back.y - side.dy * 4.5))
                 head.closeSubpath()
                 context.fill(head, with: .color(colour))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /**
+     The lines that appear while something is being dragged into place.
+
+     Drawn in screen space like the connectors and the grid, so a guide is one
+     point wide whatever the zoom — a guide that thickens as you zoom in stops
+     being a reference and becomes a band with a middle you have to judge.
+
+     Dashed, and in their own colour rather than the accent: an accent-coloured
+     guide over an accent-coloured selection is two meanings in one colour, and
+     the one that matters at that moment is the one that is moving.
+     */
+    @ViewBuilder
+    private func guideLayer(_ size: CGSize) -> some View {
+        Canvas { context, _ in
+            for guide in guides {
+                var path = Path()
+                path.move(to: screenPoint(guide.from, in: size))
+                path.addLine(to: screenPoint(guide.to, in: size))
+                context.stroke(
+                    path,
+                    with: .color(Theme.snapGuide),
+                    style: StrokeStyle(lineWidth: 1, dash: guide.reason == .grid ? [2, 3] : [4, 3])
+                )
             }
         }
         .allowsHitTesting(false)
@@ -1880,13 +1921,20 @@ struct CanvasSurface: View {
                         .onChanged { value in
                             let base = bendAtStart ?? link.bend
                             if bendAtStart == nil { bendAtStart = base }
-                            model.bend(link.id, by: CGSize(
+                            let wanted = CGSize(
                                 width: base.width + value.translation.width / chrome.zoom,
                                 height: base.height + value.translation.height / chrome.zoom
-                            ))
+                            )
+                            let (snapped, held) = Snap.bend(wanted, tolerance: Snap.reach / chrome.zoom)
+                            model.bend(link.id, by: snapped)
+                            // The guide for a straightened connector is the
+                            // connector: there is nothing else to line it up
+                            // with, so the line itself is what changes colour.
+                            straightened = held
                         }
                         .onEnded { _ in
                             bendAtStart = nil
+                            straightened = false
                             model.settled()
                         }
                 )
@@ -2055,11 +2103,20 @@ struct CanvasSurface: View {
                     }
                     guard let from = moveOrigin else { return }
                     // Screen points into canvas points, once.
-                    model.move(
-                        item.id,
-                        to: CGPoint(x: from.x + value.translation.width / chrome.zoom,
-                                    y: from.y + value.translation.height / chrome.zoom)
+                    let wanted = CGPoint(x: from.x + value.translation.width / chrome.zoom,
+                                         y: from.y + value.translation.height / chrome.zoom)
+                    // Where it wants to be, then where it should be. The
+                    // tolerance is converted from screen points so a snap feels
+                    // the same at every zoom rather than becoming a magnet at 6x
+                    // and unreachable at 0.15x.
+                    let snapped = Snap.move(
+                        CGRect(origin: wanted, size: CGSize(width: item.w, height: item.h)),
+                        others: model.items.filter { $0.id != item.id }.map(\.rect),
+                        grid: chrome.grid ? 24 : nil,
+                        tolerance: Snap.reach / chrome.zoom
                     )
+                    guides = snapped.guides
+                    model.move(item.id, to: snapped.rect.origin)
                     // What the pointer is over, not what the box overlaps. A
                     // box being dragged overlaps whatever it happens to cross,
                     // and half of that is the diagram it is being carried
@@ -2113,6 +2170,7 @@ struct CanvasSurface: View {
                     movingId = nil
                     moveOrigin = nil
                     linkTarget = nil
+                    guides = []
                 }
         )
 
@@ -2154,10 +2212,21 @@ struct CanvasSurface: View {
                             guard let start = resizing, start.id == item.id else { return }
                             let delta = CGSize(width: value.translation.width / chrome.zoom,
                                                height: value.translation.height / chrome.zoom)
-                            model.resize(item.id, to: start.corner.applied(to: start.from, by: delta))
+                            let wanted = start.corner.applied(to: start.from, by: delta)
+                            let snapped = Snap.resize(
+                                wanted,
+                                movingMinX: start.corner == .topLeading || start.corner == .bottomLeading,
+                                movingMinY: start.corner == .topLeading || start.corner == .topTrailing,
+                                others: model.items.filter { $0.id != item.id }.map(\.rect),
+                                grid: chrome.grid ? 24 : nil,
+                                tolerance: Snap.reach / chrome.zoom
+                            )
+                            guides = snapped.guides
+                            model.resize(item.id, to: snapped.rect)
                         }
                         .onEnded { _ in
                             resizing = nil
+                            guides = []
                             model.settled()
                         }
                 )

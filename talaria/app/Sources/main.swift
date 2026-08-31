@@ -271,16 +271,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// A click on the Dock icon.
+    /// A click on the Dock icon, or a launch of an app already running.
     ///
-    /// Needed because this app is usually already running, launched by launchd
-    /// at login. Opening it again doesn't start anything — macOS just activates
-    /// what is there — and an accessory app with no windows activates to
-    /// nothing at all, so a pinned icon would bounce once and appear broken.
-    /// This is the hook that turns that click into the window.
+    /// This used to open the Hermes Notes window, on the reasoning that an
+    /// accessory app with no windows activates to nothing and a pinned icon
+    /// would bounce once and appear broken. That was true when the browser
+    /// window was the app. It is not the app now — the menu bar has the wing in
+    /// it and the surfaces people use arrive under hotkeys — so opening a
+    /// full-size web view because something sent a reopen is a window nobody
+    /// asked for, and `open -a` sends one every time the app is started while
+    /// already running.
+    ///
+    /// Nothing, then. The menu bar item is the way to the browser window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         NSLog("talaria: reopen (visible windows: \(flag))")
-        if !flag { HermesWindow.shared.show() }
         return true
     }
 

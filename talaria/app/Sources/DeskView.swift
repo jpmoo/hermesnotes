@@ -809,6 +809,34 @@ final class DeskChrome: ObservableObject {
         // something a person can steer.
         zoom = min(max(value, 0.15), 6)
     }
+
+    /**
+     Zoom, keeping one point of the canvas under one point of the screen.
+
+     Which is what zooming is, everywhere it is done well: you put the pointer on
+     the thing you are interested in and it stays there while everything else
+     moves away from it. Zooming about the centre instead makes the thing you
+     were looking at slide off the edge, and the gesture becomes zoom-then-hunt.
+
+     The arithmetic falls out of how the content is drawn — scaled about the
+     centre, then offset by `pan` — so the canvas point under a screen point is
+     `(screen - centre - pan) / zoom`, and holding it still across a change of
+     zoom means moving the pan by that point times the change.
+
+     Nothing happens when the zoom clamps. At either stop the canvas has not
+     moved, and panning for a zoom that did not occur would drift the view every
+     time somebody kept pinching at the limit.
+     */
+    func zoom(to value: CGFloat, about point: CGPoint, in size: CGSize) {
+        let before = zoom
+        zoom(to: value)
+        let after = zoom
+        guard after != before else { return }
+        let cx = (point.x - size.width / 2 - pan.width) / before
+        let cy = (point.y - size.height / 2 - pan.height) / before
+        pan = CGSize(width: pan.width + cx * (before - after),
+                     height: pan.height + cy * (before - after))
+    }
 }
 
 // MARK: - The canvas
@@ -878,6 +906,10 @@ private struct CanvasSurface: View {
     @State private var zoomAtStart: CGFloat?
     @State private var pressing = false
     @State private var dragging = false
+    /// Where the pointer is, in this view. A magnification gesture reports how
+    /// much somebody pinched and not where, and "where" is the whole difference
+    /// between zooming into what you are looking at and zooming into the middle.
+    @State private var hover: CGPoint?
 
     /// Open over the canvas, pointing the instant a button goes down, closed
     /// once that press starts pulling the canvas about.
@@ -888,6 +920,9 @@ private struct CanvasSurface: View {
     }
 
     var body: some View {
+        // The size is needed by the zoom, which has to know where the centre is
+        // to work out which point of the canvas is under the pointer.
+        GeometryReader { geo in
         ZStack {
             if chrome.grid { grid }
             // The content layer. Empty, and the transform is here rather than
@@ -900,6 +935,16 @@ private struct CanvasSurface: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let point): hover = point
+            // Off the canvas entirely. The last known point would be an edge,
+            // and zooming about an edge with the pointer somewhere else is
+            // worse than zooming about the middle.
+            case .ended: hover = nil
+            @unknown default: hover = nil
+            }
+        }
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
@@ -927,10 +972,18 @@ private struct CanvasSurface: View {
                 .onChanged { value in
                     let base = zoomAtStart ?? chrome.zoom
                     if zoomAtStart == nil { zoomAtStart = base }
-                    chrome.zoom(to: base * value)
+                    // About the pointer, which does not move during a pinch —
+                    // and about the middle when there is no pointer over the
+                    // canvas at all, which is the only sensible fallback.
+                    chrome.zoom(
+                        to: base * value,
+                        about: hover ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2),
+                        in: geo.size
+                    )
                 }
                 .onEnded { _ in zoomAtStart = nil }
         )
+        }
     }
 
     /// Dots rather than lines. A ruled grid behind a diagram competes with it;

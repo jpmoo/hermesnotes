@@ -188,4 +188,31 @@ touch "$APP"
 # exactly like a bug in the app.
 /System/Library/CoreServices/pbs -flush 2>/dev/null || true
 
+# The one step that was missing, and the one whose absence is invisible.
+#
+# Swapping the bundle leaves the *running* app on the old binary — it holds the
+# inode, not the path — so every build ended with a new app on disk, an old one
+# on screen, and nothing to say which you were looking at. Hours went into
+# wondering why a change had not taken effect when it had built cleanly and been
+# installed correctly and simply was not running.
+#
+# Only when it was already up. Building is not a request to launch the app, and
+# a build on a machine where nobody is running it should not put a menu bar item
+# there.
+if pgrep -x Talaria >/dev/null 2>&1; then
+  echo "==> Relaunching (it was running)"
+  osascript -e 'quit app "Talaria"' >/dev/null 2>&1 || true
+  # Give it a moment to actually go before asking for it back, or `open` finds
+  # the old instance still alive and simply activates it.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    pgrep -x Talaria >/dev/null 2>&1 || break
+    sleep 0.3
+  done
+  pgrep -x Talaria >/dev/null 2>&1 && killall Talaria 2>/dev/null
+  open -a "$APP"
+  echo "    (running $(date +%H:%M:%S) build)"
+else
+  echo "==> Not running — nothing to relaunch"
+fi
+
 echo "built $APP"

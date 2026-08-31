@@ -489,8 +489,48 @@ final class DeskInsets: ObservableObject {
     @Published var bottom: CGFloat = 0
 }
 
+/**
+ The strip along the bottom: which surface, and a way to change it.
+
+ Hidden until a swipe asks for it, because the desk is four surfaces of somebody
+ else's work and a permanent row of chrome under them is a row of chrome they
+ did not ask for. A swipe is the gesture that moves between pages, so a swipe is
+ also what admits that there is more than one.
+ */
+private struct SurfaceStrip: View {
+    @ObservedObject var chrome: DeskChrome
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(DeskSurface.allCases, id: \.rawValue) { surface in
+                Button { chrome.go(to: surface) } label: {
+                    Image(systemName: surface.symbol)
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 34, height: 26)
+                        .contentShape(Rectangle())
+                        .foregroundStyle(chrome.surface == surface ? Theme.accent : Color.secondary)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(chrome.surface == surface ? Color.primary.opacity(0.08) : .clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(surface.name)
+            }
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill(.background.opacity(0.55))
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+    }
+}
+
 struct DeskView: View {
     @ObservedObject var insets: DeskInsets
+    @ObservedObject var chrome: DeskChrome
     @ObservedObject var scratchpad: ScratchpadModel
     @ObservedObject var workspaces: WorkspacesModel
     @ObservedObject var compose: ComposeModel
@@ -501,47 +541,45 @@ struct DeskView: View {
     private static let margin: CGFloat = 18
 
     var body: some View {
-        // Measured, not asked for.
-        //
-        // `maxWidth: .infinity` is a willingness to grow, not an instruction to
-        // share: an HStack still hands out space according to what each side
-        // says it wants, and these children have opinions — the composer was
-        // built for a 480-point panel and Glance for 380 by 420. So the first
-        // attempt produced a composer at its natural width, a scratchpad in
-        // what was left, and Glance in a column a third the width of the
-        // quadrant under it. Dividing the screen here and telling each pane
-        // exactly what it gets is the only thing that makes four equal
-        // quadrants out of four views with preferences.
-        //
-        // Each of them already scrolls internally, which is what absorbs the
-        // difference when a form is taller than a quarter of a screen.
         // The reader measures what is left after the insets, rather than the
         // whole window with the insets subtracted again inside it. Doing both
         // was the bug: the quadrants were computed correctly and then pushed
         // down by padding that had already been accounted for, so the bottom
         // row ran off the screen by exactly the height of the menu bar.
         GeometryReader { geo in
-            let w = (geo.size.width - Self.gap) / 2
-            let h = (geo.size.height - Self.gap) / 2
-            VStack(spacing: Self.gap) {
-                HStack(spacing: Self.gap) {
-                    ScratchpadPane(model: scratchpad).frame(width: w, height: h)
-                    // The composer and Glance are the panels they always were,
-                    // embedded rather than reimplemented. Two copies of a form
-                    // that builds itself from a type's declared fields is
-                    // precisely the duplication this project keeps not doing.
-                    DeskPane(title: "New block") {
-                        ComposeView(model: compose, standalone: false)
-                    }
-                    .frame(width: w, height: h)
+            ZStack(alignment: .bottom) {
+                // Both surfaces exist at once, side by side, and the pair is
+                // slid. Building the incoming one at the moment of the swipe
+                // would mean animating a view still deciding how big it is, and
+                // the canvas would arrive a frame late every time.
+                HStack(spacing: 0) {
+                    quadrants(w: (geo.size.width - Self.gap) / 2,
+                              h: (geo.size.height - Self.gap) / 2)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    CanvasSurface(chrome: chrome)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .overlay(alignment: .bottomTrailing) {
+                            CanvasControls(chrome: chrome).padding(16)
+                        }
                 }
-                HStack(spacing: Self.gap) {
-                    DeskPane(title: "Glance") {
-                        GlanceView(model: glance, standalone: false)
-                    }
-                    .frame(width: w, height: h)
-                    WorkspacesPane(model: workspaces, onPick: onPickWorkspace)
-                        .frame(width: w, height: h)
+                .frame(width: geo.size.width * 2, alignment: .leading)
+                .offset(x: -CGFloat(chrome.surface.rawValue) * geo.size.width)
+                // Pinned to the left and cut to one page.
+                //
+                // A frame twice as wide as its parent is *centred* in it by
+                // default, so the first attempt showed the right half of the
+                // desk beside the left half of the canvas and looked like a
+                // rendering fault rather than a pager. The offset only means
+                // "one page along" if the pair starts flush with the leading
+                // edge, and the clip is what stops the other page being drawn
+                // over the strip.
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+                .clipped()
+
+                if chrome.stripShowing {
+                    SurfaceStrip(chrome: chrome)
+                        .padding(.bottom, 10)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
         }
@@ -564,6 +602,46 @@ struct DeskView: View {
         // down instead of 33. The window's chrome is hidden and the clearance
         // is computed here; there is nothing for a safe area to protect.
         .ignoresSafeArea()
+        // Opaque when somebody has asked for the desktop to stop showing
+        // through. Behind the content and in front of the frost, so the blur
+        // stays available the moment it is switched back on.
+        .background(chrome.seeThrough ? Color.clear : Color(nsColor: .windowBackgroundColor))
+    }
+
+    /**
+     The four panes.
+
+     Lifted out of `body` when the desk gained a second surface: a pager and a
+     quadrant layout in one expression is two things nobody can read at once.
+
+     `maxWidth: .infinity` is a willingness to grow, not an instruction to
+     share — an HStack hands out space according to what each side says it
+     wants, and these children have opinions. So each pane is told exactly what
+     it gets, and absorbs the difference in its own scroll view.
+     */
+    @ViewBuilder
+    private func quadrants(w: CGFloat, h: CGFloat) -> some View {
+        VStack(spacing: Self.gap) {
+            HStack(spacing: Self.gap) {
+                ScratchpadPane(model: scratchpad).frame(width: w, height: h)
+                // The composer and Glance are the panels they always were,
+                // embedded rather than reimplemented. Two copies of a form that
+                // builds itself from a type's declared fields is precisely the
+                // duplication this project keeps not doing.
+                DeskPane(title: "New block") {
+                    ComposeView(model: compose, standalone: false)
+                }
+                .frame(width: w, height: h)
+            }
+            HStack(spacing: Self.gap) {
+                DeskPane(title: "Glance") {
+                    GlanceView(model: glance, standalone: false)
+                }
+                .frame(width: w, height: h)
+                WorkspacesPane(model: workspaces, onPick: onPickWorkspace)
+                    .frame(width: w, height: h)
+            }
+        }
     }
 }
 
@@ -603,5 +681,234 @@ final class DeskPanel: NSPanel {
      */
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         frameRect
+    }
+}
+
+// MARK: - Which surface is showing
+
+/**
+ The desk has more than one surface now, and this is which.
+
+ A page rather than a mode: the quadrants and the canvas are both the desk, and
+ moving between them is lateral. Nothing about the panel, the frost, the hotkey
+ or the dismissal changes with it.
+ */
+enum DeskSurface: Int, CaseIterable {
+    case quadrants
+    case canvas
+
+    var symbol: String {
+        switch self {
+        case .quadrants: return "square.grid.2x2"
+        case .canvas: return "point.topleft.down.curvedto.point.bottomright.up"
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .quadrants: return "Desk"
+        case .canvas: return "Canvas"
+        }
+    }
+}
+
+/**
+ What the desk is showing, and how it is drawn.
+
+ Held outside the view so the scroll monitor in the app delegate can push a
+ swipe into it without owning the view hierarchy, and so the settings survive
+ the panel being hidden and shown again.
+ */
+@MainActor
+final class DeskChrome: ObservableObject {
+    @Published var surface: DeskSurface = .quadrants
+    /// The strip is out of the way until asked for. A swipe asks.
+    @Published var stripShowing = false
+    /// A dotted grid under the canvas, off by default: an empty canvas with a
+    /// grid on it looks like a thing that is loading.
+    @Published var grid = false
+    /// Whether the windows behind show through. On is the point of the frost;
+    /// off is for when the canvas is the work and the desktop is a distraction.
+    @Published var seeThrough = true
+    @Published var zoom: CGFloat = 1
+    @Published var pan: CGSize = .zero
+
+    private var hideStrip: Timer?
+
+    /// A horizontal two-finger swipe, in points. Positive is content moving
+    /// right — a finger travelling left to right.
+    func swiped(by dx: CGFloat) {
+        reveal()
+        // Enough to be a decision rather than a wobble on the way to scrolling
+        // something else.
+        guard abs(dx) > 60 else { return }
+        let next = dx < 0 ? 1 : -1
+        let all = DeskSurface.allCases
+        guard let at = all.firstIndex(of: surface) else { return }
+        let to = min(max(at + next, 0), all.count - 1)
+        guard to != at else { return }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { surface = all[to] }
+    }
+
+    /// Show the strip and start it fading again. Any further swipe resets the
+    /// clock, so it stays up for as long as somebody is moving between things.
+    func reveal() {
+        if !stripShowing { withAnimation(.easeOut(duration: 0.18)) { stripShowing = true } }
+        hideStrip?.invalidate()
+        hideStrip = Timer.scheduledTimer(withTimeInterval: 2.6, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                withAnimation(.easeIn(duration: 0.3)) { self?.stripShowing = false }
+            }
+        }
+    }
+
+    func go(to surface: DeskSurface) {
+        reveal()
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { self.surface = surface }
+    }
+
+    func zoom(to value: CGFloat) {
+        // Far enough out to lose a big drawing and far enough in to work on a
+        // detail, and no further: past these the pan arithmetic stops being
+        // something a person can steer.
+        zoom = min(max(value, 0.15), 6)
+    }
+}
+
+// MARK: - The canvas
+
+/**
+ An infinite canvas, currently with nothing on it.
+
+ Deliberately empty for now: pan, zoom, a grid you can turn on, and the
+ arithmetic that makes those three agree. What goes *on* it is a later question,
+ and building the surface first means that question can be answered without also
+ relitigating how zooming works.
+
+ One transform, applied once. Everything drawn here — the grid, and whatever
+ comes later — reads `zoom` and `pan` rather than keeping a copy, because two
+ things that each remember where the viewport is will disagree the first time
+ one of them is animated.
+ */
+private struct CanvasSurface: View {
+    @ObservedObject var chrome: DeskChrome
+    /// Where the pan was when the current drag began. A drag reports its total
+    /// translation, not an increment, so without this every frame re-applies
+    /// the whole gesture from the origin and the canvas leaps.
+    @State private var panAtStart: CGSize?
+    @State private var zoomAtStart: CGFloat?
+
+    var body: some View {
+        ZStack {
+            if chrome.grid { grid }
+            // The content layer. Empty, and the transform is here rather than
+            // waiting to be added with the first thing drawn on it — so that
+            // whatever arrives inherits a viewport that already works.
+            Color.clear
+                .scaleEffect(chrome.zoom)
+                .offset(chrome.pan)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    let base = panAtStart ?? chrome.pan
+                    if panAtStart == nil { panAtStart = base }
+                    chrome.pan = CGSize(width: base.width + value.translation.width,
+                                        height: base.height + value.translation.height)
+                }
+                .onEnded { _ in panAtStart = nil }
+        )
+        .gesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    let base = zoomAtStart ?? chrome.zoom
+                    if zoomAtStart == nil { zoomAtStart = base }
+                    chrome.zoom(to: base * value)
+                }
+                .onEnded { _ in zoomAtStart = nil }
+        )
+    }
+
+    /// Dots rather than lines. A ruled grid behind a diagram competes with it;
+    /// dots say where the spacing is and then get out of the way.
+    private var grid: some View {
+        Canvas { context, size in
+            let step = 24 * chrome.zoom
+            // Below this the dots merge into a wash and the grid stops being
+            // information — better to draw nothing than a grey field.
+            guard step > 6 else { return }
+            let dot = max(0.7, 1.1 * min(chrome.zoom, 1.6))
+            // Anchored to the pan so the grid moves with the content rather
+            // than sitting still behind it, which reads as the canvas sliding
+            // over a wall.
+            let originX = chrome.pan.width.truncatingRemainder(dividingBy: step)
+            let originY = chrome.pan.height.truncatingRemainder(dividingBy: step)
+            var y = originY - step
+            while y < size.height + step {
+                var x = originX - step
+                while x < size.width + step {
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: x, y: y, width: dot, height: dot)),
+                        with: .color(.primary.opacity(0.22))
+                    )
+                    x += step
+                }
+                y += step
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The zoom readout, its two buttons, and the two switches that belong with it.
+private struct CanvasControls: View {
+    @ObservedObject var chrome: DeskChrome
+
+    var body: some View {
+        HStack(spacing: 2) {
+            button("minus") { chrome.zoom(to: chrome.zoom / 1.25) }
+            Menu {
+                // The percentage is a button as well as a label: the one thing
+                // anybody wants from a zoom readout is to be told it is 100%
+                // again.
+                Button("Actual size") { withAnimation(.easeOut(duration: 0.18)) { chrome.zoom(to: 1) } }
+                Button("Fit") {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        chrome.zoom(to: 1)
+                        chrome.pan = .zero
+                    }
+                }
+                Divider()
+                Toggle("Dotted grid", isOn: $chrome.grid)
+                Toggle("See windows behind", isOn: $chrome.seeThrough)
+            } label: {
+                Text("\(Int((chrome.zoom * 100).rounded()))%")
+                    .font(Theme.chrome(11, weight: .medium))
+                    .monospacedDigit()
+                    .frame(width: 46)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            button("plus") { chrome.zoom(to: chrome.zoom * 1.25) }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .background(
+            Capsule().fill(.background.opacity(0.5))
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
+        )
+    }
+
+    private func button(_ symbol: String, _ act: @escaping () -> Void) -> some View {
+        Button { withAnimation(.easeOut(duration: 0.14)) { act() } } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .frame(width: 20, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

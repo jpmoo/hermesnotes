@@ -124,6 +124,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// What the menu bar and the Dock are covering, so the content can clear
     /// them while the frost still reaches the edges of the screen.
     private let deskInsets = DeskInsets()
+    /// Which surface the desk is showing, and how it is drawn. Outside the view
+    /// so the swipe monitor can push into it, and so the grid and transparency
+    /// settings survive the panel being hidden.
+    private let deskChrome = DeskChrome()
+    private var deskScroll: Any?
+    /// A swipe arrives as a stream of small deltas; a page turn is the whole
+    /// gesture. Accumulated here and cleared when it lands or when it stops.
+    private var deskSwipeAccumulated: CGFloat = 0
+    private var deskSwipeReset: Timer?
+    private var deskSwipe: CGFloat {
+        get { deskSwipeAccumulated }
+        set {
+            deskSwipeAccumulated = newValue
+            deskChrome.reveal()
+            deskSwipeReset?.invalidate()
+            if abs(deskSwipeAccumulated) > 90 {
+                deskChrome.swiped(by: deskSwipeAccumulated)
+                deskSwipeAccumulated = 0
+                return
+            }
+            // A gesture that stopped short is not the beginning of the next one.
+            deskSwipeReset = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+                Task { @MainActor in self?.deskSwipeAccumulated = 0 }
+            }
+        }
+    }
     private let scratchpadModel = ScratchpadModel()
     private let workspacesModel = WorkspacesModel()
     private var deskHotkey: Hotkey?
@@ -503,7 +529,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.onCancel = { [weak self] in self?.hideDesk() }
+        // Escape does not dismiss this one.
+        //
+        // Every other panel here is a widget you summon, glance at and drop, and
+        // Escape is the right way out of those. The desk is a place you work —
+        // a scratchpad being typed into, a form half filled in, a canvas being
+        // panned — and Escape is a key those surfaces have their own uses for.
+        // ⌥⇧T is the way out, the same key that brought it up.
+        panel.onCancel = nil
         // The flags a panel needs before AppKit will hand it the keyboard.
         //
         // `canBecomeKey` on the subclass says this window is willing; these say
@@ -536,6 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         frost.state = .active
         let host = NSHostingView(rootView: DeskView(
             insets: deskInsets,
+            chrome: deskChrome,
             scratchpad: scratchpadModel,
             workspaces: workspacesModel,
             compose: composeModel,
@@ -649,7 +683,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(panel.contentView)
         glanceModel.startFollowing()
-        watchForDismissal(panel) { [weak self] in self?.hideDesk() }
+        watchForDismissal(panel, dismissOnEscape: false) { [weak self] in self?.hideDesk() }
+
+        /*
+         A two-finger swipe across the desk.
+
+         Read as an event rather than as a SwiftUI gesture, because the surfaces
+         underneath are a web view, a form and a list, each of which has its own
+         claim on a scroll — a gesture recogniser high enough to catch every
+         swipe would also swallow the scrolling somebody meant for the
+         scratchpad. Here the horizontal component is taken and the event is
+         passed on, so a mostly-vertical scroll reaches the pane it was aimed at.
+         */
+        deskScroll = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, self.deskWindow?.isVisible == true, event.window === self.deskWindow else {
+                return event
+            }
+            let dx = event.scrollingDeltaX
+            let dy = event.scrollingDeltaY
+            // Decisively sideways, and from the trackpad rather than a wheel.
+            guard event.hasPreciseScrollingDeltas, abs(dx) > abs(dy) * 1.6, abs(dx) > 1 else {
+                return event
+            }
+            Task { @MainActor in self.deskSwipe += dx }
+            return event
+        }
     }
 
     private func hideDesk() {
@@ -660,6 +718,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // a paragraph lost to closing the thing you wrote it in would be the
         // worst bug in here.
         scratchpadModel.flush()
+        if let deskScroll { NSEvent.removeMonitor(deskScroll) }
+        deskScroll = nil
+        deskSwipeAccumulated = 0
         panel.orderOut(nil)
         // Back to a background app. Leaving it regular would put a Dock icon and
         // a menu bar on something meant to have neither.
@@ -706,7 +767,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
      dismissing it every time the front window changed would close it at the
      exact moment it had something new to say.
      */
-    private func watchForDismissal(_ panel: NSPanel, onHide: @escaping @MainActor () -> Void) {
+    private func watchForDismissal(
+        _ panel: NSPanel,
+        dismissOnEscape: Bool = true,
+        onHide: @escaping @MainActor () -> Void
+    ) {
         stopWatchingForDismissal(panel)
         let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
             Task { @MainActor in onHide() }
@@ -716,7 +781,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if event.type == .keyDown {
                 // 53 is Escape. Swallowed, so it does not also reach whatever is
                 // behind — dismissing a panel should not cancel a dialog too.
-                guard event.keyCode == 53 else { return event }
+                guard event.keyCode == 53, dismissOnEscape else { return event }
                 Task { @MainActor in onHide() }
                 return nil
             }

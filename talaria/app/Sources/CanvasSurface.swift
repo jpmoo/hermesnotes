@@ -851,6 +851,37 @@ struct CursorArea: NSViewRepresentable {
     func updateNSView(_ view: Tracking, context: Context) { view.cursor = cursor }
 }
 
+// MARK: - Chrome
+
+/**
+ A thing that is clicked rather than drawn on.
+
+ The pointer becomes a finger over it, and the canvas is told so it can stop
+ asserting its own. One modifier, worn by every control, so a new one gets the
+ behaviour by being a control rather than by somebody remembering.
+ */
+private struct Chrome: ViewModifier {
+    @Binding var depth: Int
+    func body(content: Content) -> some View {
+        content.onHover { inside in
+            // A count and not a flag, because chrome sits on chrome: the shape
+            // menu opens over the strip, so leaving the menu is not leaving the
+            // controls. A flag would have gone false there and put the open hand
+            // back over a row of buttons.
+            //
+            // Clamped, because an enter without its matching exit is possible —
+            // a delete button disappears the moment it is used, and the pointer
+            // never leaves it. The clamp keeps that from going negative and the
+            // reset below keeps it from sticking high.
+            depth = max(0, depth + (inside ? 1 : -1))
+        }
+    }
+}
+
+private extension View {
+    func chrome(_ depth: Binding<Int>) -> some View { modifier(Chrome(depth: depth)) }
+}
+
 // MARK: - The tools
 
 /**
@@ -1130,6 +1161,7 @@ private struct CanvasToolStrip: View {
     /// Which tool's menu is showing, if any. One at a time: two open menus
     /// beside each other is two lists competing for the same click.
     @Binding var openMenu: CanvasTool?
+    @Binding var overChrome: Int
     let track: (CanvasTool, CGPoint) -> Void
     let drop: (CanvasTool, CGPoint) -> Void
     let pickImage: (ImageSource) -> Void
@@ -1199,6 +1231,7 @@ private struct CanvasToolStrip: View {
                         .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
                 )
         )
+        .chrome($overChrome)
         // To the left, because the strip is already against the right-hand edge
         // and a menu opening outward would open off the canvas.
         .overlay(alignment: .topTrailing) {
@@ -1206,6 +1239,7 @@ private struct CanvasToolStrip: View {
             case .text:
                 ShapeMenu(chosen: $shape) { openMenu = nil }
                     .fixedSize()
+                    .chrome($overChrome)
                     .offset(x: -68)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             case .image:
@@ -1214,6 +1248,7 @@ private struct CanvasToolStrip: View {
                     pickImage(source)
                 }
                 .fixedSize()
+                .chrome($overChrome)
                 // Below the tool it belongs to, not beside the first one.
                 .offset(x: -68, y: 46)
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -1439,6 +1474,28 @@ struct CanvasSurface: View {
     /// view to hover, so this is worked out from the same hit test the click
     /// uses — one rule for what counts as being on a line, not two.
     @State private var hoveredLink: UUID?
+    /**
+     Whether the pointer is on a control rather than on the canvas.
+
+     Every piece of chrome sets this on the way in and clears it on the way out,
+     and the cursor reads it. A flag rather than a set of rectangles because the
+     chrome moves — the strip grows a tool, the menu opens, the grips appear and
+     disappear with the selection — and a rule written in coordinates would have
+     to be corrected every time any of that changed.
+
+     `onHover` and not the continuous one: enter and exit is the whole question,
+     and the continuous variant would fire this on every pixel of movement for an
+     answer that has not changed.
+     */
+    @State private var overChrome = 0
+    /// The item whose delete has been asked for but not yet confirmed.
+    @State private var confirmingDelete: UUID?
+
+    /// Controls that vanish under the pointer never report leaving it. These are
+    /// the moments a control disappears — the selection changing takes the grips
+    /// and the delete with it, and a menu closing takes itself — so the count is
+    /// put back to what can be seen rather than what was last counted.
+    private func forgetChrome() { overChrome = 0 }
 
     @State private var tool: CanvasTool?
     @State private var toolPoint: CGPoint?
@@ -1477,6 +1534,7 @@ struct CanvasSurface: View {
         // Over a thing, or pressed on the canvas. Both are "this click will do
         // something to what is under you", which is what a pointing finger has
         // always meant.
+        if overChrome > 0 { return .pointingHand }
         if pressing || model.hovered != nil || hoveredLink != nil { return .pointingHand }
         return .openHand
     }
@@ -1495,6 +1553,11 @@ struct CanvasSurface: View {
                 lines(geo.size)
 
                 content(geo)
+
+                // Above the items, and only while one is selected.
+                if let id = model.selected, let item = model.item(id) {
+                    itemDelete(item, in: geo.size)
+                }
 
                 // The handle sits above everything it might otherwise hide
                 // behind, and only exists while a line is selected.
@@ -1551,10 +1614,7 @@ struct CanvasSurface: View {
                 case .active(let point):
                     hover = point
                     hoveredLink = hitLink(at: point, in: geo.size)
-                    // Not over the tool strip, which is chrome and keeps the
-                    // arrow — a hand over a row of buttons says they can be
-                    // grabbed and dragged about, and they cannot.
-                    if point.x < geo.size.width - Self.stripWidth { cursor.set() }
+                    cursor.set()
                 // Off the surface entirely. The last known point would be an
                 // edge, and zooming about an edge with the pointer somewhere
                 // else is worse than zooming about the middle. The cursor is
@@ -1567,7 +1627,13 @@ struct CanvasSurface: View {
                     hoveredLink = nil
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                CanvasControls(chrome: chrome).chrome($overChrome).padding(14)
+            }
             .onAppear { loadPictures() }
+            .onChange(of: model.selected) { _ in forgetChrome() }
+            .onChange(of: model.selectedLink) { _ in forgetChrome() }
+            .onChange(of: openMenu) { _ in forgetChrome() }
             // Keyed on which items have pictures, not on the items themselves —
             // otherwise every drag of anything would reload every picture.
             .onChange(of: model.items.compactMap(\.image)) { _ in loadPictures() }
@@ -1576,6 +1642,7 @@ struct CanvasSurface: View {
                     dragging: $tool,
                     shape: $shape,
                     openMenu: $openMenu,
+                    overChrome: $overChrome,
                     track: { _, at in toolPoint = local(at, geo) },
                     drop: { which, at in
                         let here = local(at, geo)
@@ -1744,6 +1811,56 @@ struct CanvasSurface: View {
         .allowsHitTesting(false)
     }
 
+    /**
+     Delete a selected item, having asked first.
+
+     Two clicks, in the same place, rather than a dialog. The thing being
+     deleted is on the canvas in front of somebody — it does not need describing
+     to them in a box that covers it up — so the button simply changes into the
+     question and waits. Clicking anywhere else is the answer "no", which is
+     what most people do with a confirmation they did not mean to open.
+
+     A connector has no such step, on purpose. A line is one drag to redraw and
+     nothing of it is lost; a text item is what somebody wrote and a picture is
+     what they went and found. The cost of getting it wrong is not the same, so
+     the ceremony is not the same either.
+     */
+    @ViewBuilder
+    private func itemDelete(_ item: CanvasItem, in size: CGSize) -> some View {
+        let corner = screenPoint(CGPoint(x: item.x + item.w, y: item.y), in: size)
+        let asking = confirmingDelete == item.id
+        Button {
+            if asking {
+                model.delete(item.id)
+                confirmingDelete = nil
+            } else {
+                confirmingDelete = item.id
+            }
+        } label: {
+            Group {
+                if asking {
+                    Text("Delete?")
+                        .font(Theme.chrome(10, weight: .semibold))
+                        .padding(.horizontal, 7)
+                        .frame(height: 16)
+                } else {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .bold))
+                        .frame(width: 13, height: 13)
+                }
+            }
+            .contentShape(Rectangle())
+            .foregroundStyle(.white)
+            .background(Capsule().fill(Theme.danger))
+        }
+        .buttonStyle(.plain)
+        .help(asking ? "Click again to delete" : "Delete this")
+        .chrome($overChrome)
+        // Just outside the top-right corner, where it is not over the thing it
+        // would remove.
+        .position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
+    }
+
     /// The midpoint grip, and the one button that undoes a line.
     @ViewBuilder
     private func handleControls(for link: CanvasLink, g: LinkGeometry, in size: CGSize) -> some View {
@@ -1754,6 +1871,7 @@ struct CanvasSurface: View {
                 .overlay(Circle().strokeBorder(Theme.accent, lineWidth: 1.5))
                 .frame(width: 11, height: 11)
                 .contentShape(Circle().inset(by: -7))
+                .chrome($overChrome)
                 .position(at)
                 .gesture(
                     // Global, like every other drag here: this handle is drawn
@@ -1786,6 +1904,7 @@ struct CanvasSurface: View {
             }
             .buttonStyle(.plain)
             .help("Remove this connection")
+            .chrome($overChrome)
             .position(x: at.x + 16, y: at.y - 14)
         }
     }
@@ -1845,6 +1964,7 @@ struct CanvasSurface: View {
                     if !dragging {
                         model.commitEdit()
                         model.select(link: hitLink(at: value.location, in: size))
+                        confirmingDelete = nil
                         // A click anywhere else closes it, which is what a menu
                         // does and what somebody who opened it by accident will
                         // try first.
@@ -1984,6 +2104,9 @@ struct CanvasSurface: View {
                             lastClick = nil
                             model.beginEditing(item.id)
                         } else {
+                            // Selecting something else drops a question asked
+                            // about the last one.
+                            if confirmingDelete != item.id { confirmingDelete = nil }
                             model.select(item: item.id)
                         }
                     }
@@ -2013,6 +2136,7 @@ struct CanvasSurface: View {
                 )
                 .frame(width: side, height: side)
                 .contentShape(Rectangle().inset(by: -side))
+                .chrome($overChrome)
                 .position(at)
                 // Higher priority than the move drag on the item below. Both
                 // start at zero distance on overlapping pixels, and without

@@ -636,10 +636,12 @@ struct DeskView: View {
                     // and there is nothing to say where the surface stops and
                     // the desktop showing through it begins.
                     DeskPane(title: "Canvas", opaque: !chrome.seeThrough) {
+                        // The zoom control lives inside the surface rather than
+                        // over the pane. It is the canvas's own chrome, and the
+                        // surface is the one thing that knows where all of that
+                        // is — which is what lets the pointer become a finger
+                        // over every part of it and stay a hand over the rest.
                         CanvasSurface(chrome: chrome, model: canvas)
-                    }
-                    .overlay(alignment: .bottomTrailing) {
-                        CanvasControls(chrome: chrome).padding(14)
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                 }

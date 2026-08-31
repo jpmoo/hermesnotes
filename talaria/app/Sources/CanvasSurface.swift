@@ -2577,6 +2577,8 @@ struct CanvasSurface: View {
     /// to, rather than on a timer nobody asked for.
     @State private var linked: [String: Daemon.LinkedBlock] = [:]
     @State private var blockTypes: [String: Daemon.BlockType] = [:]
+    /// Polls the sync cursor so a canvas left open notices what Hermes did.
+    @State private var watch: MirrorWatch?
     /// Ids the daemon has told us it does not hold.
     ///
     /// Kept separately from `linked` rather than inferred from its absence,
@@ -2734,7 +2736,26 @@ struct CanvasSurface: View {
             .overlay(alignment: .bottomTrailing) {
                 CanvasControls(chrome: chrome).chrome($overChrome).padding(14)
             }
-            .onAppear { loadPictures(); refreshLinks() }
+            .onAppear {
+                loadPictures()
+                refreshLinks()
+                // A canvas is left open. Everything it says about Hermes was
+                // read once, so archiving a block somewhere else changed
+                // nothing here until the set of links happened to move — which
+                // for a canvas nobody is editing is never.
+                //
+                // The same watcher the board and the agenda use: one local read
+                // of the sync cursor every twenty seconds, and a reload only
+                // when it has actually moved. Nothing new had to be built; this
+                // view simply had not been told it was long-lived.
+                let w = MirrorWatch { refreshLinks() }
+                w.start()
+                watch = w
+            }
+            .onDisappear {
+                watch?.stop()
+                watch = nil
+            }
             .onChange(of: model.items.compactMap(\.blockId)) { _ in refreshLinks() }
             .onChange(of: model.selected) { now in
                 forgetChrome()
@@ -3264,20 +3285,17 @@ struct CanvasSurface: View {
                 onCompose(words) { id in model.attach(item.id, to: id) }
             }
         } label: {
-            WingMark(size: 10 * buttonScale)
-                .frame(width: 15 * buttonScale, height: 15 * buttonScale)
+            // The same disc as the one beside it, because it is the same kind
+            // of thing: a white mark on a plain grey circle. It had a black
+            // fill and an accent ring to say "this one is linked" — but the
+            // node already says that, twice, with the badge and the tag, and a
+            // button that changes colour to report a state it does not control
+            // is a third voice saying it in the row where the controls live.
+            WingMark(size: 9 * buttonScale)
+                .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 .contentShape(Rectangle())
-                // White on black. The mark is a silhouette, and a silhouette
-                // wants the ground behind it rather than around it — on white
-                // the wings read as a hole in a disc instead of as a shape.
                 .foregroundStyle(.white)
-                .background(
-                    Circle().fill(.black)
-                        .overlay(Circle().strokeBorder(
-                            item.blockId == nil ? Color.clear : Theme.accent,
-                            lineWidth: 1.5 * buttonScale
-                        ))
-                )
+                .background(Circle().fill(Color.secondary))
         }
         .buttonStyle(.plain)
         .help(item.blockId == nil ? "Make this a block in Hermes Notes" : "Open in Hermes Notes")

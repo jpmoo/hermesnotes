@@ -2225,11 +2225,33 @@ struct CanvasSurface: View {
      Topmost wins — last drawn, so the one somebody can actually see under the
      cursor — which is why this walks the list backwards.
      */
-    private func dropTarget(under screen: CGPoint, moving: UUID, in geo: GeometryProxy) -> UUID? {
-        let here = canvasPoint(local(screen, geo), in: geo.size)
+    /**
+     What a drag would be dropped on, given a point *in this surface*.
+
+     In the surface's own coordinates, not the screen's — which is the bug this
+     signature exists to stop repeating. The item drag is a global gesture and
+     the region drag is a local one, and this used to convert both as though
+     they were global. Dragging a region onto a node therefore tested a point
+     offset by the whole surface's origin, found nothing there, and dropped
+     without connecting anything. Nothing failed; the drop simply did nothing,
+     which is the hardest kind of wrong to see.
+
+     The conversion now belongs to whichever caller knows what space its gesture
+     is in, because that is the only place that can know.
+     */
+    private func dropTarget(at point: CGPoint, moving: UUID, in geo: GeometryProxy) -> UUID? {
+        let here = canvasPoint(point, in: geo.size)
+        // What a region is carrying with it, which it cannot be dropped onto.
+        // Its members travel under the pointer for the whole drag, so without
+        // this the likeliest outcome of moving a region is a line from the box
+        // to something already inside it.
+        let carried = Set(model.regions.first { $0.id == moving }?.members ?? [])
+
         // An item first: a region is mostly the things it holds, and dropping on
         // one of those means that one, not the box around it.
-        if let hit = model.items.reversed().first(where: { $0.id != moving && $0.rect.contains(here) }) {
+        if let hit = model.items.reversed().first(where: {
+            $0.id != moving && !carried.contains($0.id) && $0.rect.contains(here)
+        }) {
             return hit.id
         }
         // Then a region — but never one that holds the thing being carried.
@@ -2958,7 +2980,7 @@ struct CanvasSurface: View {
                         regionOrigin = want
                         // A region carried onto something joins to it, the same
                         // gesture and the same rule as one card onto another.
-                        linkTarget = dropTarget(under: value.location, moving: id, in: geo)
+                        linkTarget = dropTarget(at: value.location, moving: id, in: geo)
                         return
                     }
                     if model.selectedRegion != nil, draggingRegion == nil, !dragging,
@@ -3165,7 +3187,7 @@ struct CanvasSurface: View {
                     // and half of that is the diagram it is being carried
                     // across; the pointer is the one part of the gesture that
                     // is unambiguously aimed.
-                    linkTarget = dropTarget(under: value.location, moving: item.id, in: geo)
+                    linkTarget = dropTarget(at: local(value.location, geo), moving: item.id, in: geo)
                     // Read every frame rather than once, because it is a key
                     // somebody presses partway through a drag, once they can see
                     // what the drop is about to do.

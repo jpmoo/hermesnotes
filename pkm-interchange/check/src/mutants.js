@@ -723,9 +723,7 @@ const MUTANTS = [
       ...a,
       patchCollection: (col, p) => {
         const out = a.patchCollection(col, p);
-        if (out.ok) {
-          out.collection = { id: col.id, kind: col.kind, placement: col.placement, ...(p.set ?? {}) };
-        }
+        if (out.ok) out.collection = { ...out.collection, properties: { ...(p.set ?? {}) } };
         return out;
       },
     }),

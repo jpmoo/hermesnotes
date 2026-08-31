@@ -386,12 +386,16 @@ export function member(collection, object, op, body = {}) {
  * columns, saved view state. None of it can be written any other way, because
  * none of it is an object and `PATCH` on an object is the only other write.
  *
- * **Only the producer's own keys.** Unprefixed names belong to the format, and
- * every one of them — `kind`, `placement`, `membership`, `members` — has rules
- * that a generic bag cannot honour: changing `kind` reinterprets every member's
- * placement, and `members` is what the membership verbs are for. Refused rather
- * than ignored, because a caller told its write landed and then finding the
- * collection unchanged has no way to learn which of the two happened.
+ * It writes `properties`, and only that. A collection's structural keys —
+ * `kind`, `placement`, `members` — are not in that bag and so are unreachable
+ * from here, which is better than a rule that refuses them: each has
+ * consequences a generic write could not honour, and `members` is what the two
+ * membership verbs are for.
+ *
+ * **Only prefixed names.** Unprefixed keys inside a collection's `properties`
+ * belong to the format, and this is the door that rule had not been applied to.
+ * Refused rather than ignored, because a caller told its write landed and then
+ * finding the collection unchanged has no way to learn which happened.
  *
  * `set` and `unset`, with the same meaning they have on an object: a key named
  * by neither is untouched, including every key this implementation has never
@@ -409,8 +413,10 @@ export function patchCollection(collection, p = {}) {
   }
 
   const next = structuredClone(collection ?? {});
-  for (const [k, v] of Object.entries(p.set ?? {})) next[k] = v;
-  for (const k of p.unset ?? []) delete next[k];
+  const props = { ...(next.properties ?? {}) };
+  for (const [k, v] of Object.entries(p.set ?? {})) props[k] = v;
+  for (const k of p.unset ?? []) delete props[k];
+  next.properties = props;
   if (collection?.version !== undefined) next.version = collection.version + 1;
 
   return { ok: true, collection: next, fidelity: "full", reports: [] };

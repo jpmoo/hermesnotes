@@ -316,8 +316,10 @@ function runCase(adapter, c, bySuiteId) {
       }
       if (c.expect.collection !== undefined) {
         checks.push(subset(c.expect.collection, got.collection));
+        // The complete set of keys the *properties* bag should hold afterwards.
+        // Exact, because a key quietly not surviving is what this suite is for.
         if (c.expect.keys) {
-          checks.push(exact([...c.expect.keys].sort(), Object.keys(got.collection ?? {}).sort()));
+          checks.push(exact([...c.expect.keys].sort(), Object.keys(got.collection?.properties ?? {}).sort()));
         }
       }
       return { pass: checks.every(Boolean), got };

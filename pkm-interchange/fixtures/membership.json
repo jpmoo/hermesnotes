@@ -16,19 +16,37 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false }
+          "placement": {
+            "semantic": false
+          }
         },
         "member": {
           "object": "o_1",
-          "context": { "x": 340, "y": 120, "w": 280, "h": 190, "hermes:color": "#fdf3d8" }
+          "context": {
+            "x": 340,
+            "y": 120,
+            "w": 280,
+            "h": 190,
+            "hermes:color": "#fdf3d8"
+          }
         },
-        "patch": { "context": { "x": 400 } }
+        "patch": {
+          "context": {
+            "x": 400
+          }
+        }
       },
       "expect": {
         "ok": true,
         "member": {
           "object": "o_1",
-          "context": { "x": 400, "y": 120, "w": 280, "h": 190, "hermes:color": "#fdf3d8" }
+          "context": {
+            "x": 400,
+            "y": 120,
+            "w": 280,
+            "h": 190,
+            "hermes:color": "#fdf3d8"
+          }
         }
       },
       "why": "The round-trip rule at write time, in the place it is most often skipped. A tool that drags a card sends the two numbers it moved; the size and the colour were put there by something else and it has never heard of them. A write that replaced the bag would delete them, and the caller would be told it succeeded."
@@ -41,17 +59,33 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false }
+          "placement": {
+            "semantic": false
+          }
         },
         "member": {
           "object": "o_1",
-          "context": { "x": 340, "y": 120, "hermes:collapsed": true }
+          "context": {
+            "x": 340,
+            "y": 120,
+            "hermes:collapsed": true
+          }
         },
-        "patch": { "unset": ["hermes:collapsed"] }
+        "patch": {
+          "unset": [
+            "hermes:collapsed"
+          ]
+        }
       },
       "expect": {
         "ok": true,
-        "member": { "object": "o_1", "context": { "x": 340, "y": 120 } }
+        "member": {
+          "object": "o_1",
+          "context": {
+            "x": 340,
+            "y": 120
+          }
+        }
       },
       "why": "Same two moves as a patch on an object and for the same reason: a key named by neither `context` nor `unset` is untouched, so removing one has to be said out loud. Sending it as null would collide with every model where null is a value somebody chose."
     },
@@ -63,14 +97,30 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false }
+          "placement": {
+            "semantic": false
+          }
         },
-        "member": { "object": "o_1", "context": { "x": 340, "y": 120 } },
-        "patch": { "unset": ["x", "y"] }
+        "member": {
+          "object": "o_1",
+          "context": {
+            "x": 340,
+            "y": 120
+          }
+        },
+        "patch": {
+          "unset": [
+            "x",
+            "y"
+          ]
+        }
       },
       "expect": {
         "ok": true,
-        "member": { "object": "o_1", "context": null }
+        "member": {
+          "object": "o_1",
+          "context": null
+        }
       },
       "why": "A member that has had all its furniture removed carries no bag, not an empty one. An empty object is a fact about nothing that the round-trip rule would then be obliged to preserve forever."
     },
@@ -84,15 +134,28 @@
           "kind": "matrix",
           "placement": {
             "semantic": true,
-            "regions": ["urgent-important", "calm-later"]
+            "regions": [
+              "urgent-important",
+              "calm-later"
+            ]
           }
         },
-        "member": { "object": "o_1", "region": "urgent-important" },
-        "patch": { "context": { "x": 340, "y": 120 } }
+        "member": {
+          "object": "o_1",
+          "region": "urgent-important"
+        },
+        "patch": {
+          "context": {
+            "x": 340,
+            "y": 120
+          }
+        }
       },
       "expect": {
         "ok": false,
-        "reports": ["placement.coordinates-not-semantic"]
+        "reports": [
+          "placement.coordinates-not-semantic"
+        ]
       },
       "why": "The same rule the validator enforces on a document, enforced on a write. A coordinate means nothing outside the grid that produced it, so a judgment recorded as one is a judgment nothing else can read. Refused rather than stored, because stored-and-unreadable looks exactly like success."
     },
@@ -106,15 +169,25 @@
           "kind": "matrix",
           "placement": {
             "semantic": true,
-            "regions": ["urgent-important", "calm-later"]
+            "regions": [
+              "urgent-important",
+              "calm-later"
+            ]
           }
         },
-        "member": { "object": "o_1", "region": "urgent-important" },
-        "patch": { "region": "someday" }
+        "member": {
+          "object": "o_1",
+          "region": "urgent-important"
+        },
+        "patch": {
+          "region": "someday"
+        }
       },
       "expect": {
         "ok": false,
-        "reports": ["placement.region-not-declared"]
+        "reports": [
+          "placement.region-not-declared"
+        ]
       },
       "why": "A region nothing renders is a card that has vanished from the board with nobody told. The write knows which regions exist — they are on the collection it is written against — so it is the last place this can be caught."
     },
@@ -128,15 +201,25 @@
           "kind": "matrix",
           "placement": {
             "semantic": true,
-            "regions": ["urgent-important", "calm-later"]
+            "regions": [
+              "urgent-important",
+              "calm-later"
+            ]
           }
         },
-        "member": { "object": "o_1", "region": "urgent-important" },
-        "patch": { "region": null }
+        "member": {
+          "object": "o_1",
+          "region": "urgent-important"
+        },
+        "patch": {
+          "region": null
+        }
       },
       "expect": {
         "ok": true,
-        "member": { "object": "o_1" }
+        "member": {
+          "object": "o_1"
+        }
       },
       "why": "Added but not placed is a real state — a card in the drawer beside the board — and it is not the same as not being on the board at all. Null is admissible here, unlike in `context`, because a region is one slot rather than a bag: there is no value it could be confused with."
     },
@@ -148,10 +231,23 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false }
+          "placement": {
+            "semantic": false
+          }
         },
-        "member": { "object": "o_1", "version": 7, "context": { "x": 340 } },
-        "patch": { "context": { "x": 400 }, "version": 6 }
+        "member": {
+          "object": "o_1",
+          "version": 7,
+          "context": {
+            "x": 340
+          }
+        },
+        "patch": {
+          "context": {
+            "x": 400
+          },
+          "version": 6
+        }
       },
       "expect": {
         "ok": false,
@@ -163,20 +259,44 @@
       "id": "membership/put-makes-a-membership",
       "level": 4,
       "op": "member",
-      "args": { "object": "o_2", "op": "put" },
+      "args": {
+        "object": "o_2",
+        "op": "put"
+      },
       "given": {
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "members": [{ "object": "o_1", "context": { "x": 0, "y": 0 } }]
+          "placement": {
+            "semantic": false
+          },
+          "members": [
+            {
+              "object": "o_1",
+              "context": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ]
         },
-        "patch": { "context": { "x": 340, "y": 120 } }
+        "patch": {
+          "context": {
+            "x": 340,
+            "y": 120
+          }
+        }
       },
       "expect": {
         "ok": true,
         "created": true,
-        "member": { "object": "o_2", "context": { "x": 340, "y": 120 } }
+        "member": {
+          "object": "o_2",
+          "context": {
+            "x": 340,
+            "y": 120
+          }
+        }
       },
       "why": "Adding something to a board is the write that was missing: everything else assumed the membership already existed. It arrives with its placement, because a card that appears and then jumps to where it belongs is two states a viewer sees and only one of them is real."
     },
@@ -184,20 +304,44 @@
       "id": "membership/put-again-changes-nothing",
       "level": 4,
       "op": "member",
-      "args": { "object": "o_1", "op": "put" },
+      "args": {
+        "object": "o_1",
+        "op": "put"
+      },
       "given": {
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "members": [{ "object": "o_1", "context": { "x": 340, "y": 120 } }]
+          "placement": {
+            "semantic": false
+          },
+          "members": [
+            {
+              "object": "o_1",
+              "context": {
+                "x": 340,
+                "y": 120
+              }
+            }
+          ]
         },
-        "patch": { "context": { "x": 0, "y": 0 } }
+        "patch": {
+          "context": {
+            "x": 0,
+            "y": 0
+          }
+        }
       },
       "expect": {
         "ok": true,
         "created": false,
-        "member": { "object": "o_1", "context": { "x": 340, "y": 120 } }
+        "member": {
+          "object": "o_1",
+          "context": {
+            "x": 340,
+            "y": 120
+          }
+        }
       },
       "why": "The same division `PUT` and `PATCH` draw on an object, for the same reason. This is a caller asking again because it never heard the first answer, not a caller asking for the card to be moved back to the origin — and a verb that did both could not be retried after a timeout."
     },
@@ -205,23 +349,33 @@
       "id": "membership/put-refuses-a-region-nobody-declared",
       "level": 4,
       "op": "member",
-      "args": { "object": "o_2", "op": "put" },
+      "args": {
+        "object": "o_2",
+        "op": "put"
+      },
       "given": {
         "collection": {
           "id": "c_priorities",
           "kind": "matrix",
           "placement": {
             "semantic": true,
-            "regions": ["urgent-important", "calm-later"]
+            "regions": [
+              "urgent-important",
+              "calm-later"
+            ]
           },
           "members": []
         },
-        "patch": { "region": "someday" }
+        "patch": {
+          "region": "someday"
+        }
       },
       "expect": {
         "ok": false,
         "created": false,
-        "reports": ["placement.region-not-declared"]
+        "reports": [
+          "placement.region-not-declared"
+        ]
       },
       "why": "Arriving somewhere that does not exist is the same failure as moving somewhere that does not exist, so it is the same rule and must not be a second copy of it. A board that accepts the create and drops the region has silently added an invisible card."
     },
@@ -229,13 +383,25 @@
       "id": "membership/delete-unmakes-the-membership-not-the-object",
       "level": 4,
       "op": "member",
-      "args": { "object": "o_1", "op": "delete" },
+      "args": {
+        "object": "o_1",
+        "op": "delete"
+      },
       "given": {
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "members": [{ "object": "o_1" }, { "object": "o_2" }]
+          "placement": {
+            "semantic": false
+          },
+          "members": [
+            {
+              "object": "o_1"
+            },
+            {
+              "object": "o_2"
+            }
+          ]
         }
       },
       "expect": {
@@ -248,13 +414,22 @@
       "id": "membership/delete-again-is-a-success",
       "level": 4,
       "op": "member",
-      "args": { "object": "o_9", "op": "delete" },
+      "args": {
+        "object": "o_9",
+        "op": "delete"
+      },
       "given": {
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "members": [{ "object": "o_1" }]
+          "placement": {
+            "semantic": false
+          },
+          "members": [
+            {
+              "object": "o_1"
+            }
+          ]
         }
       },
       "expect": {
@@ -271,35 +446,60 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "hermes:canvas_notes": []
+          "placement": {
+            "semantic": false
+          },
+          "properties": {
+            "hermes:canvas_notes": []
+          }
         },
-        "patch": { "set": { "canvas_notes": [{ "id": "n:1", "text": "hello" }] } }
+        "patch": {
+          "set": {
+            "canvas_notes": [
+              {
+                "id": "n:1",
+                "text": "hello"
+              }
+            ]
+          }
+        }
       },
       "expect": {
         "ok": false,
-        "reports": ["collection.unprefixed-write"]
+        "reports": [
+          "collection.unprefixed-write"
+        ]
       },
       "why": "Unprefixed names on a collection belong to the format, and this is the write that would otherwise let a producer take one without anybody noticing. It is the same failure the prefix rule was written for, arriving through the one door that rule had not been applied to."
     },
     {
-      "id": "membership/the-formats-own-keys-are-not-writable-here",
+      "id": "membership/the-formats-namespace-is-not-writable-here",
       "level": 4,
       "op": "collectionPatch",
       "given": {
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "members": [{ "object": "o_1" }]
+          "placement": {
+            "semantic": false
+          },
+          "properties": {
+            "hermes:sort_mode": "created"
+          }
         },
-        "patch": { "unset": ["members"] }
+        "patch": {
+          "set": {
+            "sort_mode": "alpha"
+          }
+        }
       },
       "expect": {
         "ok": false,
-        "reports": ["collection.unprefixed-write"]
+        "reports": [
+          "collection.unprefixed-write"
+        ]
       },
-      "why": "One rule rather than a list of exceptions. `kind`, `placement` and `members` each have their own rules that a generic bag cannot honour — changing a kind reinterprets every member's placement, and emptying `members` is what the membership verbs are for — and they are all unprefixed, so the prefix rule already covers them."
+      "why": "Not an abstraction. Hermes was spending twenty-nine unprefixed names on collections, `sort_mode` and `table_sort` among them — this document's own open limit, no sort or grouping on a collection, being solved privately under the name v0.1 would want. This write is the door that rule had not been applied to. The collection's structural keys need no rule of their own: `kind`, `placement` and `members` are not in `properties` and are unreachable from here, which is stronger than refusing them."
     },
     {
       "id": "membership/a-collection-write-leaves-the-rest-alone",
@@ -309,21 +509,45 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "hermes:canvas_notes": [],
-          "hermes:table_sort": "created",
-          "obsidian:folder": "Boards"
+          "placement": {
+            "semantic": false
+          },
+          "properties": {
+            "hermes:canvas_notes": [],
+            "hermes:table_sort": "created",
+            "obsidian:folder": "Boards"
+          }
         },
-        "patch": { "set": { "hermes:canvas_notes": [{ "id": "n:1", "text": "hello" }] } }
+        "patch": {
+          "set": {
+            "hermes:canvas_notes": [
+              {
+                "id": "n:1",
+                "text": "hello"
+              }
+            ]
+          }
+        }
       },
       "expect": {
         "ok": true,
         "collection": {
-          "hermes:canvas_notes": [{ "id": "n:1", "text": "hello" }],
-          "hermes:table_sort": "created",
-          "obsidian:folder": "Boards"
+          "properties": {
+            "hermes:canvas_notes": [
+              {
+                "id": "n:1",
+                "text": "hello"
+              }
+            ],
+            "hermes:table_sort": "created",
+            "obsidian:folder": "Boards"
+          }
         },
-        "keys": ["id", "kind", "placement", "hermes:canvas_notes", "hermes:table_sort", "obsidian:folder"]
+        "keys": [
+          "hermes:canvas_notes",
+          "hermes:table_sort",
+          "obsidian:folder"
+        ]
       },
       "why": "The reason this write exists at all is a canvas's sticky notes, which are not objects and can be written no other way. It must not become the reason another producer's keys disappear — including the keys of a producer this one has never heard of."
     },
@@ -335,16 +559,35 @@
         "collection": {
           "id": "c_board",
           "kind": "canvas",
-          "placement": { "semantic": false },
-          "hermes:canvas_notes": [{ "id": "n:1", "text": "hello" }],
-          "hermes:canvas_edges": []
+          "placement": {
+            "semantic": false
+          },
+          "properties": {
+            "hermes:canvas_notes": [
+              {
+                "id": "n:1",
+                "text": "hello"
+              }
+            ],
+            "hermes:canvas_edges": []
+          }
         },
-        "patch": { "unset": ["hermes:canvas_notes"] }
+        "patch": {
+          "unset": [
+            "hermes:canvas_notes"
+          ]
+        }
       },
       "expect": {
         "ok": true,
-        "collection": { "hermes:canvas_edges": [] },
-        "keys": ["id", "kind", "placement", "hermes:canvas_edges"]
+        "collection": {
+          "properties": {
+            "hermes:canvas_edges": []
+          }
+        },
+        "keys": [
+          "hermes:canvas_edges"
+        ]
       },
       "why": "Set and unset, with the meaning they have everywhere else in this document. Stated as its own case because a bag-shaped write is exactly where an implementation is tempted to treat the payload as the whole object."
     }

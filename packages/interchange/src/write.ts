@@ -26,6 +26,8 @@ export interface WriteCollection {
   kind?: string;
   placement?: { semantic?: boolean; regions?: (string | { name?: string })[] };
   members?: (WriteMember | string)[];
+  /** The collection's own keys, prefixed. Not the format's structural ones. */
+  properties?: Record<string, unknown>;
   version?: number;
   [key: string]: unknown;
 }
@@ -156,13 +158,19 @@ export function memberWrite(
 /**
  * A collection's own keys, changed.
  *
- * **Only prefixed ones.** An unprefixed name belongs to the format, and that one
- * rule lands in the right place by itself: `kind`, `placement` and `members` are
- * all unprefixed, and each has rules a generic bag cannot honour — changing a
- * kind reinterprets every member's placement, and emptying `members` is what the
- * membership verbs are for. Refused rather than ignored, because a caller told
- * its write landed and then finding nothing changed has no way to learn which of
- * the two happened.
+ * It writes `properties`, and nothing else. The collection's structural
+ * keys — `kind`, `placement`, `members` — are not in that bag and so are not
+ * reachable from here at all, which is better than a rule that refuses them:
+ * each has consequences a generic write could not honour, and `members` is what
+ * the two membership verbs are for.
+ *
+ * **Only prefixed names.** Unprefixed keys inside a collection's `properties`
+ * belong to the format. That rule is not an abstraction — Hermes was spending
+ * twenty-nine unprefixed names there, `sort_mode` and `table_sort` among them,
+ * which is this document's own open limit being solved privately under the name
+ * v0.1 would want. This is the door that rule had not been applied to.
+ * Refused rather than ignored, because a caller told its write landed and then
+ * finding nothing changed has no way to learn which of the two happened.
  */
 export function patchCollectionProps(
   collection: WriteCollection | undefined,
@@ -177,9 +185,11 @@ export function patchCollectionProps(
     return { ok: false, collection, fidelity: "full", reports: ["collection.unprefixed-write"] };
   }
 
-  const next: WriteCollection = { ...(collection ?? {}) };
-  for (const [k, v] of Object.entries(patch.set ?? {})) next[k] = v;
-  for (const k of patch.unset ?? []) delete next[k];
+  const props = { ...((collection?.properties ?? {}) as Record<string, unknown>) };
+  for (const [k, v] of Object.entries(patch.set ?? {})) props[k] = v;
+  for (const k of patch.unset ?? []) delete props[k];
+
+  const next: WriteCollection = { ...(collection ?? {}), properties: props };
   if (collection?.version !== undefined) next.version = collection.version + 1;
 
   return { ok: true, collection: next, fidelity: "full", reports: [] };

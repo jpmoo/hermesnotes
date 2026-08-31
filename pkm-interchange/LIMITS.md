@@ -288,12 +288,22 @@ must be recognisable as a repeat. `DELETE` unmakes the membership and leaves the
 object alone, and removing something that is not there is a success, because a
 replaying queue cannot know which of its writes landed.
 
-`PATCH .../collections/{c}` writes the collection's own keys, prefixed only. This
-is the one that took the most thought, because it is a bag-shaped write and those
-are where implementations treat the payload as the whole object. `set`/`unset`,
-a key named by neither untouched, and an unprefixed name refused — one rule that
-covers the format's own structural keys without a list of exceptions, since they
-are all unprefixed and each has rules a generic bag could not honour anyway.
+`PATCH .../collections/{c}` writes the collection's `properties`, prefixed only.
+This is the one that took the most thought, because it is a bag-shaped write and
+those are where implementations treat the payload as the whole object.
+`set`/`unset`, a key named by neither untouched, and an unprefixed name refused —
+which is the prefix rule reaching the one door it had not been applied to, on the
+bag where Hermes had already been spending twenty-nine of the format's names. The
+structural keys need no rule of their own: `kind`, `placement` and `members` are
+not in `properties`, so nothing here can address them at all.
+
+The shape of that bag is also the one thing this entry got wrong on the first
+pass, and it is worth recording how. The fixtures were written with a
+collection's own keys at the top level, the suite went green, and the mistake
+only surfaced when the routes were pointed at a real library — where the keys sit
+under `properties`, exactly as the document already said two sections earlier.
+Sixteen green cases and fifty-six caught mutants agreeing with each other proves
+they agree; it does not prove either of them read the spec.
 
 `?q=` is a third narrowing on a read, and it inverts the rule the other two
 follow. `since` and `profile` ignored give a client more than it asked for, which

@@ -414,7 +414,7 @@ The distinction is not fussiness. Producers derive the name from the label — s
 
 **A member carrying `context` and a collection whose `placement.semantic` is true is invalid**, and that is the whole distinction restated: a bag of coordinates is not a way of recording a judgment. The two never appear together, which is what makes `semantic` answerable by looking rather than by asking.
 
-Its keys are the producer's own and take a prefix like every other extension, with one carve-out the format makes because every renderer needs them: `x`, `y`, `w` and `h` mean what they look like. Nothing else here is defined and nothing else should be guessed at.
+The bag is opaque and its keys are **not** prefixed. That is not an oversight and it is the one place the prefix rule does not reach: a prefix exists so two producers can hold the same key without colliding, and nothing here is ever compared between producers. `semantic: false` says outright that a consumer may discard the lot. A collection's `properties` are the opposite case — a `sort_mode` in there is something another tool wants to keep and understand, which is exactly why those take the prefix and these do not.
 
 
 A member is an object — `{ "object": "o_412", … }`. A bare id is legal shorthand for one with nothing else to say, and expanding it to the object form is **not** a fidelity loss. This is the one place the format has two spellings for one thing, and saying so is cheaper than leaving every implementer to discover that their round-trip does not compare equal.
@@ -1031,9 +1031,9 @@ PATCH <base>/interchange/collections/{collection}
 { "set": { "hermes:canvas_notes": [ ... ] }, "unset": ["hermes:canvas_regions"], "version": 7 }
 ```
 
-`set` and `unset`, with the meaning they have on an object: **a key named by
-neither is untouched**, including every key belonging to a producer this one has
-never heard of.
+It writes the collection's `properties`, and only those. `set` and `unset`, with
+the meaning they have on an object: **a key named by neither is untouched**,
+including every key belonging to a producer this one has never heard of.
 
 This exists for everything a collection carries that is not an object and cannot
 be written any other way. A canvas's sticky notes and the connections drawn
@@ -1041,13 +1041,21 @@ between them are the case that forced it — see *Known limits of v0* — along 
 a table's columns and saved view state. None of it is an object, and `PATCH` on
 an object was the only other write there was.
 
-**Only prefixed keys.** An unprefixed name belongs to the format and **MUST** be
-refused. That is one rule rather than a list of exceptions, and it lands in the
-right place by itself: `kind`, `placement`, `members` and the rest are all
-unprefixed, and each has rules a generic bag cannot honour. Changing `kind`
-reinterprets every member's placement. Emptying `members` is what the two verbs
-above are for. Refused rather than ignored — a caller told its write landed, then
-finding the collection unchanged, has no way to learn which of the two happened.
+**Only prefixed names.** An unprefixed key inside a collection's `properties`
+belongs to the format and **MUST** be refused. That rule is not hypothetical:
+Hermes was spending twenty-nine unprefixed names there, `sort_mode` and
+`table_sort` among them, which is this document's own open limit — *no sort or
+grouping on a collection* — being solved privately under the name v0.1 would
+want. This write is the door that rule had not yet been applied to. Refused
+rather than ignored: a caller told its write landed, then finding the collection
+unchanged, has no way to learn which of the two happened.
+
+**The structural keys are not refused, they are unreachable.** `kind`,
+`placement` and `members` are not in `properties`, so nothing here addresses
+them — which is stronger than a refusal, and it is the right shape. Changing a
+`kind` reinterprets every member's placement, and writing `members` is what the
+two verbs above are for; those are separate verbs precisely because a generic bag
+cannot carry their consequences.
 
 If you version collections, carry the version on the read and accept it on the
 write, exactly as for objects. A producer that demands one and never issues one

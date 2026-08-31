@@ -479,6 +479,12 @@ export function toInterchange(input: ExportInput): {
       id: c.id,
       name: String(props.title ?? "Untitled"),
       kind,
+      // The same reasoning that puts a version on an object: a producer that
+      // accepts one on a write and never issues one has made safe writing
+      // impossible through its own binding, because the only way to learn the
+      // number is a private route. A collection is writable now — its sticky
+      // notes and its edges are — so it carries one too.
+      ...(c.version === undefined ? {} : { version: c.version }),
       ...addressOf(c.id, "collections"),
       ...cCarried,
       ...(Object.keys(carried).length ? { properties: carried } : {}),

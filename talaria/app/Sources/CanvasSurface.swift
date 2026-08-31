@@ -20,6 +20,73 @@ import SwiftUI
  the work — which is exactly the thing worth finding out, and impossible to find
  out from a surface that was drawn around the answer.
  */
+/**
+ The outline drawn round an item, if any.
+
+ An outline and not a fill: the first rule this canvas was given is that text
+ has no background, and a shape is a line round the outside rather than a
+ licence to paint behind the words.
+
+ `plain` is the original text item and stays the default. It is in the list
+ because a submenu that can put an outline on and not take it off again is a
+ one-way door.
+ */
+enum CanvasShape: String, Codable, CaseIterable, Identifiable {
+    case plain
+    case rectangle
+    case roundedRectangle
+    case triangle
+    case ellipse
+
+    var id: String { rawValue }
+
+    var symbol: String {
+        switch self {
+        case .plain: return "textformat"
+        case .rectangle: return "square"
+        case .roundedRectangle: return "square.dashed"
+        case .triangle: return "triangle"
+        case .ellipse: return "circle"
+        }
+    }
+
+    var name: String {
+        switch self {
+        case .plain: return "Plain"
+        case .rectangle: return "Square"
+        case .roundedRectangle: return "Rounded"
+        case .triangle: return "Triangle"
+        case .ellipse: return "Circle"
+        }
+    }
+
+    /// A bare label wants to be wide and short; a shape wants room inside it.
+    var defaultSize: CGSize {
+        self == .plain ? CGSize(width: 180, height: 24) : CGSize(width: 130, height: 90)
+    }
+
+    /// The outline, in a box.
+    func path(in r: CGRect) -> Path {
+        switch self {
+        case .plain:
+            return Path()
+        case .rectangle:
+            return Path(r)
+        case .roundedRectangle:
+            return Path(roundedRect: r, cornerRadius: min(14, min(r.width, r.height) / 4))
+        case .ellipse:
+            return Path(ellipseIn: r)
+        case .triangle:
+            var p = Path()
+            p.move(to: CGPoint(x: r.midX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+            p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+            p.closeSubpath()
+            return p
+        }
+    }
+}
+
 struct CanvasItem: Identifiable, Equatable, Codable {
     let id: UUID
     var x: CGFloat
@@ -27,6 +94,9 @@ struct CanvasItem: Identifiable, Equatable, Codable {
     var w: CGFloat
     var h: CGFloat
     var text: String
+    /// Absent in a file written before shapes existed, which reads as `plain` —
+    /// which is what everything in such a file is.
+    var shape: CanvasShape = .plain
 
     /// The box in canvas coordinates.
     var rect: CGRect {
@@ -37,6 +107,40 @@ struct CanvasItem: Identifiable, Equatable, Codable {
             w = newValue.width
             h = newValue.height
         }
+    }
+
+    init(id: UUID, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, text: String, shape: CanvasShape = .plain) {
+        self.id = id
+        self.x = x
+        self.y = y
+        self.w = w
+        self.h = h
+        self.text = text
+        self.shape = shape
+    }
+
+    /**
+     Written out by hand for one line of it.
+
+     Swift's synthesised decoder requires every non-optional key to be present,
+     default value or not — so adding `shape` to this struct would have made
+     every canvas.json written before shapes existed fail to decode. The store
+     keeps a file it cannot read rather than overwriting it, which is the right
+     behaviour and would still have looked, to somebody who had just drawn a
+     diagram, exactly like losing it.
+
+     A field added to a stored shape needs a decoder that can do without it. That
+     is true of the next field too, so this stays.
+     */
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        x = try c.decode(CGFloat.self, forKey: .x)
+        y = try c.decode(CGFloat.self, forKey: .y)
+        w = try c.decode(CGFloat.self, forKey: .w)
+        h = try c.decode(CGFloat.self, forKey: .h)
+        text = try c.decode(String.self, forKey: .text)
+        shape = try c.decodeIfPresent(CanvasShape.self, forKey: .shape) ?? .plain
     }
 }
 
@@ -277,15 +381,16 @@ final class CanvasModel: ObservableObject {
      an empty one disappears is what makes that safe: nothing is left behind by
      a drag somebody thought better of.
      */
-    func addText(at point: CGPoint) {
-        let size = Self.newItemSize
+    func addText(at point: CGPoint, shape: CanvasShape = .plain) {
+        let size = shape.defaultSize
         let item = CanvasItem(
             id: UUID(),
             x: point.x - size.width / 2,
             y: point.y - size.height / 2,
             w: size.width,
             h: size.height,
-            text: ""
+            text: "",
+            shape: shape
         )
         items.append(item)
         selected = nil
@@ -313,12 +418,23 @@ final class CanvasModel: ObservableObject {
      is a click somewhere else, rather than a stray empty box to find and remove.
      Whitespace counts as empty, because a space bar pressed while deciding what
      to write is not a decision to keep it.
+
+     **Except for a shape, which is a thing whether or not it says anything.**
+     An empty plain-text item is literally nothing on screen and removing it
+     costs nobody anything; an empty circle is a circle, and a diagram made of
+     unlabelled boxes is an ordinary diagram. Deleting those would mean the only
+     way to draw a box is to write something in it.
+
+     That is an interpretation rather than an instruction — the rule was given
+     when text was the only thing this could make — so it is written down here
+     as one.
      */
     func commitEdit() {
         guard let id = editing else { return }
         editing = nil
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else {
+        let drawsSomething = items.first(where: { $0.id == id })?.shape != .plain
+        guard !text.isEmpty || drawsSomething else {
             items.removeAll { $0.id == id }
             links.removeAll { $0.from == id || $0.to == id }
             draft = ""
@@ -567,6 +683,72 @@ enum CanvasTool: String, CaseIterable, Identifiable {
  in the same place and be dragged away from it. Dragging says where in the same
  motion that says what.
  */
+/**
+ The corner that says there is more here.
+
+ A small filled triangle in the bottom-left of a tool, which is the oldest
+ convention there is for "this one opens something" — a Mac has been drawing it
+ on palette tools since before most of the alternatives were invented, and it
+ costs six points of a button nobody was using.
+ */
+private struct SubmenuCorner: View {
+    var body: some View {
+        Path { p in
+            p.move(to: CGPoint(x: 0, y: 6))
+            p.addLine(to: CGPoint(x: 6, y: 6))
+            p.addLine(to: CGPoint(x: 0, y: 0))
+            p.closeSubpath()
+        }
+        .fill(Color.primary)
+        .frame(width: 6, height: 6)
+        .padding(.leading, 3)
+        .padding(.bottom, 3)
+    }
+}
+
+/// The shapes, offered to the left of the tool they belong to.
+private struct ShapeMenu: View {
+    @Binding var chosen: CanvasShape
+    let close: () -> Void
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(CanvasShape.allCases) { shape in
+                Button {
+                    chosen = shape
+                    close()
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: shape.symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 16)
+                        Text(shape.name).font(Theme.chrome(11))
+                        Spacer(minLength: 0)
+                    }
+                    .frame(width: 96, height: 24)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(chosen == shape ? Theme.accent : Color.primary.opacity(0.85))
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(chosen == shape ? Color.primary.opacity(0.08) : .clear)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(.background.opacity(0.92))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+        )
+    }
+}
+
 private struct CanvasToolStrip: View {
     /// Which tool is being dragged. The *where* is reported in screen
     /// coordinates and converted by the surface.
@@ -581,6 +763,8 @@ private struct CanvasToolStrip: View {
     /// spot on the canvas every time. Hence: dropped in the corner, wherever you
     /// let go. Screen coordinates cannot be misresolved.
     @Binding var dragging: CanvasTool?
+    @Binding var shape: CanvasShape
+    @Binding var menuOpen: Bool
     let track: (CanvasTool, CGPoint) -> Void
     let drop: (CanvasTool, CGPoint) -> Void
 
@@ -588,12 +772,18 @@ private struct CanvasToolStrip: View {
         VStack(spacing: 6) {
             ForEach(CanvasTool.allCases) { tool in
                 VStack(spacing: 2) {
-                    Image(systemName: tool.symbol)
+                    // The tool wears what it will place, so the strip says what
+                    // the next drag is going to do rather than making somebody
+                    // open the menu to find out.
+                    Image(systemName: tool == .text ? shape.symbol : tool.symbol)
                         .font(.system(size: 15, weight: .medium))
-                    Text(tool.name)
+                    Text(tool == .text ? shape.name : tool.name)
                         .font(Theme.chrome(9, weight: .medium))
                 }
                 .frame(width: 44, height: 40)
+                .overlay(alignment: .bottomLeading) {
+                    if tool == .text { SubmenuCorner() }
+                }
                 .contentShape(Rectangle())
                 .foregroundStyle(dragging == tool ? Theme.accent : Color.secondary)
                 .background(
@@ -609,7 +799,19 @@ private struct CanvasToolStrip: View {
                         }
                         .onEnded { value in
                             dragging = nil
-                            drop(tool, value.location)
+                            // A press that went nowhere is a click, and a click
+                            // on a tool with a corner opens what is behind it.
+                            // The two cannot both be "place one": a click has no
+                            // position to place it at except the middle, which
+                            // is the argument for dragging in the first place.
+                            let moved = abs(value.translation.width) > 4
+                                || abs(value.translation.height) > 4
+                            if moved {
+                                menuOpen = false
+                                drop(tool, value.location)
+                            } else if tool == .text {
+                                menuOpen.toggle()
+                            }
                         }
                 )
             }
@@ -624,6 +826,16 @@ private struct CanvasToolStrip: View {
                         .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
                 )
         )
+        // To the left, because the strip is already against the right-hand edge
+        // and a menu opening outward would open off the canvas.
+        .overlay(alignment: .topTrailing) {
+            if menuOpen {
+                ShapeMenu(chosen: $shape) { menuOpen = false }
+                    .fixedSize()
+                    .offset(x: -56)
+                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+            }
+        }
     }
 }
 
@@ -663,7 +875,16 @@ private struct CanvasItemView: View {
     private var handle: CGFloat { 7 / zoom }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: item.shape == .plain ? .topLeading : .center) {
+            // The outline. A stroke and nothing else — no fill, because the
+            // rule this canvas started from is that text has no background, and
+            // a shape is a line round the outside rather than permission to
+            // paint behind the words.
+            if item.shape != .plain {
+                item.shape
+                    .path(in: CGRect(x: 0, y: 0, width: item.w, height: item.h).insetBy(dx: hairline, dy: hairline))
+                    .stroke(Color.primary.opacity(0.7), lineWidth: 1.5 * hairline)
+            }
             if editing {
                 TextField("", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -679,6 +900,7 @@ private struct CanvasItemView: View {
                         commit()
                         return .handled
                     }
+                    .multilineTextAlignment(item.shape == .plain ? .leading : .center)
                     .onAppear { focused = true }
                     // Losing focus is "clicking away", which commits by the same
                     // rule as Return. Both are somebody saying they are done;
@@ -687,10 +909,15 @@ private struct CanvasItemView: View {
             } else {
                 Text(item.text)
                     .font(.system(size: 12))
+                    .multilineTextAlignment(item.shape == .plain ? .leading : .center)
                     .fixedSize(horizontal: false, vertical: true)
+                    // Room to breathe inside a shape, and none around a bare
+                    // label — a label with padding is a label that does not
+                    // start where it looks like it starts.
+                    .padding(item.shape == .plain ? 0 : 10)
             }
         }
-        .frame(width: item.w, height: item.h, alignment: .topLeading)
+        .frame(width: item.w, height: item.h, alignment: item.shape == .plain ? .topLeading : .center)
         // The whole box answers the pointer, not just the letters. A label with
         // one short word in a wide box would otherwise be nearly unhittable, and
         // "touching an item highlights it" would be a lie most of the time.
@@ -803,6 +1030,11 @@ struct CanvasSurface: View {
 
     @State private var tool: CanvasTool?
     @State private var toolPoint: CGPoint?
+    /// What the text tool will place next. Kept on the surface rather than in
+    /// the model: it is a state of the tool strip, not a fact about the canvas,
+    /// and a canvas reopened tomorrow should not still be armed with a triangle.
+    @State private var shape: CanvasShape = .plain
+    @State private var shapeMenuOpen = false
 
     /// The item being moved, and where it started. Same reasoning as `panAtStart`.
     @State private var movingId: UUID?
@@ -852,7 +1084,7 @@ struct CanvasSurface: View {
                 // The ghost. Drawn over everything, because a tool being carried
                 // is not on the canvas yet and should not look as though it is.
                 if let tool, let at = toolPoint {
-                    Image(systemName: tool.symbol)
+                    Image(systemName: tool == .text ? shape.symbol : tool.symbol)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(Theme.accent)
                         .padding(6)
@@ -893,6 +1125,8 @@ struct CanvasSurface: View {
             .overlay(alignment: .trailing) {
                 CanvasToolStrip(
                     dragging: $tool,
+                    shape: $shape,
+                    menuOpen: $shapeMenuOpen,
                     track: { _, at in toolPoint = local(at, geo) },
                     drop: { which, at in
                         let here = local(at, geo)
@@ -902,7 +1136,7 @@ struct CanvasSurface: View {
                             // Ignore a drop that never left the strip: that is a
                             // click on a tool, and a click has nowhere to put one.
                             guard here.x < geo.size.width - 60 else { return }
-                            model.addText(at: canvasPoint(here, in: geo.size))
+                            model.addText(at: canvasPoint(here, in: geo.size), shape: shape)
                         }
                     }
                 )
@@ -1113,6 +1347,10 @@ struct CanvasSurface: View {
                         model.commitEdit()
                         model.selected = nil
                         model.selectedLink = hitLink(at: value.location, in: size)
+                        // A click anywhere else closes it, which is what a menu
+                        // does and what somebody who opened it by accident will
+                        // try first.
+                        shapeMenuOpen = false
                     }
                     panAtStart = nil
                     pressing = false

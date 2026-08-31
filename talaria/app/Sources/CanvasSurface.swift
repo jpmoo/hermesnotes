@@ -1671,7 +1671,12 @@ private struct CanvasToolStrip: View {
              tool and should not be reachable by the slip of the hand that
              reaches for one.
              */
-            Divider().padding(.horizontal, 8).padding(.top, 2)
+            // Width given, not inherited. A `Divider` in a `VStack` takes all
+            // the width there is, and this stack is in an overlay on the whole
+            // canvas — so it stretched the strip from edge to edge and centred
+            // every tool in it. The one greedy view in a column of fixed ones
+            // decides the column.
+            Divider().frame(width: 40).padding(.top, 2)
             Button {
                 clearStep = clearStep >= 2 ? 0 : clearStep + 1
                 if clearStep == 0 { clear() }

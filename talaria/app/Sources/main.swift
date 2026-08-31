@@ -124,6 +124,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// What the menu bar and the Dock are covering, so the content can clear
     /// them while the frost still reaches the edges of the screen.
     private let deskInsets = DeskInsets()
+    /**
+     What is on the canvas.
+
+     Held here for the same reason the chrome is: the desk's surfaces are built
+     once and hidden rather than destroyed, so a model owned by the view would
+     be rebuilt on every ⌥⇧T and the canvas would come back empty.
+
+     It knows nothing about Hermes and is not connected to it. The canvas is
+     being built as though it were a different application — which is what makes
+     fitting it onto the format afterwards an honest test of the format rather
+     than a formality.
+     */
+    let canvasModel = CanvasModel()
+
     /// Which surface the desk is showing, and how it is drawn. Outside the view
     /// so the swipe monitor can push into it, and so the grid and transparency
     /// settings survive the panel being hidden.
@@ -578,6 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             workspaces: workspacesModel,
             compose: composeModel,
             glance: glanceModel,
+            canvas: canvasModel,
             onPickWorkspace: { [weak self] name in
                 // Leave first, then go. Going somewhere is leaving here — but
                 // the order matters more than it looks.

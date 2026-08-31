@@ -292,11 +292,20 @@ enum CanvasTool: String, CaseIterable, Identifiable {
  motion that says what.
  */
 private struct CanvasToolStrip: View {
-    /// Which tool is being dragged, and where the pointer is, in the surface's
-    /// own coordinates. Held by the surface because the ghost is drawn there —
-    /// over the canvas, which this strip is not.
+    /// Which tool is being dragged. The *where* is reported in screen
+    /// coordinates and converted by the surface.
+    ///
+    /// Global rather than a named space, which is what the first version used
+    /// and why the first version did not work. `.coordinateSpace(name:)` was
+    /// applied to the canvas and this strip is an overlay *on* the canvas, so
+    /// the name did not resolve from in here — and an unresolved name does not
+    /// fail, it quietly falls back to the gesture view's own space. That view is
+    /// a 44-point button, so every drop reported a point a few tens of points
+    /// from its own top-left corner, which converted to very nearly the same
+    /// spot on the canvas every time. Hence: dropped in the corner, wherever you
+    /// let go. Screen coordinates cannot be misresolved.
     @Binding var dragging: CanvasTool?
-    @Binding var dragPoint: CGPoint?
+    let track: (CanvasTool, CGPoint) -> Void
     let drop: (CanvasTool, CGPoint) -> Void
 
     var body: some View {
@@ -317,14 +326,13 @@ private struct CanvasToolStrip: View {
                 )
                 .help(tool.hint)
                 .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .named(CanvasSurface.space))
+                    DragGesture(minimumDistance: 0, coordinateSpace: .global)
                         .onChanged { value in
                             dragging = tool
-                            dragPoint = value.location
+                            track(tool, value.location)
                         }
                         .onEnded { value in
                             dragging = nil
-                            dragPoint = nil
                             drop(tool, value.location)
                         }
                 )
@@ -542,23 +550,60 @@ struct CanvasSurface: View {
                         .allowsHitTesting(false)
                 }
 
-                CursorArea(cursor: cursor).allowsHitTesting(false)
+                CursorArea(cursor: cursor)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .coordinateSpace(name: Self.space)
-            .overlay(alignment: .trailing) {
-                CanvasToolStrip(dragging: $tool, dragPoint: $toolPoint) { which, at in
-                    switch which {
-                    case .text:
-                        // Ignore a drop that never left the strip: that is a
-                        // click on a tool, and a click has nowhere to put one.
-                        guard at.x < geo.size.width - 60 else { return }
-                        model.addText(at: canvasPoint(at, in: geo.size))
-                    }
+            // Every pointer move over the surface, whatever it is over —
+            // an item, the background, the ghost. Two jobs: it is the anchor a
+            // pinch zooms about, and it is where the cursor is re-asserted.
+            //
+            // Re-asserted because `NSCursor.set()` does not stick. AppKit
+            // resets the cursor to the arrow whenever the pointer crosses a
+            // tracking area, and a SwiftUI view hierarchy is full of them —
+            // every `.help`, every button, every text field. A cursor set once
+            // when the view appears is a cursor that survives until the first
+            // time the pointer moves across anything, which is immediately.
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let point):
+                    hover = point
+                    // Not over the tool strip, which is chrome and keeps the
+                    // arrow — a hand over a row of buttons says they can be
+                    // grabbed and dragged about, and they cannot.
+                    if point.x < geo.size.width - 60 { cursor.set() }
+                // Off the surface entirely. The last known point would be an
+                // edge, and zooming about an edge with the pointer somewhere
+                // else is worse than zooming about the middle. The cursor is
+                // left alone: it belongs to whatever the pointer is over now.
+                case .ended: hover = nil
+                @unknown default: hover = nil
                 }
+            }
+            .overlay(alignment: .trailing) {
+                CanvasToolStrip(
+                    dragging: $tool,
+                    track: { _, at in toolPoint = local(at, geo) },
+                    drop: { which, at in
+                        let here = local(at, geo)
+                        toolPoint = nil
+                        switch which {
+                        case .text:
+                            // Ignore a drop that never left the strip: that is a
+                            // click on a tool, and a click has nowhere to put one.
+                            guard here.x < geo.size.width - 60 else { return }
+                            model.addText(at: canvasPoint(here, in: geo.size))
+                        }
+                    }
+                )
                 .padding(.trailing, 10)
             }
         }
+    }
+
+    /// A point on the screen, as a point in this surface.
+    private func local(_ global: CGPoint, _ geo: GeometryProxy) -> CGPoint {
+        let frame = geo.frame(in: .global)
+        return CGPoint(x: global.x - frame.minX, y: global.y - frame.minY)
     }
 
     // MARK: Coordinates
@@ -580,16 +625,6 @@ struct CanvasSurface: View {
             Color.clear
         }
         .contentShape(Rectangle())
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let point): hover = point
-            // Off the canvas entirely. The last known point would be an edge,
-            // and zooming about an edge with the pointer somewhere else is
-            // worse than zooming about the middle.
-            case .ended: hover = nil
-            @unknown default: hover = nil
-            }
-        }
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
@@ -600,6 +635,15 @@ struct CanvasSurface: View {
                     if abs(value.translation.width) > 3 || abs(value.translation.height) > 3 {
                         dragging = true
                     }
+                    // A button going down is not a pointer moving, so the hover
+                    // above will not have run. Without this the hand does not
+                    // close until the drag has already travelled a few points.
+                    //
+                    // Named outright rather than read back off `cursor`, which
+                    // is computed from state written one line ago — that reads
+                    // correctly today and is the kind of thing that stops
+                    // reading correctly for reasons nobody can see.
+                    (dragging ? NSCursor.closedHand : NSCursor.pointingHand).set()
                     guard dragging else { return }
                     let base = panAtStart ?? chrome.pan
                     if panAtStart == nil { panAtStart = base }
@@ -618,6 +662,9 @@ struct CanvasSurface: View {
                     panAtStart = nil
                     pressing = false
                     dragging = false
+                    // Back to the open hand, for the same reason: letting go is
+                    // not a move either.
+                    NSCursor.openHand.set()
                 }
         )
         .simultaneousGesture(

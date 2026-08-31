@@ -612,6 +612,8 @@ struct DeskView: View {
     /// Open the New Block window seeded with these words, and hand back the id
     /// of whatever it made.
     var onCompose: (String, @escaping (String) -> Void) -> Void
+    /// Put the desk away — for an action that sends somebody out of it.
+    var onLeave: () -> Void
     var onPickWorkspace: (String) -> Void
 
     private static let gap: CGFloat = 14
@@ -644,7 +646,7 @@ struct DeskView: View {
                         // surface is the one thing that knows where all of that
                         // is — which is what lets the pointer become a finger
                         // over every part of it and stay a hand over the rest.
-                        CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose)
+                        CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose, onLeave: onLeave)
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                 }

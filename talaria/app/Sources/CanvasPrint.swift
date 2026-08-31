@@ -77,11 +77,18 @@ struct CanvasPrint: View {
 
             ZStack(alignment: .topLeading) {
                 ForEach(regions) { region in regionView(region) }
+                // Framed, and drawing in page coordinates rather than canvas
+                // ones. A `Canvas` has no size of its own inside a stack of
+                // positioned things — it took whatever the stack worked out and
+                // drew the lines somewhere outside it, so the export came out
+                // with every box and no connection between any of them.
                 connections
+                    .frame(width: bounds.width, height: bounds.height)
+                    .offset(x: bounds.minX, y: bounds.minY)
                 ForEach(items) { item in itemView(item) }
             }
-            // Everything is drawn in canvas coordinates; this is what puts the
-            // top-left of the drawing at the top-left of the page.
+            // Everything else is drawn in canvas coordinates; this is what puts
+            // the top-left of the drawing at the top-left of the page.
             .offset(x: -bounds.minX, y: -bounds.minY)
         }
         .frame(width: bounds.width, height: bounds.height)
@@ -121,6 +128,10 @@ struct CanvasPrint: View {
     /// Every line, in one canvas. The same geometry the surface draws, at 1:1.
     private var connections: some View {
         Canvas { context, _ in
+            // Its own origin is the top-left of the page, and the geometry
+            // below is in canvas coordinates — so everything is shifted once,
+            // here, rather than by an offset the canvas would not inherit.
+            context.translateBy(x: -bounds.minX, y: -bounds.minY)
             for link in links {
                 guard link.width > 0,
                       let a = rect(of: link.from), let b = rect(of: link.to) else { continue }
@@ -225,12 +236,10 @@ enum CanvasRender {
         var wrote = false
         renderer.render { _, draw in
             context.beginPDFPage(nil)
-            // The renderer draws with the origin at the bottom left, as
-            // Quartz does; the canvas thinks in screen coordinates, with y
-            // downward. Flipping here rather than in the view keeps every
-            // coordinate in this file the same as every coordinate on screen.
-            context.translateBy(x: 0, y: size.height)
-            context.scaleBy(x: 1, y: -1)
+            // No flip. `render` hands over a closure that already puts the view
+            // the right way up in whatever context it is given — flipping first
+            // turned every glyph upside down and back to front, which is what a
+            // second flip looks like when the first one was already done for you.
             draw(context)
             context.endPDFPage()
             wrote = true

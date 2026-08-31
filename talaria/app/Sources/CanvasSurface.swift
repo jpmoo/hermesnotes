@@ -2387,6 +2387,8 @@ struct CanvasSurface: View {
     /// what a composer is, and this keeps the one place it touches Hermes down
     /// to a closure somebody else supplies.
     var onCompose: (String, @escaping (String) -> Void) -> Void = { _, _ in }
+    /// Put the desk away, for the one action that sends somebody somewhere else.
+    var onLeave: () -> Void = {}
 
     /// A name for this view's coordinate space, so a drag that starts on the
     /// tool strip can report where it ended in canvas terms.
@@ -2521,6 +2523,30 @@ struct CanvasSurface: View {
      unclickable.
      */
     private var buttonScale: CGFloat { min(max(chrome.zoom, 0.5), 2) }
+
+    /**
+     Where one of a node's buttons sits, counting back from the corner.
+
+     Every distance here is multiplied by the same scale, which is the whole
+     point: the buttons grew with the zoom while the gaps between them did not,
+     because the offset from the corner was scaled and the base was not. They
+     drifted together as you zoomed in and apart as you zoomed out, which reads
+     as the row being loose rather than as a deliberate size.
+
+     `slot` counts outward from the corner — 0 is the one nearest it, which is
+     delete, because the dangerous one goes furthest from where the others are
+     reached from.
+     */
+    private func buttonAt(_ corner: CGPoint, slot: Int, asking: Bool) -> CGPoint {
+        let unit = 17 * buttonScale
+        // Asking widens the delete button into a word, and everything to its
+        // left has to move over by the difference rather than by a guess.
+        let widened = asking ? 13 * buttonScale : 0
+        return CGPoint(
+            x: corner.x + 9 * buttonScale + widened - CGFloat(slot) * (unit + widened / 2),
+            y: corner.y - 9 * buttonScale
+        )
+    }
 
     private var cursor: NSCursor {
         if tool != nil || armed == .select { return .crosshair }
@@ -2820,8 +2846,18 @@ struct CanvasSurface: View {
         }
     }
 
+    /// Going to Hermes means leaving here.
+    ///
+    /// The desk is an overlay over whatever somebody was doing, and opening a
+    /// block behind it would put the page they asked for underneath the thing
+    /// they asked from. So the overlay goes first, and the browser arrives on an
+    /// empty screen rather than beneath one.
     private func open(_ block: Daemon.LinkedBlock) {
-        guard let url = block.url.flatMap(URL.init(string:)) else { return }
+        guard let url = block.url.flatMap(URL.init(string:)) else {
+            trouble = "That block has no address yet"
+            return
+        }
+        onLeave()
         Opener.open(url)
     }
 
@@ -3100,11 +3136,21 @@ struct CanvasSurface: View {
                 onCompose(words) { id in model.attach(item.id, to: id) }
             }
         } label: {
-            WingMark(size: 9 * buttonScale)
-                .frame(width: 13 * buttonScale, height: 13 * buttonScale)
+            WingMark(size: 10 * buttonScale)
+                .frame(width: 15 * buttonScale, height: 15 * buttonScale)
                 .contentShape(Rectangle())
-                .foregroundStyle(.white)
-                .background(Circle().fill(item.blockId == nil ? Color.secondary : Theme.accent))
+                // Black on white, unlike the others, which are a white glyph on
+                // a coloured disc. This one is a mark rather than a symbol —
+                // it says whose it is — and a mark tinted to match a button is a
+                // mark somebody has drawn over.
+                .foregroundStyle(.black)
+                .background(
+                    Circle().fill(.white)
+                        .overlay(Circle().strokeBorder(
+                            item.blockId == nil ? Color.secondary.opacity(0.5) : Theme.accent,
+                            lineWidth: 1.5 * buttonScale
+                        ))
+                )
         }
         .buttonStyle(.plain)
         .help(item.blockId == nil ? "Make this a block in Hermes Notes" : "Open in Hermes Notes")
@@ -3157,10 +3203,10 @@ struct CanvasSurface: View {
         // thing one of them would remove. Info to the left of delete, so the
         // dangerous one is furthest out and the other is not in the way of it.
         if item.image == nil {
-            toHermes.position(x: corner.x + (asking ? 4 : 9) - 34 * buttonScale, y: corner.y - 9)
+            toHermes.position(buttonAt(corner, slot: 2, asking: asking))
         }
-        info.position(x: corner.x + (asking ? 4 : 9) - 17 * buttonScale, y: corner.y - 9)
-        remove.position(x: corner.x + (asking ? 22 * buttonScale : 9), y: corner.y - 9)
+        info.position(buttonAt(corner, slot: 1, asking: asking))
+        remove.position(buttonAt(corner, slot: 0, asking: asking))
     }
 
     /// Save the canvas to a file, or replace it with one.
@@ -3432,7 +3478,7 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help("Appearance")
         .chrome($overChrome)
-        .position(x: corner.x + (asking ? 4 : 9) - 34, y: corner.y - 9)
+        .position(buttonAt(corner, slot: 2, asking: asking))
 
         // The discoverable half of "put things in a box". ⌘-dropping does the
         // same thing faster once somebody knows about it; this is how they find
@@ -3451,7 +3497,7 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help(addingTo == region.id ? "Click things to add or remove them" : "Add things to this region")
         .chrome($overChrome)
-        .position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
+        .position(buttonAt(corner, slot: 1, asking: asking))
 
         Button {
             if asking {
@@ -3480,7 +3526,7 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help(asking ? "Click again — the things inside stay" : "Remove this region")
         .chrome($overChrome)
-        .position(x: corner.x + (asking ? 34 : 9), y: corner.y - 9)
+        .position(buttonAt(corner, slot: 0, asking: asking))
     }
 
     /// The midpoint grip, and the one button that undoes a line.

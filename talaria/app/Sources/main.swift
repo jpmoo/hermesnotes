@@ -612,6 +612,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             glance: glanceModel,
             canvas: canvasModel,
             onCompose: { [weak self] seed, made in self?.compose(seed: seed, then: made) },
+            onLeave: { [weak self] in self?.hideDesk() },
             onPickWorkspace: { [weak self] name in
                 // Leave first, then go. Going somewhere is leaving here — but
                 // the order matters more than it looks.

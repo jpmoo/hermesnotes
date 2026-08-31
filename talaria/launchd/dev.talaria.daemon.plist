@@ -27,11 +27,20 @@
     was broken and nothing said so; it simply spawned a process every twenty
     seconds forever.
 
-    SuccessfulExit: false is the distinction that was missing. A crash still
-    comes back, which is the case this exists for — a mirror quietly not running
-    is the failure this whole layer avoids. A clean exit is somebody or
-    something having finished, including the hand-off above and including a
-    person quitting the app, and starting it again is overruling them.
+    SuccessfulExit: false is the distinction that was missing. A clean exit is
+    something having finished — the hand-off above, or a person quitting the app
+    — and starting it again is overruling them.
+
+    Be clear about what this job therefore is, because it is easy to read it as
+    more: it *starts* Talaria at login and it does not supervise it. The process
+    launchd spawns hands off and exits within a second, so from then on launchd
+    has nothing to watch and a crash does not bring the app back. That was
+    equally true under the unconditional setting — the retries were not
+    supervision, they were the hand-off being attempted again every twenty
+    seconds — so nothing was given up here. Real supervision would mean pointing
+    the job at node and the daemon script directly, which is the trade the
+    ProgramArguments note above declines for the sake of Login Items and
+    Spotlight having a bundle to name.
 
     The cost is that a genuinely bad config respawns forever. ThrottleInterval
     holds that to once a minute rather than once every ten seconds, so the log

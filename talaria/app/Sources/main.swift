@@ -659,6 +659,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Read the world before covering it up, the same order every panel here
         // uses: what Glance is about is whatever this is about to sit on top of.
+        NSLog("talaria: desk opening on \(deskChrome.surface.name)")
         Focused.forgetCopied()
         composeModel.load(seed: Focused.selection(allowCopy: true))
         scratchpadModel.load()
@@ -756,6 +757,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Which surface you were on survives this; the strip does not. See
         // `DeskChrome.closed`.
         deskChrome.closed()
+        NSLog("talaria: desk hidden on \(deskChrome.surface.name)")
         if let deskScroll { NSEvent.removeMonitor(deskScroll) }
         deskScroll = nil
         deskSwipeAccumulated = 0
@@ -811,11 +813,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onHide: @escaping @MainActor () -> Void
     ) {
         stopWatchingForDismissal(panel)
+        /**
+         A modal is a conversation this panel started.
+
+         Opening a file panel from the desk hid the desk: the panel is a window
+         of its own, so the first click in it looked exactly like a click
+         somewhere else. The picture then arrived on a canvas nobody could see,
+         and getting back to it meant the hotkey and a swipe.
+
+         `NSApp.modalWindow` is set for as long as `runModal` is running, which
+         covers the file panel and every other modal without either of them
+         having to know this code exists. Erring toward staying, like the menu
+         case below: a panel that fails to dismiss costs a keystroke, and one
+         that vanishes mid-interaction takes the interaction with it.
+         */
+        let modalUp = { NSApp.modalWindow != nil }
         let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
+            guard !modalUp() else { return }
             Task { @MainActor in onHide() }
         }
         let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) {
             event in
+            if modalUp() { return event }
             if event.type == .keyDown {
                 // 53 is Escape. Swallowed, so it does not also reach whatever is
                 // behind — dismissing a panel should not cancel a dialog too.

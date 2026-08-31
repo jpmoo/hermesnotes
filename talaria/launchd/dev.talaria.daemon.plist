@@ -15,10 +15,23 @@
     The bundle's executable picks the absolute node itself. There are three node
     installs on this Mac and PATH decides between them, and PATH is exactly what
     a LaunchAgent does not reliably get.
-  - KeepAlive is unconditional: whatever stops the daemon, it comes back. A
-    mirror that is quietly not running is the failure this whole layer exists to
-    avoid, and launchd cannot tell "someone stopped it on purpose" from "it was
-    stopped for you" — it only sees zero or non-zero.
+  - KeepAlive restarts a crash and not a clean exit, which is not the same as
+    unconditional and had to stop being unconditional.
+
+    A GUI app bundle spawned straight by launchd does not stay the process
+    launchd spawned. macOS re-registers it through LaunchServices, the original
+    exits 0, and with an unconditional KeepAlive launchd starts another one
+    twenty seconds later — which does the same thing. It ran 689 times in two
+    days, 551 of them in a single morning, each leaving one line in the log
+    saying it had stepped aside because an instance was already running. Nothing
+    was broken and nothing said so; it simply spawned a process every twenty
+    seconds forever.
+
+    SuccessfulExit: false is the distinction that was missing. A crash still
+    comes back, which is the case this exists for — a mirror quietly not running
+    is the failure this whole layer avoids. A clean exit is somebody or
+    something having finished, including the hand-off above and including a
+    person quitting the app, and starting it again is overruling them.
 
     The cost is that a genuinely bad config respawns forever. ThrottleInterval
     holds that to once a minute rather than once every ten seconds, so the log
@@ -45,7 +58,10 @@
   <true/>
 
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
 
   <!--
     Seconds between respawns. The default of 10 turns a bad config into six

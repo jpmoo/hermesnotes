@@ -110,7 +110,7 @@ xcrun swiftc \
   -target arm64-apple-macos14.0 \
   -framework AppKit -framework WebKit -framework CoreSpotlight -framework UniformTypeIdentifiers -framework ApplicationServices \
   -o "$APP/Contents/MacOS/Talaria" \
-  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Theme.swift" "$HERE/Sources/HermesWindow.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/MirrorWatch.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AgendaView.swift" "$HERE/Sources/GlanceView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/ComposeView.swift" "$HERE/Sources/DeskView.swift" "$HERE/Sources/CanvasSurface.swift" "$HERE/Sources/CanvasSnap.swift" "$HERE/Sources/CanvasStyle.swift" "$HERE/Sources/CanvasText.swift" "$HERE/Sources/Settings.swift" "$HERE/Sources/SettingsView.swift" "$HERE/Sources/main.swift"
+  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Theme.swift" "$HERE/Sources/HermesWindow.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/MirrorWatch.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AgendaView.swift" "$HERE/Sources/GlanceView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/ComposeView.swift" "$HERE/Sources/DeskView.swift" "$HERE/Sources/CanvasSurface.swift" "$HERE/Sources/CanvasSnap.swift" "$HERE/Sources/CanvasStyle.swift" "$HERE/Sources/CanvasText.swift" "$HERE/Sources/CanvasPrint.swift" "$HERE/Sources/Settings.swift" "$HERE/Sources/SettingsView.swift" "$HERE/Sources/main.swift"
 
 # A second, tiny binary rather than a function in the app.
 #

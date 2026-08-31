@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - What is on the canvas
 
@@ -1171,6 +1172,10 @@ final class CanvasModel: ObservableObject {
      */
     func fitToText(_ id: UUID, text: String) {
         guard let at = items.firstIndex(where: { $0.id == id }), items[at].shape == .plain else { return }
+        // A box that has been made smaller than its own words is scrolling on
+        // purpose, and growing it back would undo the resize on the next
+        // keystroke. Only a box that is currently keeping up keeps up.
+        let keepingUp = items[at].h >= CanvasItem.leastHeight(of: items[at].text, at: items[at].w)
         // Sideways first, up to the point where a line stops being a line. Past
         // that it wraps and the box grows downward instead — a label eight
         // hundred points wide is a paragraph pretending to be one, and it also
@@ -1179,7 +1184,9 @@ final class CanvasModel: ObservableObject {
         items[at].w = max(items[at].w, min(natural, CanvasItem.widestAuto))
         // Then down, at whatever width it ended up with. A line break makes this
         // the only thing that moves, which is what a line break should do.
-        items[at].h = max(items[at].h, CanvasItem.leastHeight(of: text, at: items[at].w))
+        if keepingUp {
+            items[at].h = max(items[at].h, CanvasItem.leastHeight(of: text, at: items[at].w))
+        }
     }
 
     func move(_ id: UUID, to origin: CGPoint) {
@@ -1197,15 +1204,11 @@ final class CanvasModel: ObservableObject {
         var box = rect
         box.size.width = max(box.size.width, Self.minimumSize.width)
         box.size.height = max(box.size.height, Self.minimumSize.height)
-        // Bigger, freely. Smaller, only down to what the words need at the width
-        // it now has — and narrowing a box reflows its text taller, so the floor
-        // moves while the drag is happening rather than being a fixed number.
-        if items[at].shape == .plain {
-            box.size.height = max(
-                box.size.height,
-                CanvasItem.leastHeight(of: items[at].text, at: box.size.width)
-            )
-        }
+        // No floor from the text any more. A box may be made smaller than what it
+        // says, and what it says then scrolls — which is the only way to have a
+        // long note on a canvas without the note being the size of the note.
+        // The general minimum still applies, so nothing can be shrunk to a size
+        // it cannot be grabbed by again.
         items[at].rect = box
     }
 
@@ -1494,6 +1497,42 @@ enum CanvasTool: String, CaseIterable, Identifiable {
  on palette tools since before most of the alternatives were invented, and it
  costs six points of a button nobody was using.
  */
+/**
+ The Hermes mark, from the bundle.
+
+ The same artwork as the menu bar's, which is not a shortcut: the wing *is* the
+ Hermes Notes mark now — the web app was changed to it — and Talaria wears it
+ because Talaria is a way into Hermes. One file, one mark, no second copy to
+ fall out of step.
+
+ A template image, so it takes the colour it is given rather than arriving black
+ on a coloured button.
+ */
+struct WingMark: View {
+    var size: CGFloat = 11
+
+    private static let image: NSImage? = {
+        guard let found = NSImage(contentsOfFile: Bundle.main.bundlePath + "/Contents/Resources/MenuBar.pdf")
+        else { return nil }
+        found.isTemplate = true
+        return found
+    }()
+
+    var body: some View {
+        if let image = Self.image {
+            Image(nsImage: image)
+                .resizable()
+                .renderingMode(.template)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        } else {
+            // No bundle resource — a checkout whose icon step has not run.
+            Image(systemName: "arrow.up.forward.square")
+                .font(.system(size: size * 0.8, weight: .bold))
+        }
+    }
+}
+
 private struct SubmenuCorner: View {
     var body: some View {
         Path { p in
@@ -1657,19 +1696,40 @@ enum ImagePicker {
 enum CanvasFile: String, CaseIterable, Identifiable {
     case save
     case load
+    case png
+    case pdf
 
     var id: String { rawValue }
-    var name: String { self == .save ? "Save…" : "Load…" }
-    var symbol: String { self == .save ? "square.and.arrow.down" : "square.and.arrow.up" }
+
+    var name: String {
+        switch self {
+        case .save: return "Save…"
+        case .load: return "Load…"
+        case .png: return "Export PNG…"
+        case .pdf: return "Export PDF…"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .save: return "square.and.arrow.down"
+        case .load: return "square.and.arrow.up"
+        case .png: return "photo"
+        case .pdf: return "doc.richtext"
+        }
+    }
+
+    /// Whether it replaces the canvas, and therefore has to ask.
+    var destroys: Bool { self == .load }
 }
 
 enum CanvasFiles {
     /// Where to write it. Nil when the panel was dismissed, which is a decision
     /// and not a failure.
-    static func destination() -> URL? {
+    static func destination(_ kind: UTType, named: String) -> URL? {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "Canvas.json"
+        panel.allowedContentTypes = [kind]
+        panel.nameFieldStringValue = named
         panel.prompt = "Save"
         return panel.runModal() == .OK ? panel.url : nil
     }
@@ -1681,6 +1741,15 @@ enum CanvasFiles {
         panel.allowedContentTypes = [.json]
         panel.prompt = "Load"
         return panel.runModal() == .OK ? panel.url : nil
+    }
+
+    static func write(_ data: Data, to url: URL) -> String? {
+        do {
+            try data.write(to: url, options: .atomic)
+            return nil
+        } catch {
+            return "That could not be written"
+        }
     }
 
     static func write(_ export: CanvasExport, to url: URL) -> String? {
@@ -1730,7 +1799,7 @@ private struct FileMenu: View {
                     // file panel, because the question is about losing what is
                     // here and not about which file. Saving takes nothing away
                     // and asks nothing.
-                    if entry == .load, !asking {
+                    if entry.destroys, !asking {
                         confirming = .load
                     } else {
                         confirming = nil
@@ -2137,6 +2206,12 @@ private struct CanvasItemView: View {
                 // Rendered, not raw: the markers are what somebody typed and
                 // the emphasis is what they meant. Links are live, which is the
                 // one thing on this canvas that leaves it.
+                //
+                // In a scroll view, because a box may be smaller than what it
+                // says. Two fingers move the words; a click and drag still moves
+                // the node, because a scroll view answers scrolls and leaves
+                // drags to whatever is underneath.
+                ScrollView(.vertical, showsIndicators: false) {
                 Text(CanvasText.attributed(item.text))
                     .font(.system(size: 12))
                     .multilineTextAlignment(item.hAlign.swiftUI)
@@ -2148,7 +2223,10 @@ private struct CanvasItemView: View {
                     // start where it looks like it starts.
                     .padding(item.shape == .plain ? 0 : 10)
                     // Room for the mark, only when there is one.
-                    .padding(.leading, badge == nil ? 0 : 16 / zoom)
+                    .padding(.leading, badge == nil ? 0 : 16)
+                    .frame(maxWidth: .infinity, alignment: item.hAlign.frame)
+                }
+                .scrollDisabled(item.image != nil)
             }
         }
         .frame(width: item.w, height: item.h, alignment: combined(item.hAlign, item.vAlign))
@@ -2172,8 +2250,8 @@ private struct CanvasItemView: View {
         .overlay(alignment: .topLeading) {
             if let badge {
                 badgeView(badge)
-                    .padding(.leading, (item.shape == .plain ? 1 : 6) / zoom)
-                    .padding(.top, (item.shape == .plain ? 1 : 6) / zoom)
+                    .padding(.leading, item.shape == .plain ? 1 : 6)
+                    .padding(.top, item.shape == .plain ? 1 : 6)
             }
         }
         .overlay {
@@ -2229,11 +2307,11 @@ private struct CanvasItemView: View {
             Image(systemName: badge.missing
                     ? "questionmark.circle"
                     : (badge.done.map { $0 ? "checkmark.circle.fill" : "circle" } ?? badge.symbol))
-                .font(.system(size: 11 / zoom, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(badge.missing
                                  ? Color.secondary
                                  : (badge.done == true ? Theme.accent : Color.secondary))
-                .frame(width: 14 / zoom, height: 14 / zoom)
+                .frame(width: 14, height: 14)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -2427,6 +2505,23 @@ struct CanvasSurface: View {
 
     /// Open over the canvas, pointing the instant a button goes down, closed
     /// once that press starts pulling the canvas about.
+    /**
+     How big a node's own buttons are drawn.
+
+     They follow the zoom rather than staying a fixed size on the glass, which
+     is the opposite of the rule the guides and outlines follow — and it is what
+     was asked for. A guide is a measuring instrument and wants to be the same
+     thickness always; a button belongs to the thing it is attached to, and one
+     that stayed put while its node grew to fill the screen would look like it
+     had come loose.
+
+     Clamped, because "follows the zoom" taken literally means a two-point
+     target at 0.15x and a button the size of a saucer at 6x. Between a half and
+     twice, which keeps it recognisably attached without ever making it
+     unclickable.
+     */
+    private var buttonScale: CGFloat { min(max(chrome.zoom, 0.5), 2) }
+
     private var cursor: NSCursor {
         if tool != nil || armed == .select { return .crosshair }
         // Pulling something — the canvas itself, or one thing on it.
@@ -2986,31 +3081,41 @@ struct CanvasSurface: View {
         // feature with a different shape. Not on something already linked
         // either — the link is the thing this makes, and making it twice makes
         // two blocks from one node.
+        // One button, two jobs, and which one it is doing is a fact about the
+        // node rather than a mode. Before there is a block it makes one; after
+        // there is, it goes to it — because a node that had become a block had
+        // nothing left that would open it, the badge having become a checkbox.
+        let linkedBlock = item.blockId.flatMap { linked[$0] }
         let toHermes = Button {
-            let words = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !words.isEmpty else {
-                trouble = "Write something in it first"
-                return
+            if let block = linkedBlock {
+                open(block)
+            } else if item.blockId != nil {
+                trouble = "That block is not in the mirror yet"
+            } else {
+                let words = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !words.isEmpty else {
+                    trouble = "Write something in it first"
+                    return
+                }
+                onCompose(words) { id in model.attach(item.id, to: id) }
             }
-            onCompose(words) { id in model.attach(item.id, to: id) }
         } label: {
-            Image(systemName: "arrow.up.forward.square")
-                .font(.system(size: 8, weight: .bold))
-                .frame(width: 13, height: 13)
+            WingMark(size: 9 * buttonScale)
+                .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 .contentShape(Rectangle())
                 .foregroundStyle(.white)
-                .background(Circle().fill(Theme.accent))
+                .background(Circle().fill(item.blockId == nil ? Color.secondary : Theme.accent))
         }
         .buttonStyle(.plain)
-        .help("Make this a block in Hermes Notes")
+        .help(item.blockId == nil ? "Make this a block in Hermes Notes" : "Open in Hermes Notes")
         .chrome($overChrome)
 
         let info = Button {
             inspecting = inspecting == item.id ? nil : item.id
         } label: {
             Image(systemName: "info")
-                .font(.system(size: 8, weight: .bold))
-                .frame(width: 13, height: 13)
+                .font(.system(size: 8 * buttonScale, weight: .bold))
+                .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 .contentShape(Rectangle())
                 .foregroundStyle(.white)
                 .background(Circle().fill(inspecting == item.id ? Theme.accent : Color.secondary))
@@ -3031,13 +3136,13 @@ struct CanvasSurface: View {
             Group {
                 if asking {
                     Text("Sure?")
-                        .font(Theme.chrome(10, weight: .semibold))
-                        .padding(.horizontal, 7)
-                        .frame(height: 16)
+                        .font(Theme.chrome(10 * buttonScale, weight: .semibold))
+                        .padding(.horizontal, 7 * buttonScale)
+                        .frame(height: 16 * buttonScale)
                 } else {
                     Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .frame(width: 13, height: 13)
+                        .font(.system(size: 7 * buttonScale, weight: .bold))
+                        .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 }
             }
             .contentShape(Rectangle())
@@ -3051,19 +3156,41 @@ struct CanvasSurface: View {
         // Both just outside the top-right corner, where they are not over the
         // thing one of them would remove. Info to the left of delete, so the
         // dangerous one is furthest out and the other is not in the way of it.
-        if item.image == nil, item.blockId == nil {
-            toHermes.position(x: corner.x + (asking ? 4 : 9) - 34, y: corner.y - 9)
+        if item.image == nil {
+            toHermes.position(x: corner.x + (asking ? 4 : 9) - 34 * buttonScale, y: corner.y - 9)
         }
-        info.position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
-        remove.position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
+        info.position(x: corner.x + (asking ? 4 : 9) - 17 * buttonScale, y: corner.y - 9)
+        remove.position(x: corner.x + (asking ? 22 * buttonScale : 9), y: corner.y - 9)
     }
 
     /// Save the canvas to a file, or replace it with one.
     private func handleFile(_ entry: CanvasFile) {
         switch entry {
         case .save:
-            guard let url = CanvasFiles.destination() else { return }
+            guard let url = CanvasFiles.destination(.json, named: "Canvas.json") else { return }
             if let bad = CanvasFiles.write(model.export(), to: url) { trouble = bad }
+        case .png, .pdf:
+            // The whole canvas, not the part of it anybody happens to be looking
+            // at. An export is the thing itself rather than a screenshot of a
+            // viewport, so it is drawn at one to one from the extent of
+            // everything on it.
+            guard let extent = CanvasPrint.extent(items: model.items, regions: model.regions) else {
+                trouble = "There is nothing on this canvas yet"
+                return
+            }
+            let page = CanvasPrint(
+                items: model.items, links: model.links, regions: model.regions,
+                pictures: pictures, bounds: extent
+            )
+            let png = entry == .png
+            guard let url = CanvasFiles.destination(png ? .png : .pdf,
+                                                    named: png ? "Canvas.png" : "Canvas.pdf") else { return }
+            let data = png ? CanvasRender.png(page) : CanvasRender.pdf(page, size: extent.size)
+            guard let data else {
+                trouble = "That canvas could not be drawn"
+                return
+            }
+            if let bad = CanvasFiles.write(data, to: url) { trouble = bad }
         case .load:
             guard let url = CanvasFiles.source() else { return }
             let read = CanvasFiles.read(url)
@@ -3296,8 +3423,8 @@ struct CanvasSurface: View {
             inspecting = inspecting == region.id ? nil : region.id
         } label: {
             Image(systemName: "info")
-                .font(.system(size: 8, weight: .bold))
-                .frame(width: 13, height: 13)
+                .font(.system(size: 8 * buttonScale, weight: .bold))
+                .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 .contentShape(Rectangle())
                 .foregroundStyle(.white)
                 .background(Circle().fill(inspecting == region.id ? Theme.accent : Color.secondary))
@@ -3315,8 +3442,8 @@ struct CanvasSurface: View {
             addingTo = addingTo == region.id ? nil : region.id
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 8, weight: .bold))
-                .frame(width: 13, height: 13)
+                .font(.system(size: 8 * buttonScale, weight: .bold))
+                .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 .contentShape(Rectangle())
                 .foregroundStyle(.white)
                 .background(Circle().fill(addingTo == region.id ? Theme.accent : Color.secondary))
@@ -3342,8 +3469,8 @@ struct CanvasSurface: View {
                         .padding(.horizontal, 7).frame(height: 16)
                 } else {
                     Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .frame(width: 13, height: 13)
+                        .font(.system(size: 7 * buttonScale, weight: .bold))
+                        .frame(width: 13 * buttonScale, height: 13 * buttonScale)
                 }
             }
             .contentShape(Rectangle())

@@ -44,7 +44,7 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .plain: return "textformat"
         case .rectangle: return "square"
-        case .roundedRectangle: return "square.dashed"
+        case .roundedRectangle: return "app"
         case .triangle: return "triangle"
         case .ellipse: return "circle"
         }
@@ -60,9 +60,10 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// A bare label wants to be wide and short; a shape wants room inside it.
+    /// A shape wants room inside it. A bare label has no size of its own — see
+    /// `CanvasItem.measure`, which gives it the size of what it says.
     var defaultSize: CGSize {
-        self == .plain ? CGSize(width: 180, height: 24) : CGSize(width: 130, height: 90)
+        self == .plain ? CanvasItem.measure("") : CGSize(width: 130, height: 90)
     }
 
     /// The outline, in a box.
@@ -107,6 +108,36 @@ struct CanvasItem: Identifiable, Equatable, Codable {
             w = newValue.width
             h = newValue.height
         }
+    }
+
+    /**
+     How big a bare label is: exactly as big as what it says.
+
+     A text item has no size anybody chose — it is words on a canvas, and a box
+     around them that is bigger or smaller than they are is a box that shows.
+     So the size is measured from the text rather than stored as an intention,
+     and it is kept in step as the words are typed rather than only at the end,
+     because a caret that runs out of its own box while somebody is still
+     writing in it is worse than a box that grows.
+
+     Measured with the same font it is drawn in. A number worked out from a
+     character count would drift on every letter that is not an average one.
+
+     The minimum is a caret's worth of room. An item with nothing in it yet is
+     about to have something in it, and a zero-width box has nowhere to put the
+     cursor.
+     */
+    static func measure(_ text: String) -> CGSize {
+        let font = NSFont.systemFont(ofSize: 12)
+        let lines = text.isEmpty ? [""] : text.components(separatedBy: .newlines)
+        let widest = lines
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        let lineHeight = font.ascender - font.descender + font.leading
+        return CGSize(
+            width: max(widest.rounded(.up) + 4, 24),
+            height: max((lineHeight * CGFloat(lines.count)).rounded(.up) + 2, 18)
+        )
     }
 
     init(id: UUID, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, text: String, shape: CanvasShape = .plain) {
@@ -328,6 +359,12 @@ final class CanvasModel: ObservableObject {
         // meaning anything again.
         let present = Set(document.items.map(\.id))
         links = document.links.filter { present.contains($0.from) && present.contains($0.to) }
+        // A canvas written before labels sized themselves has boxes that do not
+        // match their words. Brought into line on the way in rather than left to
+        // be noticed as a stray gap beside somebody's text.
+        for item in items where item.shape == .plain {
+            fitToText(item.id, text: item.text)
+        }
     }
 
     private func persist() { store.save(CanvasDocument(items: items, links: links)) }
@@ -444,8 +481,23 @@ final class CanvasModel: ObservableObject {
         if let at = items.firstIndex(where: { $0.id == id }) {
             items[at].text = draft
         }
+        fitToText(id, text: draft)
         draft = ""
         persist()
+    }
+
+    /**
+     Keep a bare label the size of what it says.
+
+     Called as the words change rather than only when they are committed, and it
+     grows about the item's own top-left rather than its centre — text that
+     shuffled sideways under the caret with every letter would be unusable.
+     */
+    func fitToText(_ id: UUID, text: String) {
+        guard let at = items.firstIndex(where: { $0.id == id }), items[at].shape == .plain else { return }
+        let size = CanvasItem.measure(text)
+        items[at].w = size.width
+        items[at].h = size.height
     }
 
     func move(_ id: UUID, to origin: CGPoint) {
@@ -779,8 +831,14 @@ private struct CanvasToolStrip: View {
                         .font(.system(size: 15, weight: .medium))
                     Text(tool == .text ? shape.name : tool.name)
                         .font(Theme.chrome(9, weight: .medium))
+                        // "Triangle" is the longest word this will ever hold and
+                        // it decides the width. The scale factor is for the one
+                        // after that, so a new shape name cannot silently
+                        // truncate itself.
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
-                .frame(width: 44, height: 40)
+                .frame(width: 56, height: 40)
                 .overlay(alignment: .bottomLeading) {
                     if tool == .text { SubmenuCorner() }
                 }
@@ -862,6 +920,8 @@ private struct CanvasItemView: View {
     let dropTarget: Bool
     @Binding var draft: String
     let commit: () -> Void
+    /// Told the words; decides the box. Only a bare label has one.
+    let fit: (String) -> Void
 
     @FocusState private var focused: Bool
 
@@ -875,7 +935,7 @@ private struct CanvasItemView: View {
     private var handle: CGFloat { 7 / zoom }
 
     var body: some View {
-        ZStack(alignment: item.shape == .plain ? .topLeading : .center) {
+        ZStack(alignment: .center) {
             // The outline. A stroke and nothing else — no fill, because the
             // rule this canvas started from is that text has no background, and
             // a shape is a line round the outside rather than permission to
@@ -900,8 +960,12 @@ private struct CanvasItemView: View {
                         commit()
                         return .handled
                     }
-                    .multilineTextAlignment(item.shape == .plain ? .leading : .center)
+                    .multilineTextAlignment(.center)
                     .onAppear { focused = true }
+                    // The box follows the words as they are written, not only
+                    // when they are finished — a caret that runs out of its own
+                    // box mid-sentence is the thing this is for.
+                    .onChange(of: draft) { now in fit(now) }
                     // Losing focus is "clicking away", which commits by the same
                     // rule as Return. Both are somebody saying they are done;
                     // neither is somebody saying to throw it away.
@@ -909,7 +973,7 @@ private struct CanvasItemView: View {
             } else {
                 Text(item.text)
                     .font(.system(size: 12))
-                    .multilineTextAlignment(item.shape == .plain ? .leading : .center)
+                    .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     // Room to breathe inside a shape, and none around a bare
                     // label — a label with padding is a label that does not
@@ -917,7 +981,7 @@ private struct CanvasItemView: View {
                     .padding(item.shape == .plain ? 0 : 10)
             }
         }
-        .frame(width: item.w, height: item.h, alignment: item.shape == .plain ? .topLeading : .center)
+        .frame(width: item.w, height: item.h, alignment: .center)
         // The whole box answers the pointer, not just the letters. A label with
         // one short word in a wide box would otherwise be nearly unhittable, and
         // "touching an item highlights it" would be a lie most of the time.
@@ -1017,6 +1081,10 @@ struct CanvasSurface: View {
     /// A name for this view's coordinate space, so a drag that starts on the
     /// tool strip can report where it ended in canvas terms.
     static let space = "talaria.canvas"
+    /// How much of the right-hand edge the tools occupy. One number, because a
+    /// drop test and a cursor test that disagree about where the strip is will
+    /// disagree in a thin stripe nobody thinks to look at.
+    static let stripWidth: CGFloat = 76
 
     /// Where the pan was when the current drag began. A drag reports its total
     /// translation, not an increment, so without this every frame re-applies
@@ -1027,6 +1095,10 @@ struct CanvasSurface: View {
     @State private var dragging = false
     /// Where the pointer is, for zooming about it rather than about the middle.
     @State private var hover: CGPoint?
+    /// A line under the pointer. Lines are strokes in a `Canvas` and have no
+    /// view to hover, so this is worked out from the same hit test the click
+    /// uses — one rule for what counts as being on a line, not two.
+    @State private var hoveredLink: UUID?
 
     @State private var tool: CanvasTool?
     @State private var toolPoint: CGPoint?
@@ -1036,6 +1108,10 @@ struct CanvasSurface: View {
     @State private var shape: CanvasShape = .plain
     @State private var shapeMenuOpen = false
 
+    /// The last click on an item, for telling a second one from a first.
+    /// The system's own double-click interval, so this agrees with everything
+    /// else the person's machine does.
+    @State private var lastClick: (id: UUID, at: Date)?
     /// The item being moved, and where it started. Same reasoning as `panAtStart`.
     @State private var movingId: UUID?
     @State private var moveOrigin: CGPoint?
@@ -1054,7 +1130,7 @@ struct CanvasSurface: View {
         // Over a thing, or pressed on the canvas. Both are "this click will do
         // something to what is under you", which is what a pointing finger has
         // always meant.
-        if pressing || model.hovered != nil { return .pointingHand }
+        if pressing || model.hovered != nil || hoveredLink != nil { return .pointingHand }
         return .openHand
     }
 
@@ -1110,16 +1186,21 @@ struct CanvasSurface: View {
                 switch phase {
                 case .active(let point):
                     hover = point
+                    hoveredLink = hitLink(at: point, in: geo.size)
                     // Not over the tool strip, which is chrome and keeps the
                     // arrow — a hand over a row of buttons says they can be
                     // grabbed and dragged about, and they cannot.
-                    if point.x < geo.size.width - 60 { cursor.set() }
+                    if point.x < geo.size.width - Self.stripWidth { cursor.set() }
                 // Off the surface entirely. The last known point would be an
                 // edge, and zooming about an edge with the pointer somewhere
                 // else is worse than zooming about the middle. The cursor is
                 // left alone: it belongs to whatever the pointer is over now.
-                case .ended: hover = nil
-                @unknown default: hover = nil
+                case .ended:
+                    hover = nil
+                    hoveredLink = nil
+                @unknown default:
+                    hover = nil
+                    hoveredLink = nil
                 }
             }
             .overlay(alignment: .trailing) {
@@ -1135,7 +1216,7 @@ struct CanvasSurface: View {
                         case .text:
                             // Ignore a drop that never left the strip: that is a
                             // click on a tool, and a click has nowhere to put one.
-                            guard here.x < geo.size.width - 60 else { return }
+                            guard here.x < geo.size.width - Self.stripWidth else { return }
                             model.addText(at: canvasPoint(here, in: geo.size), shape: shape)
                         }
                     }
@@ -1219,8 +1300,9 @@ struct CanvasSurface: View {
                 let end = screenPoint(g.end, in: size)
                 let control = screenPoint(g.control, in: size)
                 let chosen = model.selectedLink == link.id
-                let colour: Color = chosen ? Theme.accent : .primary.opacity(0.55)
-                let width: CGFloat = chosen ? 2 : 1.5
+                let under = hoveredLink == link.id
+                let colour: Color = chosen ? Theme.accent : .primary.opacity(under ? 0.85 : 0.55)
+                let width: CGFloat = chosen ? 2 : (under ? 2 : 1.5)
 
                 var path = Path()
                 path.move(to: start)
@@ -1402,7 +1484,8 @@ struct CanvasSurface: View {
             editing: editing,
             dropTarget: linkTarget == item.id,
             draft: $model.draft,
-            commit: { model.commitEdit() }
+            commit: { model.commitEdit() },
+            fit: { model.fitToText(item.id, text: $0) }
         )
         .onHover { inside in
             if inside { model.hovered = item.id }
@@ -1462,30 +1545,43 @@ struct CanvasSurface: View {
                     } else if moved {
                         model.settled()
                     } else if !editing {
-                        // A press that went nowhere is a click, and a click
-                        // selects. Anything being typed into elsewhere is
-                        // finished first — clicking on another item is clicking
-                        // away from this one.
+                        /*
+                         A press that went nowhere is a click. Whether it is the
+                         *second* one is decided here rather than by a separate
+                         tap gesture, which is how it was and why it did nothing.
+
+                         A `TapGesture(count: 2)` alongside a drag that starts at
+                         zero distance does fire — and then the same press ends
+                         the drag, which committed the edit that had just begun.
+                         Entering an edit and leaving it in one click looks
+                         exactly like nothing happening. Two gestures cannot be
+                         made to agree about one press, so there is one gesture
+                         and it counts.
+                         */
+                        let now = Date()
+                        let again = lastClick.map {
+                            $0.id == item.id && now.timeIntervalSince($0.at) < NSEvent.doubleClickInterval
+                        } ?? false
+                        lastClick = (item.id, now)
                         model.commitEdit()
-                        model.selected = item.id
+                        if again {
+                            lastClick = nil
+                            model.beginEditing(item.id)
+                        } else {
+                            model.selected = item.id
+                        }
                     }
                     movingId = nil
                     moveOrigin = nil
                     linkTarget = nil
                 }
         )
-        // Two clicks to edit something already written. Not something anybody
-        // asked for and not something anybody has to be told: it is what a
-        // double click means everywhere else, and without it a typo is a
-        // deletion and a retype.
-        //
-        // `simultaneousGesture`, because the drag above starts at zero distance
-        // and a plain `onTapGesture` loses every race with it — the tap is
-        // recognised only if the drag never claims the sequence, and a drag
-        // that begins on the first press always does.
-        .simultaneousGesture(TapGesture(count: 2).onEnded { model.beginEditing(item.id) })
+
         .overlay {
-            if selected { handles(item) }
+            // No grips on a bare label: its size is its words, and a handle
+            // that fights the thing computing the size is a control that does
+            // not work rather than a control that does something else.
+            if selected, item.shape != .plain { handles(item) }
         }
         .frame(width: item.w, height: item.h)
         .offset(x: item.x + item.w / 2, y: item.y + item.h / 2)

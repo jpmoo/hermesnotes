@@ -396,38 +396,37 @@ struct LinkGeometry {
     /// Where the handle is, and where the curve actually passes.
     let handle: CGPoint
 
+    /// The middle of each of a box's four sides. The only four places a line
+    /// is ever allowed to touch a box.
+    static func sideCentres(_ r: CGRect) -> [CGPoint] {
+        [
+            CGPoint(x: r.midX, y: r.minY),
+            CGPoint(x: r.midX, y: r.maxY),
+            CGPoint(x: r.minX, y: r.midY),
+            CGPoint(x: r.maxX, y: r.midY),
+        ]
+    }
+
     /**
-     The middle of whichever side faces `p`.
+     Whichever side centre is nearest.
 
-     Compared on the axis that dominates *relative to the box's own
-     proportions*, not on plain distance to the four side-centres. Plain
-     distance is the obvious reading of "closest edge" and it gives the wrong
-     answer on exactly the case this feature is for: pull the handle high above
-     two boxes sitting side by side, and the east side-centre is still nearer to
-     it than the north one is — so the line would leave sideways out of a curve
-     going straight up. Worse on a wide flat box, where the north and south
-     centres sit close together in the middle and win from almost anywhere.
+     Plain distance between the four centres and the point the line is heading
+     for — the side is chosen by where its middle is, and nothing else about the
+     side is considered.
 
-     Dividing each component by the box's own width and height asks the question
-     that was meant: which way is this line actually heading, given the shape of
-     the thing it is leaving. It also does not flicker — a small nudge of the
-     handle moves the curve without flipping which edges it uses, and a line
-     whose ends jump between sides while you drag is unusable.
-
-     This is the same rule Hermes' canvas uses to pick a side, which is not a
-     coincidence worth spending: when these lines are eventually written through
-     the format they carry a side each, and two tools that disagree about which
-     side a line leaves will redraw each other's diagrams on every exchange.
+     Worth knowing what this does at the edges, because it is not the rule most
+     canvas tools use. On a box much wider than it is tall, the north and south
+     centres sit close together near the middle and the east and west ones are
+     far out to the sides, so a handle pulled a long way up and moderately to
+     the right can still be nearer the east centre than the north one — and the
+     line leaves sideways out of a curve heading upwards. That is the rule doing
+     exactly what it says; it is only surprising if you expected the line to
+     follow the direction of travel rather than the geometry.
      */
-    private static func facingSide(of r: CGRect, toward p: CGPoint) -> CGPoint {
-        let dx = p.x - r.midX
-        let dy = p.y - r.midY
-        let w = max(r.width, 0.0001)
-        let h = max(r.height, 0.0001)
-        if abs(dx) / w > abs(dy) / h {
-            return CGPoint(x: dx > 0 ? r.maxX : r.minX, y: r.midY)
-        }
-        return CGPoint(x: r.midX, y: dy > 0 ? r.maxY : r.minY)
+    private static func nearestSide(of r: CGRect, to p: CGPoint) -> CGPoint {
+        sideCentres(r).min { a, b in
+            hypot(a.x - p.x, a.y - p.y) < hypot(b.x - p.x, b.y - p.y)
+        } ?? CGPoint(x: r.midX, y: r.midY)
     }
 
     static func of(from: CGRect, to: CGRect, bend: CGSize) -> LinkGeometry {
@@ -435,8 +434,8 @@ struct LinkGeometry {
             x: (from.midX + to.midX) / 2 + bend.width,
             y: (from.midY + to.midY) / 2 + bend.height
         )
-        let a = facingSide(of: from, toward: midCentres)
-        let b = facingSide(of: to, toward: midCentres)
+        let a = nearestSide(of: from, to: midCentres)
+        let b = nearestSide(of: to, to: midCentres)
         // Solved so that the curve passes through `midCentres` at its halfway
         // point. With no bend this lands exactly on the straight line between
         // the anchors, so a straight line stays straight.

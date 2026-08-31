@@ -169,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var deskHotkey: Hotkey?
     private var settingsWindow: NSPanel?
     private var composeWindow: NSPanel?
+    /// When this launch happened, so a reopen can be told from a Dock click.
+    private var launchedAt = Date.distantPast
     private var composeHotkey: Hotkey?
     /// Watches for a click anywhere else while a summoned panel is open.
     /// Keyed by panel, because two can be up at once and closing one must not
@@ -231,6 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
 
         installStatusItem()
+        launchedAt = Date()
         HermesWindow.installMainMenu()
 
         // A panel is a way of getting somewhere. Once you have gone, it has
@@ -285,20 +288,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// A click on the Dock icon, or a launch of an app already running.
-    ///
-    /// This used to open the Hermes Notes window, on the reasoning that an
-    /// accessory app with no windows activates to nothing and a pinned icon
-    /// would bounce once and appear broken. That was true when the browser
-    /// window was the app. It is not the app now — the menu bar has the wing in
-    /// it and the surfaces people use arrive under hotkeys — so opening a
-    /// full-size web view because something sent a reopen is a window nobody
-    /// asked for, and `open -a` sends one every time the app is started while
-    /// already running.
-    ///
-    /// Nothing, then. The menu bar item is the way to the browser window.
+    /**
+     A click on the Dock icon opens Hermes Notes. A restart does not.
+
+     Those are the same message. `applicationShouldHandleReopen` is what a Dock
+     click sends, and it is also what `open -a` sends at an app that happens to
+     be running already — which is every rebuild, every `talaria://` link, and
+     anything else that asks for the app by name. Opening a full-size web view
+     on all of those is a window nobody asked for, which is why this did nothing
+     at all for a while.
+
+     Doing nothing was too blunt: clicking a Dock icon and having no window
+     appear is an app that looks broken. What tells the two apart is *when*. A
+     reopen that arrives in the first moments of a launch is the launch itself
+     being reported; one that arrives later is a person who clicked something.
+     A person cannot click before the app is on screen, so the window is short
+     and nothing real is lost inside it.
+
+     `hasVisibleWindows` is the other half. Something is already up — the desk,
+     Glance, the composer — so the click means "come to the front", which macOS
+     does by itself. Adding a browser window on top of a surface somebody is
+     using is not what they asked for by clicking an icon.
+     */
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        NSLog("talaria: reopen (visible windows: \(flag))")
+        let age = Date().timeIntervalSince(launchedAt)
+        NSLog("talaria: reopen (visible windows: \(flag), \(String(format: "%.1f", age))s after launch)")
+        guard !flag, age > 3 else { return true }
+        HermesWindow.shared.show()
         return true
     }
 

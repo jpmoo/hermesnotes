@@ -98,6 +98,21 @@ struct CanvasItem: Identifiable, Equatable, Codable {
     /// Absent in a file written before shapes existed, which reads as `plain` —
     /// which is what everything in such a file is.
     var shape: CanvasShape = .plain
+
+    // Everything below is style, and every one of them has a default that is
+    // what the canvas already looked like. A file written before any of this
+    // existed decodes to exactly the canvas somebody left.
+    var hAlign: TextAlign = .center
+    var vAlign: TextVAlign = .middle
+    /// Hex, or nothing for "whatever the theme's text colour is". Nothing is not
+    /// the same as black: this canvas is drawn over a frost that follows the
+    /// system appearance, and a stored black would be invisible in the dark.
+    var textColor: String?
+    /// Shapes only. The one place this canvas paints behind anything.
+    var fill: String?
+    var stroke: String?
+    var strokeWidth: CGFloat = 1.5
+    var strokeStyle: LineStyle = .solid
     /**
      The picture this item shows, by the name the store keeps it under.
 
@@ -201,6 +216,13 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         text = try c.decode(String.self, forKey: .text)
         shape = try c.decodeIfPresent(CanvasShape.self, forKey: .shape) ?? .plain
         image = try c.decodeIfPresent(String.self, forKey: .image)
+        hAlign = try c.decodeIfPresent(TextAlign.self, forKey: .hAlign) ?? .center
+        vAlign = try c.decodeIfPresent(TextVAlign.self, forKey: .vAlign) ?? .middle
+        textColor = try c.decodeIfPresent(String.self, forKey: .textColor)
+        fill = try c.decodeIfPresent(String.self, forKey: .fill)
+        stroke = try c.decodeIfPresent(String.self, forKey: .stroke)
+        strokeWidth = try c.decodeIfPresent(CGFloat.self, forKey: .strokeWidth) ?? 1.5
+        strokeStyle = try c.decodeIfPresent(LineStyle.self, forKey: .strokeStyle) ?? .solid
     }
 }
 
@@ -231,10 +253,34 @@ struct CanvasLink: Identifiable, Equatable, Codable {
     /// Straight when zero.
     var bendX: CGFloat = 0
     var bendY: CGFloat = 0
+    var color: String?
+    var width: CGFloat = 1.5
+    var style: LineStyle = .solid
 
     var bend: CGSize {
         get { CGSize(width: bendX, height: bendY) }
         set { bendX = newValue.width; bendY = newValue.height }
+    }
+
+    init(id: UUID, from: UUID, to: UUID) {
+        self.id = id
+        self.from = from
+        self.to = to
+    }
+
+    /// By hand, for the same reason `CanvasItem` is: the synthesised decoder
+    /// demands every non-optional key whether or not it has a default, so a
+    /// field added here would make every canvas written before it unreadable.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        from = try c.decode(UUID.self, forKey: .from)
+        to = try c.decode(UUID.self, forKey: .to)
+        bendX = try c.decodeIfPresent(CGFloat.self, forKey: .bendX) ?? 0
+        bendY = try c.decodeIfPresent(CGFloat.self, forKey: .bendY) ?? 0
+        color = try c.decodeIfPresent(String.self, forKey: .color)
+        width = try c.decodeIfPresent(CGFloat.self, forKey: .width) ?? 1.5
+        style = try c.decodeIfPresent(LineStyle.self, forKey: .style) ?? .solid
     }
 }
 
@@ -499,6 +545,51 @@ final class CanvasModel: ObservableObject {
             links[at].to = to
         } else {
             links.append(CanvasLink(id: UUID(), from: from, to: to))
+        }
+        persist()
+    }
+
+    /**
+     Change how one item looks.
+
+     One entry point for every style change, so each of them is saved the same
+     way and none of them is the one somebody forgot to persist. The closure
+     shape means the inspector can bind straight to a field without the model
+     needing a setter for each.
+     */
+    func restyle(_ id: UUID, _ change: (inout CanvasItem) -> Void) {
+        guard let at = items.firstIndex(where: { $0.id == id }) else { return }
+        change(&items[at])
+        persist()
+    }
+
+    func restyleLink(_ id: UUID, _ change: (inout CanvasLink) -> Void) {
+        guard let at = links.firstIndex(where: { $0.id == id }) else { return }
+        change(&links[at])
+        persist()
+    }
+
+    /**
+     Turn one thing into another shape.
+
+     Not just a field: a bare label is the size of its words and a shape is the
+     size somebody dragged, so becoming one from the other has to bring a size
+     with it. Growing into a shape takes the default; shrinking back to a label
+     takes the measurement, because a 130x90 box round the word "yes" is not a
+     label, it is a label sitting in the corner of nothing.
+     */
+    func setShape(_ id: UUID, _ shape: CanvasShape) {
+        guard let at = items.firstIndex(where: { $0.id == id }), items[at].shape != shape else { return }
+        let was = items[at].shape
+        items[at].shape = shape
+        if was == .plain, shape != .plain {
+            let size = shape.defaultSize
+            items[at].w = max(items[at].w, size.width)
+            items[at].h = max(items[at].h, size.height)
+        } else if shape == .plain {
+            let size = CanvasItem.measure(items[at].text)
+            items[at].w = size.width
+            items[at].h = size.height
         }
         persist()
     }
@@ -1301,15 +1392,37 @@ private struct CanvasItemView: View {
     private var handle: CGFloat { 7 / zoom }
 
     var body: some View {
-        ZStack(alignment: .center) {
+        ZStack(alignment: combined(item.hAlign, item.vAlign)) {
             // The outline. A stroke and nothing else — no fill, because the
             // rule this canvas started from is that text has no background, and
             // a shape is a line round the outside rather than permission to
             // paint behind the words.
             if item.shape != .plain, item.image == nil {
-                item.shape
-                    .path(in: CGRect(x: 0, y: 0, width: item.w, height: item.h).insetBy(dx: hairline, dy: hairline))
-                    .stroke(Color.primary.opacity(0.7), lineWidth: 1.5 * hairline)
+                let box = CGRect(x: 0, y: 0, width: item.w, height: item.h)
+                let weight = item.strokeWidth * hairline
+                let inset = max(weight / 2, hairline)
+                // Fill first, then the outline over it, so a thick border is
+                // not half-covered by the thing it is drawn around.
+                if let fill = Hex.color(item.fill) {
+                    item.shape.path(in: box).fill(fill)
+                }
+                if item.strokeWidth > 0 {
+                    let colour = Hex.color(item.stroke) ?? Color.primary.opacity(0.7)
+                    item.shape.path(in: box.insetBy(dx: inset, dy: inset))
+                        .stroke(colour, style: StrokeStyle(
+                            lineWidth: weight,
+                            dash: item.strokeStyle.dash(weight).map { $0 * hairline / max(hairline, 1) }
+                        ))
+                    // A double line is two lines. Drawn as a second, tighter
+                    // copy of the same path rather than as one thick stroke with
+                    // a gap knocked out of it — there is nothing behind this to
+                    // knock a gap through to, since the canvas is see-through.
+                    if item.strokeStyle == .double {
+                        let gap = max(weight * 2, 3 * hairline)
+                        item.shape.path(in: box.insetBy(dx: inset + gap, dy: inset + gap))
+                            .stroke(colour, lineWidth: weight)
+                    }
+                }
             }
             if let picture {
                 Image(nsImage: picture)
@@ -1335,7 +1448,8 @@ private struct CanvasItemView: View {
                         commit()
                         return .handled
                     }
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(item.hAlign.swiftUI)
+                    .foregroundStyle(Hex.color(item.textColor) ?? .primary)
                     .onAppear { focused = true }
                     // The box follows the words as they are written, not only
                     // when they are finished — a caret that runs out of its own
@@ -1348,7 +1462,8 @@ private struct CanvasItemView: View {
             } else {
                 Text(item.text)
                     .font(.system(size: 12))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(item.hAlign.swiftUI)
+                    .foregroundStyle(Hex.color(item.textColor) ?? .primary)
                     .fixedSize(horizontal: false, vertical: true)
                     // Room to breathe inside a shape, and none around a bare
                     // label — a label with padding is a label that does not
@@ -1356,7 +1471,7 @@ private struct CanvasItemView: View {
                     .padding(item.shape == .plain ? 0 : 10)
             }
         }
-        .frame(width: item.w, height: item.h, alignment: .center)
+        .frame(width: item.w, height: item.h, alignment: combined(item.hAlign, item.vAlign))
         // The whole box answers the pointer, not just the letters. A label with
         // one short word in a wide box would otherwise be nearly unhittable, and
         // "touching an item highlights it" would be a lie most of the time.
@@ -1490,6 +1605,10 @@ struct CanvasSurface: View {
     @State private var overChrome = 0
     /// The item whose delete has been asked for but not yet confirmed.
     @State private var confirmingDelete: UUID?
+    /// Which thing's inspector is open, if any. One at a time, and tied to the
+    /// selection: an inspector for something that is no longer selected is a
+    /// panel editing a thing nobody can see.
+    @State private var inspecting: UUID?
     /// What is currently lining up, drawn while the drag lasts and gone the
     /// moment it ends. A guide that outlives its gesture is a line on the canvas
     /// nobody drew.
@@ -1641,8 +1760,14 @@ struct CanvasSurface: View {
                 CanvasControls(chrome: chrome).chrome($overChrome).padding(14)
             }
             .onAppear { loadPictures() }
-            .onChange(of: model.selected) { _ in forgetChrome() }
-            .onChange(of: model.selectedLink) { _ in forgetChrome() }
+            .onChange(of: model.selected) { now in
+                forgetChrome()
+                if inspecting != nil, inspecting != now, model.selectedLink != inspecting { inspecting = nil }
+            }
+            .onChange(of: model.selectedLink) { now in
+                forgetChrome()
+                if inspecting != nil, inspecting != now, model.selected != inspecting { inspecting = nil }
+            }
             .onChange(of: openMenu) { _ in forgetChrome() }
             // Keyed on which items have pictures, not on the items themselves —
             // otherwise every drag of anything would reload every picture.
@@ -1796,16 +1921,41 @@ struct CanvasSurface: View {
                 let chosen = model.selectedLink == link.id
                 let under = hoveredLink == link.id
                 let held = straightened && model.selectedLink == link.id
+                let own = Hex.color(link.color)
                 let colour: Color = held
                     ? Theme.snapGuide
-                    : (chosen ? Theme.accent : .primary.opacity(under ? 0.85 : 0.55))
-                let width: CGFloat = chosen ? 2 : (under ? 2 : 1.5)
+                    : (chosen ? Theme.accent : (own ?? .primary.opacity(under ? 0.85 : 0.55)))
+                // Somebody's own weight is theirs. The selected and hovered
+                // states thicken a line that has not been given one rather than
+                // overriding one that has.
+                let width: CGFloat = link.width > 0
+                    ? link.width
+                    : (chosen || under ? 2 : 0)
+                guard width > 0 || link.width == 0 else { continue }
 
                 var path = Path()
                 path.move(to: start)
                 path.addQuadCurve(to: end, control: control)
-                context.stroke(path, with: .color(colour), lineWidth: width)
+                if link.width > 0 {
+                    context.stroke(path, with: .color(colour), style: StrokeStyle(
+                        lineWidth: width, dash: link.style.dash(width)
+                    ))
+                    if link.style == .double {
+                        // The same curve, shifted across its own direction.
+                        let gap = max(width * 1.6, 2.5)
+                        let d = g.arrival
+                        let side = CGVector(dx: -d.dy * gap, dy: d.dx * gap)
+                        var twin = Path()
+                        twin.move(to: CGPoint(x: start.x + side.dx, y: start.y + side.dy))
+                        twin.addQuadCurve(
+                            to: CGPoint(x: end.x + side.dx, y: end.y + side.dy),
+                            control: CGPoint(x: control.x + side.dx, y: control.y + side.dy)
+                        )
+                        context.stroke(twin, with: .color(colour), lineWidth: width)
+                    }
+                }
 
+                guard link.width > 0 else { continue }
                 // The head, at the end that was dropped on. Drawn as a filled
                 // triangle rather than two strokes so it stays solid at any
                 // angle instead of showing a notch at the point.
@@ -1870,10 +2020,31 @@ struct CanvasSurface: View {
     private func itemDelete(_ item: CanvasItem, in size: CGSize) -> some View {
         let corner = screenPoint(CGPoint(x: item.x + item.w, y: item.y), in: size)
         let asking = confirmingDelete == item.id
-        Button {
+        let info = Button {
+            inspecting = inspecting == item.id ? nil : item.id
+        } label: {
+            Image(systemName: "info")
+                .font(.system(size: 8, weight: .bold))
+                .frame(width: 13, height: 13)
+                .contentShape(Rectangle())
+                .foregroundStyle(.white)
+                .background(Circle().fill(inspecting == item.id ? Theme.accent : Color.secondary))
+        }
+        .buttonStyle(.plain)
+        .help("Appearance")
+        .chrome($overChrome)
+        .popover(isPresented: Binding(
+            get: { inspecting == item.id },
+            set: { if !$0 { inspecting = nil } }
+        ), arrowEdge: .trailing) {
+            CanvasInspector(model: model, item: model.item(item.id) ?? item, link: nil)
+        }
+
+        let remove = Button {
             if asking {
                 model.delete(item.id)
                 confirmingDelete = nil
+                inspecting = nil
             } else {
                 confirmingDelete = item.id
             }
@@ -1897,9 +2068,12 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help(asking ? "Click again to delete" : "Delete this")
         .chrome($overChrome)
-        // Just outside the top-right corner, where it is not over the thing it
-        // would remove.
-        .position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
+
+        // Both just outside the top-right corner, where they are not over the
+        // thing one of them would remove. Info to the left of delete, so the
+        // dangerous one is furthest out and the other is not in the way of it.
+        info.position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
+        remove.position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
     }
 
     /// The midpoint grip, and the one button that undoes a line.
@@ -1938,6 +2112,31 @@ struct CanvasSurface: View {
                             model.settled()
                         }
                 )
+
+            Button {
+                inspecting = inspecting == link.id ? nil : link.id
+            } label: {
+                Image(systemName: "info")
+                    .font(.system(size: 8, weight: .bold))
+                    .frame(width: 13, height: 13)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(.white)
+                    .background(Circle().fill(inspecting == link.id ? Theme.accent : Color.secondary))
+            }
+            .buttonStyle(.plain)
+            .help("Appearance")
+            .chrome($overChrome)
+            .popover(isPresented: Binding(
+                get: { inspecting == link.id },
+                set: { if !$0 { inspecting = nil } }
+            ), arrowEdge: .trailing) {
+                CanvasInspector(
+                    model: model,
+                    item: nil,
+                    link: model.links.first { $0.id == link.id } ?? link
+                )
+            }
+            .position(x: at.x - 1, y: at.y - 14)
 
             // A line drawn by accident has to be undoable, and a keyboard is not
             // where somebody's hand is at that moment. Offset far enough from

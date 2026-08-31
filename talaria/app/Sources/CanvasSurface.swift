@@ -789,6 +789,27 @@ final class CanvasModel: ObservableObject {
         persist()
     }
 
+    /// In, or out. The only way to take one thing out of a region without
+    /// deleting it, which nothing else offers.
+    func toggle(region id: UUID, item: UUID) {
+        guard let at = regions.firstIndex(where: { $0.id == id }) else { return }
+        if let member = regions[at].members.firstIndex(of: item) {
+            // Never down to nothing. A region holding no members has no box and
+            // would vanish mid-gesture, taking the mode with it — so the last
+            // one stays, and the way to be rid of a region is the button that
+            // says so.
+            guard regions[at].members.count > 1 else { return }
+            regions[at].members.remove(at: member)
+        } else {
+            regions[at].members.append(item)
+        }
+        persist()
+    }
+
+    func isMember(_ item: UUID, of region: UUID) -> Bool {
+        regions.first { $0.id == region }?.members.contains(item) ?? false
+    }
+
     /// Everything in a region, moved together.
     func moveRegion(_ id: UUID, by delta: CGSize) {
         guard let region = regions.first(where: { $0.id == id }) else { return }
@@ -1722,6 +1743,9 @@ private struct CanvasItemView: View {
     let editing: Bool
     /// Letting go now would draw a line to this one.
     let dropTarget: Bool
+    /// While a region is taking members: whether this is one. Nothing at all
+    /// when no region is asking, so the ordinary canvas is unmarked.
+    let inRegion: Bool?
     /// Already decoded. Loading a picture inside the body would re-read it on
     /// every frame of a drag, which is a file read per frame for as long as
     /// somebody is moving it.
@@ -1813,6 +1837,17 @@ private struct CanvasItemView: View {
             }
         }
         .frame(width: item.w, height: item.h, alignment: combined(item.hAlign, item.vAlign))
+        // A little lift, so the things on the canvas read as being *on* it.
+        //
+        // Scaled by the zoom, like every other piece of geometry here: a shadow
+        // that stayed four points while the canvas went to 6x would be a hairline
+        // under a large card and a bruise under a small one.
+        //
+        // Regions get none, deliberately. They are the ground rather than
+        // something resting on it, and a shadow under a region would put it at
+        // the same height as the things it contains — which is exactly the
+        // relationship the shadow exists to say something about.
+        .shadow(color: .black.opacity(0.18), radius: 3 / zoom, x: 0, y: 1.5 / zoom)
         // The whole box answers the pointer, not just the letters. A label with
         // one short word in a wide box would otherwise be nearly unhittable, and
         // "touching an item highlights it" would be a lie most of the time.
@@ -1821,7 +1856,21 @@ private struct CanvasItemView: View {
             // Hover is the faintest thing that can be seen; selection is
             // definite. They are the same rectangle at two strengths rather than
             // two different marks, because they are two stages of one idea.
-            if dropTarget {
+            if let inRegion {
+                // The mode has to be visible on the things it is about, not
+                // only on the button that turned it on. Filled for members,
+                // outlined for everything else, so one glance says what is in.
+                RoundedRectangle(cornerRadius: 3 / zoom)
+                    .fill(inRegion ? Theme.accent.opacity(0.16) : .clear)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3 / zoom)
+                            .strokeBorder(
+                                inRegion ? Theme.accent : Color.primary.opacity(0.25),
+                                style: StrokeStyle(lineWidth: hairline * 1.5,
+                                                   dash: inRegion ? [] : [3 / zoom, 2 / zoom])
+                            )
+                    )
+            } else if dropTarget {
                 // The strongest mark on the canvas, and the only one that is
                 // filled. Dropping a box on a box is a gesture whose outcome is
                 // invisible until it has happened — the thing you are carrying
@@ -2008,6 +2057,10 @@ struct CanvasSurface: View {
     @State private var resizing: (id: UUID, corner: CanvasItemView.Corner, from: CGRect)?
     /// The item a drag is currently hovering over, which dropping would link to.
     @State private var linkTarget: UUID?
+    /// Whether ⌘ is down, which turns a drop onto a region into a drop into it.
+    @State private var joining = false
+    /// A region in add-mode: clicking things puts them in or takes them out.
+    @State private var addingTo: UUID?
     /// Where the bend was when the handle was picked up.
     @State private var bendAtStart: CGSize?
 
@@ -2689,6 +2742,25 @@ struct CanvasSurface: View {
                 region: model.regions.first { $0.id == region.id } ?? region
             )
         }
+        .position(x: corner.x + (asking ? 4 : 9) - 34, y: corner.y - 9)
+
+        // The discoverable half of "put things in a box". ⌘-dropping does the
+        // same thing faster once somebody knows about it; this is how they find
+        // out there is anything to know, and it is also the only way to take one
+        // thing *out* of a region without deleting it.
+        Button {
+            addingTo = addingTo == region.id ? nil : region.id
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 8, weight: .bold))
+                .frame(width: 13, height: 13)
+                .contentShape(Rectangle())
+                .foregroundStyle(.white)
+                .background(Circle().fill(addingTo == region.id ? Theme.accent : Color.secondary))
+        }
+        .buttonStyle(.plain)
+        .help(addingTo == region.id ? "Click things to add or remove them" : "Add things to this region")
+        .chrome($overChrome)
         .position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
 
         Button {
@@ -2942,6 +3014,7 @@ struct CanvasSurface: View {
                         confirmingDelete = nil
                         confirmingGroupDelete = false
                         clearStep = 0
+                        addingTo = nil
                         // A click anywhere else closes it, which is what a menu
                         // does and what somebody who opened it by accident will
                         // try first. A picture nobody chose is abandoned the
@@ -2998,6 +3071,7 @@ struct CanvasSurface: View {
             selected: selected,
             editing: editing,
             dropTarget: linkTarget == item.id,
+            inRegion: addingTo.map { model.isMember(item.id, of: $0) },
             picture: pictures[item.id],
             draft: $model.draft,
             commit: { model.commitEdit() },
@@ -3054,21 +3128,21 @@ struct CanvasSurface: View {
                     // across; the pointer is the one part of the gesture that
                     // is unambiguously aimed.
                     linkTarget = dropTarget(under: value.location, moving: item.id, in: geo)
+                    // Read every frame rather than once, because it is a key
+                    // somebody presses partway through a drag, once they can see
+                    // what the drop is about to do.
+                    joining = NSEvent.modifierFlags.contains(.command)
                 }
                 .onEnded { value in
                     let moved = abs(value.translation.width) > 3 || abs(value.translation.height) > 3
-                    if moved, let onto = linkTarget,
+                    if moved, let onto = linkTarget, joining,
                        model.regions.contains(where: { $0.id == onto }) {
-                        // Into a region, not onto it. Carrying a card into a box
-                        // means putting it in the box — it stays exactly where
-                        // it was let go and the region grows to include it,
-                        // which it does by itself, because the box is the extent
-                        // of what it holds.
-                        //
-                        // This is the one drop that is not a connection. Dropping
-                        // a *region* onto something still joins them: the region
-                        // is the thing being carried then, and there is nothing
-                        // for it to be put inside.
+                        // ⌘ and only ⌘. A plain drop onto a region connects to
+                        // it, like a drop onto anything else — one gesture, one
+                        // meaning. Held down, it means into the box instead: the
+                        // card stays where it was let go and the region grows to
+                        // include it, which it does by itself, because the box
+                        // is the extent of what it holds.
                         model.join(region: onto, item: item.id)
                         model.settled()
                     } else if moved, let onto = linkTarget, let from = moveOrigin {
@@ -3096,6 +3170,16 @@ struct CanvasSurface: View {
                          made to agree about one press, so there is one gesture
                          and it counts.
                          */
+                        // In add-mode, a click means in-or-out rather than
+                        // select. The region stays selected throughout, so the
+                        // box and its buttons stay where they were and the mode
+                        // is visibly still on.
+                        if let region = addingTo {
+                            model.toggle(region: region, item: item.id)
+                            movingId = nil
+                            moveOrigin = nil
+                            return
+                        }
                         let now = Date()
                         let again = lastClick.map {
                             $0.id == item.id && now.timeIntervalSince($0.at) < NSEvent.doubleClickInterval
@@ -3115,6 +3199,7 @@ struct CanvasSurface: View {
                     movingId = nil
                     moveOrigin = nil
                     linkTarget = nil
+                    joining = false
                     guides = []
                 }
         )

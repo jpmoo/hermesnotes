@@ -98,6 +98,17 @@ struct CanvasItem: Identifiable, Equatable, Codable {
     /// Absent in a file written before shapes existed, which reads as `plain` —
     /// which is what everything in such a file is.
     var shape: CanvasShape = .plain
+    /**
+     The picture this item shows, by the name the store keeps it under.
+
+     A name and not the bytes. The canvas is one JSON file that somebody can
+     open, read and copy to another machine, and a screenshot base64'd into it
+     would be a megabyte of one line — a file that is technically still readable
+     and that nobody will ever read again. The bytes live beside it as files,
+     which is also the shape an attachment takes in every format worth mapping
+     onto later.
+     */
+    var image: String?
 
     /// The box in canvas coordinates.
     var rect: CGRect {
@@ -153,7 +164,10 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         return max(measured.rounded(.up) + 2, 18)
     }
 
-    init(id: UUID, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, text: String, shape: CanvasShape = .plain) {
+    init(
+        id: UUID, x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat,
+        text: String, shape: CanvasShape = .plain, image: String? = nil
+    ) {
         self.id = id
         self.x = x
         self.y = y
@@ -161,6 +175,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         self.h = h
         self.text = text
         self.shape = shape
+        self.image = image
     }
 
     /**
@@ -185,6 +200,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         h = try c.decode(CGFloat.self, forKey: .h)
         text = try c.decode(String.self, forKey: .text)
         shape = try c.decodeIfPresent(CanvasShape.self, forKey: .shape) ?? .plain
+        image = try c.decodeIfPresent(String.self, forKey: .image)
     }
 }
 
@@ -249,6 +265,17 @@ struct CanvasDocument: Equatable, Codable {
 protocol CanvasStore {
     func load() -> CanvasDocument
     func save(_ document: CanvasDocument)
+    /**
+     Keep these bytes, and answer the name to ask for them by.
+
+     Still a store that could be implemented over a piece of paper: this is
+     "put this photograph in the drawer and tell me where". Nil when it could
+     not be kept, which the caller has to handle rather than assume — a picture
+     silently not saved is a canvas that comes back with a hole in it.
+     */
+    func keep(image: Data, extension ext: String) -> String?
+    /// The bytes back, or nothing if they are no longer there.
+    func image(named: String) -> Data?
 }
 
 /**
@@ -257,8 +284,15 @@ protocol CanvasStore {
  */
 final class MemoryCanvasStore: CanvasStore {
     private var document = CanvasDocument()
+    private var images: [String: Data] = [:]
     func load() -> CanvasDocument { document }
     func save(_ document: CanvasDocument) { self.document = document }
+    func keep(image: Data, extension ext: String) -> String? {
+        let name = "\(UUID().uuidString).\(ext)"
+        images[name] = image
+        return name
+    }
+    func image(named: String) -> Data? { images[named] }
 }
 
 /**
@@ -319,6 +353,44 @@ final class FileCanvasStore: CanvasStore {
         }
     }
 
+    /**
+     Pictures live beside the canvas, one file each.
+
+     A directory rather than bytes in the JSON, so the canvas file stays
+     something a person can open and read — a screenshot base64'd into it would
+     be a megabyte on one line, technically still readable and never read again.
+     It also means a picture can be looked at, replaced or thrown away with the
+     Finder, which is the same argument the config file won.
+
+     Named by a fresh id rather than by the file it came from. Two screenshots
+     are both called Screenshot, and a store that let the second quietly replace
+     the first would take a picture off a canvas that was never touched.
+     */
+    private var imageDirectory: URL {
+        url.deletingLastPathComponent().appendingPathComponent("canvas-images", isDirectory: true)
+    }
+
+    func keep(image: Data, extension ext: String) -> String? {
+        let name = "\(UUID().uuidString).\(ext)"
+        do {
+            try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+            try image.write(to: imageDirectory.appendingPathComponent(name), options: .atomic)
+            return name
+        } catch {
+            NSLog("talaria: could not keep a canvas image (\(error))")
+            return nil
+        }
+    }
+
+    func image(named: String) -> Data? {
+        // A name from the document, so it must not be able to address anything
+        // outside the directory it belongs to. A file written by hand — or a
+        // canvas copied from somewhere else — is not automatically trustworthy
+        // just because it is on this machine.
+        guard !named.contains("/"), !named.contains("..") else { return nil }
+        return try? Data(contentsOf: imageDirectory.appendingPathComponent(named))
+    }
+
     func save(_ document: CanvasDocument) {
         do {
             try FileManager.default.createDirectory(
@@ -349,11 +421,11 @@ final class CanvasModel: ObservableObject {
     @Published private(set) var links: [CanvasLink] = []
     /// A selected line. Never both this and `selected` — one selection, two
     /// kinds of thing it can be on.
-    @Published var selectedLink: UUID?
+    @Published private(set) var selectedLink: UUID?
     /// Under the pointer. Highlighted, and nothing more.
     @Published var hovered: UUID?
     /// Clicked. Gets the resize handles.
-    @Published var selected: UUID?
+    @Published private(set) var selected: UUID?
     /// Being typed into. At most one, and it is never also `selected` — a thing
     /// you are writing in does not also need corners to drag.
     @Published var editing: UUID?
@@ -384,6 +456,31 @@ final class CanvasModel: ObservableObject {
     private func persist() { store.save(CanvasDocument(items: items, links: links)) }
 
     func item(_ id: UUID) -> CanvasItem? { items.first { $0.id == id } }
+
+    /**
+     One selection, whatever it is on.
+
+     Both setters go through here because "never both at once" was true only
+     while every caller remembered to clear the other one, and one of them did
+     not: clicking a line after an item cleared the item because that path
+     happened to reset it first, and clicking an item after a line left the line
+     lit because that path did not. An invariant kept by habit is an invariant
+     with a bug in it somewhere.
+     */
+    func select(item id: UUID?) {
+        selected = id
+        selectedLink = nil
+    }
+
+    func select(link id: UUID?) {
+        selectedLink = id
+        selected = nil
+    }
+
+    func clearSelection() {
+        selected = nil
+        selectedLink = nil
+    }
 
     /**
      Connect two items, arrow pointing at the one that was dropped on.
@@ -444,19 +541,58 @@ final class CanvasModel: ObservableObject {
             shape: shape
         )
         items.append(item)
-        selected = nil
-        selectedLink = nil
+        clearSelection()
         draft = ""
         editing = item.id
         // Not persisted yet. An item with no words in it is a gesture in
         // progress, not a thing somebody made.
     }
 
+    /// The widest or tallest a picture arrives at. Big enough to see, small
+    /// enough that a screenshot of a whole display does not become the canvas.
+    static let imageLongEdge: CGFloat = 380
+
+    /**
+     Put a picture on the canvas, at its own proportions.
+
+     Centred on the point given, which for a menu is the middle of what somebody
+     is looking at. A menu click carries no position — that is the argument for
+     dragging the other tools — so the honest answer is the middle of the view
+     rather than a corner or the canvas origin, both of which can be a long way
+     from anywhere anybody can see.
+
+     Answers whether it worked. A picture that could not be written is a hole in
+     the canvas, and the surface has to be able to say so rather than draw an
+     empty box.
+     */
+    @discardableResult
+    func addImage(_ data: Data, extension ext: String, pixelSize: CGSize, at point: CGPoint) -> Bool {
+        guard let name = store.keep(image: data, extension: ext) else { return false }
+        let longest = max(pixelSize.width, pixelSize.height, 1)
+        let scale = min(1, Self.imageLongEdge / longest)
+        let size = CGSize(width: max(pixelSize.width * scale, 24).rounded(),
+                          height: max(pixelSize.height * scale, 24).rounded())
+        items.append(CanvasItem(
+            id: UUID(),
+            x: point.x - size.width / 2,
+            y: point.y - size.height / 2,
+            w: size.width, h: size.height,
+            text: "", shape: .plain, image: name
+        ))
+        clearSelection()
+        persist()
+        return true
+    }
+
+    /// The bytes for an item's picture, if it has one and they are still there.
+    func imageData(for item: CanvasItem) -> Data? {
+        item.image.flatMap { store.image(named: $0) }
+    }
+
     /// Start editing something already there.
     func beginEditing(_ id: UUID) {
-        guard let item = items.first(where: { $0.id == id }) else { return }
-        selected = nil
-        selectedLink = nil
+        guard let item = items.first(where: { $0.id == id }), item.image == nil else { return }
+        clearSelection()
         draft = item.text
         editing = id
     }
@@ -728,26 +864,37 @@ struct CursorArea: NSViewRepresentable {
  */
 enum CanvasTool: String, CaseIterable, Identifiable {
     case text
+    case image
 
     var id: String { rawValue }
 
     var symbol: String {
         switch self {
         case .text: return "textformat"
+        case .image: return "photo"
         }
     }
 
     var name: String {
         switch self {
         case .text: return "Text"
+        case .image: return "Image"
         }
     }
 
     var hint: String {
         switch self {
         case .text: return "Drag onto the canvas to write"
+        case .image: return "Add a picture from the clipboard or a file"
         }
     }
+
+    /// Whether it has a menu behind it, which is what the corner marker says.
+    var hasMenu: Bool { true }
+
+    /// Whether dragging it places something. A picture comes from a menu and
+    /// has no drag: there is nothing to carry until it has been chosen.
+    var draggable: Bool { self == .text }
 }
 
 /**
@@ -829,6 +976,142 @@ private struct ShapeMenu: View {
     }
 }
 
+/**
+ Where a picture comes from.
+
+ Two, because they are the two places one ever is: just copied, or already
+ saved. Anything else — a URL, a drag from a browser — is a different gesture
+ and can be its own entry when somebody wants it.
+ */
+enum ImageSource: String, CaseIterable, Identifiable {
+    case clipboard
+    case file
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .clipboard: return "From clipboard"
+        case .file: return "From file"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .clipboard: return "doc.on.clipboard"
+        case .file: return "folder"
+        }
+    }
+}
+
+/// A picture, and what it takes to draw it.
+struct PickedImage {
+    let data: Data
+    let ext: String
+    let pixelSize: CGSize
+}
+
+enum ImagePicker {
+    /**
+     Whatever is on the clipboard, if it is a picture.
+
+     PNG first and TIFF second. The clipboard usually carries the same picture
+     several ways at once, and a screenshot's TIFF is several times the size of
+     its PNG for the same pixels — asking for PNG first is the difference
+     between a 300KB file and a 4MB one, on a canvas people will fill with
+     screenshots.
+     */
+    static func fromClipboard() -> PickedImage? {
+        let board = NSPasteboard.general
+        if let data = board.data(forType: .png), let rep = NSImage(data: data) {
+            return PickedImage(data: data, ext: "png", pixelSize: pixels(of: rep))
+        }
+        if let data = board.data(forType: .tiff), let rep = NSImage(data: data) {
+            // Re-encoded rather than kept as TIFF, for the size reason above.
+            if let png = png(from: rep) {
+                return PickedImage(data: png, ext: "png", pixelSize: pixels(of: rep))
+            }
+        }
+        // A file copied in the Finder arrives as a promise of a URL, not bytes.
+        if let urls = board.readObjects(forClasses: [NSURL.self]) as? [URL],
+           let url = urls.first,
+           let data = try? Data(contentsOf: url),
+           let rep = NSImage(data: data) {
+            return PickedImage(data: data, ext: url.pathExtension.isEmpty ? "png" : url.pathExtension.lowercased(),
+                               pixelSize: pixels(of: rep))
+        }
+        return nil
+    }
+
+    /// A picture chosen from disk. Blocks, because a file panel is a
+    /// conversation and there is nothing to do until it is over.
+    static func fromFile() -> PickedImage? {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url), let rep = NSImage(data: data) else { return nil }
+        return PickedImage(data: data,
+                           ext: url.pathExtension.isEmpty ? "png" : url.pathExtension.lowercased(),
+                           pixelSize: pixels(of: rep))
+    }
+
+    /// The real pixel dimensions, not the point size.
+    ///
+    /// `NSImage.size` is in points and a Retina screenshot reports half its
+    /// pixels, so a picture placed by it arrives at half the size it should be
+    /// and looks soft when it is scaled back up.
+    private static func pixels(of image: NSImage) -> CGSize {
+        if let rep = image.representations.first {
+            return CGSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+        }
+        return image.size
+    }
+
+    private static func png(from image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+}
+
+/// The two places a picture comes from, offered beside the tool.
+private struct ImageMenu: View {
+    let pick: (ImageSource) -> Void
+
+    var body: some View {
+        VStack(spacing: 2) {
+            ForEach(ImageSource.allCases) { source in
+                Button { pick(source) } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: source.symbol)
+                            .font(.system(size: 12, weight: .medium))
+                            .frame(width: 16)
+                        Text(source.name).font(Theme.chrome(11))
+                        Spacer(minLength: 0)
+                    }
+                    .frame(width: 116, height: 24)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(.background.opacity(0.92))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 3)
+        )
+    }
+}
+
 private struct CanvasToolStrip: View {
     /// Which tool is being dragged. The *where* is reported in screen
     /// coordinates and converted by the surface.
@@ -844,9 +1127,12 @@ private struct CanvasToolStrip: View {
     /// let go. Screen coordinates cannot be misresolved.
     @Binding var dragging: CanvasTool?
     @Binding var shape: CanvasShape
-    @Binding var menuOpen: Bool
+    /// Which tool's menu is showing, if any. One at a time: two open menus
+    /// beside each other is two lists competing for the same click.
+    @Binding var openMenu: CanvasTool?
     let track: (CanvasTool, CGPoint) -> Void
     let drop: (CanvasTool, CGPoint) -> Void
+    let pickImage: (ImageSource) -> Void
 
     var body: some View {
         VStack(spacing: 6) {
@@ -868,18 +1154,19 @@ private struct CanvasToolStrip: View {
                 }
                 .frame(width: 56, height: 40)
                 .overlay(alignment: .bottomLeading) {
-                    if tool == .text { SubmenuCorner() }
+                    if tool.hasMenu { SubmenuCorner() }
                 }
                 .contentShape(Rectangle())
-                .foregroundStyle(dragging == tool ? Theme.accent : Color.secondary)
+                .foregroundStyle(dragging == tool || openMenu == tool ? Theme.accent : Color.secondary)
                 .background(
                     RoundedRectangle(cornerRadius: 7)
-                        .fill(dragging == tool ? Color.primary.opacity(0.08) : .clear)
+                        .fill(dragging == tool || openMenu == tool ? Color.primary.opacity(0.08) : .clear)
                 )
                 .help(tool.hint)
                 .gesture(
                     DragGesture(minimumDistance: 0, coordinateSpace: .global)
                         .onChanged { value in
+                            guard tool.draggable else { return }
                             dragging = tool
                             track(tool, value.location)
                         }
@@ -890,13 +1177,13 @@ private struct CanvasToolStrip: View {
                             // The two cannot both be "place one": a click has no
                             // position to place it at except the middle, which
                             // is the argument for dragging in the first place.
-                            let moved = abs(value.translation.width) > 4
-                                || abs(value.translation.height) > 4
+                            let moved = tool.draggable
+                                && (abs(value.translation.width) > 4 || abs(value.translation.height) > 4)
                             if moved {
-                                menuOpen = false
+                                openMenu = nil
                                 drop(tool, value.location)
-                            } else if tool == .text {
-                                menuOpen.toggle()
+                            } else {
+                                openMenu = openMenu == tool ? nil : tool
                             }
                         }
                 )
@@ -915,11 +1202,23 @@ private struct CanvasToolStrip: View {
         // To the left, because the strip is already against the right-hand edge
         // and a menu opening outward would open off the canvas.
         .overlay(alignment: .topTrailing) {
-            if menuOpen {
-                ShapeMenu(chosen: $shape) { menuOpen = false }
+            switch openMenu {
+            case .text:
+                ShapeMenu(chosen: $shape) { openMenu = nil }
                     .fixedSize()
-                    .offset(x: -56)
+                    .offset(x: -68)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
+            case .image:
+                ImageMenu { source in
+                    openMenu = nil
+                    pickImage(source)
+                }
+                .fixedSize()
+                // Below the tool it belongs to, not beside the first one.
+                .offset(x: -68, y: 46)
+                .transition(.opacity.combined(with: .move(edge: .trailing)))
+            case .none:
+                EmptyView()
             }
         }
     }
@@ -946,6 +1245,10 @@ private struct CanvasItemView: View {
     let editing: Bool
     /// Letting go now would draw a line to this one.
     let dropTarget: Bool
+    /// Already decoded. Loading a picture inside the body would re-read it on
+    /// every frame of a drag, which is a file read per frame for as long as
+    /// somebody is moving it.
+    let picture: NSImage?
     @Binding var draft: String
     let commit: () -> Void
     /// Told the words; decides the box. Only a bare label has one.
@@ -968,12 +1271,21 @@ private struct CanvasItemView: View {
             // rule this canvas started from is that text has no background, and
             // a shape is a line round the outside rather than permission to
             // paint behind the words.
-            if item.shape != .plain {
+            if item.shape != .plain, item.image == nil {
                 item.shape
                     .path(in: CGRect(x: 0, y: 0, width: item.w, height: item.h).insetBy(dx: hairline, dy: hairline))
                     .stroke(Color.primary.opacity(0.7), lineWidth: 1.5 * hairline)
             }
-            if editing {
+            if let picture {
+                Image(nsImage: picture)
+                    .resizable()
+                    // Stretched to the box rather than fitted inside it: the box
+                    // is what somebody dragged, and letterboxing would leave a
+                    // picture floating in a frame whose edges are the thing
+                    // being resized. It arrives at its own proportions, so a
+                    // distorted one is a drag somebody made.
+                    .frame(width: item.w, height: item.h)
+            } else if editing {
                 TextField("", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
@@ -1134,8 +1446,15 @@ struct CanvasSurface: View {
     /// the model: it is a state of the tool strip, not a fact about the canvas,
     /// and a canvas reopened tomorrow should not still be armed with a triangle.
     @State private var shape: CanvasShape = .plain
-    @State private var shapeMenuOpen = false
+    @State private var openMenu: CanvasTool?
+    /// Said out loud when a picture could not be added, rather than drawing an
+    /// empty box and letting somebody work out why.
+    @State private var trouble: String?
 
+    /// Decoded pictures, by the item that shows them. Rebuilt when the set of
+    /// pictures changes and not once per frame — decoding a screenshot inside a
+    /// view body is a megabyte of work every time anything moves.
+    @State private var pictures: [UUID: NSImage] = [:]
     /// The last click on an item, for telling a second one from a first.
     /// The system's own double-click interval, so this agrees with everything
     /// else the person's machine does.
@@ -1198,6 +1517,23 @@ struct CanvasSurface: View {
                 }
 
                 CursorArea(cursor: cursor)
+
+                // A picture that did not arrive has to say why. The alternative
+                // is a menu item that sometimes does nothing, which is
+                // indistinguishable from a menu item that is broken.
+                if let trouble {
+                    Text(trouble)
+                        .font(Theme.chrome(11))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Capsule().fill(.background.opacity(0.9)))
+                        .overlay(Capsule().strokeBorder(Theme.danger.opacity(0.5), lineWidth: 1))
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                        .task {
+                            try? await Task.sleep(nanoseconds: 3_200_000_000)
+                            withAnimation(.easeOut(duration: 0.3)) { self.trouble = nil }
+                        }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Every pointer move over the surface, whatever it is over —
@@ -1231,11 +1567,15 @@ struct CanvasSurface: View {
                     hoveredLink = nil
                 }
             }
+            .onAppear { loadPictures() }
+            // Keyed on which items have pictures, not on the items themselves —
+            // otherwise every drag of anything would reload every picture.
+            .onChange(of: model.items.compactMap(\.image)) { _ in loadPictures() }
             .overlay(alignment: .trailing) {
                 CanvasToolStrip(
                     dragging: $tool,
                     shape: $shape,
-                    menuOpen: $shapeMenuOpen,
+                    openMenu: $openMenu,
                     track: { _, at in toolPoint = local(at, geo) },
                     drop: { which, at in
                         let here = local(at, geo)
@@ -1246,7 +1586,16 @@ struct CanvasSurface: View {
                             // click on a tool, and a click has nowhere to put one.
                             guard here.x < geo.size.width - Self.stripWidth else { return }
                             model.addText(at: canvasPoint(here, in: geo.size), shape: shape)
+                        case .image:
+                            // Not draggable — it arrives from its menu, because
+                            // there is nothing to carry until one has been
+                            // chosen. Listed rather than defaulted so the next
+                            // tool added has to say what a drag of it means.
+                            break
                         }
+                    },
+                    pickImage: { source in
+                        add(source, centreOf: geo.size)
                     }
                 )
                 .padding(.trailing, 10)
@@ -1295,6 +1644,46 @@ struct CanvasSurface: View {
             if best == nil || d < best!.d { best = (link.id, d) }
         }
         return best?.id
+    }
+
+    private func loadPictures() {
+        var next: [UUID: NSImage] = [:]
+        for item in model.items where item.image != nil {
+            // Kept from last time when it is the same picture, so adding one
+            // does not re-decode the others.
+            if let already = pictures[item.id] {
+                next[item.id] = already
+            } else if let data = model.imageData(for: item), let image = NSImage(data: data) {
+                next[item.id] = image
+            }
+        }
+        pictures = next
+    }
+
+    /**
+     A picture, in the middle of what somebody is looking at.
+
+     The middle because a menu click carries no position — which is the argument
+     for dragging the other tools, and the honest consequence of not being able
+     to drag this one. The canvas origin or a corner would be no better and
+     might be off screen entirely.
+     */
+    private func add(_ source: ImageSource, centreOf size: CGSize) {
+        let picked: PickedImage?
+        switch source {
+        case .clipboard: picked = ImagePicker.fromClipboard()
+        case .file: picked = ImagePicker.fromFile()
+        }
+        guard let picked else {
+            trouble = source == .clipboard
+                ? "There is no picture on the clipboard"
+                : "That file could not be read as a picture"
+            return
+        }
+        let middle = canvasPoint(CGPoint(x: size.width / 2, y: size.height / 2), in: size)
+        if !model.addImage(picked.data, extension: picked.ext, pixelSize: picked.pixelSize, at: middle) {
+            trouble = "That picture could not be saved"
+        }
     }
 
     /// A point on the canvas, as a point on the glass. The inverse of
@@ -1455,12 +1844,11 @@ struct CanvasSurface: View {
                     // also the only click that can make one.
                     if !dragging {
                         model.commitEdit()
-                        model.selected = nil
-                        model.selectedLink = hitLink(at: value.location, in: size)
+                        model.select(link: hitLink(at: value.location, in: size))
                         // A click anywhere else closes it, which is what a menu
                         // does and what somebody who opened it by accident will
                         // try first.
-                        shapeMenuOpen = false
+                        openMenu = nil
                     }
                     panAtStart = nil
                     pressing = false
@@ -1511,6 +1899,7 @@ struct CanvasSurface: View {
             selected: selected,
             editing: editing,
             dropTarget: linkTarget == item.id,
+            picture: pictures[item.id],
             draft: $model.draft,
             commit: { model.commitEdit() },
             fit: { model.fitToText(item.id, text: $0) }
@@ -1568,8 +1957,7 @@ struct CanvasSurface: View {
                         // every connection also rearranged the diagram.
                         model.move(item.id, to: from)
                         model.link(from: item.id, to: onto)
-                        model.selected = nil
-                        model.selectedLink = nil
+                        model.clearSelection()
                     } else if moved {
                         model.settled()
                     } else if !editing {
@@ -1596,7 +1984,7 @@ struct CanvasSurface: View {
                             lastClick = nil
                             model.beginEditing(item.id)
                         } else {
-                            model.selected = item.id
+                            model.select(item: item.id)
                         }
                     }
                     movingId = nil

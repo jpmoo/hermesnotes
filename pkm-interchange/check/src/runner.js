@@ -238,6 +238,90 @@ function runCase(adapter, c, bySuiteId) {
       if (c.expect.result !== undefined) checks.push(subset(c.expect.result, slice(given, got.result, c.of)));
       return { pass: checks.every(Boolean), got };
     }
+    /**
+     * Moving a member, and the two slots it can be moved in.
+     *
+     * The collection travels with the write because both rules are the
+     * collection's: which regions exist, and whether placement is a judgment or
+     * furniture. A member alone cannot answer either.
+     */
+    case "place": {
+      const got = adapter.place((env.collections ?? [])[0] ?? {}, given.member, given.patch ?? {});
+      const checks = [got.ok === c.expect.ok];
+      if (c.expect.conflict !== undefined) checks.push(Boolean(got.conflict) === c.expect.conflict);
+      if (c.expect.reports !== undefined) {
+        checks.push(
+          c.expect.reports.length === 0
+            ? (got.reports ?? []).length === 0
+            : c.expect.reports.every((r) => (got.reports ?? []).includes(r)),
+        );
+      }
+      if (c.expect.member !== undefined) {
+        // `context: null` in a fixture means "no bag at all" — JSON has no
+        // undefined, and an empty object is a different answer. Checked on its
+        // own and taken out of the subset, which would otherwise be comparing
+        // null against a key that is correctly not there.
+        const { context: wantContext, ...restOfMember } = c.expect.member;
+        checks.push(subset(restOfMember, got.member));
+        if (wantContext === null) checks.push(got.member?.context === undefined);
+        else if (wantContext !== undefined) {
+          checks.push(subset(wantContext, got.member?.context));
+          // Exact, for the reason `patch` is exact: the failure worth catching
+          // is a key quietly not surviving the write, and a subset match cannot
+          // see one that went missing.
+          checks.push(exact(Object.keys(wantContext).sort(),
+                            Object.keys(got.member?.context ?? {}).sort()));
+        }
+      }
+      return { pass: checks.every(Boolean), got };
+    }
+    /** A membership made or unmade. `args.op` is "put" or "delete". */
+    case "member": {
+      const got = adapter.member(
+        (env.collections ?? [])[0] ?? {},
+        c.args.object,
+        c.args.op,
+        given.patch ?? {},
+      );
+      const checks = [got.ok === c.expect.ok];
+      if (c.expect.created !== undefined) checks.push(Boolean(got.created) === c.expect.created);
+      if (c.expect.removed !== undefined) checks.push(Boolean(got.removed) === c.expect.removed);
+      if (c.expect.reports !== undefined) {
+        checks.push(
+          c.expect.reports.length === 0
+            ? (got.reports ?? []).length === 0
+            : c.expect.reports.every((r) => (got.reports ?? []).includes(r)),
+        );
+      }
+      if (c.expect.member !== undefined) checks.push(subset(c.expect.member, got.member));
+      return { pass: checks.every(Boolean), got };
+    }
+    /**
+     * A collection's own keys.
+     *
+     * Matched exactly, like every other write: what this suite is about is a key
+     * the caller never named surviving untouched, and a subset match is blind to
+     * one that did not.
+     */
+    case "collectionPatch": {
+      const got = adapter.patchCollection((env.collections ?? [])[0] ?? {}, given.patch ?? {});
+      const checks = [got.ok === c.expect.ok];
+      if (c.expect.conflict !== undefined) checks.push(Boolean(got.conflict) === c.expect.conflict);
+      if (c.expect.reports !== undefined) {
+        checks.push(
+          c.expect.reports.length === 0
+            ? (got.reports ?? []).length === 0
+            : c.expect.reports.every((r) => (got.reports ?? []).includes(r)),
+        );
+      }
+      if (c.expect.collection !== undefined) {
+        checks.push(subset(c.expect.collection, got.collection));
+        if (c.expect.keys) {
+          checks.push(exact([...c.expect.keys].sort(), Object.keys(got.collection ?? {}).sort()));
+        }
+      }
+      return { pass: checks.every(Boolean), got };
+    }
     default:
       return { pass: false, got: `unknown op "${c.op}"` };
   }
@@ -269,6 +353,9 @@ const ROLES = {
   import: ["consume"],
   roundtrip: ["produce", "consume"],
   patch: ["operate"],
+  place: ["operate"],
+  member: ["operate"],
+  collectionPatch: ["operate"],
   follow: ["operate"],
 };
 

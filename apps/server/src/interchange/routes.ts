@@ -1,7 +1,15 @@
 import { blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
-import { CONFORMANCE, narrow, regionNamesOf, toInterchange } from "@hermes/interchange";
+import {
+  CONFORMANCE,
+  memberWrite,
+  narrow,
+  patchCollectionProps,
+  placeMember,
+  regionNamesOf,
+  toInterchange,
+} from "@hermes/interchange";
 import { and, eq, gt, sql } from "drizzle-orm";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { FilterQuery } from "@hermes/shared";
 import { authenticate, requireUser } from "../auth/middleware.js";
@@ -30,6 +38,15 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
   const mount = app.prefix ?? "";
 
   /**
+   * The prefix this producer's own keys travel under.
+   *
+   * The same name the envelope's `producer.name` carries, because a consumer
+   * strips a prefix by that name and a producer that wrote a different one would
+   * be handing out keys nobody can unwrap.
+   */
+  const PRODUCER = "hermes";
+
+  /**
    * The delegates have to exist, and this is the only place that can tell.
    *
    * A binding that translates into another route is one typo away from
@@ -45,6 +62,10 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       ["GET", `${mount}/blocks/:id`],
       ["GET", `${mount}/interchange`],
       ["PATCH", `${mount}/collections/:id/members/:blockId`],
+      ["POST", `${mount}/collections/:id/members`],
+      ["DELETE", `${mount}/collections/:id/members/:blockId`],
+      ["PATCH", `${mount}/collections/:id`],
+      ["GET", `${mount}/search`],
     ];
     const missing = needed.filter(([method, url]) => !app.hasRoute({ method: method as "GET", url }));
     if (missing.length) {
@@ -99,6 +120,9 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           // implementation rather than two, not because anybody should reach
           // for it directly.
           collection: z.string().uuid().optional(),
+          // Free text. Unlike the two narrowings above, this one is not
+          // permission to send less — see below.
+          q: z.string().max(200).optional(),
         })
         .parse(req.query);
 
@@ -291,6 +315,56 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         objects?: { id: string; type?: string }[];
         collections?: { id: string; members?: (string | { object?: string })[] }[];
       };
+
+      /**
+       * Free text, narrowed by Hermes' own search.
+       *
+       * Delegated rather than reimplemented, like every write here: the ranking
+       * is literal matches by recency and then semantic neighbours the literal
+       * pass missed, and a second copy of that in the binding would be a second
+       * ranking to keep in step.
+       *
+       * The order of `objects` *is* the answer — most relevant first, and no
+       * scores, because a relevance number from one producer means nothing
+       * beside another's. Types travel with what survived, which is the rule for
+       * every narrowing: an object whose type did not come is unreadable.
+       *
+       * This is the one narrowing that is not permission to send less. Ignoring
+       * `since` or `profile` gives a caller more than it asked for, which is
+       * safe; ignoring this one hands back the whole library labelled as
+       * matches, and a tool offering "add the block you searched for" would
+       * offer every block there is.
+       */
+      if (q.q !== undefined) {
+        const term = q.q.trim();
+        if (!term) return reply.code(400).send({ error: "q must not be empty" });
+        const found = await app.inject({
+          method: "GET",
+          url: `${mount}/search?q=${encodeURIComponent(term)}`,
+          headers: { authorization: req.headers.authorization ?? "" },
+          cookies: (req.cookies ?? {}) as Record<string, string>,
+        });
+        if (found.statusCode >= 400) {
+          return reply.code(503).send({ error: "search is unavailable on this instance" });
+        }
+        const rank = new Map(
+          (found.json() as { id: string }[]).map((h, i) => [h.id, i] as const),
+        );
+        const objects = (answer.objects ?? [])
+          .filter((o) => rank.has(o.id))
+          .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+        const collections = (answer.collections ?? [])
+          .filter((c) => rank.has(c.id))
+          .sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+        const used = new Set(objects.map((o) => o.type).filter(Boolean));
+        return {
+          ...answer,
+          types: (answer.types ?? []).filter((t) => used.has(t.id)),
+          objects,
+          collections,
+        };
+      }
+
       if (!q.collection) return answer;
 
       /**
@@ -536,55 +610,278 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
     });
 
     /**
-     * Move a card to a named region.
+     * One collection, as the format describes it.
+     *
+     * Every write below needs the same three facts and none of them is on the
+     * member: which regions exist, whether placement is a judgment or furniture,
+     * and who is already a member. Read through the binding's own route so the
+     * rules are applied to the same document a caller would have read, rather
+     * than to Hermes' storage shape — a region is an index in the database and a
+     * name in the format, and the whole point of these rules is the name.
+     */
+    const collectionAsRead = async (req: FastifyRequest, id: string) => {
+      const res = await app.inject({
+        method: "GET",
+        url: `${mount}/interchange?collection=${id}`,
+        headers: { authorization: req.headers.authorization ?? "" },
+        cookies: (req.cookies ?? {}) as Record<string, string>,
+      });
+      if (res.statusCode >= 400) return null;
+      const env = res.json() as { collections?: Record<string, unknown>[] };
+      return (env.collections ?? [])[0] ?? null;
+    };
+
+    /**
+     * `region` is a Hermes key inside the context bag, and must not be reachable
+     * through the furniture door.
+     *
+     * The format keeps a member's region in `region` and its furniture in
+     * `context`; Hermes keeps both in one bag, with `region` as an index. A
+     * caller writing `context: { region: 2 }` would be placing a card by index
+     * through the one write that exists to stop exactly that.
+     */
+    const REGION_KEY = "region";
+    const reachesRegion = (body: { context?: Record<string, unknown>; unset?: string[] }) =>
+      Object.keys(body.context ?? {}).includes(REGION_KEY) || (body.unset ?? []).includes(REGION_KEY);
+
+    /** The placement half of a member write, in Hermes' words. */
+    const placementPayload = (
+      collection: Record<string, unknown>,
+      body: { region?: string | null; context?: Record<string, unknown>; unset?: string[] },
+    ) => {
+      if (body.region !== undefined) {
+        // Read off the declared placement, which is where the format keeps the
+        // names — not off Hermes' own `matrix_regions`, which an export does not
+        // carry. Reading the wrong one is how region tagging quietly stopped
+        // working for months while every board still looked right.
+        const declared = (
+          (collection.placement as { regions?: (string | { name?: string })[] } | undefined)?.regions ?? []
+        ).map((r) => (typeof r === "string" ? r : r?.name));
+        const index = body.region === null ? null : declared.indexOf(body.region);
+        // Null overwrites where an empty object would merge, so "nowhere in
+        // particular" has to be said explicitly or the card never leaves.
+        return { context: index === null ? null : { region: index } };
+      }
+      return {
+        ...(body.context ? { context: body.context } : {}),
+        ...(body.unset?.length ? { unsetContext: body.unset } : {}),
+      };
+    };
+
+    const memberBody = z.object({
+      region: z.string().nullable().optional(),
+      context: z.record(z.unknown()).optional(),
+      unset: z.array(z.string()).optional(),
+      version: z.number().int().optional(),
+    });
+
+    /**
+     * Move a member — to a named region, or to a place on a canvas.
      *
      * Where something sits is not one of its properties — it belongs to the
      * collection, which is where a read carries it — so it is written here
      * rather than through a patch.
      *
-     * The name is the whole point. Hermes stores a region as an index into a
-     * grid, which means nothing to a tool that draws no grid, so the export
-     * publishes slugs and this reverses them with the same function. A name the
-     * collection never declared is refused rather than stored: an index nothing
-     * renders is a card that has silently vanished from the board.
+     * Two slots, and the collection says which applies. A region name is the
+     * whole point of the first: Hermes stores an index into a grid, which means
+     * nothing to a tool that draws no grid, so the export publishes slugs and
+     * this reverses them. A name the collection never declared is refused rather
+     * than stored, because an index nothing renders is a card that has silently
+     * vanished from the board.
+     *
+     * `context` is the second, and is refused on a collection whose placement is
+     * semantic — a judgment kept as a coordinate is a judgment nothing can read
+     * back. It merges, and `unset` is the only way to remove a key: a tool that
+     * drags a card sends the two numbers it moved and has never heard of the
+     * size another tool put there.
+     *
+     * The rule lives in `@hermes/interchange`, where the fixtures can measure
+     * it. This translates and delegates, like every other write here.
      */
     guarded.patch("/interchange/collections/:collection/members/:object", async (req, reply) => {
-      const userId = requireUser(req);
       const { collection, object } = z
         .object({ collection: z.string().uuid(), object: z.string().uuid() })
         .parse(req.params);
-      const body = z.object({ region: z.string().nullable() }).parse(req.body);
+      const body = memberBody.parse(req.body);
+      if (reachesRegion(body)) {
+        return reply.code(400).send({ ok: false, reports: ["placement.region-not-declared"] });
+      }
 
-      const [board] = await db
-        .select({ properties: blocks.properties, kind: blocks.collectionKind })
-        .from(blocks)
-        .where(and(eq(blocks.id, collection), eq(blocks.ownerId, userId)))
-        .limit(1);
-      if (!board) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
+      const col = await collectionAsRead(req, collection);
+      if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
 
-      const names = regionNamesOf((board.properties ?? {}) as Record<string, unknown>);
-      let index: number | null = null;
-      if (body.region !== null) {
-        index = names.indexOf(body.region);
-        if (index < 0) {
-          return reply.code(400).send({
-            ok: false,
-            reports: ["placement.region-not-declared"],
-            error: `this collection declares ${names.length ? names.join(", ") : "no regions"}`,
-          });
-        }
+      const members = (col.members ?? []) as ({ object?: string } | string)[];
+      const current = members.find((m) => (typeof m === "string" ? m : m?.object) === object);
+      if (!current) return reply.code(404).send({ ok: false, reports: ["member.not-a-member"] });
+
+      const decided = placeMember(col, typeof current === "string" ? { object: current } : current, body);
+      if (!decided.ok) {
+        return reply
+          .code(decided.conflict ? 409 : 400)
+          .send({ ok: false, ...(decided.conflict ? { conflict: true } : {}), reports: decided.reports });
       }
 
       const wrote = await app.inject({
         method: "PATCH",
         url: `${mount}/collections/${collection}/members/${object}`,
         headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
-        // Null overwrites where an empty object would merge, so "nowhere in
-        // particular" has to be said explicitly or the card never leaves.
-        payload: { context: index === null ? null : { region: index } },
+        payload: placementPayload(col, body),
       });
       if (wrote.statusCode >= 400) {
         return reply.code(wrote.statusCode).send({ ok: false, reports: ["placement.refused"] });
+      }
+      return { ok: true, fidelity: "full", reports: [], member: decided.member };
+    });
+
+    /**
+     * Put something on a board.
+     *
+     * Creates and never edits, the same division `PUT` and `PATCH` draw on an
+     * object and for the same reason: a caller whose answer went missing must be
+     * able to ask again without dragging somebody's card back to where it was
+     * five minutes ago. A membership already there is answered as the success it
+     * was, unchanged.
+     *
+     * It arrives with its placement, because a card that appears and then jumps
+     * to where it belongs is two states somebody watching will see and only one
+     * of them is true.
+     */
+    guarded.put("/interchange/collections/:collection/members/:object", async (req, reply) => {
+      const { collection, object } = z
+        .object({ collection: z.string().uuid(), object: z.string().uuid() })
+        .parse(req.params);
+      const body = memberBody.parse(req.body ?? {});
+      if (reachesRegion(body)) {
+        return reply.code(400).send({ ok: false, reports: ["placement.region-not-declared"] });
+      }
+
+      const col = await collectionAsRead(req, collection);
+      if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
+
+      const decided = memberWrite(col, object, "put", body);
+      if (!decided.ok) return reply.code(400).send({ ok: false, reports: decided.reports });
+      if (!decided.created) {
+        return reply.code(200).send({ ok: true, fidelity: "full", reports: [], created: false, member: decided.member });
+      }
+
+      const added = await app.inject({
+        method: "POST",
+        url: `${mount}/collections/${collection}/members`,
+        headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+        payload: { blockId: object },
+      });
+      if (added.statusCode >= 400) {
+        return reply.code(added.statusCode).send({ ok: false, reports: ["membership.refused"] });
+      }
+
+      // The placement goes on separately because Hermes' add takes a raw context
+      // bag and the region has to be translated into an index first — the one
+      // piece of vocabulary this route owns. Skipped when there is nothing to
+      // place, so a plain add is one round trip.
+      if (body.region !== undefined || body.context) {
+        const placed = await app.inject({
+          method: "PATCH",
+          url: `${mount}/collections/${collection}/members/${object}`,
+          headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+          payload: placementPayload(col, body),
+        });
+        if (placed.statusCode >= 400) {
+          return reply.code(placed.statusCode).send({ ok: false, reports: ["placement.refused"] });
+        }
+      }
+      return reply.code(201).send({ ok: true, fidelity: "full", reports: [], created: true, member: decided.member });
+    });
+
+    /**
+     * Take something off a board.
+     *
+     * The membership, not the object — which goes on existing wherever else it
+     * lives. This is the one write where that difference is carried entirely by
+     * the verb, which is why it is worth saying rather than assuming.
+     *
+     * Removing something that is not a member is a success: it is the state the
+     * caller asked for, and answering 404 makes every offline client special-case
+     * its own retries, which is where the duplicate-and-vanish bugs come from.
+     */
+    guarded.delete("/interchange/collections/:collection/members/:object", async (req, reply) => {
+      const { collection, object } = z
+        .object({ collection: z.string().uuid(), object: z.string().uuid() })
+        .parse(req.params);
+
+      const col = await collectionAsRead(req, collection);
+      if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
+
+      const decided = memberWrite(col, object, "delete");
+      if (!decided.removed) return { ok: true, fidelity: "full", reports: [], removed: false };
+
+      const gone = await app.inject({
+        method: "DELETE",
+        url: `${mount}/collections/${collection}/members/${object}`,
+        headers: { authorization: req.headers.authorization ?? "" },
+      });
+      if (gone.statusCode >= 400) {
+        return reply.code(gone.statusCode).send({ ok: false, reports: ["membership.refused"] });
+      }
+      return { ok: true, fidelity: "full", reports: [], removed: true };
+    });
+
+    /**
+     * A collection's own keys.
+     *
+     * What this exists for is everything a collection carries that is not an
+     * object and cannot be written any other way: a canvas's sticky notes and
+     * the connections drawn between them, a table's columns, saved view state.
+     * None of it is an object, and patching one was the only other write there
+     * was.
+     *
+     * Only prefixed keys, which is one rule rather than a list of exceptions —
+     * `kind`, `placement` and `members` are all unprefixed and each has rules a
+     * generic bag cannot honour. Refused rather than ignored: a caller told its
+     * write landed and then finding nothing changed cannot tell which happened.
+     *
+     * The prefix comes off on the way to storage. Hermes keeps its own keys
+     * unprefixed in its own database — the prefix is the format's way of saying
+     * whose they are on the wire, not a rename.
+     */
+    guarded.patch("/interchange/collections/:collection", async (req, reply) => {
+      const { collection } = z.object({ collection: z.string().uuid() }).parse(req.params);
+      const body = z
+        .object({
+          set: z.record(z.unknown()).optional(),
+          unset: z.array(z.string()).optional(),
+          version: z.number().int().optional(),
+        })
+        .parse(req.body);
+
+      const col = await collectionAsRead(req, collection);
+      if (!col) return reply.code(404).send({ ok: false, reports: ["collection.not-found"] });
+
+      const decided = patchCollectionProps(col, body);
+      if (!decided.ok) {
+        return reply
+          .code(decided.conflict ? 409 : 400)
+          .send({ ok: false, ...(decided.conflict ? { conflict: true } : {}), reports: decided.reports });
+      }
+
+      // Ours only. A key under another producer's prefix travels and is stored
+      // exactly as it arrived — that is the round-trip rule — but it is not one
+      // of Hermes' properties and must not be unwrapped into one.
+      const own = `${PRODUCER}:`;
+      const strip = (k: string) => (k.startsWith(own) ? k.slice(own.length) : k);
+      const set = Object.fromEntries(Object.entries(body.set ?? {}).map(([k, v]) => [strip(k), v]));
+      const unset = (body.unset ?? []).map(strip);
+
+      const wrote = await app.inject({
+        method: "PATCH",
+        url: `${mount}/collections/${collection}`,
+        headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+        payload: { patch: { set, unset }, ...(body.version !== undefined ? { version: body.version } : {}) },
+      });
+      if (wrote.statusCode === 409) {
+        return reply.code(409).send({ ok: false, conflict: true, reports: ["version.stale"] });
+      }
+      if (wrote.statusCode >= 400) {
+        return reply.code(wrote.statusCode).send({ ok: false, reports: ["write.refused"] });
       }
       return { ok: true, fidelity: "full", reports: [] };
     });

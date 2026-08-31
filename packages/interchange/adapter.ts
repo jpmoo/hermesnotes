@@ -23,6 +23,7 @@ import {
   type Recurrence,
 } from "@hermes/shared";
 import { fromInterchange, hermesSortKey } from "./src/import.js";
+import { memberWrite, patchCollectionProps, placeMember } from "./src/write.js";
 import { toInterchange } from "./src/map.js";
 import { CONFORMANCE } from "./src/conformance.js";
 import { validateEnvelope } from "./src/validate.js";
@@ -179,6 +180,23 @@ export const hermesAdapter = {
       reports: known ? [] : ["create.unknown-type"],
     };
   },
+
+  /**
+   * The three collection writes, as the binding decides them.
+   *
+   * The same functions `apps/server/src/interchange/routes.ts` calls before it
+   * delegates the accepted write to Hermes' own routes. Measured here rather
+   * than restated: what the suite is checking is whether the rule fires, and a
+   * second copy written to pass would check nothing.
+   */
+  place: placeMember,
+  member: (
+    collection: Parameters<typeof memberWrite>[0],
+    object: string,
+    op: "put" | "delete",
+    body: Parameters<typeof memberWrite>[3],
+  ) => memberWrite(collection, object, op, body),
+  patchCollection: patchCollectionProps,
 
   /** The same foldChanges the live-sync watcher uses. */
   follow: (feed: { seq?: number; object: string; op: string; cause?: string }[]) =>

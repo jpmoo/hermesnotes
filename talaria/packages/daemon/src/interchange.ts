@@ -280,11 +280,99 @@ export class Interchange {
    *
    * A name, never a coordinate. `urgent-important` survives being read by
    * something that draws no grid; `(340, 120)` is a fact about one renderer at
-   * one zoom level, and the format will not carry it for exactly that reason.
+   * one zoom level, and the two are not interchangeable — see `arrange` below,
+   * which is the other half and is refused on a board that works in names.
    */
   async place(collection: string, object: string, region: string | null): Promise<WriteAnswer> {
     return this.answered(() =>
       this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, { region }),
+    );
+  }
+
+  /**
+   * Move something on a canvas — or resize it, or recolour it.
+   *
+   * The furniture half of placement, and refused by the producer on a collection
+   * whose placement is semantic, so this cannot be used to record a judgment
+   * somewhere nothing can read it back.
+   *
+   * `context` merges and `unset` removes. Sending only what moved is the point:
+   * Talaria draws a canvas node as a box and knows nothing about whatever else
+   * the web app has hung on that member, and a write that replaced the bag would
+   * delete it.
+   */
+  async arrange(
+    collection: string,
+    object: string,
+    change: { context?: Record<string, unknown>; unset?: string[]; version?: number },
+  ): Promise<WriteAnswer> {
+    return this.answered(() =>
+      this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, change),
+    );
+  }
+
+  /**
+   * Put something on a board, where it belongs, in one write.
+   *
+   * Creates and never edits: asking again for a membership that is already there
+   * answers `created: false` and changes nothing, which is what makes it safe
+   * for the queue to replay after a lost answer.
+   */
+  async addMember(
+    collection: string,
+    object: string,
+    at: { region?: string | null; context?: Record<string, unknown> } = {},
+  ): Promise<WriteAnswer> {
+    return this.answered(() =>
+      this.req<WriteAnswer>("PUT", `/interchange/collections/${collection}/members/${object}`, at),
+    );
+  }
+
+  /**
+   * Take something off a board.
+   *
+   * The membership, not the object. Removing one that is not there is a success,
+   * so a replay that cannot tell whether its last write landed is safe to make
+   * again.
+   */
+  async removeMember(collection: string, object: string): Promise<WriteAnswer> {
+    return this.answered(() =>
+      this.req<WriteAnswer>("DELETE", `/interchange/collections/${collection}/members/${object}`),
+    );
+  }
+
+  /**
+   * A collection's own keys — a canvas's sticky notes and the lines drawn
+   * between them, and nothing else on this surface can write them.
+   *
+   * Prefixed, always. An unprefixed name belongs to the format and the producer
+   * refuses it, which is right: the two `canvas_notes` of two different tools
+   * are not the same key, and the prefix is what says so.
+   */
+  async patchCollection(
+    id: string,
+    change: { set?: Record<string, unknown>; unset?: string[]; version?: number },
+  ): Promise<WriteAnswer> {
+    return this.answered(() =>
+      this.req<WriteAnswer>("PATCH", `/interchange/collections/${id}`, change),
+    );
+  }
+
+  /**
+   * Find something by the words in it.
+   *
+   * An envelope like any other read, holding what matched, most relevant first
+   * — the producer's own ranking, and no scores, because a relevance number from
+   * one producer means nothing beside another's.
+   *
+   * A producer that cannot search refuses rather than answering unfiltered, so
+   * an empty result here means nothing matched and never "this instance ignored
+   * the question and sent everything".
+   */
+  search(text: string): Promise<Record<string, unknown>> {
+    return this.req<Record<string, unknown>>(
+      "GET",
+      `/interchange?q=${encodeURIComponent(text)}`,
     );
   }
 

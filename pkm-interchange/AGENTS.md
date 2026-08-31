@@ -406,6 +406,17 @@ The distinction is not fussiness. Producers derive the name from the label — s
 
 `position` is an opaque ordering token. Compare byte-wise; do not parse it as a number.
 
+`context` is the other half of placement — the furniture. Where a card sits on a canvas, how wide somebody dragged it, whether a row is collapsed:
+
+```json
+{ "object": "o_412", "context": { "x": 340, "y": 120, "hermes:color": "#fdf3d8" } }
+```
+
+**A member carrying `context` and a collection whose `placement.semantic` is true is invalid**, and that is the whole distinction restated: a bag of coordinates is not a way of recording a judgment. The two never appear together, which is what makes `semantic` answerable by looking rather than by asking.
+
+Its keys are the producer's own and take a prefix like every other extension, with one carve-out the format makes because every renderer needs them: `x`, `y`, `w` and `h` mean what they look like. Nothing else here is defined and nothing else should be guessed at.
+
+
 A member is an object — `{ "object": "o_412", … }`. A bare id is legal shorthand for one with nothing else to say, and expanding it to the object form is **not** a fidelity loss. This is the one place the format has two spellings for one thing, and saying so is cheaper than leaving every implementer to discover that their round-trip does not compare equal.
 
 → `fixtures/placement.json`
@@ -718,6 +729,34 @@ A producer may return more than was asked for. Narrowing is permission to send
 less, never an obligation, and a producer that finds filtering expensive should
 send everything rather than get it wrong.
 
+#### `q` — finding something
+
+```
+GET <base>/interchange?q=radiators
+```
+
+Free text, matched however the producer matches text. The answer is an envelope
+like any other read, holding what matched and the types those objects need.
+
+**Most relevant first, and no scores.** The order of `objects` is the answer to
+the question; a relevance number is a figure from one producer's ranking function
+and means nothing beside another's, so a consumer that compares two of them is
+comparing noise. A producer whose search has no ranking answers in any order it
+likes and says nothing about it.
+
+**A producer that cannot search MUST refuse rather than answer unfiltered.** This
+is the one narrowing that is not permission to send less, and it inverts: `since`
+and `profile` ignored give a client more than it asked for, which is safe, while
+`q` ignored gives a client the whole library labelled as matches. A tool that
+offered "add the block you searched for" would offer every block there is, and
+the person choosing has no way to tell.
+
+This is deliberately not the query language of `membership.query`. Finding
+something by the words in it is a small, universal question; agreeing on how to
+express *"tasks due this week, not delegated, tagged home"* is the design nobody
+has got right, and the wrong one is worse than none. Those two problems are
+related only by both involving the word search.
+
 ### Asking a collection what it holds now
 
 ```
@@ -918,18 +957,103 @@ moving a card needs its own write:
 ```
 PATCH <base>/interchange/collections/{collection}/members/{object}
 { "region": "do" }
-{ "region": null }        ← still a member, no longer anywhere in particular
+{ "region": null }                      ← still a member, no longer anywhere in particular
+{ "context": { "x": 340, "y": 120 } }   ← furniture, on a collection that arranges furniture
+{ "unset": ["hermes:collapsed"] }
 ```
 
 Same answer shape as any other write. `region` names a region the collection
 declared; a name it did not declare **MUST** be refused rather than stored,
 because a region nothing renders is a card that has vanished.
 
-**Only for semantic placement.** A collection whose `placement.semantic` is false
-is arranging furniture, and where a sticky note sits on a canvas is not a fact
-another tool can use. There is no coordinate write in v0 and the omission is
-deliberate: a format that can carry a judgment and a decoration in the same
-message will be used to carry decorations.
+**The two slots are exclusive, and which one applies is the collection's to say.**
+`region` is a judgment somebody recorded. `context` is furniture. A `context`
+write to a collection whose `placement.semantic` is true **MUST** be refused —
+the same rule the validator applies to a document, applied to a write, and for
+the same reason: a coordinate is meaningless outside the grid that produced it,
+so a judgment stored as one is a judgment nothing can read back. Storing it
+anyway looks exactly like success.
+
+**`context` merges; `unset` is the only way to remove a key.** This is the
+round-trip rule at write time and it is the half that gets skipped. A tool that
+drags a card sends the two numbers it moved and has never heard of the size and
+the colour another tool put there; a write that replaced the bag would delete
+them and answer `ok`. A key named by neither is untouched, exactly as on an
+object.
+
+`region: null` is admissible where a null in `context` would not be, and the
+difference is not arbitrary: a region is one slot with one value, so null has
+nothing to collide with, while `context` is a bag in which null is a value
+somebody may have chosen.
+
+**Why this is here now, and was not in v0.** v0 had no coordinate write at all,
+on the reasoning that a format able to carry a judgment and a decoration in the
+same message would be used to carry decorations. The reasoning was right and the
+conclusion was too broad. What protects the distinction is that the collection
+declares which kind of placement it has and the write is refused against the
+wrong one — not that one of the two is unwritable. Leaving it unwritable did not
+stop anybody arranging a canvas; it meant every tool that arranged one did it
+through a private route, which is the outcome the rule was trying to prevent.
+
+### Adding and removing a member
+
+```
+PUT    <base>/interchange/collections/{collection}/members/{object}
+DELETE <base>/interchange/collections/{collection}/members/{object}
+```
+
+`PUT` takes the same body as the patch above — a membership arrives with its
+placement, because a card that appears and then jumps to where it belongs is two
+states somebody watching will see and only one of them is true.
+
+**The same division as `PUT` and `PATCH` on an object, for the same reason.** A
+`PUT` at a membership that already exists **MUST NOT** modify it. It answers as
+the success it was — because it was one, once — and the caller is asking again
+only because it never heard so. A verb that also moved the card could not be
+retried after a timeout without dragging somebody's card back to where it was
+five minutes ago.
+
+**`DELETE` unmakes the membership. The object is untouched**, and goes on living
+wherever else it lives. This is the one write where the difference between taking
+something off a list and destroying it is carried entirely by the verb, so it is
+worth saying rather than assuming. Deleting a membership that is not there is a
+**success**: it is the state the caller asked for, and answering `404` makes
+every offline client special-case its own retries.
+
+Placement rules apply on the way in exactly as they do on a move — a `PUT`
+naming a region the collection never declared is refused, not accepted with the
+region quietly dropped, which would add a card nothing draws.
+
+### Writing a collection's own keys
+
+```
+PATCH <base>/interchange/collections/{collection}
+{ "set": { "hermes:canvas_notes": [ ... ] }, "unset": ["hermes:canvas_regions"], "version": 7 }
+```
+
+`set` and `unset`, with the meaning they have on an object: **a key named by
+neither is untouched**, including every key belonging to a producer this one has
+never heard of.
+
+This exists for everything a collection carries that is not an object and cannot
+be written any other way. A canvas's sticky notes and the connections drawn
+between them are the case that forced it — see *Known limits of v0* — along with
+a table's columns and saved view state. None of it is an object, and `PATCH` on
+an object was the only other write there was.
+
+**Only prefixed keys.** An unprefixed name belongs to the format and **MUST** be
+refused. That is one rule rather than a list of exceptions, and it lands in the
+right place by itself: `kind`, `placement`, `members` and the rest are all
+unprefixed, and each has rules a generic bag cannot honour. Changing `kind`
+reinterprets every member's placement. Emptying `members` is what the two verbs
+above are for. Refused rather than ignored — a caller told its write landed, then
+finding the collection unchanged, has no way to learn which of the two happened.
+
+If you version collections, carry the version on the read and accept it on the
+write, exactly as for objects. A producer that demands one and never issues one
+has made safe writing impossible through its own binding.
+
+→ `fixtures/membership.json`
 
 ### Every write answers for itself
 
@@ -1010,11 +1134,13 @@ non-empty winning, is the smallest thing that would close it.
 
 **A canvas holds things that are not objects.** Sticky notes with no id, and
 connections drawn between them. They survive, as properties of the collection
-that the round-trip rule carries — but nothing outside the producer can address
-one, so no other tool can link to a note or state the connections as relations.
-A canvas of drawn argument arrives as an opaque lump. Giving stickies ids would
-fix it and would also make every canvas doodle a first-class object in everyone's
-library, which is not obviously the better trade.
+that the round-trip rule carries, and *Writing a collection's own keys* is how
+they are changed — but nothing outside the producer can address one, so no other
+tool can link to a note or state the connections as relations. A canvas of drawn
+argument is a lump you can put down as well as pick up, and it is still a lump.
+Giving stickies ids would fix it and would also make every canvas doodle a
+first-class object in everyone's library, which is not obviously the better
+trade.
 
 ---
 

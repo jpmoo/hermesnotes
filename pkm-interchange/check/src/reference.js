@@ -275,6 +275,148 @@ export function create(object = {}, ctx = {}) {
 }
 
 /**
+ * Where a member sits, changed.
+ *
+ * The collection owns placement, so this is a write against the collection and
+ * not a patch on the object — an object does not know which boards it is on and
+ * must not have to.
+ *
+ * Two slots, and which one a collection uses is not a choice its members make.
+ * `region` is a judgment somebody recorded and travels as a declared name;
+ * `context` is furniture — canvas coordinates, a size somebody dragged, a
+ * collapsed row — and travels as a bag of the producer's own keys. A collection
+ * says which it is in `placement.semantic`, and writing the wrong one is refused
+ * rather than stored: a coordinate on a semantic board is a judgment recorded
+ * where nothing can read it, and a region name on a canvas names a region that
+ * does not exist.
+ *
+ * `context` merges. This is the round-trip rule at write time and it is the half
+ * that gets skipped: a tool that drags a card and sends `{x, y}` has never heard
+ * of the `w`, `h` and colour somebody else's tool put there, and a write that
+ * replaced the bag would delete them. Removing a key has to be said out loud, in
+ * `unset`, for the same reason it does on an object.
+ */
+export function place(collection, member, p = {}) {
+  const semantic = collection?.placement?.semantic === true;
+  const wantsContext = p.context !== undefined || (p.unset ?? []).length > 0;
+
+  if (p.version !== undefined && member?.version !== undefined && p.version !== member.version) {
+    return { ok: false, conflict: true, member, fidelity: "full", reports: [] };
+  }
+
+  if (wantsContext && semantic) {
+    return { ok: false, member, fidelity: "full", reports: ["placement.coordinates-not-semantic"] };
+  }
+
+  if (p.region !== undefined && p.region !== null) {
+    // Declared, not merely spelled. A region nothing renders is a card that has
+    // silently vanished from the board, which is worse than a refusal because
+    // nobody finds out.
+    const names = (collection?.placement?.regions ?? []).map((r) => (typeof r === "string" ? r : r?.name));
+    if (!names.includes(p.region)) {
+      return { ok: false, member, fidelity: "full", reports: ["placement.region-not-declared"] };
+    }
+  }
+
+  const next = structuredClone(member ?? {});
+  if (p.region !== undefined) {
+    if (p.region === null) delete next.region;
+    else next.region = p.region;
+  }
+  if (wantsContext) {
+    const bag = { ...(next.context ?? {}), ...(p.context ?? {}) };
+    for (const k of p.unset ?? []) delete bag[k];
+    // A member whose furniture has all been removed carries no bag at all,
+    // rather than an empty one that a round-trip would then have to preserve as
+    // a fact about nothing.
+    if (Object.keys(bag).length) next.context = bag;
+    else delete next.context;
+  }
+  if (member?.version !== undefined) next.version = member.version + 1;
+
+  return { ok: true, member: next, fidelity: "full", reports: [] };
+}
+
+/**
+ * A membership, made or unmade.
+ *
+ * Separate verbs from `place` and for the same reason `create` is separate from
+ * `patch`: making a thing exist and changing it are different questions, and a
+ * verb that does both cannot be repeated safely. A `put` at a membership that is
+ * already there answers as the success it was, and changes nothing — the caller
+ * is asking again because it never heard the first answer, not because it wants
+ * the placement moved.
+ *
+ * A `delete` unmakes the *membership*. The object goes on existing, wherever
+ * else it lives. This is the one place where the difference between removing
+ * something from a list and destroying it has to be said in the verb, because a
+ * caller that gets it wrong cannot undo it.
+ */
+export function member(collection, object, op, body = {}) {
+  const members = collection?.members ?? [];
+  const at = members.findIndex((m) => (typeof m === "string" ? m : m?.object) === object);
+  const existing = at < 0 ? null : members[at];
+
+  if (op === "delete") {
+    // Not a member, and the caller wanted it not to be. That is the state it
+    // asked for, so it is a success that changed nothing rather than a 404 the
+    // caller has to special-case on every retry.
+    if (!existing) return { ok: true, removed: false, fidelity: "full", reports: [] };
+    return { ok: true, removed: true, fidelity: "full", reports: [] };
+  }
+
+  if (existing) {
+    const was = typeof existing === "string" ? { object: existing } : structuredClone(existing);
+    return { ok: true, created: false, member: was, fidelity: "full", reports: [] };
+  }
+
+  // A new membership arrives with its placement, so the same two rules apply as
+  // they do to moving one. Checked by handing it to `place`, because two copies
+  // of a rule is how one of them ends up being the older one.
+  const placed = place(collection, { object }, body);
+  if (!placed.ok) return { ...placed, created: false };
+  return { ok: true, created: true, member: placed.member, fidelity: "full", reports: [] };
+}
+
+/**
+ * A collection's own keys, changed.
+ *
+ * What this exists for is everything a collection carries that is not an object:
+ * a canvas's sticky notes and the connections drawn between them, a table's
+ * columns, saved view state. None of it can be written any other way, because
+ * none of it is an object and `PATCH` on an object is the only other write.
+ *
+ * **Only the producer's own keys.** Unprefixed names belong to the format, and
+ * every one of them — `kind`, `placement`, `membership`, `members` — has rules
+ * that a generic bag cannot honour: changing `kind` reinterprets every member's
+ * placement, and `members` is what the membership verbs are for. Refused rather
+ * than ignored, because a caller told its write landed and then finding the
+ * collection unchanged has no way to learn which of the two happened.
+ *
+ * `set` and `unset`, with the same meaning they have on an object: a key named
+ * by neither is untouched, including every key this implementation has never
+ * heard of.
+ */
+export function patchCollection(collection, p = {}) {
+  if (p.version !== undefined && collection?.version !== undefined && p.version !== collection.version) {
+    return { ok: false, conflict: true, collection, fidelity: "full", reports: [] };
+  }
+
+  const named = [...Object.keys(p.set ?? {}), ...(p.unset ?? [])];
+  const bare = named.filter((k) => !k.includes(":"));
+  if (bare.length) {
+    return { ok: false, collection, fidelity: "full", reports: ["collection.unprefixed-write"] };
+  }
+
+  const next = structuredClone(collection ?? {});
+  for (const [k, v] of Object.entries(p.set ?? {})) next[k] = v;
+  for (const k of p.unset ?? []) delete next[k];
+  if (collection?.version !== undefined) next.version = collection.version + 1;
+
+  return { ok: true, collection: next, fidelity: "full", reports: [] };
+}
+
+/**
  * What a follower concludes from a change feed.
  *
  * Rows arrive in order and the last one about an object is the current one — in
@@ -484,5 +626,8 @@ export const adapter = {
   roundtrip,
   patch,
   create,
+  place,
+  member,
+  patchCollection,
   follow,
 };

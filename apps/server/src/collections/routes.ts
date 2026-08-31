@@ -321,16 +321,53 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
   app.patch("/collections/:id", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const patch = z.record(z.unknown()).parse(req.body);
+    /**
+     * Two shapes, one route.
+     *
+     * The app sends a bare bag of properties to merge, which is what this has
+     * always taken. A partial write — `{ patch: { set, unset }, version }` —
+     * names what it touches and is the only way to *remove* a key, which a
+     * merge can never express. Same division as `PATCH /blocks/:id`, whose
+     * shape this deliberately copies rather than inventing a third spelling.
+     */
+    const body = req.body as Record<string, unknown>;
+    const partial =
+      body && typeof body === "object" && "patch" in body
+        ? z
+            .object({
+              patch: z.object({
+                set: z.record(z.unknown()).optional(),
+                unset: z.array(z.string()).optional(),
+              }),
+              version: z.number().int().optional(),
+            })
+            .parse(body)
+        : null;
+    const patch = partial ? {} : z.record(z.unknown()).parse(req.body);
 
     const [current] = await db
-      .select({ properties: blocks.properties, collectionKind: blocks.collectionKind })
+      .select({
+        properties: blocks.properties,
+        collectionKind: blocks.collectionKind,
+        version: blocks.version,
+      })
       .from(blocks)
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .limit(1);
     if (!current || !current.collectionKind) throw notFound("collection");
+    // Refused, not merged. Merging a stale write is how one client's edit
+    // silently reverts another's with the writer told it landed.
+    if (partial?.version !== undefined && partial.version !== current.version) {
+      throw conflict("collection has changed since you read it");
+    }
 
-    const nextProps = { ...current.properties, ...patch };
+    const nextProps = partial
+      ? (() => {
+          const out = { ...(current.properties as Record<string, unknown>), ...(partial.patch.set ?? {}) };
+          for (const k of partial.patch.unset ?? []) delete out[k];
+          return out;
+        })()
+      : { ...current.properties, ...patch };
     const embedSource = collectionEmbedSource(nextProps);
     const hash = sha256(embedSource);
     const [row] = await db
@@ -348,7 +385,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     // Editing a snapshot collection's query re-materializes it immediately, so
     // the caller never has to hit "refresh" after saving.
     if (
-      "filter_query" in patch &&
+      "filter_query" in (partial?.patch.set ?? patch) &&
       nextProps.membership_mode === "smart" &&
       nextProps.smart_mode === "snapshot"
     ) {
@@ -508,6 +545,16 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
         afterId: z.string().uuid().nullable().optional(),
         beforeId: z.string().uuid().nullable().optional(),
         context: z.record(z.unknown()).optional(),
+        /**
+         * Keys to take out of the context bag.
+         *
+         * `context` merges, which is right — a caller that moved a card sends
+         * the coordinates it moved and must not delete the size and colour
+         * another tool put there. That leaves no way to remove one, so removal
+         * is said out loud, and the read-modify-write lives here rather than in
+         * every caller that wants to clear a flag.
+         */
+        unsetContext: z.array(z.string()).optional(),
       })
       .parse(req.body);
 
@@ -528,13 +575,15 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
       set.position = generateKeyBetween(after, before);
     }
 
-    if (body.context) {
+    if (body.context || body.unsetContext?.length) {
       const [m] = await db
         .select({ context: memberships.context })
         .from(memberships)
         .where(and(eq(memberships.collectionId, id), eq(memberships.blockId, blockId)))
         .limit(1);
-      set.context = { ...(m?.context ?? {}), ...body.context };
+      const next = { ...(m?.context ?? {}), ...(body.context ?? {}) };
+      for (const k of body.unsetContext ?? []) delete next[k];
+      set.context = next;
     }
 
     if (Object.keys(set).length === 0) return { ok: true };

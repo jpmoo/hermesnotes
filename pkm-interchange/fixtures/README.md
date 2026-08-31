@@ -50,9 +50,9 @@ runner can act on it.
 
 ## Operations
 
-An implementation is testable when it can answer these thirteen. They are the whole
+An implementation is testable when it can answer these sixteen. They are the whole
 adapter surface; a producer that only writes files implements the first two and
-declares the rest unsupported, and the last two are only asked of something with
+declares the rest unsupported, and the last five are only asked of something with
 a live binding.
 
 | op | given | answers |
@@ -69,6 +69,9 @@ a live binding.
 | `roundtrip` | `export`, `with` | import, then serialize, then compare |
 | `create` | `object`, `existing?`, `args.at?` | `{ ok, created, object, fidelity, reports }` |
 | `patch` | `object`, `patch`, `with` | `{ ok, conflict?, object, fidelity, reports }` |
+| `place` | `collection`, `member`, `patch` | `{ ok, conflict?, member, fidelity, reports }` |
+| `member` | `collection`, `args.object`, `args.op`, `patch?` | `{ ok, created?, removed?, member?, reports }` |
+| `collectionPatch` | `collection`, `patch` | `{ ok, conflict?, collection, fidelity, reports }` |
 | `follow` | `feed` | `{ alive, gone }` — what a follower concludes |
 
 `fidelity` is `"full"` or `"reduced"`. `reports` name what was lost; a `reduced`
@@ -91,6 +94,31 @@ match, and there is no earlier version to notice it against.
 at that id, or absent when the id is free. `args.at` overrides the address, and
 is only used by the case where the address and the body disagree about which id
 is meant.
+
+The three collection writes are all handed the **whole collection**, because
+every rule they enforce is the collection's: which regions exist, whether
+placement is a judgment or furniture, which members are already there. A member
+handed over on its own cannot answer any of them.
+
+`place` and `collectionPatch` match their bags **exactly**, for the reason
+`patch` does: what these suites are about is a key quietly not surviving a write,
+and a subset match is blind to one that went missing. `context: null` in an
+expectation means *no bag at all* — JSON has no undefined, and an empty object is
+a different answer that a round-trip would then be obliged to preserve.
+`collectionPatch` cases may name `expect.keys`, which is the complete set of keys
+the collection should have afterwards.
+
+`member` takes `args.op`, which is `"put"` or `"delete"`. There is no separate op
+for the two verbs because they are one question — does this membership exist —
+and an implementation that answered them from different code would be the first
+place a `PUT` quietly started editing.
+
+Search has no op, deliberately. `?q=` is specified in `AGENTS.md`, but what a
+fixture could assert about it is either trivial (a producer returns an envelope)
+or wrong (that these three objects rank in this order), and the format explicitly
+declines to standardise ranking. The rule that *is* worth enforcing — a producer
+that cannot search must refuse rather than answer unfiltered — is a property of a
+live binding and is checked there, by `pkm-check --url`, not here.
 
 ## Capabilities
 
@@ -122,7 +150,11 @@ the consumer can do.
 ## Error codes
 
 `validate` reports codes, not prose, so a case can assert which rule fired
-without matching an error message.
+without matching an error message. A write reports the same way, in `reports`
+rather than `errors` — the vocabularies overlap where the rule is the same one
+(`placement.coordinates-not-semantic` is enforced on a document and on a write),
+and the write-only names are `placement.region-not-declared`,
+`collection.unprefixed-write` and `tags.added-and-removed`.
 
 | code | rule |
 |---|---|
@@ -133,6 +165,7 @@ without matching an error message.
 | `relation.no-target` | an edge with no `to` |
 | `stub.suggests-not-a-profile` | a stub's `suggests` naming a type id rather than a profile |
 | `placement.coordinates-not-semantic` | semantic placement must name regions |
+| `collection.unprefixed-write` | a collection write naming a key in the format's namespace |
 | `order.by-invalid` | a sort or grouping key naming neither a field nor a known `meta` |
 | `order.direction-invalid` | a direction that is not `ascending` or `descending` |
 | `hierarchy.cycle` | an object that is its own ancestor |

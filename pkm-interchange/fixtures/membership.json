@@ -1,0 +1,352 @@
+{
+  "suite": "membership",
+  "level": 4,
+  "about": "Changing what a collection holds and where it holds it. A collection owns placement and owns everything on it that is not an object, so all three of these are writes against the collection rather than patches on anything in it.",
+  "requires": {
+    "features": [
+      "placement"
+    ]
+  },
+  "cases": [
+    {
+      "id": "membership/context-merges",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false }
+        },
+        "member": {
+          "object": "o_1",
+          "context": { "x": 340, "y": 120, "w": 280, "h": 190, "hermes:color": "#fdf3d8" }
+        },
+        "patch": { "context": { "x": 400 } }
+      },
+      "expect": {
+        "ok": true,
+        "member": {
+          "object": "o_1",
+          "context": { "x": 400, "y": 120, "w": 280, "h": 190, "hermes:color": "#fdf3d8" }
+        }
+      },
+      "why": "The round-trip rule at write time, in the place it is most often skipped. A tool that drags a card sends the two numbers it moved; the size and the colour were put there by something else and it has never heard of them. A write that replaced the bag would delete them, and the caller would be told it succeeded."
+    },
+    {
+      "id": "membership/unset-is-the-only-way-to-remove",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false }
+        },
+        "member": {
+          "object": "o_1",
+          "context": { "x": 340, "y": 120, "hermes:collapsed": true }
+        },
+        "patch": { "unset": ["hermes:collapsed"] }
+      },
+      "expect": {
+        "ok": true,
+        "member": { "object": "o_1", "context": { "x": 340, "y": 120 } }
+      },
+      "why": "Same two moves as a patch on an object and for the same reason: a key named by neither `context` nor `unset` is untouched, so removing one has to be said out loud. Sending it as null would collide with every model where null is a value somebody chose."
+    },
+    {
+      "id": "membership/furniture-can-be-emptied-completely",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false }
+        },
+        "member": { "object": "o_1", "context": { "x": 340, "y": 120 } },
+        "patch": { "unset": ["x", "y"] }
+      },
+      "expect": {
+        "ok": true,
+        "member": { "object": "o_1", "context": null }
+      },
+      "why": "A member that has had all its furniture removed carries no bag, not an empty one. An empty object is a fact about nothing that the round-trip rule would then be obliged to preserve forever."
+    },
+    {
+      "id": "membership/coordinates-refused-on-semantic-placement",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_priorities",
+          "kind": "matrix",
+          "placement": {
+            "semantic": true,
+            "regions": ["urgent-important", "calm-later"]
+          }
+        },
+        "member": { "object": "o_1", "region": "urgent-important" },
+        "patch": { "context": { "x": 340, "y": 120 } }
+      },
+      "expect": {
+        "ok": false,
+        "reports": ["placement.coordinates-not-semantic"]
+      },
+      "why": "The same rule the validator enforces on a document, enforced on a write. A coordinate means nothing outside the grid that produced it, so a judgment recorded as one is a judgment nothing else can read. Refused rather than stored, because stored-and-unreadable looks exactly like success."
+    },
+    {
+      "id": "membership/region-must-be-one-the-collection-declared",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_priorities",
+          "kind": "matrix",
+          "placement": {
+            "semantic": true,
+            "regions": ["urgent-important", "calm-later"]
+          }
+        },
+        "member": { "object": "o_1", "region": "urgent-important" },
+        "patch": { "region": "someday" }
+      },
+      "expect": {
+        "ok": false,
+        "reports": ["placement.region-not-declared"]
+      },
+      "why": "A region nothing renders is a card that has vanished from the board with nobody told. The write knows which regions exist — they are on the collection it is written against — so it is the last place this can be caught."
+    },
+    {
+      "id": "membership/region-null-is-still-a-member",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_priorities",
+          "kind": "matrix",
+          "placement": {
+            "semantic": true,
+            "regions": ["urgent-important", "calm-later"]
+          }
+        },
+        "member": { "object": "o_1", "region": "urgent-important" },
+        "patch": { "region": null }
+      },
+      "expect": {
+        "ok": true,
+        "member": { "object": "o_1" }
+      },
+      "why": "Added but not placed is a real state — a card in the drawer beside the board — and it is not the same as not being on the board at all. Null is admissible here, unlike in `context`, because a region is one slot rather than a bag: there is no value it could be confused with."
+    },
+    {
+      "id": "membership/a-stale-move-is-refused",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false }
+        },
+        "member": { "object": "o_1", "version": 7, "context": { "x": 340 } },
+        "patch": { "context": { "x": 400 }, "version": 6 }
+      },
+      "expect": {
+        "ok": false,
+        "conflict": true
+      },
+      "why": "Merging a stale move is how one person's drag silently reverts another's, with the writer told it landed. A producer that versions memberships must refuse; one that does not version them accepts, which is a weaker promise honestly made rather than a stronger one pretended to."
+    },
+    {
+      "id": "membership/put-makes-a-membership",
+      "level": 4,
+      "op": "member",
+      "args": { "object": "o_2", "op": "put" },
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "members": [{ "object": "o_1", "context": { "x": 0, "y": 0 } }]
+        },
+        "patch": { "context": { "x": 340, "y": 120 } }
+      },
+      "expect": {
+        "ok": true,
+        "created": true,
+        "member": { "object": "o_2", "context": { "x": 340, "y": 120 } }
+      },
+      "why": "Adding something to a board is the write that was missing: everything else assumed the membership already existed. It arrives with its placement, because a card that appears and then jumps to where it belongs is two states a viewer sees and only one of them is real."
+    },
+    {
+      "id": "membership/put-again-changes-nothing",
+      "level": 4,
+      "op": "member",
+      "args": { "object": "o_1", "op": "put" },
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "members": [{ "object": "o_1", "context": { "x": 340, "y": 120 } }]
+        },
+        "patch": { "context": { "x": 0, "y": 0 } }
+      },
+      "expect": {
+        "ok": true,
+        "created": false,
+        "member": { "object": "o_1", "context": { "x": 340, "y": 120 } }
+      },
+      "why": "The same division `PUT` and `PATCH` draw on an object, for the same reason. This is a caller asking again because it never heard the first answer, not a caller asking for the card to be moved back to the origin — and a verb that did both could not be retried after a timeout."
+    },
+    {
+      "id": "membership/put-refuses-a-region-nobody-declared",
+      "level": 4,
+      "op": "member",
+      "args": { "object": "o_2", "op": "put" },
+      "given": {
+        "collection": {
+          "id": "c_priorities",
+          "kind": "matrix",
+          "placement": {
+            "semantic": true,
+            "regions": ["urgent-important", "calm-later"]
+          },
+          "members": []
+        },
+        "patch": { "region": "someday" }
+      },
+      "expect": {
+        "ok": false,
+        "created": false,
+        "reports": ["placement.region-not-declared"]
+      },
+      "why": "Arriving somewhere that does not exist is the same failure as moving somewhere that does not exist, so it is the same rule and must not be a second copy of it. A board that accepts the create and drops the region has silently added an invisible card."
+    },
+    {
+      "id": "membership/delete-unmakes-the-membership-not-the-object",
+      "level": 4,
+      "op": "member",
+      "args": { "object": "o_1", "op": "delete" },
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "members": [{ "object": "o_1" }, { "object": "o_2" }]
+        }
+      },
+      "expect": {
+        "ok": true,
+        "removed": true
+      },
+      "why": "The one write where the difference between taking something off a list and destroying it has to be carried by the verb. The object goes on existing wherever else it lives; this write is handed the collection and nothing else, which is the shape that makes deleting the object impossible rather than merely discouraged."
+    },
+    {
+      "id": "membership/delete-again-is-a-success",
+      "level": 4,
+      "op": "member",
+      "args": { "object": "o_9", "op": "delete" },
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "members": [{ "object": "o_1" }]
+        }
+      },
+      "expect": {
+        "ok": true,
+        "removed": false
+      },
+      "why": "Not a member, and the caller wanted it not to be: that is the state it asked for. Answering not-found makes every offline client special-case its own retries, which is where the duplicate-and-vanish bugs come from."
+    },
+    {
+      "id": "membership/a-collections-own-keys-must-be-prefixed",
+      "level": 4,
+      "op": "collectionPatch",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "hermes:canvas_notes": []
+        },
+        "patch": { "set": { "canvas_notes": [{ "id": "n:1", "text": "hello" }] } }
+      },
+      "expect": {
+        "ok": false,
+        "reports": ["collection.unprefixed-write"]
+      },
+      "why": "Unprefixed names on a collection belong to the format, and this is the write that would otherwise let a producer take one without anybody noticing. It is the same failure the prefix rule was written for, arriving through the one door that rule had not been applied to."
+    },
+    {
+      "id": "membership/the-formats-own-keys-are-not-writable-here",
+      "level": 4,
+      "op": "collectionPatch",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "members": [{ "object": "o_1" }]
+        },
+        "patch": { "unset": ["members"] }
+      },
+      "expect": {
+        "ok": false,
+        "reports": ["collection.unprefixed-write"]
+      },
+      "why": "One rule rather than a list of exceptions. `kind`, `placement` and `members` each have their own rules that a generic bag cannot honour — changing a kind reinterprets every member's placement, and emptying `members` is what the membership verbs are for — and they are all unprefixed, so the prefix rule already covers them."
+    },
+    {
+      "id": "membership/a-collection-write-leaves-the-rest-alone",
+      "level": 4,
+      "op": "collectionPatch",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "hermes:canvas_notes": [],
+          "hermes:table_sort": "created",
+          "obsidian:folder": "Boards"
+        },
+        "patch": { "set": { "hermes:canvas_notes": [{ "id": "n:1", "text": "hello" }] } }
+      },
+      "expect": {
+        "ok": true,
+        "collection": {
+          "hermes:canvas_notes": [{ "id": "n:1", "text": "hello" }],
+          "hermes:table_sort": "created",
+          "obsidian:folder": "Boards"
+        },
+        "keys": ["id", "kind", "placement", "hermes:canvas_notes", "hermes:table_sort", "obsidian:folder"]
+      },
+      "why": "The reason this write exists at all is a canvas's sticky notes, which are not objects and can be written no other way. It must not become the reason another producer's keys disappear — including the keys of a producer this one has never heard of."
+    },
+    {
+      "id": "membership/unset-removes-one-key-and-only-one",
+      "level": 4,
+      "op": "collectionPatch",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": { "semantic": false },
+          "hermes:canvas_notes": [{ "id": "n:1", "text": "hello" }],
+          "hermes:canvas_edges": []
+        },
+        "patch": { "unset": ["hermes:canvas_notes"] }
+      },
+      "expect": {
+        "ok": true,
+        "collection": { "hermes:canvas_edges": [] },
+        "keys": ["id", "kind", "placement", "hermes:canvas_edges"]
+      },
+      "why": "Set and unset, with the meaning they have everywhere else in this document. Stated as its own case because a bag-shaped write is exactly where an implementation is tempted to treat the payload as the whole object."
+    }
+  ]
+}

@@ -190,3 +190,62 @@ Talaria's canonical object as a completion date on an incomplete task.
 
 Fixed in Hermes core, commit `0f3e7d2`. Called out here per brief §9 because it
 is a core change made in service of this project.
+
+---
+
+## 5. The writes a collection owns ✅ landed
+
+### Why
+
+Talaria grew a canvas surface, and a canvas is the one thing in Hermes that the
+binding could read and not touch. Node geometry arrives as a member's `context`,
+sticky notes and edges as `hermes:`-prefixed keys on the collection, and the
+seam already strips the prefix — reading worked on the first try. Writing had
+nothing at all: no coordinate write, no way to add or remove a member, no write
+for a collection's own keys, and no search, so *find a block and put it on the
+canvas* had no way to do either half.
+
+The alternative was Hermes' private `/collections` routes, which is the coupling
+the port existed to remove. So the format grew instead.
+
+### What
+
+Four routes on the binding, and two shapes on Hermes' own routes underneath
+them.
+
+- `PATCH /interchange/collections/{c}/members/{o}` now takes `context` and
+  `unset` as well as `region`, and refuses whichever one the collection's
+  `placement.semantic` says is wrong.
+- `PUT` and `DELETE` at the same address make and unmake a membership. `PUT`
+  creates and never edits; `DELETE` unmakes the membership and leaves the object
+  alone, and removing one already gone is a success.
+- `PATCH /interchange/collections/{c}` writes the collection's own keys,
+  prefixed only. The prefix comes off on the way to storage — Hermes keeps its
+  own keys unprefixed in its own database, and the prefix is the format's way of
+  saying whose they are on the wire.
+- `GET /interchange?q=` narrows a read to what matched, most relevant first, no
+  scores. It delegates to Hermes' own `/search`, so the ranking is not a second
+  copy. Unlike the other narrowings it is not permission to send less: a
+  producer that cannot search must refuse rather than answer unfiltered.
+
+In Hermes core: `PATCH /collections/:id/members/:blockId` gained `unsetContext`,
+because `context` merges and a merge can never express a removal; and
+`PATCH /collections/:id` gained the `{ patch: { set, unset }, version }` shape
+that `PATCH /blocks/:id` already had, rather than a third spelling. The
+collection write could not simply go through `/blocks/:id` — that path computes
+a block's embed source, and a collection's is its title and description, so it
+would have quietly rewritten the text every collection is searched by.
+
+### Verified
+
+Sixteen new fixture cases in `fixtures/membership.json`, nine new mutants, all
+caught: 142/142 and 56/56. Hermes measured against the suite still earns
+produce 4, consume 4, operate 4, and `CONFORMANCE` is not raised by hand.
+
+### What it deliberately does not do
+
+Give sticky notes ids. They can be written now and still cannot be addressed, so
+nothing outside Hermes can link to one and the connections between them cannot
+be stated as relations. That limit is in `AGENTS.md` and stays there: ids would
+fix it and would also make every canvas doodle a first-class object in
+everyone's library.

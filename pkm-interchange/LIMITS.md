@@ -250,6 +250,72 @@ one route. The design had been written down in this file for weeks; what it was
 waiting for was a client that needed it, which is the whole reason this file
 exists rather than a v0.1 wishlist.
 
+### A canvas could be read and not arranged — closed
+
+**Was:** four separate holes, found the same way as everything else here — by
+building a canvas surface in Talaria and discovering there was no way to write
+what a canvas is made of.
+
+Reading one was never the problem, and it is worth saying so: node geometry
+travels as a member's `context`, sticky notes and connections travel as the
+producer's own prefixed keys on the collection, and the round-trip rule carries
+all of it. A consumer that strips the producer's prefix once at its seam has the
+whole canvas. That half worked on the first try.
+
+Writing had nothing. There was no coordinate write — deliberately, on the
+reasoning that a format able to carry a judgment and a decoration in the same
+message would be used to carry decorations. There was no way to add a member to
+a collection or take one out, only to move one already there. There was no write
+for a collection's own keys at all, which meant sticky notes and edges were
+readable and unchangeable. And there was no search, so "find a block and put it
+on the canvas" had no way to do the first half.
+
+**Now:** four additions, one shape.
+
+`PATCH .../collections/{c}/members/{o}` takes `context` as well as `region`, and
+refuses whichever one the collection's `placement.semantic` says is wrong. That
+is the correction to the original reasoning, and it is worth being precise about
+what was wrong with it. The reasoning was right; the conclusion was too broad.
+What protects the distinction between a judgment and a decoration is that the
+collection declares which it holds and the write is refused against the wrong
+one — not that one of the two is unwritable. Leaving it unwritable did not stop
+anybody arranging a canvas. It meant every tool that arranged one did it through
+a private route, which is precisely the outcome the rule existed to prevent.
+
+`PUT` and `DELETE` at the same address make and unmake a membership, divided the
+way `PUT` and `PATCH` are divided on an object and for the same reason: a repeat
+must be recognisable as a repeat. `DELETE` unmakes the membership and leaves the
+object alone, and removing something that is not there is a success, because a
+replaying queue cannot know which of its writes landed.
+
+`PATCH .../collections/{c}` writes the collection's own keys, prefixed only. This
+is the one that took the most thought, because it is a bag-shaped write and those
+are where implementations treat the payload as the whole object. `set`/`unset`,
+a key named by neither untouched, and an unprefixed name refused — one rule that
+covers the format's own structural keys without a list of exceptions, since they
+are all unprefixed and each has rules a generic bag could not honour anyway.
+
+`?q=` is a third narrowing on a read, and it inverts the rule the other two
+follow. `since` and `profile` ignored give a client more than it asked for, which
+is safe; `q` ignored gives a client the whole library labelled as matches, so a
+producer that cannot search **MUST** refuse. Relevance order and no scores: a
+ranking number from one producer means nothing beside another's, and a consumer
+comparing two of them is comparing noise.
+
+**What it cost:** sixteen fixture cases in a new suite, three adapter operations,
+nine mutants, four routes. No new concepts — every one of these is a rule already
+in the document applied to a door it had not been applied to.
+
+**What is still not closed.** Sticky notes can now be written and still cannot be
+addressed. They have no id anything outside the producer can name, so no tool can
+link to one and the connections between them cannot be stated as relations. That
+limit is in `AGENTS.md` under *Known limits of v0* and it stays there: giving
+stickies ids would fix it and would also make every canvas doodle a first-class
+object in everyone's library, which is not obviously the better trade. What has
+changed is that the lump is now a lump you can put down as well as pick up.
+
+→ `fixtures/membership.json`
+
 ### A write costs a full export — not a format limit
 
 Kept, moved, because it does not belong in Open and deleting it would lose the

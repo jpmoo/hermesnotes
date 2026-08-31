@@ -620,6 +620,116 @@ const MUTANTS = [
     caught: "placement/semantic-requires-named-regions",
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),
   },
+  {
+    // The obvious implementation of a placement write, and the one that loses
+    // the size and the colour every time somebody drags a card two pixels.
+    name: "replaces a member's furniture instead of merging into it",
+    caught: "membership/context-merges",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) => {
+        const out = a.place(col, m, p);
+        if (out.ok && p.context) out.member.context = { ...p.context };
+        return out;
+      },
+    }),
+  },
+  {
+    // A bag emptied down to `{}` rather than removed. Harmless-looking, and it
+    // makes an export that no longer round-trips against the one before it.
+    name: "leaves an empty bag behind when the last key is removed",
+    caught: "membership/furniture-can-be-emptied-completely",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) => {
+        const out = a.place(col, m, p);
+        if (out.ok && out.member.context === undefined) out.member.context = {};
+        return out;
+      },
+    }),
+  },
+  {
+    // Stores the coordinate on a board that keeps meaning in named regions.
+    // Nothing errors, nothing renders, and the judgment is gone.
+    name: "stores a coordinate written to a semantic collection",
+    caught: "membership/coordinates-refused-on-semantic-placement",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) => a.place({ ...col, placement: { ...col.placement, semantic: false } }, m, p),
+    }),
+  },
+  {
+    // The region write with its one check removed: a card lands in a region the
+    // board never declared, which is a card nothing draws.
+    name: "stores a region the collection never declared",
+    caught: "membership/region-must-be-one-the-collection-declared",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) =>
+        a.place(
+          { ...col, placement: { ...col.placement, regions: [...(col.placement?.regions ?? []), p.region] } },
+          m,
+          p,
+        ),
+    }),
+  },
+  {
+    // `PUT` implemented as an upsert. Reads as a convenience; means a retry
+    // after a timeout silently moves a card somebody has since dragged.
+    name: "lets a repeated membership write move the card",
+    caught: "membership/put-again-changes-nothing",
+    patch: (a) => ({
+      ...a,
+      member: (col, object, op, body) =>
+        op === "put"
+          ? a.member({ ...col, members: (col.members ?? []).filter((m) => (typeof m === "string" ? m : m?.object) !== object) }, object, op, body)
+          : a.member(col, object, op, body),
+    }),
+  },
+  {
+    // Not-a-member answered as not-found. Every offline client then has to
+    // special-case its own retries, which is where the duplicates come from.
+    name: "answers not-found when asked to remove something already gone",
+    caught: "membership/delete-again-is-a-success",
+    patch: (a) => ({
+      ...a,
+      member: (col, object, op, body) => {
+        const out = a.member(col, object, op, body);
+        if (op === "delete" && !out.removed) return { ...out, ok: false, reports: ["member.not-a-member"] };
+        return out;
+      },
+    }),
+  },
+  {
+    // A producer taking a name out of the format's namespace through the one
+    // door the prefix rule had not been applied to.
+    name: "accepts an unprefixed key on a collection write",
+    caught: "membership/a-collections-own-keys-must-be-prefixed",
+    patch: (a) => ({
+      ...a,
+      patchCollection: (col, p) => {
+        const prefixed = (o) => Object.fromEntries(Object.entries(o ?? {}).map(([k, v]) => [k.includes(":") ? k : `hermes:${k}`, v]));
+        return a.patchCollection(col, { ...p, set: prefixed(p.set), unset: (p.unset ?? []).map((k) => (k.includes(":") ? k : `hermes:${k}`)) });
+      },
+    }),
+  },
+  {
+    // The payload treated as the whole collection — the same bug as "treats a
+    // patch as the whole object", on the write where the casualties are another
+    // producer's keys.
+    name: "treats a collection write as the whole collection",
+    caught: "membership/a-collection-write-leaves-the-rest-alone",
+    patch: (a) => ({
+      ...a,
+      patchCollection: (col, p) => {
+        const out = a.patchCollection(col, p);
+        if (out.ok) {
+          out.collection = { id: col.id, kind: col.kind, placement: col.placement, ...(p.set ?? {}) };
+        }
+        return out;
+      },
+    }),
+  },
 ];
 
 let escaped = 0;

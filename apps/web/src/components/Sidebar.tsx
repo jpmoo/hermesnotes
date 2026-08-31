@@ -30,6 +30,7 @@ import { classifyPress } from "../lib/press.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { ColorPickerModal } from "./ColorPickerModal.tsx";
+import { WingMark } from "./WingMark.tsx";
 
 type Target = "bg" | "text" | "icon";
 
@@ -340,11 +341,7 @@ export function Sidebar() {
           {leftPinned ? <PinOff size={14} /> : <Pin size={14} />}
         </button>
         <div className="brand">
-          <img
-            className="logo"
-            src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`}
-            alt="Hermes Notes"
-          />
+          <WingMark className="logo" size={26} />
           <span className="brand-name">Hermes Notes</span>
         </div>
       </div>

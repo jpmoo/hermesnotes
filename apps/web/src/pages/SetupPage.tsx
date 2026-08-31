@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api, describeRequestFailure } from "../api.ts";
+import { WingMark } from "../components/WingMark.tsx";
 
 /**
  * First-run wizard. Collects a privileged Postgres connection (used once to
@@ -49,7 +50,7 @@ export function SetupPage({ onDone }: { onDone: () => void }) {
   return (
     <div className="auth-wrap">
       <form className="auth-card" style={{ maxWidth: 440 }} onSubmit={submit}>
-        <img className="logo" src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`} alt="Hermes Notes" />
+        <WingMark className="logo" size={84} />
         <h2 className="chrome" style={{ margin: "0 0 4px", fontSize: 16 }}>
           Set up the database
         </h2>

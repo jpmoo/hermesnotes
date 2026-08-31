@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { ApiError } from "../api.ts";
 import { useAuth } from "../auth/AuthContext.tsx";
+import { WingMark } from "../components/WingMark.tsx";
 
 export function AuthPage({
   defaultMode = "login",
@@ -34,7 +35,7 @@ export function AuthPage({
   return (
     <div className="auth-wrap">
       <form className="auth-card" onSubmit={submit}>
-        <img className="logo" src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`} alt="Hermes Notes" />
+        <WingMark className="logo" size={84} />
         {mode === "register" && (
           <label className="field">
             <span>Display name (optional)</span>

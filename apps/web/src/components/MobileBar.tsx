@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Info, Menu, X } from "lucide-react";
 import { usePanels } from "../lib/right-panel.tsx";
+import { WingMark } from "./WingMark.tsx";
 
 /**
  * Phone-only top bar: a menu button that drops the rail down as a compact
@@ -34,11 +35,7 @@ export function MobileBar({
       <button className="icon-btn" title="Forward" disabled={!canForward} onClick={forward}>
         <ChevronRight size={18} />
       </button>
-      <img
-        className="mobile-logo"
-        src={`${import.meta.env.BASE_URL}brand/HermesLogoSmall.png`}
-        alt="Hermes"
-      />
+      <WingMark className="mobile-logo" size={22} title="Hermes" />
       <button
         className={`icon-btn mobile-info-btn${infoOpen ? " on" : ""}${selectedBlockId ? " has-sel" : ""}`}
         title="Info"

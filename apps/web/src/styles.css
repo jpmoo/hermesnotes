@@ -1329,11 +1329,14 @@ label,
   color: var(--text);
 }
 
+/* The mark is one path with fill: currentColor, so its colour is set here
+   rather than baked into a file. Teal, which is what the mark it replaced
+   was — the difference is that a dark theme can now say otherwise. */
 .sidebar .logo {
   display: block;
-  height: 28px;
-  width: auto;
+  flex-shrink: 0;
   margin: 0;
+  color: var(--accent);
 }
 
 .nav-link {
@@ -1731,11 +1734,10 @@ button:disabled {
   box-shadow: var(--shadow-lift);
   padding: 28px 26px;
 }
-.auth-card img.logo {
-  width: 132px;
-  height: auto;
+.auth-card .logo {
   display: block;
   margin: 4px auto 22px;
+  color: var(--accent);
 }
 
 /* ── Typed block card ─────────────────────────────────────────── */
@@ -6958,10 +6960,9 @@ input.cv-add-input {
   margin-left: auto; /* always pin Info to the right edge */
 }
 .mobile-logo {
-  height: 24px;
-  width: auto;
+  flex-shrink: 0;
   margin-left: 6px;
-  min-width: 0;
+  color: var(--accent);
 }
 .mobile-info-btn.has-sel {
   color: var(--accent);

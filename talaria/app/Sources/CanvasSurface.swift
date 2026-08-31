@@ -138,6 +138,11 @@ struct CanvasItem: Identifiable, Equatable, Codable {
 
     private static let bodyFont = NSFont.systemFont(ofSize: 12)
 
+    /// How wide a label will grow itself before it starts wrapping instead.
+    /// Not a limit on the box — a drag can make it any width — only on how far
+    /// typing alone will push it.
+    static let widestAuto: CGFloat = 520
+
     /**
      How big a new label starts: one line, as wide as its words.
 
@@ -743,6 +748,14 @@ final class CanvasModel: ObservableObject {
      */
     func fitToText(_ id: UUID, text: String) {
         guard let at = items.firstIndex(where: { $0.id == id }), items[at].shape == .plain else { return }
+        // Sideways first, up to the point where a line stops being a line. Past
+        // that it wraps and the box grows downward instead — a label eight
+        // hundred points wide is a paragraph pretending to be one, and it also
+        // runs off whatever anybody is looking at.
+        let natural = CanvasItem.measure(text).width
+        items[at].w = max(items[at].w, min(natural, CanvasItem.widestAuto))
+        // Then down, at whatever width it ended up with. A line break makes this
+        // the only thing that moves, which is what a line break should do.
         items[at].h = max(items[at].h, CanvasItem.leastHeight(of: text, at: items[at].w))
     }
 
@@ -1444,7 +1457,14 @@ private struct CanvasItemView: View {
                     // makes the words wrap in the box, and it also makes Return
                     // mean "new line". Both are wanted, so the key is taken
                     // first and the field never learns it was pressed.
-                    .onKeyPress(.return) {
+                    //
+                    // Unless Shift is down, in which case it is handed straight
+                    // back and the field does what it would have done anyway.
+                    // That is the whole implementation of a line break: not
+                    // inserting one, but declining to intercept the key that
+                    // already means one.
+                    .onKeyPress(keys: [.return]) { press in
+                        guard !press.modifiers.contains(.shift) else { return .ignored }
                         commit()
                         return .handled
                     }

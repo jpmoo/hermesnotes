@@ -827,7 +827,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
          case below: a panel that fails to dismiss costs a keystroke, and one
          that vanishes mid-interaction takes the interaction with it.
          */
-        let modalUp = { NSApp.modalWindow != nil }
+        /**
+         Windows this panel opened, which a click in is not a click away from.
+
+         A modal — `NSApp.modalWindow` is set for as long as `runModal` runs,
+         which covers the file panel.
+
+         And the colour panel, which is not modal at all: it is a shared floating
+         panel, so nothing about the app's state says it is up. Opening a colour
+         well from the canvas inspector therefore hid the desk, exactly as the
+         file panel did, and the eyedropper made it worse — the dropper takes
+         over the screen, so the click that picks a colour is a click in another
+         app as far as the global monitor is concerned. Both are answered by
+         asking whether the panel is on screen at all, rather than by trying to
+         classify the click.
+         */
+        let modalUp = {
+            if NSApp.modalWindow != nil { return true }
+            return NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible
+        }
         let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
             guard !modalUp() else { return }
             Task { @MainActor in onHide() }

@@ -41,6 +41,52 @@ struct CanvasItem: Identifiable, Equatable, Codable {
 }
 
 /**
+ A line from one item to another.
+
+ `from` and `to` are not symmetrical: the arrowhead is drawn at `to`, and `to`
+ is whatever was dropped *on*. That is the whole content of the gesture — you
+ carried this thing to that thing — so the direction is not a separate decision
+ anybody has to make afterwards.
+
+ **The bend is an offset, not a place.** It says how far the midpoint has been
+ pulled off the straight line, measured from the point halfway between the two
+ items' centres. Storing where the handle *is* would be simpler and wrong: move
+ either item and the curve would stay behind, hanging off nothing. Storing how
+ far it was pulled means the curve travels with what it connects, which is what
+ anybody who bent it meant.
+
+ Nothing here says which edges the line leaves and arrives at, deliberately.
+ That is worked out from where the two items are every time it is drawn, because
+ it is a fact about their positions and not a decision somebody made — storing it
+ would mean a line still pointing east at a box that has since moved west.
+ */
+struct CanvasLink: Identifiable, Equatable, Codable {
+    let id: UUID
+    var from: UUID
+    var to: UUID
+    /// Straight when zero.
+    var bendX: CGFloat = 0
+    var bendY: CGFloat = 0
+
+    var bend: CGSize {
+        get { CGSize(width: bendX, height: bendY) }
+        set { bendX = newValue.width; bendY = newValue.height }
+    }
+}
+
+/**
+ Everything on the canvas, as one thing to save.
+
+ A document rather than two lists side by side, because a link naming an item
+ that is not in the same file is a line to nowhere — and the only way to
+ guarantee they are written together is for them to be one value.
+ */
+struct CanvasDocument: Equatable, Codable {
+    var items: [CanvasItem] = []
+    var links: [CanvasLink] = []
+}
+
+/**
  Where the canvas keeps what is on it.
 
  One method each way and nothing else, because everything else is somebody's
@@ -53,8 +99,8 @@ struct CanvasItem: Identifiable, Equatable, Codable {
  changes, and if something has to, that is the finding.
  */
 protocol CanvasStore {
-    func load() -> [CanvasItem]
-    func save(_ items: [CanvasItem])
+    func load() -> CanvasDocument
+    func save(_ document: CanvasDocument)
 }
 
 /**
@@ -62,9 +108,9 @@ protocol CanvasStore {
  nobody wants kept.
  */
 final class MemoryCanvasStore: CanvasStore {
-    private var items: [CanvasItem] = []
-    func load() -> [CanvasItem] { items }
-    func save(_ items: [CanvasItem]) { self.items = items }
+    private var document = CanvasDocument()
+    func load() -> CanvasDocument { document }
+    func save(_ document: CanvasDocument) { self.document = document }
 }
 
 /**
@@ -101,11 +147,19 @@ final class FileCanvasStore: CanvasStore {
             .appendingPathComponent("Library/Application Support/Talaria/canvas.json")
     }
 
-    func load() -> [CanvasItem] {
-        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return [] }
+    func load() -> CanvasDocument {
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return CanvasDocument() }
         do {
-            return try JSONDecoder().decode([CanvasItem].self, from: data)
+            return try JSONDecoder().decode(CanvasDocument.self, from: data)
         } catch {
+            // The first shape this file had was a bare array of items, written
+            // before there was anything to connect. Read it rather than treating
+            // it as damage: somebody's canvas from this morning is not a corrupt
+            // file, and moving it aside would be losing work over a version
+            // number nobody was told about.
+            if let items = try? JSONDecoder().decode([CanvasItem].self, from: data) {
+                return CanvasDocument(items: items, links: [])
+            }
             // Kept, under a name that says what happened. Starting empty is the
             // right thing to draw and the wrong thing to write, and without this
             // the first save would overwrite whatever could not be read.
@@ -113,11 +167,11 @@ final class FileCanvasStore: CanvasStore {
             try? FileManager.default.removeItem(at: aside)
             try? FileManager.default.moveItem(at: url, to: aside)
             NSLog("talaria: canvas.json could not be read (\(error)) — kept as \(aside.lastPathComponent)")
-            return []
+            return CanvasDocument()
         }
     }
 
-    func save(_ items: [CanvasItem]) {
+    func save(_ document: CanvasDocument) {
         do {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true
@@ -127,7 +181,7 @@ final class FileCanvasStore: CanvasStore {
             // a diff of one moved item should be one line rather than the whole
             // canvas on a single line.
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(items).write(to: url, options: .atomic)
+            try encoder.encode(document).write(to: url, options: .atomic)
         } catch {
             NSLog("talaria: could not save the canvas (\(error))")
         }
@@ -144,6 +198,10 @@ final class FileCanvasStore: CanvasStore {
 @MainActor
 final class CanvasModel: ObservableObject {
     @Published private(set) var items: [CanvasItem] = []
+    @Published private(set) var links: [CanvasLink] = []
+    /// A selected line. Never both this and `selected` — one selection, two
+    /// kinds of thing it can be on.
+    @Published var selectedLink: UUID?
     /// Under the pointer. Highlighted, and nothing more.
     @Published var hovered: UUID?
     /// Clicked. Gets the resize handles.
@@ -159,10 +217,50 @@ final class CanvasModel: ObservableObject {
 
     init(store: CanvasStore = FileCanvasStore()) {
         self.store = store
-        items = store.load()
+        let document = store.load()
+        items = document.items
+        // A line whose ends are not both here cannot be drawn and must not be
+        // kept — it would be saved back out and outlive every chance of ever
+        // meaning anything again.
+        let present = Set(document.items.map(\.id))
+        links = document.links.filter { present.contains($0.from) && present.contains($0.to) }
     }
 
-    private func persist() { store.save(items) }
+    private func persist() { store.save(CanvasDocument(items: items, links: links)) }
+
+    func item(_ id: UUID) -> CanvasItem? { items.first { $0.id == id } }
+
+    /**
+     Connect two items, arrow pointing at the one that was dropped on.
+
+     One line per pair, in one direction. Dropping A on B when B is already
+     joined to A turns the existing line round rather than drawing a second one
+     on top of it — two lines between the same two boxes are indistinguishable
+     on screen, and the second is a line nobody can select or remove.
+     */
+    func link(from: UUID, to: UUID) {
+        guard from != to else { return }
+        if let at = links.firstIndex(where: {
+            ($0.from == from && $0.to == to) || ($0.from == to && $0.to == from)
+        }) {
+            links[at].from = from
+            links[at].to = to
+        } else {
+            links.append(CanvasLink(id: UUID(), from: from, to: to))
+        }
+        persist()
+    }
+
+    func bend(_ id: UUID, by offset: CGSize) {
+        guard let at = links.firstIndex(where: { $0.id == id }) else { return }
+        links[at].bend = offset
+    }
+
+    func removeLink(_ id: UUID) {
+        links.removeAll { $0.id == id }
+        if selectedLink == id { selectedLink = nil }
+        persist()
+    }
 
     /// Default size for a new text item: wide enough for a few words, tall
     /// enough for one line at twelve point. It grows when somebody resizes it,
@@ -191,6 +289,7 @@ final class CanvasModel: ObservableObject {
         )
         items.append(item)
         selected = nil
+        selectedLink = nil
         draft = ""
         editing = item.id
         // Not persisted yet. An item with no words in it is a gesture in
@@ -201,6 +300,7 @@ final class CanvasModel: ObservableObject {
     func beginEditing(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }) else { return }
         selected = nil
+        selectedLink = nil
         draft = item.text
         editing = id
     }
@@ -220,6 +320,7 @@ final class CanvasModel: ObservableObject {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             items.removeAll { $0.id == id }
+            links.removeAll { $0.from == id || $0.to == id }
             draft = ""
             persist()
             return
@@ -255,9 +356,122 @@ final class CanvasModel: ObservableObject {
 
     func delete(_ id: UUID) {
         items.removeAll { $0.id == id }
+        // A line to something that is gone is a line to nowhere.
+        links.removeAll { $0.from == id || $0.to == id }
         if selected == id { selected = nil }
         if editing == id { editing = nil }
         persist()
+    }
+}
+
+// MARK: - Where a line runs
+
+/**
+ The shape of one line, worked out from where its two items are right now.
+
+ Nothing about this is stored. Which edge a line leaves and which it arrives at
+ is a fact about two positions, and a stored answer is a line still pointing east
+ at a box that has since moved west — so it is recomputed every time it is drawn,
+ every time either box moves, and every time the curve is pulled.
+
+ **Closest edge to closest edge, measured toward the bend.** Each end anchors at
+ the middle of whichever of its four sides faces the point the line is heading
+ for. With no bend that point is halfway between the two centres, which gives the
+ sides that face each other. Pull the handle up and over, and both ends
+ re-anchor to their top edges on the way — which is the behaviour asked for, and
+ it falls out rather than being a case.
+
+ **The curve passes through the handle**, which is the other thing that has to be
+ true and is not automatic. A quadratic Bézier does *not* pass through its
+ control point: at the halfway mark it sits at `(start + 2·control + end)/4`. So
+ the control point is solved backwards from where the handle is, and the line
+ goes where it was put.
+ */
+struct LinkGeometry {
+    let start: CGPoint
+    let end: CGPoint
+    /// The Bézier's control point — where the maths wants it, not where the
+    /// handle is.
+    let control: CGPoint
+    /// Where the handle is, and where the curve actually passes.
+    let handle: CGPoint
+
+    /**
+     The middle of whichever side faces `p`.
+
+     Compared on the axis that dominates *relative to the box's own
+     proportions*, not on plain distance to the four side-centres. Plain
+     distance is the obvious reading of "closest edge" and it gives the wrong
+     answer on exactly the case this feature is for: pull the handle high above
+     two boxes sitting side by side, and the east side-centre is still nearer to
+     it than the north one is — so the line would leave sideways out of a curve
+     going straight up. Worse on a wide flat box, where the north and south
+     centres sit close together in the middle and win from almost anywhere.
+
+     Dividing each component by the box's own width and height asks the question
+     that was meant: which way is this line actually heading, given the shape of
+     the thing it is leaving. It also does not flicker — a small nudge of the
+     handle moves the curve without flipping which edges it uses, and a line
+     whose ends jump between sides while you drag is unusable.
+
+     This is the same rule Hermes' canvas uses to pick a side, which is not a
+     coincidence worth spending: when these lines are eventually written through
+     the format they carry a side each, and two tools that disagree about which
+     side a line leaves will redraw each other's diagrams on every exchange.
+     */
+    private static func facingSide(of r: CGRect, toward p: CGPoint) -> CGPoint {
+        let dx = p.x - r.midX
+        let dy = p.y - r.midY
+        let w = max(r.width, 0.0001)
+        let h = max(r.height, 0.0001)
+        if abs(dx) / w > abs(dy) / h {
+            return CGPoint(x: dx > 0 ? r.maxX : r.minX, y: r.midY)
+        }
+        return CGPoint(x: r.midX, y: dy > 0 ? r.maxY : r.minY)
+    }
+
+    static func of(from: CGRect, to: CGRect, bend: CGSize) -> LinkGeometry {
+        let midCentres = CGPoint(
+            x: (from.midX + to.midX) / 2 + bend.width,
+            y: (from.midY + to.midY) / 2 + bend.height
+        )
+        let a = facingSide(of: from, toward: midCentres)
+        let b = facingSide(of: to, toward: midCentres)
+        // Solved so that the curve passes through `midCentres` at its halfway
+        // point. With no bend this lands exactly on the straight line between
+        // the anchors, so a straight line stays straight.
+        let control = CGPoint(x: 2 * midCentres.x - (a.x + b.x) / 2,
+                              y: 2 * midCentres.y - (a.y + b.y) / 2)
+        return LinkGeometry(start: a, end: b, control: control, handle: midCentres)
+    }
+
+    func point(at t: CGFloat) -> CGPoint {
+        let u = 1 - t
+        return CGPoint(
+            x: u * u * start.x + 2 * u * t * control.x + t * t * end.x,
+            y: u * u * start.y + 2 * u * t * control.y + t * t * end.y
+        )
+    }
+
+    /// The direction the line is travelling as it arrives, for the arrowhead.
+    var arrival: CGVector {
+        let dx = 2 * (end.x - control.x)
+        let dy = 2 * (end.y - control.y)
+        let len = max(hypot(dx, dy), 0.0001)
+        return CGVector(dx: dx / len, dy: dy / len)
+    }
+
+    /// How far a point is from the line. Sampled rather than solved: a cubic
+    /// root-find would be exact and this is a click test, where twenty-four
+    /// samples along a curve a few hundred points long is already finer than
+    /// anybody can aim.
+    func distance(to p: CGPoint) -> CGFloat {
+        var best = CGFloat.greatestFiniteMagnitude
+        for i in 0...24 {
+            let q = point(at: CGFloat(i) / 24)
+            best = min(best, hypot(q.x - p.x, q.y - p.y))
+        }
+        return best
     }
 }
 
@@ -433,6 +647,8 @@ private struct CanvasItemView: View {
     let hovered: Bool
     let selected: Bool
     let editing: Bool
+    /// Letting go now would draw a line to this one.
+    let dropTarget: Bool
     @Binding var draft: String
     let commit: () -> Void
 
@@ -484,7 +700,20 @@ private struct CanvasItemView: View {
             // Hover is the faintest thing that can be seen; selection is
             // definite. They are the same rectangle at two strengths rather than
             // two different marks, because they are two stages of one idea.
-            if editing {
+            if dropTarget {
+                // The strongest mark on the canvas, and the only one that is
+                // filled. Dropping a box on a box is a gesture whose outcome is
+                // invisible until it has happened — the thing you are carrying
+                // goes back where it came from and a line appears somewhere
+                // else — so what it is going to connect to has to be in no
+                // doubt before you let go.
+                RoundedRectangle(cornerRadius: 3 / zoom)
+                    .fill(Theme.accent.opacity(0.14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3 / zoom)
+                            .strokeBorder(Theme.accent, lineWidth: 2 * hairline)
+                    )
+            } else if editing {
                 RoundedRectangle(cornerRadius: 3 / zoom)
                     .strokeBorder(Theme.accent.opacity(0.55), style: StrokeStyle(lineWidth: hairline, dash: [3 / zoom, 2 / zoom]))
             } else if selected {
@@ -580,6 +809,10 @@ struct CanvasSurface: View {
     @State private var movingId: UUID?
     @State private var moveOrigin: CGPoint?
     @State private var resizing: (id: UUID, corner: CanvasItemView.Corner, from: CGRect)?
+    /// The item a drag is currently hovering over, which dropping would link to.
+    @State private var linkTarget: UUID?
+    /// Where the bend was when the handle was picked up.
+    @State private var bendAtStart: CGSize?
 
     /// Open over the canvas, pointing the instant a button goes down, closed
     /// once that press starts pulling the canvas about.
@@ -603,7 +836,19 @@ struct CanvasSurface: View {
                 // canvas" being the same gesture.
                 background(geo.size)
 
-                content(geo.size)
+                // Under the items, so a line runs behind the boxes it joins
+                // rather than across their faces.
+                lines(geo.size)
+
+                content(geo)
+
+                // The handle sits above everything it might otherwise hide
+                // behind, and only exists while a line is selected.
+                if let id = model.selectedLink,
+                   let link = model.links.first(where: { $0.id == id }),
+                   let g = geometry(of: link) {
+                    handleControls(for: link, g: g, in: geo.size)
+                }
 
                 // The ghost. Drawn over everything, because a tool being carried
                 // is not on the canvas yet and should not look as though it is.
@@ -675,6 +920,144 @@ struct CanvasSurface: View {
 
     // MARK: Coordinates
 
+    /**
+     The item under the pointer that is not the one being carried.
+
+     Topmost wins — last drawn, so the one somebody can actually see under the
+     cursor — which is why this walks the list backwards.
+     */
+    private func dropTarget(under screen: CGPoint, moving: UUID, in geo: GeometryProxy) -> UUID? {
+        let here = canvasPoint(local(screen, geo), in: geo.size)
+        return model.items.reversed().first { $0.id != moving && $0.rect.contains(here) }?.id
+    }
+
+    /**
+     Which line, if any, is under a click.
+
+     Measured in canvas points but with a tolerance converted from screen
+     points, so the target stays the same size under the pointer however far the
+     canvas is zoomed — six points of slack at 100% is six points of slack at
+     600%, rather than one.
+
+     Nearest wins where two lines cross, which is the only answer that is not
+     arbitrary.
+     */
+    private func hitLink(at p: CGPoint, in size: CGSize) -> UUID? {
+        let here = canvasPoint(p, in: size)
+        let slack = 7 / chrome.zoom
+        var best: (id: UUID, d: CGFloat)?
+        for link in model.links {
+            guard let g = geometry(of: link) else { continue }
+            let d = g.distance(to: here)
+            guard d <= slack else { continue }
+            if best == nil || d < best!.d { best = (link.id, d) }
+        }
+        return best?.id
+    }
+
+    /// A point on the canvas, as a point on the glass. The inverse of
+    /// `canvasPoint`, and the two must stay that way.
+    private func screenPoint(_ p: CGPoint, in size: CGSize) -> CGPoint {
+        CGPoint(x: p.x * chrome.zoom + chrome.pan.width + size.width / 2,
+                y: p.y * chrome.zoom + chrome.pan.height + size.height / 2)
+    }
+
+    /// The shape of a line, or nothing if either end has gone.
+    private func geometry(of link: CanvasLink) -> LinkGeometry? {
+        guard let a = model.item(link.from), let b = model.item(link.to) else { return nil }
+        return LinkGeometry.of(from: a.rect, to: b.rect, bend: link.bend)
+    }
+
+    /**
+     Every line, drawn in screen space.
+
+     Not inside the transform, for the same reason the grid is not: a stroke
+     inside `scaleEffect` is scaled along with everything else, so a line drawn
+     one point wide is a hairline at 0.15x and a six-point band at 6x. Converting
+     the two ends and drawing at a constant width keeps a line looking like a
+     line at every zoom, which is what it is.
+     */
+    @ViewBuilder
+    private func lines(_ size: CGSize) -> some View {
+        Canvas { context, _ in
+            for link in model.links {
+                guard let g = geometry(of: link) else { continue }
+                let start = screenPoint(g.start, in: size)
+                let end = screenPoint(g.end, in: size)
+                let control = screenPoint(g.control, in: size)
+                let chosen = model.selectedLink == link.id
+                let colour: Color = chosen ? Theme.accent : .primary.opacity(0.55)
+                let width: CGFloat = chosen ? 2 : 1.5
+
+                var path = Path()
+                path.move(to: start)
+                path.addQuadCurve(to: end, control: control)
+                context.stroke(path, with: .color(colour), lineWidth: width)
+
+                // The head, at the end that was dropped on. Drawn as a filled
+                // triangle rather than two strokes so it stays solid at any
+                // angle instead of showing a notch at the point.
+                let d = g.arrival
+                let tip = end
+                let back = CGPoint(x: tip.x - d.dx * 9, y: tip.y - d.dy * 9)
+                let side = CGVector(dx: -d.dy, dy: d.dx)
+                var head = Path()
+                head.move(to: tip)
+                head.addLine(to: CGPoint(x: back.x + side.dx * 4.5, y: back.y + side.dy * 4.5))
+                head.addLine(to: CGPoint(x: back.x - side.dx * 4.5, y: back.y - side.dy * 4.5))
+                head.closeSubpath()
+                context.fill(head, with: .color(colour))
+            }
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// The midpoint grip, and the one button that undoes a line.
+    @ViewBuilder
+    private func handleControls(for link: CanvasLink, g: LinkGeometry, in size: CGSize) -> some View {
+        let at = screenPoint(g.handle, in: size)
+        ZStack {
+            Circle()
+                .fill(Color(nsColor: .windowBackgroundColor))
+                .overlay(Circle().strokeBorder(Theme.accent, lineWidth: 1.5))
+                .frame(width: 11, height: 11)
+                .contentShape(Circle().inset(by: -7))
+                .position(at)
+                .gesture(
+                    // Global, like every other drag here: this handle is drawn
+                    // at a position that the drag itself changes.
+                    DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                        .onChanged { value in
+                            let base = bendAtStart ?? link.bend
+                            if bendAtStart == nil { bendAtStart = base }
+                            model.bend(link.id, by: CGSize(
+                                width: base.width + value.translation.width / chrome.zoom,
+                                height: base.height + value.translation.height / chrome.zoom
+                            ))
+                        }
+                        .onEnded { _ in
+                            bendAtStart = nil
+                            model.settled()
+                        }
+                )
+
+            // A line drawn by accident has to be undoable, and a keyboard is not
+            // where somebody's hand is at that moment. Offset far enough from
+            // the grip that neither is hit while reaching for the other.
+            Button { model.removeLink(link.id) } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 7, weight: .bold))
+                    .frame(width: 13, height: 13)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(.white)
+                    .background(Circle().fill(Theme.danger))
+            }
+            .buttonStyle(.plain)
+            .help("Remove this connection")
+            .position(x: at.x + 16, y: at.y - 14)
+        }
+    }
+
     /// A point on the glass, as a point on the canvas.
     private func canvasPoint(_ p: CGPoint, in size: CGSize) -> CGPoint {
         CGPoint(
@@ -717,14 +1100,20 @@ struct CanvasSurface: View {
                     chrome.pan = CGSize(width: base.width + value.translation.width,
                                         height: base.height + value.translation.height)
                 }
-                .onEnded { _ in
+                .onEnded { value in
                     // A press on the background that never became a drag is
                     // "clicking away": it finishes whatever was being typed and
                     // drops the selection. This is the other half of the rule
                     // that an empty item disappears.
+                    //
+                    // A line first, though. A line is drawn on the background
+                    // and has no view of its own to click — it is a stroke in a
+                    // Canvas — so the click that would clear the selection is
+                    // also the only click that can make one.
                     if !dragging {
                         model.commitEdit()
                         model.selected = nil
+                        model.selectedLink = hitLink(at: value.location, in: size)
                     }
                     panAtStart = nil
                     pressing = false
@@ -753,10 +1142,10 @@ struct CanvasSurface: View {
     }
 
     @ViewBuilder
-    private func content(_ size: CGSize) -> some View {
+    private func content(_ geo: GeometryProxy) -> some View {
         ZStack {
             ForEach(model.items) { item in
-                itemView(item, in: size)
+                itemView(item, in: geo)
             }
         }
         .scaleEffect(chrome.zoom)
@@ -764,7 +1153,7 @@ struct CanvasSurface: View {
     }
 
     @ViewBuilder
-    private func itemView(_ item: CanvasItem, in size: CGSize) -> some View {
+    private func itemView(_ item: CanvasItem, in geo: GeometryProxy) -> some View {
         let editing = model.editing == item.id
         let selected = model.selected == item.id
 
@@ -774,6 +1163,7 @@ struct CanvasSurface: View {
             hovered: model.hovered == item.id,
             selected: selected,
             editing: editing,
+            dropTarget: linkTarget == item.id,
             draft: $model.draft,
             commit: { model.commitEdit() }
         )
@@ -813,10 +1203,26 @@ struct CanvasSurface: View {
                         to: CGPoint(x: from.x + value.translation.width / chrome.zoom,
                                     y: from.y + value.translation.height / chrome.zoom)
                     )
+                    // What the pointer is over, not what the box overlaps. A
+                    // box being dragged overlaps whatever it happens to cross,
+                    // and half of that is the diagram it is being carried
+                    // across; the pointer is the one part of the gesture that
+                    // is unambiguously aimed.
+                    linkTarget = dropTarget(under: value.location, moving: item.id, in: geo)
                 }
                 .onEnded { value in
                     let moved = abs(value.translation.width) > 3 || abs(value.translation.height) > 3
-                    if moved {
+                    if moved, let onto = linkTarget, let from = moveOrigin {
+                        // Dropped on something. The gesture said "this one goes
+                        // with that one", not "this one goes here", so the box
+                        // goes back where it came from and a line is what is
+                        // left behind. Leaving it where it landed would mean
+                        // every connection also rearranged the diagram.
+                        model.move(item.id, to: from)
+                        model.link(from: item.id, to: onto)
+                        model.selected = nil
+                        model.selectedLink = nil
+                    } else if moved {
                         model.settled()
                     } else if !editing {
                         // A press that went nowhere is a click, and a click
@@ -828,6 +1234,7 @@ struct CanvasSurface: View {
                     }
                     movingId = nil
                     moveOrigin = nil
+                    linkTarget = nil
                 }
         )
         // Two clicks to edit something already written. Not something anybody

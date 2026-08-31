@@ -68,6 +68,29 @@ check(
 check("reports a deletion for an object it never sent", 
   ((delta.changes ?? []) as { object: string }[]).some((c) => c.object === "never-existed"));
 
+// ---- a delta with nothing in it -----------------------------------------
+//
+// The common case by a wide margin: a follower polls every thirty seconds and
+// almost every poll finds nothing. This used to answer with every collection in
+// the account, so a quiet library still wrote nine blocks into a mirror twice a
+// minute — for six days, in the client that found it.
+const quiet = narrow(envelope, { rows: [] }, undefined);
+const cols = (e: Record<string, unknown>) => (e.collections ?? []) as unknown[];
+console.log(`\nquiet ?since=: ${objs(quiet).length} objects, ${cols(quiet).length} collections`);
+check("valid", validateEnvelope(quiet).valid);
+check("carries no objects", objs(quiet).length === 0);
+check("carries no collections either", cols(quiet).length === 0);
+check("says so, rather than being an empty document", Array.isArray(quiet.changes));
+
+// A delta that did carry something still carries every board, which is the case
+// the narrowing above deliberately does not optimise: the board a card was
+// taken *off* no longer lists it, so filtering by membership would drop the one
+// collection the follower most needs.
+check(
+  "a delta that carries something still carries every board",
+  cols(delta).length === cols(envelope).length,
+);
+
 // ---- both together -------------------------------------------------------
 const both = narrow(envelope, { rows: objs(envelope).map((o, i) => ({ blockId: o.id, op: "update", seq: i })) }, "task");
 console.log(`\nboth: ${objs(both).length} objects`);

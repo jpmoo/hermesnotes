@@ -61,6 +61,19 @@ export function narrow(
     // board is no longer in its member list, so the board it left is exactly
     // the one that would not travel, and the follower keeps showing the card
     // where it used to be. Collections are few and members are ids.
+    //
+    // Except when nothing moved at all, which is nearly every delta and was
+    // costing a follower every board in the account, every poll, forever. One
+    // real client logged eight to nine blocks written every thirty seconds for
+    // six days without a single thing having changed.
+    //
+    // Safe because there is no way for a collection to change without a row: a
+    // membership added or removed is reported as an update to the *object*, and
+    // an edit to the collection itself is a row naming the collection. Both were
+    // confirmed against a live instance before this was narrowed. So an empty
+    // delta means nothing anywhere moved, boards included — and "an envelope
+    // holding only what moved" is what a delta was defined to be.
+    if (op.size === 0) out.collections = [];
   }
 
   out.objects = objects;

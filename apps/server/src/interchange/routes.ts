@@ -177,6 +177,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           name: blockTypes.name,
           isText: blockTypes.isText,
           propertySchema: blockTypes.propertySchema,
+          iconKey: blockTypes.iconKey,
         })
         .from(blockTypes)
         .where(eq(blockTypes.ownerId, userId));

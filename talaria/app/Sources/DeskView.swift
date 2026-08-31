@@ -609,6 +609,9 @@ struct DeskView: View {
     @ObservedObject var compose: ComposeModel
     @ObservedObject var glance: GlanceModel
     @ObservedObject var canvas: CanvasModel
+    /// Open the New Block window seeded with these words, and hand back the id
+    /// of whatever it made.
+    var onCompose: (String, @escaping (String) -> Void) -> Void
     var onPickWorkspace: (String) -> Void
 
     private static let gap: CGFloat = 14
@@ -641,7 +644,7 @@ struct DeskView: View {
                         // surface is the one thing that knows where all of that
                         // is — which is what lets the pointer become a finger
                         // over every part of it and stay a hand over the rest.
-                        CanvasSurface(chrome: chrome, model: canvas)
+                        CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose)
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                 }

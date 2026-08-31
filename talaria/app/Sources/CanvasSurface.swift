@@ -124,6 +124,18 @@ struct CanvasItem: Identifiable, Equatable, Codable {
      onto later.
      */
     var image: String?
+    /**
+     The Hermes block this node stands for, if somebody made one.
+
+     An id and nothing else. Not a copy of the title, the type, the status or
+     the icon — every one of those is a fact about the block, and a second copy
+     of a fact is a copy that goes stale the first time anybody edits the
+     original somewhere else. What is drawn comes from the mirror, every time.
+
+     Deleting the node does not delete the block. A canvas is a way of talking
+     about things, and taking a thing off it is not destroying the thing.
+     */
+    var blockId: String?
 
     /// The box in canvas coordinates.
     var rect: CGRect {
@@ -221,6 +233,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         text = try c.decode(String.self, forKey: .text)
         shape = try c.decodeIfPresent(CanvasShape.self, forKey: .shape) ?? .plain
         image = try c.decodeIfPresent(String.self, forKey: .image)
+        blockId = try c.decodeIfPresent(String.self, forKey: .blockId)
         hAlign = try c.decodeIfPresent(TextAlign.self, forKey: .hAlign) ?? .center
         vAlign = try c.decodeIfPresent(TextVAlign.self, forKey: .vAlign) ?? .middle
         textColor = try c.decodeIfPresent(String.self, forKey: .textColor)
@@ -967,6 +980,14 @@ final class CanvasModel: ObservableObject {
             .filter { !$0.members.isEmpty }
         links.removeAll { emptied.contains($0.from) || emptied.contains($0.to) }
         clearSelection()
+        persist()
+    }
+
+    /// Remember which block a node became. Called once, after the composer
+    /// says what it made.
+    func attach(_ item: UUID, to block: String) {
+        guard let at = items.firstIndex(where: { $0.id == item }) else { return }
+        items[at].blockId = block
         persist()
     }
 
@@ -2017,6 +2038,27 @@ private struct CanvasItemView: View {
     /// While a region is taking members: whether this is one. Nothing at all
     /// when no region is asking, so the ordinary canvas is unmarked.
     let inRegion: Bool?
+    /// The block this node stands for, when it stands for one.
+    let badge: LinkedBadge?
+
+    /**
+     What a node shows when it is a Hermes block.
+
+     An icon and, when the type says a thing can be finished, whether it is —
+     and that second one is a control rather than a picture. A checkbox that
+     shows the state and cannot change it is a worse checkbox than none.
+
+     `toggle` is nil when the type declares no status. Not every type does, and
+     drawing a box that cannot be ticked would invent a state the type has not
+     got.
+     */
+    struct LinkedBadge {
+        let symbol: String
+        let done: Bool?
+        let toggle: (() -> Void)?
+        let open: () -> Void
+        let missing: Bool
+    }
     /// Already decoded. Loading a picture inside the body would re-read it on
     /// every frame of a drag, which is a file read per frame for as long as
     /// somebody is moving it.
@@ -2105,6 +2147,8 @@ private struct CanvasItemView: View {
                     // label — a label with padding is a label that does not
                     // start where it looks like it starts.
                     .padding(item.shape == .plain ? 0 : 10)
+                    // Room for the mark, only when there is one.
+                    .padding(.leading, badge == nil ? 0 : 16 / zoom)
             }
         }
         .frame(width: item.w, height: item.h, alignment: combined(item.hAlign, item.vAlign))
@@ -2123,6 +2167,15 @@ private struct CanvasItemView: View {
         // one short word in a wide box would otherwise be nearly unhittable, and
         // "touching an item highlights it" would be a lie most of the time.
         .contentShape(Rectangle())
+        // The mark, at the leading edge and inside whatever shape there is.
+        // Sized in screen terms like every other piece of chrome here.
+        .overlay(alignment: .topLeading) {
+            if let badge {
+                badgeView(badge)
+                    .padding(.leading, (item.shape == .plain ? 1 : 6) / zoom)
+                    .padding(.top, (item.shape == .plain ? 1 : 6) / zoom)
+            }
+        }
         .overlay {
             // Hover is the faintest thing that can be seen; selection is
             // definite. They are the same rectangle at two strengths rather than
@@ -2165,6 +2218,28 @@ private struct CanvasItemView: View {
                     .strokeBorder(Color.primary.opacity(0.28), lineWidth: hairline)
             }
         }
+    }
+
+    /// The icon, or the checkbox that has taken its place.
+    @ViewBuilder
+    private func badgeView(_ badge: LinkedBadge) -> some View {
+        Button {
+            if let toggle = badge.toggle { toggle() } else { badge.open() }
+        } label: {
+            Image(systemName: badge.missing
+                    ? "questionmark.circle"
+                    : (badge.done.map { $0 ? "checkmark.circle.fill" : "circle" } ?? badge.symbol))
+                .font(.system(size: 11 / zoom, weight: .medium))
+                .foregroundStyle(badge.missing
+                                 ? Color.secondary
+                                 : (badge.done == true ? Theme.accent : Color.secondary))
+                .frame(width: 14 / zoom, height: 14 / zoom)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(badge.missing
+              ? "This block is not in the mirror"
+              : (badge.toggle == nil ? "Open in Hermes Notes" : "Mark done, or not"))
     }
 
     /// Where the four grips sit, in the item's own space.
@@ -2228,6 +2303,12 @@ private struct CanvasItemView: View {
 struct CanvasSurface: View {
     @ObservedObject var chrome: DeskChrome
     @ObservedObject var model: CanvasModel
+    /// Open the composer with these words in it, and say what it made.
+    ///
+    /// Handed in rather than reached for: the canvas has no business knowing
+    /// what a composer is, and this keeps the one place it touches Hermes down
+    /// to a closure somebody else supplies.
+    var onCompose: (String, @escaping (String) -> Void) -> Void = { _, _ in }
 
     /// A name for this view's coordinate space, so a drag that starts on the
     /// tool strip can report where it ended in canvas terms.
@@ -2315,6 +2396,13 @@ struct CanvasSurface: View {
     /// picture comes from. Both points: where to draw the question, and where
     /// the picture goes once it is answered.
     @State private var askingImage: (screen: CGPoint, canvas: CGPoint)?
+
+    /// What Hermes says about the blocks this canvas is linked to, and the
+    /// types they are. Read from the mirror, so it is free and works offline;
+    /// refreshed when the set of links changes and when one of them is written
+    /// to, rather than on a timer nobody asked for.
+    @State private var linked: [String: Daemon.LinkedBlock] = [:]
+    @State private var blockTypes: [String: Daemon.BlockType] = [:]
 
     /// Decoded pictures, by the item that shows them. Rebuilt when the set of
     /// pictures changes and not once per frame — decoding a screenshot inside a
@@ -2425,7 +2513,8 @@ struct CanvasSurface: View {
             .overlay(alignment: .bottomTrailing) {
                 CanvasControls(chrome: chrome).chrome($overChrome).padding(14)
             }
-            .onAppear { loadPictures() }
+            .onAppear { loadPictures(); refreshLinks() }
+            .onChange(of: model.items.compactMap(\.blockId)) { _ in refreshLinks() }
             .onChange(of: model.selected) { now in
                 forgetChrome()
                 if inspecting != nil, inspecting != now, model.selectedLink != inspecting { inspecting = nil }
@@ -2554,6 +2643,98 @@ struct CanvasSurface: View {
             if best == nil || d < best!.d { best = (link.id, d) }
         }
         return best?.id
+    }
+
+    /**
+     Ask the mirror about every block this canvas points at.
+
+     Off the main thread and all at once, because it happens when the set of
+     links changes rather than while anything is being dragged. A node whose
+     block has gone is left without an answer rather than given a wrong one —
+     the node still draws, and says it is pointing at nothing.
+     */
+    private func refreshLinks() {
+        let ids = Set(model.items.compactMap(\.blockId))
+        guard !ids.isEmpty else {
+            linked = [:]
+            return
+        }
+        Task.detached(priority: .utility) {
+            let found = ids.compactMap { try? Daemon.linked($0) }
+            let types = (try? Daemon.types()) ?? []
+            await MainActor.run {
+                linked = Dictionary(uniqueKeysWithValues: found.map { ($0.id, $0) })
+                blockTypes = Dictionary(uniqueKeysWithValues: types.map { ($0.id, $0) })
+            }
+        }
+    }
+
+    /**
+     What a node should show for the block behind it.
+
+     Everything here is read rather than remembered: the type, the icon, whether
+     the type has a status at all and what the status currently is. A node stores
+     an id and nothing else, so none of this can be stale — which is the point of
+     storing only the id.
+     */
+    private func badge(for item: CanvasItem) -> CanvasItemView.LinkedBadge? {
+        guard let id = item.blockId else { return nil }
+        guard let block = linked[id] else {
+            // Linked to something the mirror has never heard of. Said out loud
+            // rather than drawn as an ordinary node, because "this points at a
+            // block" and "this points at a block that is gone" are different
+            // facts and only one of them is reassuring.
+            return .init(symbol: "questionmark.circle", done: nil, toggle: nil,
+                         open: {}, missing: true)
+        }
+        let type = block.typeId.flatMap { blockTypes[$0] }
+        let canFinish = type?.statusKey != nil && !(type?.completeValues.isEmpty ?? true)
+        return .init(
+            symbol: type?.icon.map(sfSymbol(for:)) ?? "doc",
+            done: canFinish ? isDone(block) : nil,
+            toggle: canFinish ? { toggleDone(block, type: type) } : nil,
+            open: { open(block) },
+            missing: false
+        )
+    }
+
+    /// Hermes names its icons in its own vocabulary; this is the small part of
+    /// it that has an obvious equivalent here. Anything unrecognised falls back
+    /// to a page, which is what a block is when nothing more is known.
+    private func sfSymbol(for key: String) -> String {
+        switch key {
+        case "check-square", "checkSquare", "list-checks": return "checklist"
+        case "calendar", "calendar-days": return "calendar"
+        case "user", "person": return "person"
+        case "folder": return "folder"
+        case "star": return "star"
+        case "tag": return "tag"
+        case "workflow": return "point.topleft.down.curvedto.point.bottomright.up"
+        case "file-text", "fileText", "scroll": return "doc.text"
+        default: return "doc"
+        }
+    }
+
+    /// Tick it, or untick it, through the binding — the daemon's own write,
+    /// which stamps the completion and keeps a series in step.
+    private func toggleDone(_ block: Daemon.LinkedBlock, type: Daemon.BlockType?) {
+        guard let type, let want = isDone(block) ? type.undoneValue : type.doneValue else { return }
+        Task.detached(priority: .userInitiated) {
+            try? Daemon.write(["kind": "complete", "blockId": block.id, "status": want])
+            await MainActor.run { refreshLinks() }
+        }
+    }
+
+    private func open(_ block: Daemon.LinkedBlock) {
+        guard let url = block.url.flatMap(URL.init(string:)) else { return }
+        Opener.open(url)
+    }
+
+    /// Whether a linked block counts as finished, by its own type's rule.
+    private func isDone(_ block: Daemon.LinkedBlock) -> Bool {
+        guard let status = block.status,
+              let type = block.typeId.flatMap({ blockTypes[$0] }) else { return false }
+        return type.completeValues.contains(status)
     }
 
     private func loadPictures() {
@@ -2798,6 +2979,32 @@ struct CanvasSurface: View {
     private func itemDelete(_ item: CanvasItem, in size: CGSize) -> some View {
         let corner = screenPoint(CGPoint(x: item.x + item.w, y: item.y), in: size)
         let asking = confirmingDelete == item.id
+        // Becoming a Hermes block, offered only where it means something.
+        //
+        // Not on a picture: a screenshot has no first line to be a title and no
+        // rest to be a body, and "make a note of this image" is a different
+        // feature with a different shape. Not on something already linked
+        // either — the link is the thing this makes, and making it twice makes
+        // two blocks from one node.
+        let toHermes = Button {
+            let words = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !words.isEmpty else {
+                trouble = "Write something in it first"
+                return
+            }
+            onCompose(words) { id in model.attach(item.id, to: id) }
+        } label: {
+            Image(systemName: "arrow.up.forward.square")
+                .font(.system(size: 8, weight: .bold))
+                .frame(width: 13, height: 13)
+                .contentShape(Rectangle())
+                .foregroundStyle(.white)
+                .background(Circle().fill(Theme.accent))
+        }
+        .buttonStyle(.plain)
+        .help("Make this a block in Hermes Notes")
+        .chrome($overChrome)
+
         let info = Button {
             inspecting = inspecting == item.id ? nil : item.id
         } label: {
@@ -2844,6 +3051,9 @@ struct CanvasSurface: View {
         // Both just outside the top-right corner, where they are not over the
         // thing one of them would remove. Info to the left of delete, so the
         // dangerous one is furthest out and the other is not in the way of it.
+        if item.image == nil, item.blockId == nil {
+            toHermes.position(x: corner.x + (asking ? 4 : 9) - 34, y: corner.y - 9)
+        }
         info.position(x: corner.x + (asking ? 4 : 9) - 17, y: corner.y - 9)
         remove.position(x: corner.x + (asking ? 22 : 9), y: corner.y - 9)
     }
@@ -3433,6 +3643,7 @@ struct CanvasSurface: View {
             editing: editing,
             dropTarget: linkTarget == item.id,
             inRegion: addingTo.map { model.isMember(item.id, of: $0) },
+            badge: badge(for: item),
             picture: pictures[item.id],
             draft: $model.draft,
             commit: { model.commitEdit() },

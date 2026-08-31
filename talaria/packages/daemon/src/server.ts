@@ -1403,6 +1403,50 @@ export function buildServer(deps: {
    * panel with a Task-shaped form hardcoded in it is wrong the first time
    * somebody adds a field.
    */
+  /**
+   * The values a type's status field offers, with the words a person reads.
+   *
+   * A select stores a value and shows a label, and a surface that drew the
+   * stored value would show somebody the inside of their own database.
+   */
+  const statusOptionsOf = (t: InterchangeType): { value: string; label: string }[] => {
+    const key = t.profiles?.task?.status;
+    if (typeof key !== "string") return [];
+    const field = (t.fields ?? []).find((f) => f.key === key);
+    return (field?.options ?? []).map((o) =>
+      typeof o === "string" ? { value: o, label: o } : { value: String(o.value), label: String(o.label ?? o.value) },
+    );
+  };
+
+  /**
+   * One block, as much of it as a canvas node needs.
+   *
+   * From the mirror, which is what makes it free to ask for on every redraw and
+   * correct while offline. The status is read through the type's task profile
+   * rather than by looking for a field called status — the rule this codebase
+   * turns on, and the reason a canvas can draw a checkbox for a type nobody
+   * here has heard of.
+   */
+  app.get("/linked/:id", async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const raw = mirror.rawBlock(id);
+    if (!raw) return reply.code(404).send({ error: "not in the mirror" });
+    const block = JSON.parse(raw) as InterchangeObject & { url?: string };
+    const type = block.type ? types().get(block.type) : undefined;
+    const statusKey = type?.profiles?.task?.status;
+    const props = (block.properties ?? {}) as Record<string, unknown>;
+    return envelope({
+      id,
+      title: canon([raw])[0]?.title ?? "Untitled",
+      typeId: block.type ?? null,
+      status: typeof statusKey === "string" && typeof props[statusKey] === "string"
+        ? (props[statusKey] as string)
+        : null,
+      url: block.url ?? null,
+      version: block.version ?? null,
+    });
+  });
+
   app.get("/types", async () =>
     envelope(
       [...types().values()].map((t) => ({
@@ -1413,6 +1457,35 @@ export function buildServer(deps: {
         // keeps its prose in `content`, outside the property bag entirely.
         bodySlot: typeof t.profiles?.note?.body === "string" ? (t.profiles.note.body as string) : null,
         titleKey: typeof t.profiles?.task?.title === "string" ? (t.profiles.task.title as string) : null,
+        /**
+         * How this type says a thing is done, if it says so at all.
+         *
+         * Read off the task profile rather than by looking for a field called
+         * "status" — the invariant this whole project turns on. A type is user
+         * data and its fields are named by whoever made it; what makes a field
+         * a status is the profile pointing at it.
+         *
+         * `completeValues` are the values that mean finished. Both travel so a
+         * surface can draw a checkbox and know which way to write it, without
+         * asking a second time and without guessing.
+         */
+        statusKey: typeof t.profiles?.task?.status === "string" ? (t.profiles.task.status as string) : null,
+        completeValues: Array.isArray(t.profiles?.task?.completeValues)
+          ? (t.profiles.task.completeValues as string[])
+          : [],
+        statusOptions: statusOptionsOf(t),
+        /**
+         * The type's icon, under the producer's own name.
+         *
+         * Deliberately Hermes-specific and decoration only, like the region
+         * colours on a board. The format does not name an icon and should not:
+         * a prefixed key is one producer's word, so nothing generic can read it.
+         * Talaria chooses to know this one so a block on a canvas looks like
+         * itself, and nothing anywhere depends on its being there.
+         */
+        icon: typeof (t as Record<string, unknown>).icon_key === "string"
+          ? ((t as Record<string, unknown>).icon_key as string)
+          : null,
       })),
     ),
   );

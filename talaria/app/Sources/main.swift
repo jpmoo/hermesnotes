@@ -169,6 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var deskHotkey: Hotkey?
     private var settingsWindow: NSPanel?
     private var composeWindow: NSPanel?
+    /// Who to tell about the next block this composer makes, if anybody asked.
+    private var composeHandoff: ((String) -> Void)?
     /// When this launch happened, so a reopen can be told from a Dock click.
     private var launchedAt = Date.distantPast
     private var composeHotkey: Hotkey?
@@ -609,6 +611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             compose: composeModel,
             glance: glanceModel,
             canvas: canvasModel,
+            onCompose: { [weak self] seed, made in self?.compose(seed: seed, then: made) },
             onPickWorkspace: { [weak self] name in
                 // Leave first, then go. Going somewhere is leaving here — but
                 // the order matters more than it looks.
@@ -1031,9 +1034,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.isOpaque = false
         panel.backgroundColor = .windowBackgroundColor
         panel.contentViewController = NSHostingController(
-            rootView: ComposeView(model: composeModel) { [weak self] title in
+            rootView: ComposeView(model: composeModel) { [weak self] title, id in
                 MainActor.assumeIsolated {
                     self?.hideCompose()
+                    // Whatever asked for this composer gets told what it made,
+                    // once. A canvas node waiting to be linked is the only
+                    // caller today, and it must not be told about a block the
+                    // *next* thing somebody composes.
+                    let waiting = self?.composeHandoff
+                    self?.composeHandoff = nil
+                    if let waiting, let id { waiting(id) }
                     Task { await Self.notify(title: "Created", body: title) }
                 }
             }
@@ -1064,6 +1074,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.center()
         composeWindow = panel
         return panel
+    }
+
+    /**
+     Open the composer with something in it, and hear back what it made.
+
+     For a canvas node becoming a Hermes block. The seed is the node's own words;
+     the composer already knows what to do with them — first line into the field
+     the type leads with, the rest into its body — which is the same rule it
+     applies to a selection taken from any other application.
+     */
+    func compose(seed: String, then: @escaping (String) -> Void) {
+        composeHandoff = then
+        let panel = composePanel()
+        composeModel.load(seed: seed)
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
+            let f = panel.frame
+            panel.setFrameOrigin(NSPoint(
+                x: screen.visibleFrame.midX - f.width / 2,
+                y: screen.visibleFrame.maxY - f.height - 100
+            ))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
     }
 
     private func toggleComposeWindow() {

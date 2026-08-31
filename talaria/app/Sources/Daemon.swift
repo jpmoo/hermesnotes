@@ -288,7 +288,8 @@ enum Daemon {
 
     /// A write, through the daemon's own queueing path — so a card dragged with
     /// the network down still moves, and goes out on reconnect.
-    static func write(_ body: [String: Any]) throws {
+    @discardableResult
+    static func write(_ body: [String: Any]) throws -> Data {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
         task.arguments = [
@@ -303,12 +304,13 @@ enum Daemon {
         try task.run()
         stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: body))
         stdin.fileHandleForWriting.closeFile()
-        _ = out.fileHandleForReading.readDataToEndOfFile()
+        let answer = out.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
         // 202 means queued, which is a success from here: the daemon has it.
         guard task.terminationStatus == 0 || task.terminationStatus == 22 else {
             throw Failure(description: "the write didn't go through (curl exit \(task.terminationStatus))")
         }
+        return answer
     }
 
     // MARK: Glance
@@ -522,10 +524,32 @@ enum Daemon {
         }
     }
 
+    struct StatusOption: Decodable, Hashable {
+        let value: String
+        let label: String
+    }
+
     struct BlockType: Decodable, Identifiable, Hashable {
         let id: String
         let name: String?
         let fields: [TypeField]
+        /// Which field says whether a thing is done, if the type says at all.
+        /// Found through the task profile rather than by its name: a field is a
+        /// status because a profile points at it, never because of what it is
+        /// called.
+        let statusKey: String?
+        /// The values of that field that mean finished.
+        let completeValues: [String]
+        let statusOptions: [StatusOption]
+        /// Hermes' own icon name. Decoration, and absent is ordinary.
+        let icon: String?
+
+        /// The value to write to finish something, and the one to write to
+        /// un-finish it — the first complete value, and the first that is not.
+        var doneValue: String? { completeValues.first }
+        var undoneValue: String? {
+            statusOptions.map(\.value).first { !completeValues.contains($0) }
+        }
         /// Where prose goes. `"content"` means the reserved slot outside the
         /// property bag — writing it as a property would silently discard it.
         let bodySlot: String?
@@ -534,6 +558,27 @@ enum Daemon {
         var display: String { name ?? "Untitled type" }
         static func == (a: BlockType, b: BlockType) -> Bool { a.id == b.id }
         func hash(into h: inout Hasher) { h.combine(id) }
+    }
+
+    /**
+     One block, as much as a canvas node needs to draw it.
+
+     From the mirror, so it works offline and costs nothing to ask for on every
+     redraw. Nil when the block is not there — deleted in Hermes, or not synced
+     yet — which a node has to be able to show rather than pretend about.
+     */
+    struct LinkedBlock: Decodable {
+        let id: String
+        let title: String
+        let typeId: String?
+        /// The value of the status field, when the type declares one.
+        let status: String?
+        let url: String?
+        let version: Int?
+    }
+
+    static func linked(_ id: String) throws -> LinkedBlock {
+        try JSONDecoder().decode(Envelope<LinkedBlock>.self, from: get("/linked/\(id)")).data
     }
 
     static func types() throws -> [BlockType] {
@@ -571,15 +616,24 @@ enum Daemon {
 
     /// Make one, through the same queue everything else writes through — so a
     /// block composed on a train exists locally and goes out on reconnect.
+    private struct Written: Decodable { let id: String? }
+
+    /// Makes a block and answers its id.
+    ///
+    /// The id is the whole reason this changed shape: a canvas node that made a
+    /// block has to be able to say *which* block afterwards, and a create that
+    /// only reported success left the caller with a thing it could not name.
+    @discardableResult
     static func create(
         blockTypeId: String,
         content: String?,
         properties: [String: Any]
-    ) throws {
+    ) throws -> String? {
         var body: [String: Any] = ["kind": "create", "blockTypeId": blockTypeId]
         if let content, !content.isEmpty { body["content"] = content }
         if !properties.isEmpty { body["properties"] = properties }
-        try write(body)
+        let out = try write(body)
+        return (try? JSONDecoder().decode(Written.self, from: out))?.id
     }
 
     // MARK: The agenda

@@ -4,6 +4,8 @@ export interface HermesType {
   name: string;
   isText: boolean;
   propertySchema: import("@hermes/shared").PropertySchema | null;
+  /** Lucide name. Decoration, and absent on a type nobody gave one. */
+  iconKey?: string | null;
 }
 
 export interface HermesBlock {

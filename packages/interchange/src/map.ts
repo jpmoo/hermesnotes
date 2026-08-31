@@ -193,6 +193,20 @@ export function toInterchange(input: ExportInput): {
       // Not a format field. Kept because a consumer round-tripping this back
       // needs to know a text type's body lives outside `properties`.
       ...(t.isText ? { hermesTextType: true } : {}),
+      /**
+       * What this type looks like, under this producer's own name.
+       *
+       * A type is a structural object and the format says structural objects
+       * are open — a producer may hang what it likes on one, under a prefix it
+       * controls. So an icon travels, and travels correctly: nothing generic
+       * reads it, nothing is obliged to, and a consumer that wants a block to
+       * look like itself has somewhere to look.
+       *
+       * Talaria's canvas is the client that needed it. Without this a block
+       * drawn on a canvas can say what it is called and not what kind of thing
+       * it is, which is most of what an icon is for.
+       */
+      ...(t.iconKey ? { "hermes:icon_key": t.iconKey } : {}),
     };
   });
 

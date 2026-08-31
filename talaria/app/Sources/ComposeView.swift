@@ -289,7 +289,13 @@ final class ComposeModel: ObservableObject {
             || !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func save(onDone: @escaping (String) -> Void) {
+    /// Saves, and says which block it made.
+    ///
+    /// The id travels because a canvas node that made a block has to be able to
+    /// name it afterwards. Nil when the write was queued rather than applied —
+    /// offline, the block does not exist yet and there is nothing honest to
+    /// point at.
+    func save(onDone: @escaping (String, String?) -> Void) {
         guard let type else { return }
         busy = true
         error = nil
@@ -347,7 +353,7 @@ final class ComposeModel: ObservableObject {
         let title = titleValue
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                try Daemon.create(blockTypeId: typeId, content: content, properties: properties)
+                let made = try Daemon.create(blockTypeId: typeId, content: content, properties: properties)
                 await MainActor.run {
                     self?.busy = false
                     // The block exists now, so the form has done its job. Left
@@ -356,7 +362,7 @@ final class ComposeModel: ObservableObject {
                     // under two ids.
                     self?.reset()
                     self?.seed = nil
-                    onDone(title)
+                    onDone(title, made)
                 }
             } catch {
                 await MainActor.run {
@@ -385,7 +391,7 @@ struct ComposeView: View {
     /// stopped the desk being frosted where the form was.
     var standalone = true
     /// Called with the new block's title once it has been handed to the daemon.
-    var onSaved: (String) -> Void = { _ in }
+    var onSaved: (String, String?) -> Void = { _, _ in }
     @FocusState private var firstField: Bool
 
     var body: some View {

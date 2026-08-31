@@ -1297,18 +1297,36 @@ struct LinkGeometry {
     }
 
     static func of(from: CGRect, to: CGRect, bend: CGSize) -> LinkGeometry {
-        let midCentres = CGPoint(
+        // Which sides face each other is a question about the two boxes, and
+        // the midpoint of their centres is the answer to it — aimed at from
+        // both ends, so each picks the side pointing at the other.
+        let aim = CGPoint(
             x: (from.midX + to.midX) / 2 + bend.width,
             y: (from.midY + to.midY) / 2 + bend.height
         )
-        let a = nearestSide(of: from, to: midCentres)
-        let b = nearestSide(of: to, to: midCentres)
-        // Solved so that the curve passes through `midCentres` at its halfway
-        // point. With no bend this lands exactly on the straight line between
-        // the anchors, so a straight line stays straight.
-        let control = CGPoint(x: 2 * midCentres.x - (a.x + b.x) / 2,
-                              y: 2 * midCentres.y - (a.y + b.y) / 2)
-        return LinkGeometry(start: a, end: b, control: control, handle: midCentres)
+        let a = nearestSide(of: from, to: aim)
+        let b = nearestSide(of: to, to: aim)
+
+        // Where the curve goes is a question about the two *anchors*, which is
+        // not the same question and was being answered with the first one's
+        // maths.
+        //
+        // The midpoint of two centres is the midpoint of two anchors only when
+        // the boxes are the same size and facing. A region is not: it is the
+        // size of everything inside it and a node is a node, so the two
+        // midpoints sat a hundred points apart and the control point solved
+        // from the wrong one landed *past* the far anchor — inside the region.
+        // The line bulged in, came back out, and touched the border from the
+        // wrong side. Which is exactly what it looked like.
+        //
+        // Solved from the anchors, zero bend puts the control on the segment
+        // between them and a straight line is straight, whatever the two things
+        // are the size of.
+        let handle = CGPoint(x: (a.x + b.x) / 2 + bend.width,
+                             y: (a.y + b.y) / 2 + bend.height)
+        let control = CGPoint(x: (a.x + b.x) / 2 + 2 * bend.width,
+                              y: (a.y + b.y) / 2 + 2 * bend.height)
+        return LinkGeometry(start: a, end: b, control: control, handle: handle)
     }
 
     func point(at t: CGFloat) -> CGPoint {
@@ -2126,7 +2144,30 @@ private struct CanvasItemView: View {
         let done: Bool?
         let toggle: (() -> Void)?
         let open: () -> Void
-        let missing: Bool
+        let standing: Standing
+    }
+
+    /**
+     Whether the block behind a node is still a block.
+
+     Three, not two. "Archived" and "deleted" are both *no longer active* and a
+     person asking about one is asking about the other, but they are not the
+     same thing to do something about: an archived block can be brought back
+     from Hermes and a deleted one cannot, so a node that showed them
+     identically would be advice as much as a label.
+
+     Both are the format's own words rather than Hermes'. `archived` is a field
+     on an object and the spec says a consumer must preserve it; a deletion is
+     something the change log has to carry, so an object that has stopped
+     arriving has stopped existing. Neither needed a Hermes-shaped question.
+     */
+    enum Standing {
+        /// In Hermes, not archived.
+        case live
+        /// In Hermes, hidden.
+        case archived
+        /// Not in the mirror, and the daemon said so rather than failed to say.
+        case gone
     }
     /// Already decoded. Loading a picture inside the body would re-read it on
     /// every frame of a drag, which is a file read per frame for as long as
@@ -2249,9 +2290,12 @@ private struct CanvasItemView: View {
         // Sized in screen terms like every other piece of chrome here.
         .overlay(alignment: .topLeading) {
             if let badge {
-                badgeView(badge)
-                    .padding(.leading, item.shape == .plain ? 1 : 6)
-                    .padding(.top, item.shape == .plain ? 1 : 6)
+                HStack(spacing: 3) {
+                    badgeView(badge)
+                    standingTag(badge.standing)
+                }
+                .padding(.leading, item.shape == .plain ? 1 : 6)
+                .padding(.top, item.shape == .plain ? 1 : 6)
             }
         }
         .overlay {
@@ -2304,20 +2348,70 @@ private struct CanvasItemView: View {
         Button {
             if let toggle = badge.toggle { toggle() } else { badge.open() }
         } label: {
-            Image(systemName: badge.missing
-                    ? "questionmark.circle"
-                    : (badge.done.map { $0 ? "checkmark.circle.fill" : "circle" } ?? badge.symbol))
+            Image(systemName: symbol(badge))
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(badge.missing
-                                 ? Color.secondary
-                                 : (badge.done == true ? Theme.accent : Color.secondary))
+                .foregroundStyle(badge.standing == .live
+                                 ? (badge.done == true ? Theme.accent : Color.secondary)
+                                 : Color.secondary)
                 .frame(width: 14, height: 14)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(badge.missing
-              ? "This block is not in the mirror"
-              : (badge.toggle == nil ? "Open in Hermes Notes" : "Mark done, or not"))
+        .help(help(badge))
+    }
+
+    private func symbol(_ badge: LinkedBadge) -> String {
+        switch badge.standing {
+        case .gone: return "questionmark.circle"
+        case .archived: return "archivebox"
+        // Only a block that is actually live gets a checkbox. Offering to tick
+        // something archived would offer to change a thing that is not in play,
+        // and the tick would land — quietly, on a block nobody is looking at.
+        case .live: return badge.done.map { $0 ? "checkmark.circle.fill" : "circle" } ?? badge.symbol
+        }
+    }
+
+    private func help(_ badge: LinkedBadge) -> String {
+        switch badge.standing {
+        case .gone: return "This block is no longer in Hermes Notes"
+        case .archived: return "Archived in Hermes Notes — open it"
+        case .live: return badge.toggle == nil ? "Open in Hermes Notes" : "Mark done, or not"
+        }
+    }
+
+    /**
+     What a node says when what it points at is no longer active.
+
+     A word rather than only a symbol. The badge is fourteen points and shares
+     its corner with a type icon and a checkbox, so on its own it is a change
+     somebody notices a week later; "Archived" is read at a glance, which is the
+     whole request.
+
+     In canvas units, like the badge it sits beside — not divided by the zoom,
+     which was the first thing tried. The chrome *above* a node is drawn outside
+     the transform and has to compensate; the mark inside one is drawn within it
+     and does not, so a tag that compensated would grow apart from the badge it
+     is part of at every zoom but 1.
+
+     And nothing else on the node changes. The colours here belong to whoever
+     set them, and dimming a node to say something about Hermes would be
+     spending somebody's styling on our message.
+     */
+    @ViewBuilder
+    private func standingTag(_ standing: Standing) -> some View {
+        if standing != .live {
+            Text(standing == .archived ? "Archived" : "Not in Hermes")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule().fill(standing == .archived
+                                   ? Color.secondary.opacity(0.85)
+                                   : Color.orange.opacity(0.9))
+                )
+                .fixedSize()
+        }
     }
 
     /// Where the four grips sit, in the item's own space.
@@ -2483,6 +2577,12 @@ struct CanvasSurface: View {
     /// to, rather than on a timer nobody asked for.
     @State private var linked: [String: Daemon.LinkedBlock] = [:]
     @State private var blockTypes: [String: Daemon.BlockType] = [:]
+    /// Ids the daemon has told us it does not hold.
+    ///
+    /// Kept separately from `linked` rather than inferred from its absence,
+    /// because absence has two causes and only one of them is news. See
+    /// `refreshLinks`.
+    @State private var goneBlocks: Set<String> = []
 
     /// Decoded pictures, by the item that shows them. Rebuilt when the set of
     /// pictures changes and not once per frame — decoding a screenshot inside a
@@ -2781,11 +2881,35 @@ struct CanvasSurface: View {
             return
         }
         Task.detached(priority: .utility) {
-            let found = ids.compactMap { try? Daemon.linked($0) }
+            var found: [Daemon.LinkedBlock] = []
+            var gone: Set<String> = []
+            var reachable = true
+            for id in ids {
+                do {
+                    found.append(try Daemon.linked(id))
+                } catch let failure as Daemon.Failure where failure.answered {
+                    // The mirror was asked and said no. That is a deletion:
+                    // the format requires deletions to arrive in the change
+                    // log, so a block that has stopped being in the mirror has
+                    // stopped being in Hermes — it is not merely unmentioned.
+                    gone.insert(id)
+                } catch {
+                    // Nothing answered. Says nothing about the block, so this
+                    // says nothing about the node — the alternative is a canvas
+                    // that reports every link as deleted whenever the daemon is
+                    // restarting, which is alarming and wrong in the same
+                    // moment.
+                    reachable = false
+                }
+            }
             let types = (try? Daemon.types()) ?? []
             await MainActor.run {
+                guard reachable || !found.isEmpty else { return }
                 linked = Dictionary(uniqueKeysWithValues: found.map { ($0.id, $0) })
-                blockTypes = Dictionary(uniqueKeysWithValues: types.map { ($0.id, $0) })
+                goneBlocks = gone
+                if !types.isEmpty {
+                    blockTypes = Dictionary(uniqueKeysWithValues: types.map { ($0.id, $0) })
+                }
             }
         }
     }
@@ -2801,21 +2925,25 @@ struct CanvasSurface: View {
     private func badge(for item: CanvasItem) -> CanvasItemView.LinkedBadge? {
         guard let id = item.blockId else { return nil }
         guard let block = linked[id] else {
-            // Linked to something the mirror has never heard of. Said out loud
-            // rather than drawn as an ordinary node, because "this points at a
-            // block" and "this points at a block that is gone" are different
-            // facts and only one of them is reassuring.
+            // Only when the daemon said so. An id we simply have no answer for
+            // yet draws nothing at all, because "this points at a block that is
+            // gone" is a claim and we would not be in a position to make it.
+            guard goneBlocks.contains(id) else { return nil }
             return .init(symbol: "questionmark.circle", done: nil, toggle: nil,
-                         open: {}, missing: true)
+                         open: {}, standing: .gone)
         }
         let type = block.typeId.flatMap { blockTypes[$0] }
+        // An archived block keeps its status and loses its checkbox. The value
+        // is still true and still worth showing; ticking it is the thing that
+        // stops making sense, because finishing something nobody can see is a
+        // write into a drawer.
         let canFinish = type?.statusKey != nil && !(type?.completeValues.isEmpty ?? true)
         return .init(
             symbol: type?.icon.map(sfSymbol(for:)) ?? "doc",
             done: canFinish ? isDone(block) : nil,
-            toggle: canFinish ? { toggleDone(block, type: type) } : nil,
+            toggle: canFinish && !block.archived ? { toggleDone(block, type: type) } : nil,
             open: { open(block) },
-            missing: false
+            standing: block.archived ? .archived : .live
         )
     }
 
@@ -3139,15 +3267,14 @@ struct CanvasSurface: View {
             WingMark(size: 10 * buttonScale)
                 .frame(width: 15 * buttonScale, height: 15 * buttonScale)
                 .contentShape(Rectangle())
-                // Black on white, unlike the others, which are a white glyph on
-                // a coloured disc. This one is a mark rather than a symbol —
-                // it says whose it is — and a mark tinted to match a button is a
-                // mark somebody has drawn over.
-                .foregroundStyle(.black)
+                // White on black. The mark is a silhouette, and a silhouette
+                // wants the ground behind it rather than around it — on white
+                // the wings read as a hole in a disc instead of as a shape.
+                .foregroundStyle(.white)
                 .background(
-                    Circle().fill(.white)
+                    Circle().fill(.black)
                         .overlay(Circle().strokeBorder(
-                            item.blockId == nil ? Color.secondary.opacity(0.5) : Theme.accent,
+                            item.blockId == nil ? Color.clear : Theme.accent,
                             lineWidth: 1.5 * buttonScale
                         ))
                 )

@@ -1444,6 +1444,17 @@ export function buildServer(deps: {
         : null,
       url: block.url ?? null,
       version: block.version ?? null,
+      /**
+       * Hidden in Hermes but not gone.
+       *
+       * The format's own word, not a Hermes one — `archived` is a field on an
+       * object and the spec says what a consumer must do with it: preserve it,
+       * never drop the object and never quietly un-archive. A canvas pointing
+       * at an archived block is pointing at something that still exists, which
+       * is a different fact from pointing at nothing, and a node that showed
+       * them the same way would be telling somebody their work was deleted.
+       */
+      archived: block.archived === true,
     });
   });
 

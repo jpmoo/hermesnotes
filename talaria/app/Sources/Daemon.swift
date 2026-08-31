@@ -13,6 +13,20 @@ enum Daemon {
 
     struct Failure: Error, CustomStringConvertible {
         let description: String
+        /**
+         Whether the daemon answered at all.
+
+         The distinction that matters wherever an absence means something. A
+         404 from the mirror is a *fact* — it does not hold that block — and a
+         connection that never opened is the absence of a fact. Collapsing them
+         is how every linked node on a canvas comes to say "deleted" because
+         the daemon happened to be restarting.
+
+         `curl --fail` exits 22 when the far end answered with a status of 400
+         or worse, and something else entirely when there was nothing to talk
+         to. That is exactly the line being drawn here.
+         */
+        var answered: Bool = false
     }
 
     static func get(_ path: String) throws -> Data {
@@ -26,7 +40,10 @@ enum Daemon {
         let data = out.fileHandleForReading.readDataToEndOfFile()
         task.waitUntilExit()
         guard task.terminationStatus == 0 else {
-            throw Failure(description: "daemon not answering on \(socketPath) (curl exit \(task.terminationStatus))")
+            throw Failure(
+                description: "daemon not answering on \(socketPath) (curl exit \(task.terminationStatus))",
+                answered: task.terminationStatus == 22
+            )
         }
         return data
     }
@@ -575,6 +592,30 @@ enum Daemon {
         let status: String?
         let url: String?
         let version: Int?
+        /// Hidden in Hermes, still there. The format's own field.
+        let archived: Bool
+
+        /// Spelled out, because writing `init(from:)` is what stops Swift
+        /// synthesising these.
+        enum CodingKeys: String, CodingKey {
+            case id, title, typeId, status, url, version, archived
+        }
+
+        /// By hand, because a synthesised decoder rejects a missing key however
+        /// obvious the default is — and this one is missing from every daemon
+        /// built before it was added. An app that refused to decode a linked
+        /// block would draw every canvas node as gone, which is the failure
+        /// this field exists to prevent.
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            title = try c.decode(String.self, forKey: .title)
+            typeId = try c.decodeIfPresent(String.self, forKey: .typeId)
+            status = try c.decodeIfPresent(String.self, forKey: .status)
+            url = try c.decodeIfPresent(String.self, forKey: .url)
+            version = try c.decodeIfPresent(Int.self, forKey: .version)
+            archived = try c.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+        }
     }
 
     static func linked(_ id: String) throws -> LinkedBlock {

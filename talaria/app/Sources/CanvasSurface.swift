@@ -810,6 +810,11 @@ final class CanvasModel: ObservableObject {
         regions.first { $0.id == region }?.members.contains(item) ?? false
     }
 
+    /// The only thing left in a region, which is why it cannot be taken out.
+    func isLastMember(_ item: UUID, of region: UUID) -> Bool {
+        regions.first { $0.id == region }?.members == [item]
+    }
+
     /// Everything in a region, moved together.
     func moveRegion(_ id: UUID, by delta: CGSize) {
         guard let region = regions.first(where: { $0.id == id }) else { return }
@@ -1584,7 +1589,7 @@ private struct CanvasToolStrip: View {
         VStack(spacing: 2) {
             Image(systemName: clearStep == 0 ? "trash" : "exclamationmark.triangle.fill")
                 .font(.system(size: 13, weight: .medium))
-            Text(clearStep == 0 ? "Clear" : (clearStep == 1 ? "Sure?" : "Erase all"))
+            Text(clearStep == 0 ? "Clear" : "Sure?")
                 .font(Theme.chrome(9, weight: clearStep == 0 ? .medium : .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1658,18 +1663,17 @@ private struct CanvasToolStrip: View {
                 )
             }
             /**
-             Clear the whole canvas, asked twice.
+             Clear the whole canvas, having asked.
 
-             Twice because it is the only control here that destroys work
-             somebody cannot get back by repeating a gesture — a deleted card is
-             one drag to redraw, a cleared canvas is an afternoon. Two different
-             questions rather than the same one twice, so the second is read
-             rather than clicked through: the first asks whether, the second says
-             how much.
+             One question, phrased the same as every other confirmation on this
+             surface. It had two, on the reasoning that this destroys more than
+             anything else here does — which is true, and not a reason to make
+             the ceremony different from the ceremony everywhere else. A control
+             that asks three times teaches people to click three times.
 
-             At the bottom, below a divider, away from the tools. It is not a
-             tool and should not be reachable by the slip of the hand that
-             reaches for one.
+             At the bottom, below a divider, away from the tools. That is where
+             the distance lives instead: it is not a tool and should not be
+             reachable by the slip of the hand that reaches for one.
              */
             // Width given, not inherited. A `Divider` in a `VStack` takes all
             // the width there is, and this stack is in an overlay on the whole
@@ -1678,8 +1682,7 @@ private struct CanvasToolStrip: View {
             // decides the column.
             Divider().frame(width: 40).padding(.top, 2)
             Button {
-                clearStep = clearStep >= 2 ? 0 : clearStep + 1
-                if clearStep == 0 { clear() }
+                if clearStep == 1 { clear(); clearStep = 0 } else { clearStep = 1 }
             } label: {
                 clearLabel
             }
@@ -2112,6 +2115,7 @@ struct CanvasSurface: View {
                 // the type checker an expression it will not finish, and says
                 // so about a line that is not the problem.
                 Group {
+                    inspectorPanel(geo)
                     // Whatever the selection is, its own buttons. Several at
                     // once get one menu rather than a set each — twelve little
                     // crosses over six boxes is not an offer, it is confetti.
@@ -2518,12 +2522,6 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help("Appearance")
         .chrome($overChrome)
-        .popover(isPresented: Binding(
-            get: { inspecting == item.id },
-            set: { if !$0 { inspecting = nil } }
-        ), arrowEdge: .trailing) {
-            CanvasInspector(model: model, item: model.item(item.id) ?? item, link: nil, region: nil)
-        }
 
         let remove = Button {
             if asking {
@@ -2536,7 +2534,7 @@ struct CanvasSurface: View {
         } label: {
             Group {
                 if asking {
-                    Text("Delete?")
+                    Text("Sure?")
                         .font(Theme.chrome(10, weight: .semibold))
                         .padding(.horizontal, 7)
                         .frame(height: 16)
@@ -2579,6 +2577,65 @@ struct CanvasSurface: View {
             // point it was dropped, so the answer arrives where the drag ended.
             askingImage = (here, canvasPoint(here, in: geo.size))
         }
+    }
+
+    /**
+     The appearance panel, drawn on the canvas rather than in a popover.
+
+     It was a popover, and a popover closes when anything else takes the focus —
+     which is exactly what opening the colour panel does. So reaching for the
+     colour wheel dismissed the thing you had reached from, and the auto-close
+     then took the colour panel away with it. The panel flew off as you moved
+     toward it.
+
+     Every other menu on this surface is a drawn overlay for the same reason.
+     Nothing here should close because focus moved; these things close when
+     somebody clicks the canvas, which is the one gesture that means "done".
+
+     Placed beside whatever it is about, and kept on screen: a panel half off the
+     right-hand edge is a panel with half its controls missing.
+     */
+    @ViewBuilder
+    private func inspectorPanel(_ geo: GeometryProxy) -> some View {
+        if let id = inspecting, let anchor = inspectorAnchor(id, in: geo.size) {
+            CanvasInspector(
+                model: model,
+                item: model.item(id),
+                link: model.links.first { $0.id == id },
+                region: model.regions.first { $0.id == id }
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 11)
+                    .fill(.background.opacity(0.96))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.22), radius: 14, y: 4)
+            )
+            .chrome($overChrome)
+            .position(anchor)
+        }
+    }
+
+    /// Where the panel sits: to the right of the thing, or to its left when
+    /// there is no room, and never off the top or bottom.
+    private func inspectorAnchor(_ id: UUID, in size: CGSize) -> CGPoint? {
+        guard let box = model.rect(of: id) ?? geometryBox(of: id) else { return nil }
+        let width: CGFloat = 268, height: CGFloat = 300
+        let right = screenPoint(CGPoint(x: box.maxX, y: box.minY), in: size)
+        var x = right.x + 20 + width / 2
+        if x + width / 2 > size.width - Self.stripWidth {
+            x = screenPoint(CGPoint(x: box.minX, y: 0), in: size).x - 20 - width / 2
+        }
+        let y = min(max(right.y + height / 2 - 20, height / 2 + 8), size.height - height / 2 - 8)
+        return CGPoint(x: min(max(x, width / 2 + 8), size.width - width / 2 - 8), y: y)
+    }
+
+    /// A connector has no rect of its own; its panel hangs off its handle.
+    private func geometryBox(of id: UUID) -> CGRect? {
+        guard let link = model.links.first(where: { $0.id == id }), let g = geometry(of: link) else { return nil }
+        return CGRect(x: g.handle.x, y: g.handle.y, width: 1, height: 1)
     }
 
     /// The grip and buttons on a selected connector.
@@ -2694,7 +2751,7 @@ struct CanvasSurface: View {
 
                 Divider().frame(height: 12)
 
-                Button(asking ? "Delete \(ids.count)?" : "Delete") {
+                Button(asking ? "Sure?" : "Delete") {
                     if asking {
                         model.deleteItems(ids)
                         confirmingGroupDelete = false
@@ -2736,17 +2793,6 @@ struct CanvasSurface: View {
         .buttonStyle(.plain)
         .help("Appearance")
         .chrome($overChrome)
-        .popover(isPresented: Binding(
-            get: { inspecting == region.id },
-            set: { if !$0 { inspecting = nil } }
-        ), arrowEdge: .trailing) {
-            CanvasInspector(
-                model: model,
-                item: nil,
-                link: nil,
-                region: model.regions.first { $0.id == region.id } ?? region
-            )
-        }
         .position(x: corner.x + (asking ? 4 : 9) - 34, y: corner.y - 9)
 
         // The discoverable half of "put things in a box". ⌘-dropping does the
@@ -2779,9 +2825,7 @@ struct CanvasSurface: View {
         } label: {
             Group {
                 if asking {
-                    // Says what it will not do, because that is the part
-                    // somebody hesitating is unsure about.
-                    Text("Remove box?")
+                    Text("Sure?")
                         .font(Theme.chrome(10, weight: .semibold))
                         .padding(.horizontal, 7).frame(height: 16)
                 } else {
@@ -2850,17 +2894,6 @@ struct CanvasSurface: View {
             .buttonStyle(.plain)
             .help("Appearance")
             .chrome($overChrome)
-            .popover(isPresented: Binding(
-                get: { inspecting == link.id },
-                set: { if !$0 { inspecting = nil } }
-            ), arrowEdge: .trailing) {
-                CanvasInspector(
-                    model: model,
-                    item: nil,
-                    link: model.links.first { $0.id == link.id } ?? link,
-                    region: nil
-                )
-            }
             .position(x: at.x - 1, y: at.y - 14)
 
             // A line drawn by accident has to be undoable, and a keyboard is not
@@ -3180,7 +3213,13 @@ struct CanvasSurface: View {
                         // box and its buttons stay where they were and the mode
                         // is visibly still on.
                         if let region = addingTo {
-                            model.toggle(region: region, item: item.id)
+                            // Refusing silently is indistinguishable from a
+                            // click that did not register.
+                            if model.isLastMember(item.id, of: region) {
+                                trouble = "A region has to hold something — remove the region instead"
+                            } else {
+                                model.toggle(region: region, item: item.id)
+                            }
                             movingId = nil
                             moveOrigin = nil
                             return

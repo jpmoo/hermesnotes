@@ -2983,13 +2983,32 @@ struct CanvasSurface: View {
                         linkTarget = dropTarget(at: value.location, moving: id, in: geo)
                         return
                     }
-                    if model.selectedRegion != nil, draggingRegion == nil, !dragging,
-                       let id = model.selectedRegion,
-                       let region = model.regions.first(where: { $0.id == id }),
-                       let box = model.box(of: region),
-                       box.contains(canvasPoint(value.startLocation, in: size)) {
-                        draggingRegion = id
+                    /*
+                     A drag that begins inside a region moves that region,
+                     selected or not.
+
+                     It used to require selecting it first, which made the
+                     gesture two gestures and made it feel unreliable rather
+                     than deliberate — a press that did nothing, followed by one
+                     that worked, with nothing to say why.
+
+                     Waiting for actual movement is what keeps a plain click
+                     working: below the threshold this falls through, and the
+                     click handler on release selects the region the ordinary
+                     way. It is also why the pan branch below cannot have
+                     started — the first frame that has moved far enough is this
+                     one, and it returns.
+
+                     What it costs: dragging the canvas by a region's empty
+                     space no longer pans. Two-finger scroll still does, and so
+                     does dragging anywhere that is not inside a region.
+                     */
+                    let far = abs(value.translation.width) > 3 || abs(value.translation.height) > 3
+                    if draggingRegion == nil, far, !dragging, marquee == nil,
+                       let region = model.region(at: canvasPoint(value.startLocation, in: size)) {
+                        draggingRegion = region.id
                         regionOrigin = .zero
+                        model.select(region: region.id)
                         return
                     }
                     pressing = true

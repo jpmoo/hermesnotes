@@ -53,7 +53,21 @@ final class ScratchpadModel: ObservableObject {
     /// `text` differ, and not otherwise — which is what stops an idle panel
     /// writing the same page back every two seconds.
 
-    func load() {
+    /**
+     Read today's page.
+
+     `attempt` exists because of what actually goes wrong here. The desk is
+     opened at the moment somebody wants it, which is uncorrelated with whether
+     Hermes happens to be restarting — and a deploy answers 502 for a few
+     seconds. One read at exactly the wrong moment left the pane reading "can't
+     reach Hermes" for as long as the desk stayed open, about something that had
+     been true for two seconds.
+
+     So a failed read tries once more, quietly, before saying anything. A second
+     failure is a real condition and gets the message, and the message now comes
+     with the button that asks again.
+     */
+    func load(attempt: Int = 0) {
         loading = true
         generation += 1
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -62,6 +76,15 @@ final class ScratchpadModel: ObservableObject {
                 guard let self else { return }
                 self.loading = false
                 guard let got else {
+                    if attempt == 0 {
+                        // Long enough for a gateway to finish swapping, short
+                        // enough that nobody has decided it is broken.
+                        self.loading = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                            self?.load(attempt: 1)
+                        }
+                        return
+                    }
                     self.status = "can't reach Hermes"
                     return
                 }
@@ -159,13 +182,21 @@ private struct ScratchpadPane: View {
     @ObservedObject var model: ScratchpadModel
 
     var body: some View {
-        DeskPane(title: "Scratchpad", subtitle: model.date, note: model.status) {
+        DeskPane(
+            title: "Scratchpad",
+            subtitle: model.date,
+            note: model.status,
+            // Always, not only when it failed: the pane holds a web view, and
+            // reloading a page that has been sitting open behind a locked screen
+            // is a thing to be able to ask for.
+            retry: { model.load() }
+        ) {
             if let url = model.pageURL {
                 HermesEmbed(url: url, generation: model.generation)
             } else if model.loading {
                 DeskPlaceholder("reading today's page")
             } else {
-                DeskPlaceholder(model.status ?? "no page for today")
+                DeskPlaceholder(model.status ?? "no page for today", retry: { model.load() })
             }
         }
     }
@@ -427,6 +458,16 @@ private struct DeskPane<Content: View>: View {
     /// working *on* — a canvas with a stranger's window ghosting through it is
     /// a canvas with something drawn on it that nobody drew.
     var opaque = false
+    /**
+     Ask for this pane's contents again.
+
+     A pane whose one read failed used to be a dead end until the whole desk was
+     closed and reopened — which does reload it, and which nothing says. The
+     failure that puts a pane there is nearly always transient (a deploy, a
+     dropped network, a daemon restarting), so the recovery should cost one
+     click and be visible from the pane that failed.
+     */
+    var retry: (() -> Void)?
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -441,6 +482,17 @@ private struct DeskPane<Content: View>: View {
                 Spacer(minLength: 0)
                 if let note, !note.isEmpty {
                     Text(note).font(Theme.chrome(10)).foregroundStyle(Theme.danger).lineLimit(1)
+                }
+                if let retry {
+                    Button(action: retry) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 9, weight: .semibold))
+                            .frame(width: 16, height: 14)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Read it again")
                 }
             }
             .padding(.horizontal, 10)
@@ -477,12 +529,25 @@ private struct DeskPane<Content: View>: View {
 
 private struct DeskPlaceholder: View {
     let text: String
-    init(_ text: String) { self.text = text }
+    /// When there is something to do about it, the empty state is the button.
+    /// A person looking at "can't reach Hermes" is already looking at the place
+    /// they want to click.
+    var retry: (() -> Void)?
+    init(_ text: String, retry: (() -> Void)? = nil) {
+        self.text = text
+        self.retry = retry
+    }
     var body: some View {
-        Text(text)
-            .font(Theme.chrome(11))
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 6) {
+            Text(text).font(Theme.chrome(11)).foregroundStyle(.tertiary)
+            if let retry {
+                Button("Try again", action: retry)
+                    .font(Theme.chrome(11))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

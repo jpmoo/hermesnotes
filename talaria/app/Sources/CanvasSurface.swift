@@ -1837,6 +1837,9 @@ enum CanvasFiles {
 private struct FileMenu: View {
     /// Which entry has been asked about but not confirmed.
     @Binding var confirming: CanvasFile?
+    /// Whether this canvas is a Hermes collection. It changes what the
+    /// destructive entries are actually about, so it changes what they say.
+    let backed: Bool
     let pick: (CanvasFile) -> Void
 
     var body: some View {
@@ -1869,7 +1872,7 @@ private struct FileMenu: View {
                 .buttonStyle(.plain)
             }
             if confirming == .load {
-                Text("Replaces this canvas")
+                Text(backed ? "Replaces this canvas, in Hermes too" : "Replaces this canvas")
                     .font(Theme.chrome(9))
                     .foregroundStyle(.secondary)
                     .frame(width: 116, alignment: .leading)
@@ -1945,6 +1948,8 @@ private struct CanvasToolStrip: View {
     /// A mode tool that is currently on.
     @Binding var armed: CanvasTool?
     @Binding var overChrome: Int
+    /// Whether this canvas is a Hermes collection — see `FileMenu.backed`.
+    let backed: Bool
     /// How far through clearing the canvas somebody is: nothing, asked once,
     /// asked twice.
     @Binding var clearStep: Int
@@ -1964,6 +1969,16 @@ private struct CanvasToolStrip: View {
                 .font(Theme.chrome(9, weight: clearStep == 0 ? .medium : .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+            // Only while asking, and only when it is true. The strip is 56
+            // points wide and a permanent caption would crowd every other tool
+            // to say something that matters for one click.
+            if clearStep == 1, backed {
+                Text("Hermes too")
+                    .font(Theme.chrome(7, weight: .semibold))
+                    .foregroundStyle(Theme.danger)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
         }
         .frame(width: 56, height: 38)
         .contentShape(Rectangle())
@@ -2074,7 +2089,7 @@ private struct CanvasToolStrip: View {
             .help("Save this canvas to a file, or load one")
             .overlay(alignment: .topTrailing) {
                 if fileMenuOpen {
-                    FileMenu(confirming: $confirmingFile) { entry in
+                    FileMenu(confirming: $confirmingFile, backed: backed) { entry in
                         fileMenuOpen = false
                         file(entry)
                     }
@@ -2627,6 +2642,11 @@ struct CanvasSurface: View {
     /// Keeps the canvas and the collection behind it in step. One per surface,
     /// made on appear, and quiet unless a collection is configured.
     @StateObject private var sync = CanvasSyncBox()
+    /// Mirrored into plain state rather than read through `sync` in the body.
+    /// Reading it inline put one more actor-isolated member access into an
+    /// expression the type checker was already close to giving up on, and the
+    /// error it gives for that names a line that is not the problem.
+    @State private var canvasIsBacked = false
     /// Ids the daemon has told us it does not hold.
     ///
     /// Kept separately from `linked` rather than inferred from its absence,
@@ -2823,6 +2843,13 @@ struct CanvasSurface: View {
                     model.adopt(document)
                 }
                 model.sync = sync.inner
+                sync.inner.onBackedChanged = { on in canvasIsBacked = on }
+                // Whatever is on the canvas right now, offered once. A canvas
+                // backed a moment ago has contents nobody has sent yet, and
+                // waiting for the next drag to carry them up would leave the
+                // collection empty for as long as nobody touched anything. The
+                // far end drops it if nothing differs.
+                sync.inner.changed(CanvasDocument(items: model.items, links: model.links, regions: model.regions))
             }
             .onDisappear {
                 watch?.stop()
@@ -2868,6 +2895,7 @@ struct CanvasSurface: View {
                     openMenu: $openMenu,
                     armed: $armed,
                     overChrome: $overChrome,
+                    backed: canvasIsBacked,
                     clearStep: $clearStep,
                     fileMenuOpen: $fileMenuOpen,
                     confirmingFile: $confirmingFile,
@@ -3005,6 +3033,30 @@ struct CanvasSurface: View {
                 }
             }
         }
+    }
+
+    /**
+     A linked node, wearing its block's title.
+
+     The node stores no copy of the words. That is deliberate — a copy is a
+     second version of a fact and drifts the moment somebody renames the block —
+     but it means the title has to be put back at the moment of drawing, and
+     until it was, a node the assistant placed arrived correctly and rendered as
+     an empty box. Everything worked and there was nothing on it.
+
+     Only when the node has no words of its own. Somebody who typed over a
+     linked node meant those words, and the block's title must not take them
+     back.
+     */
+    private func titled(_ item: CanvasItem) -> CanvasItem {
+        guard item.text.isEmpty,
+              let id = item.blockId,
+              let block = linked[id],
+              !block.title.isEmpty
+        else { return item }
+        var shown = item
+        shown.text = block.title
+        return shown
     }
 
     /**
@@ -4048,7 +4100,7 @@ struct CanvasSurface: View {
         let selected = model.selectedItems.contains(item.id)
 
         CanvasItemView(
-            item: item,
+            item: titled(item),
             zoom: chrome.zoom,
             hovered: model.hovered == item.id,
             selected: selected,

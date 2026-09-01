@@ -42,18 +42,30 @@ final class CanvasSync {
 
     /// Told when a pull brought something new down.
     var onPulled: ((CanvasDocument) -> Void)?
+    /// Told when we learn whether there is a collection behind this canvas.
+    /// The answer arrives off a socket, so it is later than the first draw.
+    var onBackedChanged: ((Bool) -> Void)?
 
     init() {
         Task.detached(priority: .utility) {
             let ok = (try? Daemon.canvasBacked()) ?? false
-            await MainActor.run { self.backed = ok }
+            await MainActor.run {
+                self.backed = ok
+                self.onBackedChanged?(ok)
+                // Anything offered before we knew is sent now. Without this the
+                // contents a canvas already had would wait for the next edit.
+                if ok, self.pending != nil { self.flush() }
+            }
         }
     }
 
     /// The canvas changed. Sent once it stops changing.
     func changed(_ document: CanvasDocument) {
-        guard backed else { return }
         pending = document
+        // Kept even when we do not yet know whether this canvas is backed —
+        // the answer is one socket call away and dropping the document in the
+        // meantime loses the one offer that carries what is already here.
+        guard backed else { return }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Self.quiet, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in self?.flush() }

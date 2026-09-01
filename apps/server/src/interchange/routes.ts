@@ -741,9 +741,23 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       if (!(await hasMembership(collection, object))) {
         return reply.code(404).send({ ok: false, reports: ["member.not-a-member"] });
       }
-      // The placement rules only need to know what the collection declares; the
-      // merge itself happens in Hermes' own route, against the row.
-      const decided = placeMember(col, { object }, body);
+      // The member as it stands, not a bare id.
+      //
+      // This passed `{ object }` — a member with no context — on the reasoning
+      // that the merge happens in Hermes' own route, against the row. The merge
+      // does happen there, correctly. But `placeMember` also computes the
+      // member this call *answers with*, and from an empty bag that answer is
+      // only the keys that were patched: set `shape` on a canvas node and the
+      // reply says the node has a shape and no coordinates. It does not — the
+      // row is right — and a client that believed the response would drop the
+      // position from its own copy and write it back.
+      //
+      // An answer that describes a state the row is not in is worse than no
+      // answer, and the collection has already been read, so this costs a
+      // lookup in a list that is already in memory.
+      const members = (col as { members?: { object?: string }[] }).members ?? [];
+      const current = members.find((m) => m.object === object) ?? { object };
+      const decided = placeMember(col, current, body);
       if (!decided.ok) {
         return reply
           .code(decided.conflict ? 409 : 400)

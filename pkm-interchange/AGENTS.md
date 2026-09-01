@@ -1036,7 +1036,7 @@ region quietly dropped, which would add a card nothing draws.
 
 ```
 PUT <base>/collections/c_scratch
-{ "id": "c_scratch", "name": "Talaria Scratch Canvas", "kind": "canvas",
+{ "id": "c_scratch", "name": "Scratch canvas", "kind": "canvas",
   "placement": { "semantic": false } }
 ```
 

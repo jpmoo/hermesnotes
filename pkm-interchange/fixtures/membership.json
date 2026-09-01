@@ -672,7 +672,7 @@
       "given": {
         "collection": {
           "id": "c_scratch",
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "kind": "canvas",
           "placement": {
             "semantic": false
@@ -684,7 +684,7 @@
         "created": true,
         "collection": {
           "id": "c_scratch",
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "kind": "canvas",
           "placement": {
             "semantic": false
@@ -699,7 +699,7 @@
       "op": "collectionCreate",
       "given": {
         "collection": {
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "kind": "canvas"
         },
         "args": {
@@ -723,7 +723,7 @@
       "given": {
         "collection": {
           "id": "c_scratch",
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "kind": "canvas",
           "placement": {
             "semantic": false
@@ -731,7 +731,7 @@
         },
         "existing": {
           "id": "c_scratch",
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "kind": "canvas",
           "placement": {
             "semantic": false
@@ -773,7 +773,7 @@
         "existing": {
           "id": "c_scratch",
           "kind": "canvas",
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "properties": {
             "hermes:sort_mode": "manual"
           }
@@ -783,7 +783,7 @@
         "ok": true,
         "created": false,
         "collection": {
-          "name": "Talaria Scratch Canvas",
+          "name": "Scratch canvas",
           "properties": {
             "hermes:sort_mode": "manual"
           }

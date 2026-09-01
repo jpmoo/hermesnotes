@@ -118,7 +118,18 @@ final class CanvasSync {
                 self.sent = fetched
                 // Read, therefore ours to speak about. A node that leaves the
                 // canvas after this point is one somebody took off it.
-                self.known = Set(fetched.items.compactMap(\.blockId))
+                //
+                // Everything, not only the blocks. Notes, connectors and
+                // regions are written as whole arrays at the far end, and the
+                // same rule decides each of them — so a set holding only block
+                // ids meant no note was ever recognized as one we had read, and
+                // every push kept the old rows and appended the new ones. Five
+                // notes became ten.
+                self.known = Set(
+                    fetched.items.map { $0.blockId ?? $0.id.uuidString }
+                        + fetched.links.map { $0.id.uuidString }
+                        + fetched.regions.map { $0.id.uuidString }
+                )
                 self.onPulled?(fetched)
             }
         }

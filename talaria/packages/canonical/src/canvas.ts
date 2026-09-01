@@ -140,6 +140,32 @@ const K_NOTES = "hermes:canvas_notes";
  * had it under a name the reader was not looking for.
  */
 const K_NOTES_BARE = "canvas_notes";
+const K_EDGES = "hermes:canvas_edges";
+const K_EDGES_BARE = "canvas_edges";
+const K_REGIONS_H = "hermes:canvas_regions";
+const K_REGIONS_H_BARE = "canvas_regions";
+
+/**
+ * What Hermes calls this node.
+ *
+ * A node standing for a block is that block. A node standing for nothing is a
+ * sticky note, and **Hermes knows a note by an `n:` on the front of its id** —
+ * `id.startsWith("n:")` is the test, in a dozen places, and everything without
+ * it is looked up as a block.
+ *
+ * Writing bare ids therefore produced notes that drew correctly and could not
+ * be touched: Hermes rendered them out of the notes array, then treated each id
+ * as a block id, found no block, and every drag, resize and connection died on
+ * the lookup. They were pictures of notes.
+ */
+export function hermesIdOf(item: CanvasItem): string {
+  return item.blockId ?? `n:${item.id}`;
+}
+
+/** And back: a note's id is ours with the marker taken off. */
+function localIdOf(hid: string, byBlock: Map<string, string>): string | undefined {
+  return hid.startsWith("n:") ? hid.slice(2) : byBlock.get(hid);
+}
 
 /**
  * One node's furniture, as the bag a member carries.
@@ -207,19 +233,27 @@ export function itemFrom(member: Member, fallbackId: string): CanvasItem {
 export function documentFrom(collection: Collection, mint: () => string): CanvasDocument {
   const items = (collection.members ?? []).map((m) => itemFrom(m, mint()));
   const props = (collection.properties ?? {}) as Record<string, unknown>;
-  const arr = <T>(k: string): T[] => (Array.isArray(props[k]) ? (props[k] as T[]) : []);
+  // A write goes out under the producer's prefix and the mirror stores the
+  // producer's own keys bare. Both spellings are the same key.
+  const arr = <T>(a: string, b: string): T[] => {
+    const first = props[a];
+    if (Array.isArray(first) && first.length) return first as T[];
+    const second = props[b];
+    return Array.isArray(second) ? (second as T[]) : Array.isArray(first) ? (first as T[]) : [];
+  };
+  const ours = <T>(k: string): T[] => (Array.isArray(props[k]) ? (props[k] as T[]) : []);
 
-  // A note is the shared half plus our extras, joined on its id. The shared
-  // half is authoritative: a note dragged in Hermes moved, and reading our own
-  // copy over the top would put it back.
-  const extras = new Map(arr<CanvasItem & { id: string }>(K_EXTRAS).map((e) => [e.id, e]));
+  // A note is the half Hermes draws plus our extras, joined on the id. The
+  // shared half is authoritative: a note dragged or retyped over there moved or
+  // changed, and reading our own copy over the top would put it back.
+  const extras = new Map(ours<CanvasItem & { id: string }>(K_EXTRAS).map((e) => [e.id, e]));
   type Note = { id: string; x: number; y: number; w: number; h: number; text?: string; color?: string | null };
-  const rawNotes = arr<Note>(K_NOTES).length ? arr<Note>(K_NOTES) : arr<Note>(K_NOTES_BARE);
-  const notes = rawNotes.map((n) => {
-    const extra = extras.get(n.id) ?? ({} as Partial<CanvasItem>);
+  const notes = arr<Note>(K_NOTES, K_NOTES_BARE).map((n) => {
+    const id = n.id.startsWith("n:") ? n.id.slice(2) : n.id;
+    const extra = extras.get(id) ?? ({} as Partial<CanvasItem>);
     return {
       ...extra,
-      id: n.id,
+      id,
       x: n.x,
       y: n.y,
       w: n.w,
@@ -230,13 +264,41 @@ export function documentFrom(collection: Collection, mint: () => string): Canvas
     } as CanvasItem;
   });
 
+  const all = [...items, ...notes];
+  // Everything on the canvas, by the name Hermes calls it, so an edge or a
+  // region naming a block and one naming a note resolve the same way.
+  const byBlock = new Map(all.filter((i) => i.blockId).map((i) => [i.blockId!, i.id]));
+
+  type Edge = { id: string; from: string; to: string };
+  const linkExtras = new Map(ours<CanvasLink>(K_LINKS).map((l) => [l.id, l]));
+  const links = arr<Edge>(K_EDGES, K_EDGES_BARE)
+    .map((e) => {
+      const from = localIdOf(e.from, byBlock);
+      const to = localIdOf(e.to, byBlock);
+      // An edge to something this canvas does not hold cannot be drawn. Dropped
+      // rather than kept as a line to nowhere, which is what the local store
+      // has always done with a dangling connector.
+      if (!from || !to) return null;
+      return { ...(linkExtras.get(e.id) ?? {}), id: e.id, from, to } as CanvasLink;
+    })
+    .filter((l): l is CanvasLink => l !== null);
+
+  type Reg = { id: string; title?: string; color?: string | null; memberIds?: string[] };
+  const regionExtras = new Map(ours<CanvasRegion>(K_REGIONS).map((r) => [r.id, r]));
+  const regions = arr<Reg>(K_REGIONS_H, K_REGIONS_H_BARE).map((r) => {
+    const extra = regionExtras.get(r.id) ?? ({} as Partial<CanvasRegion>);
+    return {
+      ...extra,
+      id: r.id,
+      title: r.title ?? extra.title ?? "",
+      fill: r.color ?? extra.fill ?? null,
+      members: (r.memberIds ?? []).map((m) => localIdOf(m, byBlock)).filter((m): m is string => !!m),
+    } as CanvasRegion;
+  });
+
   // Ours are appended after the members, so a note never sits under a block it
   // was drawn beside.
-  return {
-    items: [...items, ...notes],
-    links: arr<CanvasLink>(K_LINKS),
-    regions: arr<CanvasRegion>(K_REGIONS),
-  };
+  return { items: all, links, regions };
 }
 
 /**
@@ -276,6 +338,7 @@ export function writesFor(
 } {
   const linked = doc.items.filter((i) => i.blockId);
   const unlinked = doc.items.filter((i) => !i.blockId);
+  const byId = new Map(doc.items.map((i) => [i.id, i]));
   const have = new Map((current.members ?? []).map((m) => [m.object, m]));
   const want = new Map(linked.map((i) => [i.blockId!, i]));
 
@@ -311,17 +374,21 @@ export function writesFor(
     add,
     remove,
     properties: {
-      // The half Hermes draws…
-      [K_NOTES]: unlinked.map((i) => ({
-        id: i.id,
-        x: i.x,
-        y: i.y,
-        w: i.w,
-        h: i.h,
-        text: i.text ?? "",
-        color: i.fill ?? null,
-      })),
-      // …and the half only we do, keyed by the same id.
+      // The half Hermes draws, under the id it knows a note by…
+      [K_NOTES]: keeping(current, K_NOTES, K_NOTES_BARE, seen, (n: { id: string }) =>
+        n.id.startsWith("n:") ? n.id.slice(2) : n.id,
+      ).concat(
+        unlinked.map((i) => ({
+          id: hermesIdOf(i),
+          x: i.x,
+          y: i.y,
+          w: i.w,
+          h: i.h,
+          text: i.text ?? "",
+          color: i.fill ?? null,
+        })),
+      ),
+      // …and the half only we do, keyed by our own id.
       [K_EXTRAS]: unlinked
         .map((i) => ({
           id: i.id,
@@ -332,12 +399,63 @@ export function writesFor(
           ...(i.hAlign === undefined ? {} : { hAlign: i.hAlign }),
           ...(i.vAlign === undefined ? {} : { vAlign: i.vAlign }),
         }))
-        // A note with nothing Hermes cannot draw needs no row here at all.
         .filter((e) => Object.keys(e).length > 1),
+
+      // Connections, as edges Hermes draws. `arrow` and `live` are not
+      // decoration over there: an edge without them is a row the renderer
+      // skips, which is why one written bare appears nowhere.
+      [K_EDGES]: keeping(current, K_EDGES, K_EDGES_BARE, seen, (e: { id: string }) => e.id).concat(
+        doc.links
+          .map((l) => {
+            const from = byId.get(l.from);
+            const to = byId.get(l.to);
+            if (!from || !to) return null;
+            return { id: l.id, from: hermesIdOf(from), to: hermesIdOf(to), arrow: "forward", live: true };
+          })
+          .filter((e): e is NonNullable<typeof e> => e !== null),
+      ),
+      // The bend, the weight and the dash have no equivalent over there, so
+      // they stay ours and rejoin on the edge's id.
       [K_LINKS]: doc.links,
+
+      // Regions likewise: Hermes has them, with a title, a color and the ids
+      // it holds. Ours keeps the stroke and the alignment it does not.
+      [K_REGIONS_H]: keeping(current, K_REGIONS_H, K_REGIONS_H_BARE, seen, (r: { id: string }) => r.id).concat(
+        doc.regions.map((r) => ({
+          id: r.id,
+          title: r.title ?? "",
+          color: r.fill ?? null,
+          memberIds: r.members.map((m) => byId.get(m)).filter(Boolean).map((i) => hermesIdOf(i!)),
+        })),
+      ),
       [K_REGIONS]: doc.regions,
     },
   };
+}
+
+/**
+ * The rows in one of Hermes' arrays that are not ours to rewrite.
+ *
+ * These arrays are written whole — there is no per-entry verb for a sticky
+ * note — so a push carrying only what this canvas holds deletes anything added
+ * at the other end since the last read. That is the member bug again, one
+ * layer along: absence is not deletion.
+ *
+ * So a row survives unless this canvas has *seen* it. `known` is what was read;
+ * a row whose id is in there and is no longer in the document was taken off,
+ * and a row nobody here has ever heard of belongs to whoever made it.
+ */
+function keeping<T>(
+  current: Collection,
+  prefixed: string,
+  bare: string,
+  known: Set<string> | null,
+  idOf: (row: T) => string,
+): T[] {
+  const props = (current.properties ?? {}) as Record<string, unknown>;
+  const rows = (Array.isArray(props[prefixed]) ? props[prefixed] : Array.isArray(props[bare]) ? props[bare] : []) as T[];
+  if (known === null) return rows.slice();
+  return rows.filter((r) => !known.has(idOf(r)));
 }
 
 /** For a caller that wants to know whether anything actually moved. */

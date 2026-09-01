@@ -81,10 +81,12 @@ const collection: Collection = {
   ],
   properties: {
     // The half Hermes draws, and the half only we do — joined on the id.
-    "hermes:canvas_notes": [{ id: "note1", x: 10, y: 20, w: 130, h: 90, text: "a sticky", color: "#00ffdd" }],
+    "hermes:canvas_notes": [{ id: "n:note1", x: 10, y: 20, w: 130, h: 90, text: "a sticky", color: "#00ffdd" }],
     "talaria:itemExtras": [{ id: "note1", shape: "rectangle", hAlign: "center", vAlign: "middle" }],
-    "talaria:links": [{ id: "l1", from: "i1", to: "note1" }],
-    "talaria:regions": [{ id: "r1", members: ["i1"], title: "Ideas" }],
+    "hermes:canvas_edges": [{ id: "l1", from: "b1", to: "n:note1", arrow: "forward", live: true }],
+    "talaria:links": [{ id: "l1", from: "i1", to: "note1", bendX: 4, bendY: 0 }],
+    "hermes:canvas_regions": [{ id: "r1", title: "Ideas", color: null, memberIds: ["b1"] }],
+    "talaria:regions": [{ id: "r1", members: ["i1"], title: "Ideas", strokeStyle: "dashed" }],
   },
 };
 let minted = 0;
@@ -128,17 +130,39 @@ check(
 );
 check(
   "an unlinked item is collection furniture, never a member",
-  (w.properties["hermes:canvas_notes"] as unknown[]).length === 1 &&
+  (w.properties["hermes:canvas_notes"] as { id: string }[]).some((n) => n.id === "n:note1") &&
     !w.place.some((p) => p.object === "note1") &&
     !w.add.some((p) => p.object === "note1"),
 );
 check(
   "an unlinked item travels as a note Hermes can actually draw",
   (() => {
-    const n = (w.properties["hermes:canvas_notes"] as Record<string, unknown>[])[0]!;
-    return n.id === "note1" && n.x === 10 && n.text === "a sticky" && n.color === "#00ffdd";
+    const n = (w.properties["hermes:canvas_notes"] as Record<string, unknown>[]).find(
+      (x) => (x.id as string).endsWith("note1"),
+    )!;
+    return n.id === "n:note1" && n.x === 10 && n.text === "a sticky" && n.color === "#00ffdd";
   })(),
-  "under our prefix alone it travelled correctly and rendered as nothing",
+  "and under the id Hermes knows a note by — bare, it drew and could not be touched",
+);
+check(
+  "a connection travels as an edge Hermes draws",
+  (() => {
+    const e = (w.properties["hermes:canvas_edges"] as Record<string, unknown>[])[0]!;
+    return e.from === "b1" && e.to === "n:note1" && e.arrow === "forward" && e.live === true;
+  })(),
+  "a block by its own id, a note by its n: one",
+);
+check(
+  "the bend stays ours, keyed to the same edge",
+  (w.properties["talaria:links"] as Record<string, unknown>[]).length === 0 ||
+    (w.properties["talaria:links"] as Record<string, unknown>[])[0]!.id !== undefined,
+);
+check(
+  "a region travels as one Hermes draws, naming what it holds",
+  (() => {
+    const r = (w.properties["hermes:canvas_regions"] as Record<string, unknown>[])[0];
+    return r === undefined || Array.isArray(r.memberIds);
+  })(),
 );
 check(
   "what Hermes cannot draw rides beside it, keyed by the same id",
@@ -158,7 +182,7 @@ check(
     const asMirrored: Collection = {
       id: "c1",
       // No prefix: this is how Talaria's own mirror stores the producer's keys.
-      properties: { canvas_notes: [{ id: "n1", x: 1, y: 2, w: 3, h: 4, text: "bare", color: null }] },
+      properties: { canvas_notes: [{ id: "n:n1", x: 1, y: 2, w: 3, h: 4, text: "bare", color: null }] },
     };
     return documentFrom(asMirrored, () => "x").items[0]?.text === "bare";
   })(),
@@ -170,7 +194,7 @@ check(
     const moved: Collection = {
       id: "c1",
       properties: {
-        "hermes:canvas_notes": [{ id: "note1", x: 555, y: 5, w: 130, h: 90, text: "edited there", color: null }],
+        "hermes:canvas_notes": [{ id: "n:note1", x: 555, y: 5, w: 130, h: 90, text: "edited there", color: null }],
         "talaria:itemExtras": [{ id: "note1", shape: "circle" }],
       },
     };
@@ -216,6 +240,47 @@ check(
 check("an unchanged bag compares equal", sameContext(bag, { ...bag }));
 check("a moved bag does not", !sameContext(bag, { ...bag, x: 11 }));
 check("a bag that lost a key does not", !sameContext(bag, { ...bag, shape: undefined }));
+
+// ── what somebody else added ───────────────────────────────────────────────
+check(
+  "a note added in Hermes survives a push that has never seen it",
+  (() => {
+    const theirs: Collection = {
+      id: "c1",
+      properties: {
+        "hermes:canvas_notes": [
+          { id: "n:mine", x: 0, y: 0, w: 1, h: 1, text: "mine", color: null },
+          { id: "n:theirs", x: 9, y: 9, w: 1, h: 1, text: "added over there", color: null },
+        ],
+      },
+    };
+    const doc3: CanvasDocument = { items: [], links: [], regions: [] };
+    const out = writesFor(doc3, theirs, ["mine"]);
+    const kept = (out.properties["hermes:canvas_notes"] as { id: string }[]).map((n) => n.id);
+    // "mine" was read and is gone from the document, so it was deleted.
+    // "theirs" this canvas has never seen, and is not ours to remove.
+    return kept.length === 1 && kept[0] === "n:theirs";
+  })(),
+  "these arrays are written whole, so a push carrying only what we hold erases the rest",
+);
+
+check(
+  "a push does not re-add what is already there",
+  (() => {
+    // The whole document read back, then written straight out again. Every id
+    // in it is known, so every row is replaced rather than duplicated.
+    const round = documentFrom(collection, () => "x");
+    const ids = [
+      ...round.items.map((i) => i.blockId ?? i.id),
+      ...round.links.map((l) => l.id),
+      ...round.regions.map((r) => r.id),
+    ];
+    const out = writesFor(round, collection, ids);
+    const notes = out.properties["hermes:canvas_notes"] as { id: string }[];
+    return notes.length === 1 && notes[0]!.id === "n:note1";
+  })(),
+  "a known-set of block ids alone kept every old note and appended the new one — five became ten",
+);
 
 console.log(bad ? `\n${bad} failed\n` : "\nall good\n");
 process.exit(bad ? 1 : 0);

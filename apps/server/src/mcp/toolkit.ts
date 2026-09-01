@@ -79,6 +79,16 @@ export interface ToolDef {
   handler: (args: Record<string, unknown>) => Promise<ToolResult>;
   /** Permanently deletes data — clients should confirm before running. */
   destructive?: boolean;
+  /**
+   * Destructive only for some arguments.
+   *
+   * `canvas_place` is the case: adding cards to a board is ordinary, and the
+   * same verb with `replace` takes the board apart. Flagging the whole tool
+   * would make every placement stop for approval, and a confirmation that
+   * fires on the harmless majority is one people learn to click through — which
+   * costs more safety than it buys.
+   */
+  destructiveWith?: (args: Record<string, unknown>) => boolean;
   /** Read-only (no writes) — safe to run without confirmation. */
   readOnly?: boolean;
 }
@@ -90,7 +100,22 @@ const HEX_COLOR = z.string().regex(/^#[0-9a-fA-F]{3,8}$/, "color must be a hex v
 
 // Archiving is reversible, so those tools aren't destructive. Only hard-deletes
 // are (tags here; blocks can no longer be deleted via MCP at all).
+//
 const DESTRUCTIVE_TOOLS = new Set(["tag_delete"]);
+
+/**
+ * Destructive depending on what is asked of them.
+ *
+ * `canvas_place` with `replace` is about blast radius rather than about what it
+ * destroys. Nothing it does is unrecoverable — a membership is not a block, and
+ * `collection_remove` has always been ungated — but it takes a whole board
+ * apart in one call where that used to cost one card at a time. An arrangement
+ * somebody built over weeks is not restored by knowing the blocks survived, and
+ * one injected sentence should not be able to ask for it.
+ */
+const DESTRUCTIVE_WITH: Record<string, (args: Record<string, unknown>) => boolean> = {
+  canvas_place: (args) => args.replace === true,
+};
 // Properties every block can carry regardless of its type's fields.
 const SYSTEM_PROP_KEYS = ["title", "banner", "icon_key", "icon_color"];
 const READONLY_TOOLS = new Set([
@@ -2195,6 +2220,7 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
 
   for (const t of tools) {
     t.destructive = DESTRUCTIVE_TOOLS.has(t.name);
+    t.destructiveWith = DESTRUCTIVE_WITH[t.name];
     t.readOnly = READONLY_TOOLS.has(t.name);
   }
   return tools;
@@ -2259,7 +2285,7 @@ export async function buildTools(server: McpServer, api: Api): Promise<void> {
   for (const t of await defineTools(api)) {
     const annotations = {
       title: t.name,
-      ...(t.destructive ? { destructiveHint: true } : {}),
+      ...(t.destructive || t.destructiveWith ? { destructiveHint: true } : {}),
       ...(t.readOnly ? { readOnlyHint: true } : {}),
     };
     // Our ToolResult is structurally a subset of the SDK's CallToolResult (which

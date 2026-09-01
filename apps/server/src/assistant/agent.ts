@@ -306,7 +306,9 @@ export async function runAgent(opts: {
     for (const call of calls) {
       const name = call.function?.name ?? "";
       const args = normArgs(call.function?.arguments);
-      if (opts.confirmDestructive && byName.get(name)?.destructive) {
+      const def = byName.get(name);
+      const asked = (args ?? {}) as Record<string, unknown>;
+      if (opts.confirmDestructive && (def?.destructive || def?.destructiveWith?.(asked))) {
         pending.push({ tool: name, args });
         continue; // hold for user approval
       }
@@ -337,7 +339,9 @@ export async function runConfirmed(opts: { api: Api; calls: PendingCall[] }): Pr
   const byName = new Map((await defineTools(opts.api)).map((t) => [t.name, t]));
   const steps: AgentStep[] = [];
   for (const c of opts.calls) {
-    if (!byName.get(c.tool)?.destructive) {
+    const def = byName.get(c.tool);
+    const asked = (normArgs(c.args) ?? {}) as Record<string, unknown>;
+    if (!def?.destructive && !def?.destructiveWith?.(asked)) {
       steps.push({ tool: c.tool, args: c.args, result: "Refused: only destructive tools run through confirm.", ok: false });
       continue;
     }

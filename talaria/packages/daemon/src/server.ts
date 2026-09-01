@@ -1203,7 +1203,7 @@ export function buildServer(deps: {
   app.post("/assistant", async (req, reply) => {
     const { message } = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
     try {
-      const turn = await hermes.assistant(message);
+      const turn = await hermes.assistant(message, undefined, config.canvasCollection);
       return { ok: true, ...turn };
     } catch (err) {
       if (err instanceof OfflineError) {

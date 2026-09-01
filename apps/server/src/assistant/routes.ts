@@ -55,6 +55,40 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
     return `Today is ${weekday}, ${date}${tz ? ` (${tz})` : ""}.`;
   };
 
+  /**
+   * What the surface asking this question needs the model to know.
+   *
+   * Empty for Hermes itself, which is the point: this is not a better prompt,
+   * it is a different one for a different caller. Talaria's canvas is a
+   * collection the model can already reach with the tools it has — it simply
+   * has no way to know which collection somebody means by "this canvas" when
+   * the question did not come from a page that is showing one.
+   *
+   * The second half is not Talaria-specific in spirit and is scoped here on
+   * purpose, because that is what was asked for. It exists because the model
+   * answered "here's your updated canvas with all 11 tasks" having called
+   * exactly one tool, a search — no create, no placement, nothing written. The
+   * report was fluent and entirely false, and a fluent false report is worse
+   * than a refusal because nobody goes to check.
+   */
+  const surfaceLine = (body: { client?: string; canvas?: string }): string => {
+    if (body.client !== "talaria") return "";
+    const lines = [
+      "This question comes from Talaria, whose canvas is a Hermes canvas collection.",
+    ];
+    if (body.canvas) {
+      lines.push(
+        `"this canvas", "the canvas" and "my canvas" all mean collection ${body.canvas}. Never create a new canvas for those words — add to, remove from, or restyle that one, with collection_add, collection_remove and canvas_style.`,
+        "Replacing it means removing the members it has and adding the new ones. It is not a new collection.",
+      );
+    }
+    lines.push(
+      "Report only what your tools actually did. If you did not call a tool, you did not do the thing — say what you found and what you would do next, and never describe a canvas you have not written to as updated.",
+      "Talaria draws shapes, borders and regions that Hermes does not. Do not offer sticky notes as a way to get a shape: in Hermes a sticky note and a task block are drawn identically, so it buys nothing and loses the block.",
+    );
+    return lines.join(" ");
+  };
+
   /** The persisted conversation (for hydrating the panel on load). */
   app.get("/assistant/messages", async (req) => {
     const userId = requireUser(req);
@@ -84,7 +118,24 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   app.post("/assistant/chat", (req, reply) => {
     const userId = requireUser(req);
     // Validate before hijacking, so a bad body is a normal 400.
-    const body = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
+    const body = z
+      .object({
+        message: z.string().min(1).max(20_000),
+        /**
+         * Which surface is asking, and what "this canvas" means there.
+         *
+         * Only Talaria sends these, and only Talaria should: from Hermes' own
+         * canvas view "this canvas" is whichever one the person is looking at,
+         * and pointing the model at somebody else's collection because it once
+         * heard of it would be worse than the model not knowing.
+         */
+        // A plain string rather than an enum. An enum turns "a client this
+        // build has not heard of" into a 400 on the whole turn, which is a
+        // hard failure over a field that is only ever a hint.
+        client: z.string().max(64).optional(),
+        canvas: z.string().uuid().optional(),
+      })
+      .parse(req.body);
     const api = apiFor(req);
 
     // Stream the turn as SSE over the POST response: `token` (reply text as the
@@ -125,7 +176,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
           numCtx,
           maxSteps,
           signal: stop.signal,
-          systemExtra: todayLine(timezone),
+          systemExtra: [todayLine(timezone), surfaceLine(body)].filter(Boolean).join("\n"),
           onEvent: send,
         });
 

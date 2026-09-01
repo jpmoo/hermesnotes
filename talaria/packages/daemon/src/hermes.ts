@@ -223,7 +223,7 @@ export class Hermes {
    * `pending` is the part that matters. Anything destructive is not executed —
    * it comes back for a person to approve, and nothing happens until it does.
    */
-  async assistant(message: string, signal?: AbortSignal): Promise<AssistantTurn> {
+  async assistant(message: string, signal?: AbortSignal, canvas?: string): Promise<AssistantTurn> {
     let res: Response;
     try {
       res = await fetch(`${this.config.origin.replace(/\/$/, "")}/api/assistant/chat`, {
@@ -233,7 +233,11 @@ export class Hermes {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
-        body: JSON.stringify({ message }),
+        // Who is asking, and what "this canvas" means to them. Hermes uses it
+        // to point the model at the collection Talaria's canvas actually is —
+        // and sends nothing extra when the question comes from its own pages,
+        // where those words mean whatever is on screen.
+        body: JSON.stringify({ message, client: "talaria", ...(canvas ? { canvas } : {}) }),
         signal,
       });
     } catch (err) {

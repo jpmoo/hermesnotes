@@ -31,6 +31,9 @@ final class SettingsModel: ObservableObject {
     @Published var models: [EmbedModel] = []
     @Published var embedderReach: Reach?
     @Published var testingEmbedder = false
+    @Published var chatModels: [EmbedModel] = []
+    @Published var chatReach: Reach?
+    @Published var testingChat = false
 
     @Published var problems: [String] = []
     @Published var status: String?
@@ -81,6 +84,27 @@ final class SettingsModel: ObservableObject {
             await MainActor.run {
                 self.testingProducer = false
                 self.producerReach = reach
+            }
+        }
+    }
+
+    /// The same probe, asking for the other half of the answer.
+    func refreshChatModels() {
+        testingChat = true
+        chatReach = nil
+        let url = config.inferenceUrl
+        Task.detached(priority: .userInitiated) {
+            let found = Probe.models(at: url, kind: .chat)
+            await MainActor.run {
+                self.testingChat = false
+                self.chatModels = found.models
+                self.chatReach = found.reach
+                // Chosen for them only when nothing is chosen. A model already
+                // named is a decision, and a canvas chat that silently repointed
+                // itself would answer differently tomorrow for no visible reason.
+                if self.config.inferenceModel.isEmpty, let first = found.models.first {
+                    self.config.inferenceModel = first.name
+                }
             }
         }
     }
@@ -217,26 +241,54 @@ struct SettingsView: View {
 
     private var inference: some View {
         section(
-            "Chat",
-            "Where Talaria's own chat thinks. Separate from the embedding above on purpose: that runs a small embedding model beside the words it embeds, and this needs a tool-capable chat model — llama3.1, qwen2.5 and the like — which is often on a different machine."
+            "Canvas chat",
+            "The chat that draws on the canvas, and only draws — it can look things up in Hermes Notes but cannot change anything there. Its own server and model, separate from the embedding below: that runs a small embedding model beside the words it embeds, and this needs one that can call tools."
         ) {
             field("Server") {
-                TextField("http://localhost:11434", text: $model.config.inferenceUrl)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-            }
-            field("Model") {
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField("llama3.1", text: $model.config.inferenceModel)
+                HStack(spacing: 6) {
+                    TextField("http://localhost:11434", text: $model.config.inferenceUrl)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(size: 12, design: .monospaced))
-                    Text("It has to be able to call tools. A model that cannot will hold a conversation and change nothing on the canvas, which looks like a broken canvas rather than the wrong model.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .onSubmit { model.refreshChatModels() }
+                    Button(model.testingChat ? "…" : "Connect") { model.refreshChatModels() }
+                        .disabled(model.testingChat)
+                }
+            }
+            if let reach = model.chatReach { verdict(reach) }
+            field("Model") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Picker("", selection: $model.config.inferenceModel) {
+                        // An empty entry, so "none chosen" is a state somebody
+                        // can see and return to rather than an invisible one.
+                        Text("none").tag("")
+                        ForEach(chatPickable) { m in Text(chatLabel(for: m)).tag(m.name) }
+                    }
+                    .labelsHidden()
+                    if model.config.inferenceModel.isEmpty {
+                        Text("Until one is chosen, the Draw tool is hidden on the canvas — an opener for a chat that cannot answer is worse than no opener.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
         }
+    }
+
+    private var chatPickable: [EmbedModel] {
+        var list = model.chatModels
+        let current = model.config.inferenceModel
+        if !current.isEmpty, !list.contains(where: { $0.name == current }) {
+            list.insert(EmbedModel(name: current, dimensions: nil, embeds: false, callsTools: true), at: 0)
+        }
+        return list
+    }
+
+    private func chatLabel(for m: EmbedModel) -> String {
+        var parts = [m.name]
+        if !model.chatModels.contains(where: { $0.name == m.name }) { parts.append("not installed") }
+        else if !m.callsTools { parts.append("no tool calling") }
+        return parts.count > 1 ? "\(parts[0])  —  \(parts.dropFirst().joined(separator: ", "))" : parts[0]
     }
 
     private var glance: some View {

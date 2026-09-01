@@ -663,7 +663,11 @@ struct DeskView: View {
                             // of those, and threading it through would put a
                             // conversation in the one file that has no business
                             // holding one.
-                            ChatDrawer(model: canvasChat, open: $chatOpen)
+                            ChatDrawer(model: canvasChat, open: $chatOpen, available: canvasChat.available)
+                                // Settings can be changed while the desk is
+                                // closed, so the answer is asked again each
+                                // time it opens rather than once at launch.
+                                .onAppear { canvasChat.recheck() }
                         }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)

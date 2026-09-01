@@ -226,6 +226,10 @@ struct EmbedModel: Identifiable, Hashable, Sendable {
     /// Declared in `capabilities`. Absent on older servers, which is why the
     /// list degrades to showing everything rather than to showing nothing.
     let embeds: Bool
+    /// Also from `capabilities`. A canvas chat needs this and an embedder does
+    /// not, which is why one server can be right for both and one model never
+    /// is — the two lists are filtered from the same answer by different words.
+    var callsTools: Bool = false
     var id: String { name }
 }
 
@@ -349,11 +353,16 @@ enum Probe {
      nothing declares a capability — an older server — the filter would empty
      the list instead, so it steps aside and shows everything.
      */
-    static func models(at url: String) -> (models: [EmbedModel], reach: Reach) {
+    /// Which list is being asked for. The same server answers both.
+    enum ModelKind { case embedding, chat }
+
+    static func models(at url: String, kind: ModelKind = .embedding) -> (models: [EmbedModel], reach: Reach) {
         let base = url.hasSuffix("/") ? String(url.dropLast()) : url
         let res = fetch(url: "\(base)/api/tags", timeout: 5)
         if res.failed {
-            return ([], .bad("No embedding server answered. Is Ollama running?"))
+            return ([], .bad(kind == .embedding
+                ? "No embedding server answered. Is Ollama running?"
+                : "Nothing answered there. Is Ollama running?"))
         }
         guard (200..<300).contains(res.status) else {
             return ([], .bad("The address answered \(res.status) — is that an Ollama server?"))
@@ -372,13 +381,24 @@ enum Probe {
             return EmbedModel(
                 name: name,
                 dimensions: details?["embedding_length"] as? Int,
-                embeds: caps.contains("embedding")
+                embeds: caps.contains("embedding"),
+                callsTools: caps.contains("tools")
             )
         }
-        let embedders = all.filter(\.embeds)
-        let shown = embedders.isEmpty ? all : embedders
+        let wanted = kind == .embedding ? all.filter(\.embeds) : all.filter(\.callsTools)
+        // Degrades to the whole list rather than to nothing: an older server
+        // declares no capabilities at all, and showing everything is a worse
+        // list than showing the right one but a far better one than showing an
+        // empty box under a server that answered.
+        let shown = wanted.isEmpty ? all : wanted
         if shown.isEmpty {
-            return ([], .warn("Answered, but has no models installed. Try: ollama pull nomic-embed-text"))
+            return ([], .warn(kind == .embedding
+                ? "Answered, but has no models installed. Try: ollama pull nomic-embed-text"
+                : "Answered, but has no models installed. Try: ollama pull qwen2.5"))
+        }
+        if wanted.isEmpty, !all.isEmpty, kind == .chat {
+            return (shown.sorted { $0.name < $1.name },
+                    .warn("Nothing there declares tool calling. Listing everything — but a model that cannot call tools will chat and draw nothing."))
         }
         let where_ = isLocal(url) ? "on this machine" : "at \(URL(string: url)?.host ?? url)"
         return (shown.sorted { $0.name < $1.name },

@@ -321,10 +321,15 @@ struct ChatDrawer: View {
     private static let height: CGFloat = 300
     private static let width: CGFloat = 520
 
+    /// Whether there is a model to answer. Nothing is drawn when there is not:
+    /// an opener for a chat that cannot reply is worse than no opener, because
+    /// it is discovered by asking something and getting an error.
+    let available: Bool
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            tab
-            if open {
+            if available { tab }
+            if open, available {
                 CanvasChatView(model: model)
                     .frame(width: Self.width, height: Self.height)
                     .background(
@@ -352,11 +357,13 @@ struct ChatDrawer: View {
             withAnimation(.easeOut(duration: 0.2)) { open.toggle() }
         } label: {
             HStack(spacing: 6) {
-                // A pencil, not the wings. What draws is not what files, and
-                // the Hermes assistant can be open over the top of this one.
+                // A pencil, not the wings. What draws is not what files — and
+                // the Hermes assistant can be summoned over the top of this one,
+                // so the two have to be told apart at a glance rather than by
+                // remembering which is which.
                 Image(systemName: "pencil.and.scribble")
                     .font(.system(size: 11))
-                Text("Draw").font(Theme.chrome(11, weight: .medium))
+                Text("Canvas Chat").font(Theme.chrome(11, weight: .medium))
                 Image(systemName: open ? "chevron.down" : "chevron.up")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)

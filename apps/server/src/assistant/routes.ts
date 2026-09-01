@@ -58,42 +58,19 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   /**
    * What the surface asking this question needs the model to know.
    *
-   * Empty for Hermes itself, which is the point: this is not a better prompt,
-   * it is a different one for a different caller. Talaria's canvas is a
-   * collection the model can already reach with the tools it has — it simply
-   * has no way to know which collection somebody means by "this canvas" when
-   * the question did not come from a page that is showing one.
+   * Empty for Hermes itself, which is the point: not a better prompt, a
+   * different one for a different caller.
    *
-   * What is left here is Talaria-specific and nothing else. The rule about
-   * reporting only what the tools did started here — it was written after the
-   * model answered "here's your updated canvas with all 11 tasks" having called
-   * exactly one tool, a search — and moved to the base prompt, because a
-   * fluent report of work that did not happen is not a Talaria problem. It is
-   * worse than a refusal anywhere, since nobody goes back to check.
+   * It used to also name the collection Talaria's canvas was backed by. That
+   * backing is gone — Talaria's canvas is its own document now and nothing here
+   * knows it — so what is left is the one thing still true: Talaria draws
+   * things Hermes does not, and the model should not offer a Hermes shape as a
+   * substitute for one.
    */
-  const surfaceLine = (body: { client?: string; canvas?: string }): string => {
-    if (body.client !== "talaria") return "";
-    const lines = [
-      "This question comes from Talaria, whose canvas is a Hermes canvas collection.",
-    ];
-    if (body.canvas) {
-      lines.push(
-        `"this canvas", "the canvas" and "my canvas" all mean the canvas whose id is ${body.canvas}.`,
-        // Naming the verb, not only the id.
-        //
-        // The first version of this line gave the id and forbade canvas_create,
-        // and the model created two canvases anyway — named after the id,
-        // because canvas_create was the only tool that placed many blocks at
-        // once and `title` was the only slot an id would fit in. A prohibition
-        // without a verb to obey it with is a prohibition that loses.
-        `Put things on it with canvas_place, passing that id as \`canvas\` and every block in one call. To replace what is on it, use canvas_place with replace=true. To recolor or resize, canvas_style. Never canvas_create — that makes a NEW canvas, and there is nothing here to make.`,
-      );
-    }
-    lines.push(
-      "Talaria draws shapes, borders and regions that Hermes does not. Do not offer sticky notes as a way to get a shape: in Hermes a sticky note and a task block are drawn identically, so it buys nothing and loses the block.",
-    );
-    return lines.join(" ");
-  };
+  const surfaceLine = (body: { client?: string }): string =>
+    body.client === "talaria"
+      ? "This question comes from Talaria, which has a canvas of its own that Hermes cannot see or draw. Do not offer to put anything on a Hermes canvas as a way of satisfying a request about theirs, and do not offer sticky notes as a way to get a shape: in Hermes a sticky note and a task block are drawn identically."
+      : "";
 
   /** The persisted conversation (for hydrating the panel on load). */
   app.get("/assistant/messages", async (req) => {
@@ -139,7 +116,6 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
         // build has not heard of" into a 400 on the whole turn, which is a
         // hard failure over a field that is only ever a hint.
         client: z.string().max(64).optional(),
-        canvas: z.string().uuid().optional(),
       })
       .parse(req.body);
     const api = apiFor(req);

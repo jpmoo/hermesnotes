@@ -15,10 +15,6 @@ import {
   toCanonical,
   type InterchangeObject,
   type InterchangeType,
-  documentFrom,
-  writesFor,
-  type CanvasDocument,
-  type Collection,
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, workspaces } from "./context.js";
@@ -1203,7 +1199,7 @@ export function buildServer(deps: {
   app.post("/assistant", async (req, reply) => {
     const { message } = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
     try {
-      const turn = await hermes.assistant(message, undefined, config.canvasCollection);
+      const turn = await hermes.assistant(message);
       return { ok: true, ...turn };
     } catch (err) {
       if (err instanceof OfflineError) {
@@ -1460,125 +1456,6 @@ export function buildServer(deps: {
        */
       archived: block.archived === true,
     });
-  });
-
-  /**
-   * Make the collection this canvas will be, or confirm the one it already is.
-   *
-   * Safe to call every time, which is the point of it. The id is chosen here
-   * and the create is a create-or-confirm, so a client that lost the answer
-   * asks again and gets the same board back rather than a second one — and a
-   * user who has already backed their canvas and clicks the button again gets
-   * told what it already is instead of a fresh empty canvas.
-   *
-   * It does not write the config. The app owns that file — it overlays rather
-   * than replaces, so unknown keys survive — and a daemon rewriting it from
-   * underneath is two writers on a file with no version on it.
-   */
-  app.post("/canvas/back", async (req, reply) => {
-    const body = z.object({ id: z.string().uuid().optional(), name: z.string().default("Talaria Canvas") }).parse(req.body ?? {});
-    const id = body.id ?? config.canvasCollection ?? randomUUID();
-    try {
-      const answer = await ix.putCollection(id, { name: body.name, kind: "canvas" });
-      if (!answer.ok) return reply.code(400).send({ error: "the collection could not be made" });
-      return envelope({ collection: id, created: answer.created === true });
-    } catch (err) {
-      // Offline is not a refusal. The canvas can be backed the moment the
-      // network is there, and saying so is better than a create that half
-      // happened somewhere nobody can see.
-      return reply.code(503).send({ error: `Hermes is not reachable: ${(err as Error).message}` });
-    }
-  });
-
-  /**
-   * The canvas, read out of the collection that backs it.
-   *
-   * From the mirror, like everything else here, so it is free to ask for and
-   * right while offline. Answers a document in the shape the app already
-   * writes — the mapping lives in `@talaria/canonical` beside the rest of the
-   * seam, and this route is the plumbing around it and nothing more.
-   */
-  app.get("/canvas", async (_req, reply) => {
-    const id = config.canvasCollection;
-    if (!id) return reply.code(404).send({ error: "no canvas collection configured" });
-    const raw = mirror.rawBlock(id);
-    if (!raw) return reply.code(404).send({ error: "that collection is not in the mirror" });
-    const collection = JSON.parse(raw) as Collection;
-    collection.members = mirror.canvasMembers(id).map((m) => ({
-      object: m.object,
-      context: m.context,
-      ...(m.version === null ? {} : { version: m.version }),
-    }));
-    let n = 0;
-    return envelope({
-      collection: id,
-      version: collection.version ?? null,
-      document: documentFrom(collection, () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`),
-    });
-  });
-
-  /**
-   * The canvas, as it should now stand.
-   *
-   * The whole arrangement rather than one gesture — see `CanvasIntent`. What
-   * has to change is worked out here against the mirror's copy, so the app
-   * sends what it has and never has to know which of its nodes are members and
-   * which are furniture.
-   *
-   * Queued, not written. That is what makes a canvas edited on a train exist
-   * locally and go out on reconnect, and it is the same queue every other write
-   * in this app goes through.
-   */
-  app.post("/canvas", async (req, reply) => {
-    const id = config.canvasCollection;
-    if (!id) return reply.code(404).send({ error: "no canvas collection configured" });
-    // The body is the document plus what the app has actually read. `known`
-    // absent means it has read nothing, which removes nothing — see `writesFor`.
-    const body = req.body as CanvasDocument & { known?: string[] };
-    const doc = body;
-    const raw = mirror.rawBlock(id);
-    if (!raw) return reply.code(404).send({ error: "that collection is not in the mirror" });
-    const collection = JSON.parse(raw) as Collection;
-    collection.members = mirror.canvasMembers(id).map((m) => ({
-      object: m.object,
-      context: m.context,
-      ...(m.version === null ? {} : { version: m.version }),
-    }));
-
-    const w = writesFor(doc, collection, body.known);
-    // Nothing to say. A canvas that has not changed must not enqueue a write
-    // every time it is saved, or an idle canvas is a permanent trickle of
-    // no-op traffic and a log nobody can read.
-    const propsUnchanged = Object.entries(w.properties).every(
-      ([k, v]) => JSON.stringify((collection.properties ?? {})[k]) === JSON.stringify(v),
-    );
-    if (!w.place.length && !w.add.length && !w.remove.length && propsUnchanged) {
-      return envelope({ queued: false });
-    }
-    const intent = {
-      kind: "canvas" as const,
-      collectionId: id,
-      place: w.place,
-      add: w.add,
-      remove: w.remove,
-      properties: w.properties,
-      collectionVersion: collection.version ?? null,
-      // The key this canvas wrote its notes under before they moved to one
-      // Hermes can draw. Cleared rather than left behind: an unread key is a
-      // copy of somebody's canvas going quietly stale beside the real one.
-      ...(("talaria:items" in (collection.properties ?? {})) ? { unset: ["talaria:items"] } : {}),
-    };
-    // One canvas has one pending intent. Two are the same thing said twice and
-    // only the newer is true, so the older is dropped rather than replayed into
-    // a board that has moved on.
-    for (const row of mirror.pending()) {
-      if (row.kind !== "canvas") continue;
-      const was = JSON.parse(row.payload) as { collectionId?: string };
-      if (was.collectionId === id) mirror.dequeue(row.id);
-    }
-    mirror.enqueue("canvas", intent, collection.version ?? null);
-    void queue.drain();
-    return envelope({ queued: true });
   });
 
   app.get("/types", async () =>
@@ -1973,11 +1850,6 @@ export function buildServer(deps: {
       });
       if (!answer.ok) throw new HermesError(answer.conflict ? 409 : 400, "the write was refused");
       return { id: intent.blockId };
-    }
-    if (intent.kind === "canvas") {
-      const { applyCanvas } = await import("./queue.js");
-      const { contended } = await applyCanvas(ix, intent);
-      return { collection: intent.collectionId, contended };
     }
     const note = await hermes.dailyNote(intent.date);
     const { appendedContent } = await import("./queue.js");

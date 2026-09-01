@@ -33,42 +33,6 @@ final class SettingsModel: ObservableObject {
     @Published var testingEmbedder = false
 
     @Published var problems: [String] = []
-    /// A create is a network call, and one somebody clicked. Both facts are
-    /// visible: the button waits, and what happened is said afterwards.
-    @Published var backingCanvas = false
-    @Published var canvasNote: String?
-
-    /**
-     Make the collection the canvas will be, and remember which one.
-
-     Two writes and they are not interchangeable. The collection is made first,
-     because a config pointing at a collection that does not exist is a canvas
-     that fails on every sync with nothing to say why; and the id is only saved
-     once the far end has confirmed it. If Hermes is unreachable this does
-     nothing at all, which is the honest outcome — the canvas goes on working
-     locally exactly as it did before anybody pressed this.
-     */
-    func backCanvas() {
-        backingCanvas = true
-        canvasNote = nil
-        Task.detached(priority: .userInitiated) {
-            do {
-                let made = try Daemon.canvasBack(name: "Talaria Canvas")
-                await MainActor.run {
-                    self.config.canvasCollection = made.collection
-                    self.canvasNote = made.created
-                        ? "Made. Save to start syncing."
-                        : "That collection was already there — reusing it. Save to start syncing."
-                    self.backingCanvas = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.canvasNote = "Could not reach Hermes, so nothing was made. The canvas is unchanged."
-                    self.backingCanvas = false
-                }
-            }
-        }
-    }
     @Published var status: String?
     @Published var busy = false
 
@@ -373,37 +337,6 @@ struct SettingsView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            field("canvas") {
-                VStack(alignment: .leading, spacing: 5) {
-                    if model.config.canvasCollection.isEmpty {
-                        HStack(spacing: 8) {
-                            Button("Back this canvas with a Hermes collection") { model.backCanvas() }
-                                .disabled(model.backingCanvas)
-                            if model.backingCanvas { ProgressView().controlSize(.small) }
-                        }
-                        Text("The canvas becomes a canvas collection in Hermes Notes: the same one, seen from two places. What is on it now is sent up as its first contents. Ask the assistant to put things on it, and they arrive here.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        HStack(spacing: 8) {
-                            Text(model.config.canvasCollection)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                            Spacer(minLength: 0)
-                            Button("Unlink") { model.config.canvasCollection = "" }
-                        }
-                        Text("Unlinking leaves the collection in Hermes and everything on it. The canvas here stops sending and stops receiving; nothing is deleted at either end.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let note = model.canvasNote {
-                        Text(note).font(.system(size: 10)).foregroundStyle(.secondary)
-                    }
                 }
             }
             field("aerospace") {

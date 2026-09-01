@@ -270,8 +270,8 @@ enum Daemon {
         let notes: [StickyNote]
         let edges: [Edge]
     }
-    /// Not private any more: `CanvasSync` decodes the same envelope in its own
-    /// file, and a second copy of this shape is a second thing to keep in step.
+    /// Not private: more than one file decodes this envelope, and a second copy
+    /// of the shape is a second thing to keep in step.
     struct Envelope<T: Decodable>: Decodable {
         let data: T
         let freshness: String
@@ -808,7 +808,6 @@ enum Daemon {
         return data
     }
 
-    /// Not private: `CanvasSync` posts through it from its own file.
     static func post(_ path: String, _ body: [String: Any]) throws -> Data {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")

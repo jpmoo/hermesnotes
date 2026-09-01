@@ -696,38 +696,7 @@ final class CanvasModel: ObservableObject {
         }
     }
 
-    /// Kept in step with the collection behind the canvas, when there is one.
-    /// Nil until `back(with:)` hands one over — the canvas works exactly as it
-    /// always has without it.
-    var sync: CanvasSync?
-
-    private func persist() {
-        let document = CanvasDocument(items: items, links: links, regions: regions)
-        // The file first, always. It is the working document and the only thing
-        // a drag is allowed to wait on; the sync is told afterwards and answers
-        // on its own time.
-        store.save(document)
-        sync?.changed(document)
-    }
-
-    /**
-     Everything, as the collection now has it.
-
-     Replaces rather than merges, and that is not laziness — a merge needs a
-     rule for every field of every node, and the rule that matters here is
-     already enforced one layer down: a push carries the version each member was
-     read at, so an edit made while somebody else was editing is refused at the
-     write rather than reconciled at the read. What arrives here has already
-     won.
-     */
-    func adopt(_ document: CanvasDocument) {
-        items = document.items
-        links = document.links
-        regions = document.regions
-        // The file, but not the sync: this came *from* the far end, and telling
-        // the sync about it would send it straight back.
-        store.save(document)
-    }
+    private func persist() { store.save(CanvasDocument(items: items, links: links, regions: regions)) }
 
     func item(_ id: UUID) -> CanvasItem? { items.first { $0.id == id } }
 
@@ -1837,9 +1806,6 @@ enum CanvasFiles {
 private struct FileMenu: View {
     /// Which entry has been asked about but not confirmed.
     @Binding var confirming: CanvasFile?
-    /// Whether this canvas is a Hermes collection. It changes what the
-    /// destructive entries are actually about, so it changes what they say.
-    let backed: Bool
     let pick: (CanvasFile) -> Void
 
     var body: some View {
@@ -1872,7 +1838,7 @@ private struct FileMenu: View {
                 .buttonStyle(.plain)
             }
             if confirming == .load {
-                Text(backed ? "Replaces this canvas, in Hermes too" : "Replaces this canvas")
+                Text("Replaces this canvas")
                     .font(Theme.chrome(9))
                     .foregroundStyle(.secondary)
                     .frame(width: 116, alignment: .leading)
@@ -1948,8 +1914,6 @@ private struct CanvasToolStrip: View {
     /// A mode tool that is currently on.
     @Binding var armed: CanvasTool?
     @Binding var overChrome: Int
-    /// Whether this canvas is a Hermes collection — see `FileMenu.backed`.
-    let backed: Bool
     /// How far through clearing the canvas somebody is: nothing, asked once,
     /// asked twice.
     @Binding var clearStep: Int
@@ -1969,16 +1933,6 @@ private struct CanvasToolStrip: View {
                 .font(Theme.chrome(9, weight: clearStep == 0 ? .medium : .bold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-            // Only while asking, and only when it is true. The strip is 56
-            // points wide and a permanent caption would crowd every other tool
-            // to say something that matters for one click.
-            if clearStep == 1, backed {
-                Text("Hermes too")
-                    .font(Theme.chrome(7, weight: .semibold))
-                    .foregroundStyle(Theme.danger)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-            }
         }
         .frame(width: 56, height: 38)
         .contentShape(Rectangle())
@@ -2089,7 +2043,7 @@ private struct CanvasToolStrip: View {
             .help("Save this canvas to a file, or load one")
             .overlay(alignment: .topTrailing) {
                 if fileMenuOpen {
-                    FileMenu(confirming: $confirmingFile, backed: backed) { entry in
+                    FileMenu(confirming: $confirmingFile) { entry in
                         fileMenuOpen = false
                         file(entry)
                     }
@@ -2639,14 +2593,6 @@ struct CanvasSurface: View {
     @State private var blockTypes: [String: Daemon.BlockType] = [:]
     /// Polls the sync cursor so a canvas left open notices what Hermes did.
     @State private var watch: MirrorWatch?
-    /// Keeps the canvas and the collection behind it in step. One per surface,
-    /// made on appear, and quiet unless a collection is configured.
-    @StateObject private var sync = CanvasSyncBox()
-    /// Mirrored into plain state rather than read through `sync` in the body.
-    /// Reading it inline put one more actor-isolated member access into an
-    /// expression the type checker was already close to giving up on, and the
-    /// error it gives for that names a line that is not the problem.
-    @State private var canvasIsBacked = false
     /// Ids the daemon has told us it does not hold.
     ///
     /// Kept separately from `linked` rather than inferred from its absence,
@@ -2824,38 +2770,9 @@ struct CanvasSurface: View {
                 // of the sync cursor every twenty seconds, and a reload only
                 // when it has actually moved. Nothing new had to be built; this
                 // view simply had not been told it was long-lived.
-                let w = MirrorWatch {
-                    refreshLinks()
-                    // The same tick. A canvas backed by a collection has two
-                    // things to catch up on when the mirror moves — what the
-                    // blocks say, and where they now sit — and they are the
-                    // same news arriving.
-                    sync.inner.pull()
-                }
+                let w = MirrorWatch { refreshLinks() }
                 w.start()
                 watch = w
-                sync.inner.onPulled = { document in
-                    // Not while somebody is holding something. A pull that
-                    // landed mid-drag would take the node out from under the
-                    // pointer, and the drag would finish by writing it back to
-                    // where it was — a fight nobody can see the far side of.
-                    guard dragging == false, draggingRegion == nil, model.editing == nil else { return }
-                    model.adopt(document)
-                }
-                model.sync = sync.inner
-                sync.inner.onBackedChanged = { on in canvasIsBacked = on }
-                // Offered, not sent.
-                //
-                // This is what a canvas backed a moment ago has to fill its
-                // collection with, and the sync only uses it if the collection
-                // is bare and has never been filled from here. Otherwise the
-                // read wins and this is dropped.
-                //
-                // It used to be sent on every appear, which is not a sync at
-                // all: it blocked the first pull, then overwrote whatever
-                // Hermes held 0.8 seconds later. Clearing the canvas over there
-                // and opening it here put all of it straight back.
-                sync.inner.changed(CanvasDocument(items: model.items, links: model.links, regions: model.regions))
             }
             .onDisappear {
                 watch?.stop()
@@ -2901,7 +2818,6 @@ struct CanvasSurface: View {
                     openMenu: $openMenu,
                     armed: $armed,
                     overChrome: $overChrome,
-                    backed: canvasIsBacked,
                     clearStep: $clearStep,
                     fileMenuOpen: $fileMenuOpen,
                     confirmingFile: $confirmingFile,

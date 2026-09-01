@@ -707,6 +707,29 @@ final class CanvasModel: ObservableObject {
 
     private func persist() { store.save(CanvasDocument(items: items, links: links, regions: regions)) }
 
+    /**
+     Read the file again, because something else wrote it.
+
+     The canvas chat is a daemon and writes the same `canvas.json` this holds in
+     memory. Without this the app went on showing what it had: the chat drew
+     sixteen circles, said so truthfully, and the canvas did not move — and the
+     next drag would have saved the stale copy straight over them.
+
+     Not persisted afterwards. What arrived came *from* the file, and writing it
+     back would be this app claiming an edit it did not make.
+     */
+    func reload() {
+        let document = store.load()
+        guard document != CanvasDocument(items: items, links: links, regions: regions) else { return }
+        items = document.items
+        links = document.links
+        regions = document.regions
+        // A selection pointing at something that is no longer there draws
+        // handles around nothing.
+        let present = Set(items.map(\.id))
+        if case let .items(chosen) = selection, !chosen.isSubset(of: present) { clearSelection() }
+    }
+
     func item(_ id: UUID) -> CanvasItem? { items.first { $0.id == id } }
 
     /**
@@ -2524,6 +2547,8 @@ struct CanvasSurface: View {
     var onCompose: (String, @escaping (String) -> Void) -> Void = { _, _ in }
     /// Put the desk away, for the one action that sends somebody somewhere else.
     var onLeave: () -> Void = {}
+    /// The canvas chat, which writes the same file this draws from.
+    @ObservedObject var chat: CanvasChatModel
 
     /// A name for this view's coordinate space, so a drag that starts on the
     /// tool strip can report where it ended in canvas terms.
@@ -2618,6 +2643,12 @@ struct CanvasSurface: View {
     /// to, rather than on a timer nobody asked for.
     @State private var linked: [String: Daemon.LinkedBlock] = [:]
     @State private var blockTypes: [String: Daemon.BlockType] = [:]
+    /// A turn finished while a gesture was in progress, so its work has not
+    /// been read yet. Deferred rather than dropped: skipping the reload and
+    /// never retrying loses whatever the chat drew, which is the failure this
+    /// whole path exists to prevent.
+    @State private var reloadWhenIdle = false
+
     /// Polls the sync cursor so a canvas left open notices what Hermes did.
     @State private var watch: MirrorWatch?
     /// Ids the daemon has told us it does not hold.
@@ -2697,6 +2728,29 @@ struct CanvasSurface: View {
             .fixedSize()
             .frame(width: lane, alignment: .trailing)
             .position(x: edge - lane / 2, y: corner.y - 9 * buttonScale)
+    }
+
+    /**
+     The chat has written the file. Read it, or remember to.
+
+     Not while somebody is holding something: a reload mid-drag takes the node
+     out from under the pointer, and the drag then finishes by writing it back
+     where it was — a fight with no visible far side.
+     */
+    private func drewWhileBusy() {
+        guard !dragging, draggingRegion == nil, model.editing == nil else {
+            reloadWhenIdle = true
+            return
+        }
+        reloadWhenIdle = false
+        model.reload()
+    }
+
+    /// Called when a gesture ends, in case one was in the way.
+    private func settleReload() {
+        guard reloadWhenIdle, !dragging, draggingRegion == nil, model.editing == nil else { return }
+        reloadWhenIdle = false
+        model.reload()
     }
 
     private var cursor: NSCursor {
@@ -2797,6 +2851,11 @@ struct CanvasSurface: View {
                 // of the sync cursor every twenty seconds, and a reload only
                 // when it has actually moved. Nothing new had to be built; this
                 // view simply had not been told it was long-lived.
+                // The chat writes the same file this holds. Read it back when
+                // the desk opens, in case something drew while it was shut, and
+                // again whenever a turn finishes.
+                model.reload()
+                chat.onDrew = { drewWhileBusy() }
                 model.onRetitle = { block, title in
                     Task.detached(priority: .userInitiated) {
                         _ = try? Daemon.write(["kind": "retitle", "blockId": block, "title": title])
@@ -3810,7 +3869,7 @@ struct CanvasSurface: View {
                         .onEnded { _ in
                             bendAtStart = nil
                             straightened = false
-                            model.settled()
+                            model.settled(); settleReload()
                         }
                 )
 
@@ -3974,7 +4033,7 @@ struct CanvasSurface: View {
                             model.link(from: id, to: onto)
                             model.clearSelection()
                         } else {
-                            model.settled()
+                            model.settled(); settleReload()
                         }
                         draggingRegion = nil
                         regionOrigin = nil
@@ -4151,7 +4210,7 @@ struct CanvasSurface: View {
                         // include it, which it does by itself, because the box
                         // is the extent of what it holds.
                         model.join(region: onto, item: item.id)
-                        model.settled()
+                        model.settled(); settleReload()
                     } else if moved, let onto = linkTarget, let from = moveOrigin {
                         // Dropped on something. The gesture said "this one goes
                         // with that one", not "this one goes here", so the box
@@ -4162,7 +4221,7 @@ struct CanvasSurface: View {
                         model.link(from: item.id, to: onto)
                         model.clearSelection()
                     } else if moved {
-                        model.settled()
+                        model.settled(); settleReload()
                     } else if !editing {
                         /*
                          A press that went nowhere is a click. Whether it is the
@@ -4273,7 +4332,7 @@ struct CanvasSurface: View {
                         .onEnded { _ in
                             resizing = nil
                             guides = []
-                            model.settled()
+                            model.settled(); settleReload()
                         }
                 )
         }

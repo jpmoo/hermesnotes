@@ -657,7 +657,7 @@ struct DeskView: View {
                             // all of that is — which is what lets the pointer
                             // become a finger over every part of it and stay a
                             // hand over the rest.
-                            CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose, onLeave: onLeave)
+                            CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose, onLeave: onLeave, chat: canvasChat)
                             // Over the canvas rather than inside it. The surface
                             // knows about items, links and regions; chat is none
                             // of those, and threading it through would put a

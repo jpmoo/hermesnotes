@@ -38,6 +38,15 @@ final class CanvasChatModel: ObservableObject {
     /// answer is known is better than one that appears and then vanishes.
     @Published var available = false
 
+    /**
+     Told after every turn, so the canvas can read the file again.
+
+     The tools run in the daemon and write `canvas.json` directly; this app
+     holds the same document in memory. Somebody has to say "that changed", and
+     the chat is the only thing that knows when.
+     */
+    var onDrew: (() -> Void)?
+
     init() { recheck() }
 
     /// Asked again when the panel appears, so choosing a model in Settings and
@@ -61,6 +70,10 @@ final class CanvasChatModel: ObservableObject {
                 await MainActor.run {
                     self.turns.append(Turn(mine: false, text: turn.reply, steps: turn.steps))
                     self.busy = false
+                    // Even when the turn drew nothing: a turn that only read is
+                    // cheap to reload after, and working out which ones wrote
+                    // means the canvas trusting the model's account of itself.
+                    self.onDrew?()
                 }
             } catch {
                 await MainActor.run {

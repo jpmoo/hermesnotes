@@ -35,6 +35,19 @@ final class CanvasSync {
     private var sent: CanvasDocument?
     /// True while a push is in flight, so a pull cannot land on top of one.
     private var pushing = false
+    /**
+     The members this canvas has actually read.
+
+     Sent with every push so the far end can tell a node the user deleted from
+     one it has never heard of. Both are "in the collection and not in the
+     document"; only the first is a removal.
+
+     Empty until the first pull, which is deliberate — a canvas that has read
+     nothing is in no position to say anything should go, and starting empty
+     means the very first push after backing cannot delete what somebody else
+     put there while the app was closed.
+     */
+    private var known: Set<String> = []
 
     /// Whether this canvas is backed at all. False until somebody points it at
     /// a collection, and everything here is a no-op while it is.
@@ -77,8 +90,9 @@ final class CanvasSync {
         pending = nil
         pushing = true
         sent = document
+        let seen = known
         Task.detached(priority: .utility) {
-            _ = try? Daemon.canvasPush(document)
+            _ = try? Daemon.canvasPush(document, known: seen)
             await MainActor.run { self.pushing = false }
         }
     }
@@ -102,6 +116,9 @@ final class CanvasSync {
                 // what we sent, there is nothing to apply.
                 guard fetched != self.sent else { return }
                 self.sent = fetched
+                // Read, therefore ours to speak about. A node that leaves the
+                // canvas after this point is one somebody took off it.
+                self.known = Set(fetched.items.compactMap(\.blockId))
                 self.onPulled?(fetched)
             }
         }
@@ -129,10 +146,16 @@ extension Daemon {
 
     /// The canvas as it should now stand. Answers whether anything was queued.
     @discardableResult
-    static func canvasPush(_ document: CanvasDocument) throws -> Bool {
+    static func canvasPush(_ document: CanvasDocument, known: Set<String>) throws -> Bool {
         struct Answer: Decodable { let queued: Bool }
-        let payload = try JSONEncoder().encode(document)
-        return try JSONDecoder().decode(Envelope<Answer>.self, from: postJSON("/canvas", payload)).data.queued
+        // The document, with the read-set alongside it. Encoded by hand because
+        // `known` is not part of the document and must not become a field on
+        // it — what the canvas holds and what the canvas has seen are different
+        // things, and a document carrying the second would write it to disk.
+        var payload = try JSONSerialization.jsonObject(with: JSONEncoder().encode(document)) as? [String: Any] ?? [:]
+        payload["known"] = Array(known)
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        return try JSONDecoder().decode(Envelope<Answer>.self, from: postJSON("/canvas", body)).data.queued
     }
 }
 

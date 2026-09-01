@@ -80,7 +80,9 @@ const collection: Collection = {
     { object: "b2", version: 2, context: { x: 400, y: 0, w: 200, h: 100, itemId: "i2" } },
   ],
   properties: {
-    "talaria:items": [node({ id: "note1", text: "a sticky" })],
+    // The half Hermes draws, and the half only we do — joined on the id.
+    "hermes:canvas_notes": [{ id: "note1", x: 10, y: 20, w: 130, h: 90, text: "a sticky", color: "#00ffdd" }],
+    "talaria:itemExtras": [{ id: "note1", shape: "rectangle", hAlign: "center", vAlign: "middle" }],
     "talaria:links": [{ id: "l1", from: "i1", to: "note1" }],
     "talaria:regions": [{ id: "r1", members: ["i1"], title: "Ideas" }],
   },
@@ -110,17 +112,72 @@ const w = writesFor(edited, collection);
 check("a moved node is a place, carrying the version it saw", w.place.length === 1 && w.place[0]!.version === 7);
 check("the move actually carries the new position", (w.place[0]!.context as { x: number }).x === 999);
 check("a node new to the canvas is an add", w.add.length === 1 && w.add[0]!.object === "b3");
-check("a node no longer on the canvas is a removal", w.remove.length === 1 && w.remove[0] === "b2");
+check(
+  "a node no longer on the canvas is a removal",
+  writesFor(edited, collection, ["b1", "b2"]).remove.join() === "b2",
+  "and only because the canvas had read it — see the case below",
+);
+check(
+  "a member the canvas never read is left alone",
+  writesFor(edited, collection).remove.length === 0,
+  "the assistant's task, deleted by the next save because absence was read as deletion",
+);
+check(
+  "having read some members does not license removing others",
+  writesFor(edited, collection, ["b1"]).remove.length === 0,
+);
 check(
   "an unlinked item is collection furniture, never a member",
-  (w.properties["talaria:items"] as unknown[]).length === 1 &&
+  (w.properties["hermes:canvas_notes"] as unknown[]).length === 1 &&
     !w.place.some((p) => p.object === "note1") &&
     !w.add.some((p) => p.object === "note1"),
 );
 check(
-  "everything of ours on the collection is prefixed",
-  Object.keys(w.properties).every((k) => k.startsWith("talaria:")),
+  "an unlinked item travels as a note Hermes can actually draw",
+  (() => {
+    const n = (w.properties["hermes:canvas_notes"] as Record<string, unknown>[])[0]!;
+    return n.id === "note1" && n.x === 10 && n.text === "a sticky" && n.color === "#00ffdd";
+  })(),
+  "under our prefix alone it travelled correctly and rendered as nothing",
+);
+check(
+  "what Hermes cannot draw rides beside it, keyed by the same id",
+  (() => {
+    const e = (w.properties["talaria:itemExtras"] as Record<string, unknown>[])[0]!;
+    return e.id === "note1" && e.shape === "rectangle" && !("x" in e) && !("text" in e);
+  })(),
+);
+check(
+  "every key is somebody's, none the format's",
+  Object.keys(w.properties).every((k) => k.includes(":")),
   Object.keys(w.properties).join(","),
+);
+check(
+  "the mirror's spelling of Hermes' key reads too",
+  (() => {
+    const asMirrored: Collection = {
+      id: "c1",
+      // No prefix: this is how Talaria's own mirror stores the producer's keys.
+      properties: { canvas_notes: [{ id: "n1", x: 1, y: 2, w: 3, h: 4, text: "bare", color: null }] },
+    };
+    return documentFrom(asMirrored, () => "x").items[0]?.text === "bare";
+  })(),
+  "the write goes out prefixed and the read comes back bare; both are the same key",
+);
+check(
+  "a note moved in Hermes comes back moved",
+  (() => {
+    const moved: Collection = {
+      id: "c1",
+      properties: {
+        "hermes:canvas_notes": [{ id: "note1", x: 555, y: 5, w: 130, h: 90, text: "edited there", color: null }],
+        "talaria:itemExtras": [{ id: "note1", shape: "circle" }],
+      },
+    };
+    const out = documentFrom(moved, () => "x").items[0]!;
+    // Hermes wins on what both know; ours survives on what only we know.
+    return out.x === 555 && out.text === "edited there" && out.shape === "circle";
+  })(),
 );
 check(
   "a canvas that did not change asks for no writes at all",

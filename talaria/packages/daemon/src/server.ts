@@ -1532,7 +1532,10 @@ export function buildServer(deps: {
   app.post("/canvas", async (req, reply) => {
     const id = config.canvasCollection;
     if (!id) return reply.code(404).send({ error: "no canvas collection configured" });
-    const doc = req.body as CanvasDocument;
+    // The body is the document plus what the app has actually read. `known`
+    // absent means it has read nothing, which removes nothing — see `writesFor`.
+    const body = req.body as CanvasDocument & { known?: string[] };
+    const doc = body;
     const raw = mirror.rawBlock(id);
     if (!raw) return reply.code(404).send({ error: "that collection is not in the mirror" });
     const collection = JSON.parse(raw) as Collection;
@@ -1542,7 +1545,7 @@ export function buildServer(deps: {
       ...(m.version === null ? {} : { version: m.version }),
     }));
 
-    const w = writesFor(doc, collection);
+    const w = writesFor(doc, collection, body.known);
     // Nothing to say. A canvas that has not changed must not enqueue a write
     // every time it is saved, or an idle canvas is a permanent trickle of
     // no-op traffic and a log nobody can read.
@@ -1560,6 +1563,10 @@ export function buildServer(deps: {
       remove: w.remove,
       properties: w.properties,
       collectionVersion: collection.version ?? null,
+      // The key this canvas wrote its notes under before they moved to one
+      // Hermes can draw. Cleared rather than left behind: an unread key is a
+      // copy of somebody's canvas going quietly stale beside the real one.
+      ...(("talaria:items" in (collection.properties ?? {})) ? { unset: ["talaria:items"] } : {}),
     };
     // One canvas has one pending intent. Two are the same thing said twice and
     // only the newer is true, so the older is dropped rather than replayed into

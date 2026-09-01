@@ -98,9 +98,48 @@ export interface Collection {
 
 /** The prefix everything of ours travels under, on the collection itself. */
 export const OURS = "talaria:";
-const K_ITEMS = `${OURS}items`;
+/**
+ * The extras on an unlinked node, keyed by the note's own id.
+ *
+ * Not the whole node: the half Hermes can draw goes in `hermes:canvas_notes`
+ * below, and this carries only what Hermes has no concept of. The same split as
+ * a member's bag, one noun along, and for the same reason — a Talaria canvas
+ * opened in Hermes should show its notes rather than nothing.
+ */
+const K_EXTRAS = `${OURS}itemExtras`;
 const K_LINKS = `${OURS}links`;
 const K_REGIONS = `${OURS}regions`;
+/**
+ * Hermes' own sticky notes.
+ *
+ * Deliberately another producer's key, and worth being explicit about. It is
+ * not a way around the prefix rule — a prefixed key is exactly what the format
+ * says a producer's own property looks like, and it round-trips untouched
+ * through anything that has never heard of either of us. But it *is*
+ * Hermes-specific knowledge: Talaria writes here because it knows what Hermes
+ * draws, and against a different producer these notes would travel and simply
+ * not be rendered.
+ *
+ * The alternative was keeping them under our prefix alone, which is purer and
+ * produced a canvas that was blank in Hermes — every unlinked node invisible,
+ * because nothing there knew the key. A format that carries a thing nobody can
+ * see is carrying it in name only.
+ */
+const K_NOTES = "hermes:canvas_notes";
+/**
+ * The same key, as the mirror spells it.
+ *
+ * Talaria's sync strips the producer's own prefix when it stores an export —
+ * from in here, Hermes' keys are simply Hermes', and carrying the prefix around
+ * locally would be repeating the producer's name on every one of them. So a
+ * write goes out prefixed and a read comes back bare, and both spellings are
+ * the same key.
+ *
+ * Reading only the prefixed one is what made the notes travel perfectly and
+ * come back as nothing: the write landed, the export showed it, and the mirror
+ * had it under a name the reader was not looking for.
+ */
+const K_NOTES_BARE = "canvas_notes";
 
 /**
  * One node's furniture, as the bag a member carries.
@@ -169,10 +208,32 @@ export function documentFrom(collection: Collection, mint: () => string): Canvas
   const items = (collection.members ?? []).map((m) => itemFrom(m, mint()));
   const props = (collection.properties ?? {}) as Record<string, unknown>;
   const arr = <T>(k: string): T[] => (Array.isArray(props[k]) ? (props[k] as T[]) : []);
+
+  // A note is the shared half plus our extras, joined on its id. The shared
+  // half is authoritative: a note dragged in Hermes moved, and reading our own
+  // copy over the top would put it back.
+  const extras = new Map(arr<CanvasItem & { id: string }>(K_EXTRAS).map((e) => [e.id, e]));
+  type Note = { id: string; x: number; y: number; w: number; h: number; text?: string; color?: string | null };
+  const rawNotes = arr<Note>(K_NOTES).length ? arr<Note>(K_NOTES) : arr<Note>(K_NOTES_BARE);
+  const notes = rawNotes.map((n) => {
+    const extra = extras.get(n.id) ?? ({} as Partial<CanvasItem>);
+    return {
+      ...extra,
+      id: n.id,
+      x: n.x,
+      y: n.y,
+      w: n.w,
+      h: n.h,
+      text: n.text ?? "",
+      fill: n.color ?? null,
+      blockId: null,
+    } as CanvasItem;
+  });
+
   // Ours are appended after the members, so a note never sits under a block it
   // was drawn beside.
   return {
-    items: [...items, ...arr<CanvasItem>(K_ITEMS)],
+    items: [...items, ...notes],
     links: arr<CanvasLink>(K_LINKS),
     regions: arr<CanvasRegion>(K_REGIONS),
   };
@@ -190,6 +251,23 @@ export function documentFrom(collection: Collection, mint: () => string): Canvas
 export function writesFor(
   doc: CanvasDocument,
   current: Collection,
+  /**
+   * The members this canvas knows about — what it last read, not what it holds.
+   *
+   * Without it a removal is computed as "in the collection and not in my
+   * document", and those are two different facts wearing the same shape. A node
+   * the user deleted is absent from the document; so is a node somebody added
+   * while the app was closed, and the second one is not ours to remove.
+   *
+   * It cost a real block: the assistant put a task on this canvas, the app had
+   * never heard of it, and the next save deleted the membership and reported
+   * success. Nothing anywhere said so.
+   *
+   * Undefined means "I have read nothing", which removes nothing at all. That
+   * is the right first run: a canvas that has never synced has no basis for
+   * saying anything should go.
+   */
+  known?: Iterable<string>,
 ): {
   place: { object: string; context: Record<string, unknown>; version?: number }[];
   add: { object: string; context: Record<string, unknown> }[];
@@ -197,6 +275,7 @@ export function writesFor(
   properties: Record<string, unknown>;
 } {
   const linked = doc.items.filter((i) => i.blockId);
+  const unlinked = doc.items.filter((i) => !i.blockId);
   const have = new Map((current.members ?? []).map((m) => [m.object, m]));
   const want = new Map(linked.map((i) => [i.blockId!, i]));
 
@@ -221,17 +300,40 @@ export function writesFor(
     }
   }
 
-  // A member here and not on the canvas is one the canvas dropped. Removing the
-  // membership is the whole of it: the block goes on existing, which is the
-  // rule this canvas has had since it learned to link at all.
-  const remove = [...have.keys()].filter((o) => !want.has(o));
+  // Gone from a canvas that had it. Removing the membership is the whole of it:
+  // the block goes on existing, which is the rule this canvas has had since it
+  // learned to link at all.
+  const seen = known === undefined ? null : new Set(known);
+  const remove = [...have.keys()].filter((o) => !want.has(o) && (seen === null ? false : seen.has(o)));
 
   return {
     place,
     add,
     remove,
     properties: {
-      [K_ITEMS]: doc.items.filter((i) => !i.blockId),
+      // The half Hermes draws…
+      [K_NOTES]: unlinked.map((i) => ({
+        id: i.id,
+        x: i.x,
+        y: i.y,
+        w: i.w,
+        h: i.h,
+        text: i.text ?? "",
+        color: i.fill ?? null,
+      })),
+      // …and the half only we do, keyed by the same id.
+      [K_EXTRAS]: unlinked
+        .map((i) => ({
+          id: i.id,
+          ...(i.shape === undefined ? {} : { shape: i.shape }),
+          ...(i.stroke == null ? {} : { stroke: i.stroke }),
+          ...(i.strokeWidth === undefined ? {} : { strokeWidth: i.strokeWidth }),
+          ...(i.strokeStyle === undefined ? {} : { strokeStyle: i.strokeStyle }),
+          ...(i.hAlign === undefined ? {} : { hAlign: i.hAlign }),
+          ...(i.vAlign === undefined ? {} : { vAlign: i.vAlign }),
+        }))
+        // A note with nothing Hermes cannot draw needs no row here at all.
+        .filter((e) => Object.keys(e).length > 1),
       [K_LINKS]: doc.links,
       [K_REGIONS]: doc.regions,
     },

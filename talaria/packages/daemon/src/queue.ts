@@ -73,6 +73,8 @@ export interface CanvasIntent {
   remove: string[];
   /** Our own keys on the collection — notes, connectors, regions. */
   properties: Record<string, unknown>;
+  /** Keys of ours that should stop existing. */
+  unset?: string[];
   collectionVersion: number | null;
 }
 
@@ -445,9 +447,10 @@ export async function applyCanvas(ix: Interchange, intent: CanvasIntent): Promis
     const answer = await ix.place(intent.collectionId, m.object, null, m.version, { context: m.context });
     if (answer.conflict) contended += 1;
   }
-  if (Object.keys(intent.properties).length) {
+  if (Object.keys(intent.properties).length || intent.unset?.length) {
     await ix.patchCollection(intent.collectionId, {
       set: intent.properties,
+      ...(intent.unset?.length ? { unset: intent.unset } : {}),
       ...(typeof intent.collectionVersion === "number" ? { version: intent.collectionVersion } : {}),
     });
   }

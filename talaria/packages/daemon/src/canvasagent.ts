@@ -10,6 +10,7 @@ import {
   type CanvasDocument,
 } from "./canvas.js";
 import type { Interchange } from "./interchange.js";
+import type { Mirror } from "./mirror.js";
 
 /**
  * Talaria's own chat: a canvas, and nothing else.
@@ -38,6 +39,8 @@ WHAT YOU DO NOT DO: you cannot create, complete, rename, tag or change anything 
 
 Guidance:
 - Prefer acting over asking. If a request is doable with the tools, do it, then say what you drew.
+- To put a project's tasks on the canvas: hermes_search for the project to get its id, then hermes_in with that id to get what is in it, then canvas_add_blocks with those ids. hermes_search finds the project itself and not its contents, so searching alone will find you one node where you wanted sixteen.
+- Never retype a title. Put blocks on with their ids and they wear their own words; typing them out by hand gets them subtly wrong and stops them keeping up.
 - Anything that came from Hermes goes on with canvas_add_blocks, never canvas_add. A node made with canvas_add is inert text; one made with canvas_add_blocks is the task itself — it shows the block's own title, its icon, and a checkbox that completes it. Putting a task on as plain words throws all of that away, and looks identical until somebody tries to tick it.
 - Tools that take a list take the whole list. Adding twelve nodes is one call to canvas_add, not twelve.
 - Refer to nodes by their words when you can; ids are only needed when two nodes say the same thing.
@@ -102,7 +105,7 @@ const HEX = z.string().regex(/^#[0-9a-fA-F]{3,8}$/, "a colour like #f97316");
  * across a whole conversation would put back whatever they moved in the middle
  * of it.
  */
-export function tools(ix: Interchange): Tool[] {
+export function tools(ix: Interchange, mirror: Mirror): Tool[] {
   const load = () => readCanvas();
   const save = (d: CanvasDocument) => writeCanvas(d);
 
@@ -337,6 +340,27 @@ export function tools(ix: Interchange): Tool[] {
       },
     },
     {
+      name: "hermes_in",
+      description:
+        "What belongs to something in Hermes Notes: the tasks in a project, the notes about a person, anything that points at the block you name. " +
+        "Give it the id of the thing (find it with hermes_search first). Answers each block with its title and id, ready for canvas_add_blocks. " +
+        "Read only. This is how you get the contents of a project — hermes_search finds the project itself, not what is in it.",
+      parameters: params({ block: str, limit: num }, ["block"]),
+      schema: z.object({ block: z.string().uuid(), limit: z.number().min(1).max(200).default(60) }),
+      run: (a) => {
+        const args = a as { block: string; limit: number };
+        const rows = mirror.referencing(args.block, { limit: args.limit });
+        if (!rows.length) return "Nothing in Hermes points at that.";
+        return rows
+          .map((raw) => {
+            const o = JSON.parse(raw) as { id: string; properties?: Record<string, unknown> };
+            const title = typeof o.properties?.title === "string" ? o.properties.title : "(untitled)";
+            return `- ${title} [${o.id}]`;
+          })
+          .join("\n");
+      },
+    },
+    {
       name: "hermes_search",
       description:
         "Look something up in Hermes Notes — tasks, notes, people, anything — so you can put it on the canvas. Read only: this changes nothing in Hermes. " +
@@ -380,10 +404,11 @@ export async function runCanvasChat(opts: {
   url: string;
   model: string;
   ix: Interchange;
+  mirror: Mirror;
   messages: { role: "user" | "assistant"; content: string }[];
   maxSteps?: number;
 }): Promise<Turn> {
-  const registry = tools(opts.ix);
+  const registry = tools(opts.ix, opts.mirror);
   const byName = new Map(registry.map((t) => [t.name, t]));
   const declared = forOllama(registry);
 

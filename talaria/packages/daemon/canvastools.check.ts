@@ -24,7 +24,15 @@ const check = (name: string, ok: boolean, detail = "") => {
 // The search tool is the only one that touches the network, and nothing here
 // exercises it — a stub is enough to build the registry.
 const ix = { search: async () => ({ objects: [] }) } as never;
-const t = new Map(tools(ix).map((x) => [x.name, x]));
+// A stub mirror: `hermes_in` asks it which blocks point at one, and the answer
+// shape is raw interchange objects.
+const mirror = {
+  referencing: (id: string) =>
+    id === "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      ? [JSON.stringify({ id: "11111111-1111-4111-8111-111111111111", properties: { title: "In the project" } })]
+      : [],
+} as never;
+const t = new Map(tools(ix, mirror).map((x) => [x.name, x]));
 const run = async (name: string, args: Record<string, unknown>) => {
   const tool = t.get(name)!;
   return String(await tool.run(tool.schema.parse(args) as Record<string, unknown>));
@@ -100,6 +108,18 @@ check(
   "removing a live node leaves the block alone",
   readCanvas().items.filter((i) => i.blockId).length === 1,
   "the canvas is not where a task lives",
+);
+
+check(
+  "what belongs to a block is answered with ids, ready to place",
+  (await run("hermes_in", { block: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })).includes(
+    "11111111-1111-4111-8111-111111111111",
+  ),
+  "searching finds a project; this is what finds what is in it",
+);
+check(
+  "and says so plainly when nothing points at it",
+  (await run("hermes_in", { block: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" })).includes("Nothing"),
 );
 
 check(

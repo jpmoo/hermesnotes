@@ -205,8 +205,11 @@ struct CanvasChatView: View {
                 .frame(maxWidth: 380, alignment: .leading)
             }
             if !turn.text.isEmpty {
-                Text(turn.text)
-                    .font(Theme.body(12))
+                // The same renderer the Hermes panel uses. A model writes
+                // markdown whether or not anything is going to render it, so a
+                // plain `Text` here does not mean "no markdown" — it means
+                // asterisks and hyphens on screen.
+                MarkdownText(text: turn.text)
                     .textSelection(.enabled)
                     .padding(.horizontal, 11).padding(.vertical, 8)
                     .background(

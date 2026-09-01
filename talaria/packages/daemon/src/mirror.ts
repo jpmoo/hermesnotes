@@ -301,6 +301,35 @@ export class Mirror {
    * an embedding model, and is exactly the thing that must not be reached for
    * when the network is down.
    */
+  /**
+   * Blocks that point at this one.
+   *
+   * A task names its project in a reference field, and a reference field is
+   * user data — it may be called `project` here and something else in somebody
+   * else's library, so keying on the name is the bug this codebase is built to
+   * avoid. What is not user data is the shape: an id appearing inside another
+   * block's properties *is* a reference, whatever the field is called.
+   *
+   * So the id is looked for in the raw JSON — narrowed in SQL, which is crude
+   * and fast, then confirmed by walking the properties, because a substring
+   * match on JSON would also hit an id that happened to be written in prose.
+   */
+  referencing(id: string, opts: { limit?: number } = {}): string[] {
+    const rows = this.db
+      .prepare("SELECT raw FROM blocks WHERE archived = 0 AND id <> ? AND raw LIKE ? LIMIT ?")
+      .all(id, `%${id}%`, opts.limit ?? 200) as { raw: string }[];
+    const mentions = (v: unknown): boolean => {
+      if (typeof v === "string") return v === id;
+      if (Array.isArray(v)) return v.some(mentions);
+      if (v && typeof v === "object") return Object.values(v).some(mentions);
+      return false;
+    };
+    return rows.filter((r) => {
+      const props = (JSON.parse(r.raw) as { properties?: unknown }).properties;
+      return mentions(props);
+    }).map((r) => r.raw);
+  }
+
   search(opts: {
     q?: string;
     kind?: string;

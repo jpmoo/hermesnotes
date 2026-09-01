@@ -1484,6 +1484,7 @@ export function buildServer(deps: {
         url: config.inferenceUrl,
         model: config.inferenceModel,
         ix,
+        mirror,
         messages: [...body.history, { role: "user" as const, content: body.message }],
       });
       return envelope(turn);

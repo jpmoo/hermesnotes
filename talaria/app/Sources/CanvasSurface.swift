@@ -2844,11 +2844,17 @@ struct CanvasSurface: View {
                 }
                 model.sync = sync.inner
                 sync.inner.onBackedChanged = { on in canvasIsBacked = on }
-                // Whatever is on the canvas right now, offered once. A canvas
-                // backed a moment ago has contents nobody has sent yet, and
-                // waiting for the next drag to carry them up would leave the
-                // collection empty for as long as nobody touched anything. The
-                // far end drops it if nothing differs.
+                // Offered, not sent.
+                //
+                // This is what a canvas backed a moment ago has to fill its
+                // collection with, and the sync only uses it if the collection
+                // is bare and has never been filled from here. Otherwise the
+                // read wins and this is dropped.
+                //
+                // It used to be sent on every appear, which is not a sync at
+                // all: it blocked the first pull, then overwrote whatever
+                // Hermes held 0.8 seconds later. Clearing the canvas over there
+                // and opening it here put all of it straight back.
                 sync.inner.changed(CanvasDocument(items: model.items, links: model.links, regions: model.regions))
             }
             .onDisappear {

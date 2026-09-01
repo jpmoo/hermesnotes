@@ -61,6 +61,23 @@ final class CanvasSync {
 
     /// Whether anything has been read yet. Nothing is sent before it has.
     private var read = false
+    /// Which collection is behind this canvas, once the daemon has said.
+    private var collection: String?
+
+    /**
+     Whether this collection has ever been filled from here.
+
+     The one thing that separates a canvas nobody has synced yet from one
+     somebody has just emptied. Both look identical — the collection is bare and
+     the file is not — and they want opposite answers: seed the first, obey the
+     second. It cannot be worked out from the evidence, because the evidence is
+     the same. So it is remembered.
+     */
+    private var seededKey: String { "canvasSeeded." + (collection ?? "") }
+    private var hasSeeded: Bool {
+        get { UserDefaults.standard.bool(forKey: seededKey) }
+        set { UserDefaults.standard.set(newValue, forKey: seededKey) }
+    }
 
     init() {
         Task.detached(priority: .utility) {
@@ -76,25 +93,45 @@ final class CanvasSync {
             // canvas that overwrites a collection it has never looked at is
             // wrong on its own terms — what it holds is a guess until it has
             // read one.
-            let first = ok ? try? Daemon.canvasPull() : nil
+            let answer = ok ? try? Daemon.canvasRead() : nil
             await MainActor.run {
                 self.backed = ok
+                self.collection = answer?.collection
                 self.onBackedChanged?(ok)
-                if let first {
-                    self.read = true
-                    self.sent = first
-                    self.known = Set(
-                        first.items.map { $0.blockId ?? $0.id.uuidString }
-                            + first.links.map { $0.id.uuidString }
-                            + first.regions.map { $0.id.uuidString }
-                    )
-                    self.onPulled?(first)
+                guard let first = answer?.document else { return }
+                self.read = true
+                self.sent = first
+                self.remember(first)
+
+                let bare = first.items.isEmpty && first.links.isEmpty && first.regions.isEmpty
+                let offered = self.pending
+                let haveLocal = offered.map { !($0.items.isEmpty && $0.links.isEmpty && $0.regions.isEmpty) } ?? false
+
+                if bare, haveLocal, !self.hasSeeded {
+                    // Never filled from here, and there is something to fill it
+                    // with. The one moment the local file wins.
+                    self.hasSeeded = true
+                    self.flush()
+                    return
                 }
-                // Anything offered before we knew is sent now. Without this the
-                // contents a canvas already had would wait for the next edit.
-                if ok, self.pending != nil { self.flush() }
+                // Everything else: what the collection says is what the canvas
+                // is. The offer made on appear described the state before this
+                // read, so it is dropped — sending it would put back exactly
+                // what somebody has just taken off.
+                self.pending = nil
+                self.hasSeeded = true
+                self.onPulled?(first)
             }
         }
+    }
+
+    /// Everything this canvas has read, by the id the far end knows it by.
+    private func remember(_ document: CanvasDocument) {
+        known = Set(
+            document.items.map { $0.blockId ?? $0.id.uuidString }
+                + document.links.map { $0.id.uuidString }
+                + document.regions.map { $0.id.uuidString }
+        )
     }
 
     /// The canvas changed. Sent once it stops changing.
@@ -152,11 +189,10 @@ final class CanvasSync {
                 // every push kept the old rows and appended the new ones. Five
                 // notes became ten.
                 self.read = true
-                self.known = Set(
-                    fetched.items.map { $0.blockId ?? $0.id.uuidString }
-                        + fetched.links.map { $0.id.uuidString }
-                        + fetched.regions.map { $0.id.uuidString }
-                )
+                // Superseded: whatever was waiting to go describes the canvas
+                // before this arrived. Same reasoning as the first read.
+                self.pending = nil
+                self.remember(fetched)
                 self.onPulled?(fetched)
             }
         }
@@ -178,8 +214,14 @@ extension Daemon {
 
     /// The canvas as the collection has it.
     static func canvasPull() throws -> CanvasDocument {
-        struct Answer: Decodable { let document: CanvasDocument }
-        return try JSONDecoder().decode(Envelope<Answer>.self, from: get("/canvas")).data.document
+        try canvasRead().document
+    }
+
+    /// The canvas and which collection it is — the seeding rule needs the id.
+    static func canvasRead() throws -> (collection: String, document: CanvasDocument) {
+        struct Answer: Decodable { let collection: String; let document: CanvasDocument }
+        let a = try JSONDecoder().decode(Envelope<Answer>.self, from: get("/canvas")).data
+        return (a.collection, a.document)
     }
 
     /// The canvas as it should now stand. Answers whether anything was queued.

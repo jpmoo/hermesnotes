@@ -78,6 +78,30 @@ check(
 );
 check("a connection whose end has gone goes with it", d.links.length === 0);
 
+// ── blocks arrive alive ────────────────────────────────────────────────────
+const b1 = "11111111-1111-4111-8111-111111111111";
+const b2 = "22222222-2222-4222-8222-222222222222";
+await run("canvas_add_blocks", { blocks: [b1, b2], shape: "ellipse", fill: "#f97316" });
+d = readCanvas();
+const live = d.items.filter((i) => i.blockId);
+check("blocks arrive as nodes carrying their block id", live.length === 2);
+check(
+  "and with no words of their own",
+  live.every((i) => !i.text),
+  "a live node wears its block's title; a copy here would stop it keeping up",
+);
+check("styling still applies", live.every((i) => i.shape === "ellipse" && i.fill === "#f97316"));
+
+const again = await run("canvas_add_blocks", { blocks: [b1] });
+check("the same block twice does not make two nodes", readCanvas().items.filter((i) => i.blockId === b1).length === 1, again);
+
+await run("canvas_remove", { nodes: [live[0]!.id] });
+check(
+  "removing a live node leaves the block alone",
+  readCanvas().items.filter((i) => i.blockId).length === 1,
+  "the canvas is not where a task lives",
+);
+
 check(
   "there is no tool that writes to Hermes",
   ![...t.keys()].some((n) => /create|complete|patch|write|delete|archive/.test(n) && !n.startsWith("canvas_")),

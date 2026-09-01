@@ -38,6 +38,7 @@ WHAT YOU DO NOT DO: you cannot create, complete, rename, tag or change anything 
 
 Guidance:
 - Prefer acting over asking. If a request is doable with the tools, do it, then say what you drew.
+- Anything that came from Hermes goes on with canvas_add_blocks, never canvas_add. A node made with canvas_add is inert text; one made with canvas_add_blocks is the task itself — it shows the block's own title, its icon, and a checkbox that completes it. Putting a task on as plain words throws all of that away, and looks identical until somebody tries to tick it.
 - Tools that take a list take the whole list. Adding twelve nodes is one call to canvas_add, not twelve.
 - Refer to nodes by their words when you can; ids are only needed when two nodes say the same thing.
 - Shapes are: plain (no outline), rectangle, roundedRectangle, ellipse, triangle. There is no other shape. If somebody asks for one you do not have, say which you do have rather than substituting one silently.
@@ -173,6 +174,58 @@ export function tools(ix: Interchange): Tool[] {
       },
     },
     {
+      name: "canvas_add_blocks",
+      description:
+        "Put Hermes Notes blocks on the canvas as LIVE nodes. Use this — not canvas_add — for anything that came back from hermes_search. " +
+        "A live node wears the block's own title, its type's icon, and a checkbox you can tick if it is a task; it keeps up with the block as that changes. " +
+        "Pass the block ids from hermes_search, all of them in one call.",
+      parameters: params({ blocks: strs, shape: { type: "string", enum: SHAPES }, fill: str, w: num, h: num }, ["blocks"]),
+      schema: z.object({
+        blocks: z.array(z.string().uuid()).min(1),
+        shape: z.enum(SHAPES).default("roundedRectangle"),
+        fill: HEX.optional(),
+        w: z.number().min(20).max(2000).default(180),
+        h: z.number().min(20).max(2000).default(100),
+      }),
+      run: (a) => {
+        const args = a as { blocks: string[]; shape: string; fill?: string; w: number; h: number };
+        const d = load();
+        /**
+         * No words of its own.
+         *
+         * A live node wears its block's title and stores no copy — a copy
+         * drifts the moment somebody renames the block, and the whole reason to
+         * bring a task in as a task rather than as a note is that it keeps up.
+         * Writing the title here would quietly turn it back into a note that
+         * happens to have started life as a task.
+         */
+        let added = 0;
+        for (const blockId of args.blocks) {
+          if (d.items.some((i) => i.blockId === blockId)) continue; // already here
+          const at = freeSpot(d, args.w, args.h);
+          d.items.push({
+            id: newId(),
+            x: at.x,
+            y: at.y,
+            w: args.w,
+            h: args.h,
+            text: "",
+            shape: args.shape,
+            fill: args.fill ?? null,
+            strokeWidth: 1.5,
+            strokeStyle: "solid",
+            hAlign: "center",
+            vAlign: "middle",
+            blockId,
+          });
+          added += 1;
+        }
+        save(d);
+        const already = args.blocks.length - added;
+        return `Put ${added} live block(s) on the canvas.${already ? ` ${already} were already there.` : ""} They show their own titles and stay in step with Hermes.`;
+      },
+    },
+    {
       name: "canvas_restyle",
       description:
         "Change how existing nodes look: shape, fill colour, text colour, border. Name them by their words or ids. Pass every node you are changing in one call.",
@@ -286,7 +339,8 @@ export function tools(ix: Interchange): Tool[] {
     {
       name: "hermes_search",
       description:
-        "Look something up in Hermes Notes — tasks, notes, people, anything — so you can put it on the canvas. Read only: this changes nothing in Hermes. Answers matching blocks with their titles and ids.",
+        "Look something up in Hermes Notes — tasks, notes, people, anything — so you can put it on the canvas. Read only: this changes nothing in Hermes. " +
+        "Answers matching blocks with their titles and ids; put them on the canvas with canvas_add_blocks so they stay live.",
       parameters: params({ text: str, limit: num }, ["text"]),
       schema: z.object({ text: z.string().min(1), limit: z.number().min(1).max(50).default(20) }),
       run: async (a) => {

@@ -1494,8 +1494,8 @@ export function buildServer(deps: {
          * Talaria chooses to know this one so a block on a canvas looks like
          * itself, and nothing anywhere depends on its being there.
          */
-        icon: typeof (t as Record<string, unknown>).icon_key === "string"
-          ? ((t as Record<string, unknown>).icon_key as string)
+        icon: typeof (t as Record<string, unknown>)["hermes:icon_key"] === "string"
+          ? ((t as Record<string, unknown>)["hermes:icon_key"] as string)
           : null,
       })),
     ),

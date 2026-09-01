@@ -376,6 +376,27 @@ export class Interchange {
    * refuses it, which is right: the two `canvas_notes` of two different tools
    * are not the same key, and the prefix is what says so.
    */
+  /**
+   * A collection, made at an id we chose.
+   *
+   * The verb the format was missing until this canvas needed it. Choosing the
+   * id here is what makes the call safe to repeat: a lost answer is asked again
+   * and recognized as the same request, rather than leaving a second board
+   * behind that both ends then disagree about.
+   */
+  async putCollection(
+    id: string,
+    body: { name?: string; kind: string; properties?: Record<string, unknown> },
+  ): Promise<WriteAnswer & { created?: boolean; collection?: Record<string, unknown> }> {
+    return this.answered(() =>
+      this.req<WriteAnswer & { created?: boolean; collection?: Record<string, unknown> }>(
+        "PUT",
+        `/interchange/collections/${id}`,
+        { id, ...body },
+      ),
+    );
+  }
+
   async patchCollection(
     id: string,
     change: { set?: Record<string, unknown>; unset?: string[]; version?: number },

@@ -1463,6 +1463,34 @@ export function buildServer(deps: {
   });
 
   /**
+   * Make the collection this canvas will be, or confirm the one it already is.
+   *
+   * Safe to call every time, which is the point of it. The id is chosen here
+   * and the create is a create-or-confirm, so a client that lost the answer
+   * asks again and gets the same board back rather than a second one — and a
+   * user who has already backed their canvas and clicks the button again gets
+   * told what it already is instead of a fresh empty canvas.
+   *
+   * It does not write the config. The app owns that file — it overlays rather
+   * than replaces, so unknown keys survive — and a daemon rewriting it from
+   * underneath is two writers on a file with no version on it.
+   */
+  app.post("/canvas/back", async (req, reply) => {
+    const body = z.object({ id: z.string().uuid().optional(), name: z.string().default("Talaria Canvas") }).parse(req.body ?? {});
+    const id = body.id ?? config.canvasCollection ?? randomUUID();
+    try {
+      const answer = await ix.putCollection(id, { name: body.name, kind: "canvas" });
+      if (!answer.ok) return reply.code(400).send({ error: "the collection could not be made" });
+      return envelope({ collection: id, created: answer.created === true });
+    } catch (err) {
+      // Offline is not a refusal. The canvas can be backed the moment the
+      // network is there, and saying so is better than a create that half
+      // happened somewhere nobody can see.
+      return reply.code(503).send({ error: `Hermes is not reachable: ${(err as Error).message}` });
+    }
+  });
+
+  /**
    * The canvas, read out of the collection that backs it.
    *
    * From the mirror, like everything else here, so it is free to ask for and

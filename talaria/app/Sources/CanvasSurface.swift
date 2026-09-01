@@ -696,7 +696,38 @@ final class CanvasModel: ObservableObject {
         }
     }
 
-    private func persist() { store.save(CanvasDocument(items: items, links: links, regions: regions)) }
+    /// Kept in step with the collection behind the canvas, when there is one.
+    /// Nil until `back(with:)` hands one over — the canvas works exactly as it
+    /// always has without it.
+    var sync: CanvasSync?
+
+    private func persist() {
+        let document = CanvasDocument(items: items, links: links, regions: regions)
+        // The file first, always. It is the working document and the only thing
+        // a drag is allowed to wait on; the sync is told afterwards and answers
+        // on its own time.
+        store.save(document)
+        sync?.changed(document)
+    }
+
+    /**
+     Everything, as the collection now has it.
+
+     Replaces rather than merges, and that is not laziness — a merge needs a
+     rule for every field of every node, and the rule that matters here is
+     already enforced one layer down: a push carries the version each member was
+     read at, so an edit made while somebody else was editing is refused at the
+     write rather than reconciled at the read. What arrives here has already
+     won.
+     */
+    func adopt(_ document: CanvasDocument) {
+        items = document.items
+        links = document.links
+        regions = document.regions
+        // The file, but not the sync: this came *from* the far end, and telling
+        // the sync about it would send it straight back.
+        store.save(document)
+    }
 
     func item(_ id: UUID) -> CanvasItem? { items.first { $0.id == id } }
 
@@ -2593,6 +2624,9 @@ struct CanvasSurface: View {
     @State private var blockTypes: [String: Daemon.BlockType] = [:]
     /// Polls the sync cursor so a canvas left open notices what Hermes did.
     @State private var watch: MirrorWatch?
+    /// Keeps the canvas and the collection behind it in step. One per surface,
+    /// made on appear, and quiet unless a collection is configured.
+    @StateObject private var sync = CanvasSyncBox()
     /// Ids the daemon has told us it does not hold.
     ///
     /// Kept separately from `linked` rather than inferred from its absence,
@@ -2770,9 +2804,25 @@ struct CanvasSurface: View {
                 // of the sync cursor every twenty seconds, and a reload only
                 // when it has actually moved. Nothing new had to be built; this
                 // view simply had not been told it was long-lived.
-                let w = MirrorWatch { refreshLinks() }
+                let w = MirrorWatch {
+                    refreshLinks()
+                    // The same tick. A canvas backed by a collection has two
+                    // things to catch up on when the mirror moves — what the
+                    // blocks say, and where they now sit — and they are the
+                    // same news arriving.
+                    sync.inner.pull()
+                }
                 w.start()
                 watch = w
+                sync.inner.onPulled = { document in
+                    // Not while somebody is holding something. A pull that
+                    // landed mid-drag would take the node out from under the
+                    // pointer, and the drag would finish by writing it back to
+                    // where it was — a fight nobody can see the far side of.
+                    guard dragging == false, draggingRegion == nil, model.editing == nil else { return }
+                    model.adopt(document)
+                }
+                model.sync = sync.inner
             }
             .onDisappear {
                 watch?.stop()

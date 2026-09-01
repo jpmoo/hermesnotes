@@ -270,7 +270,9 @@ enum Daemon {
         let notes: [StickyNote]
         let edges: [Edge]
     }
-    private struct Envelope<T: Decodable>: Decodable {
+    /// Not private any more: `CanvasSync` decodes the same envelope in its own
+    /// file, and a second copy of this shape is a second thing to keep in step.
+    struct Envelope<T: Decodable>: Decodable {
         let data: T
         let freshness: String
         let note: String
@@ -771,7 +773,43 @@ enum Daemon {
     /// POST JSON, and give back the body whatever the status — the daemon puts
     /// its explanation in there, and losing it to a bare status code is how a
     /// clear message becomes "something went wrong".
-    private static func post(_ path: String, _ body: [String: Any]) throws -> Data {
+    /**
+     A body that is already JSON.
+
+     `post` below builds its payload from a dictionary, which is right for the
+     handful of small writes that have three fields. A canvas is a document with
+     a Codable shape of its own, and rebuilding it as `[String: Any]` to send it
+     would mean a second description of the same thing — one that stops matching
+     the first the day a field is added to only one of them.
+     */
+    static func postJSON(_ path: String, _ payload: Data) throws -> Data {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = [
+            "-s", "--fail", "--unix-socket", socketPath,
+            "-H", "content-type: application/json", "--data-binary", "@-",
+            "http://talaria" + path,
+        ]
+        let stdin = Pipe(), out = Pipe()
+        task.standardInput = stdin
+        task.standardOutput = out
+        task.standardError = Pipe()
+        try task.run()
+        stdin.fileHandleForWriting.write(payload)
+        stdin.fileHandleForWriting.closeFile()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        guard task.terminationStatus == 0 else {
+            throw Failure(
+                description: "the daemon refused that (curl exit \(task.terminationStatus))",
+                answered: task.terminationStatus == 22
+            )
+        }
+        return data
+    }
+
+    /// Not private: `CanvasSync` posts through it from its own file.
+    static func post(_ path: String, _ body: [String: Any]) throws -> Data {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
         task.arguments = [

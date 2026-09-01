@@ -40,6 +40,9 @@ struct TalariaConfig: Equatable, Sendable {
     var glanceModel = "nomic-embed-text:latest"
     var contextExclude: [String] = []
     var aerospaceCli = ""
+    /// The Hermes collection the canvas is, once somebody has backed it.
+    /// An id and never a name — see the daemon's config schema for why.
+    var canvasCollection = ""
 
     // Read by the app, ignored by the daemon: zod strips what it does not
     // declare rather than rejecting it, which is what lets these live here.
@@ -91,6 +94,7 @@ enum ConfigStore {
         if !str("glanceModel").isEmpty { c.glanceModel = str("glanceModel") }
         c.contextExclude = (obj["contextExclude"] as? [String]) ?? []
         c.aerospaceCli = str("aerospaceCli")
+        c.canvasCollection = str("canvasCollection")
         c.boardHotkey = str("boardHotkey")
         c.assistantHotkey = str("assistantHotkey")
         c.glanceHotkey = str("glanceHotkey")
@@ -130,6 +134,7 @@ enum ConfigStore {
             else { obj[key] = value.trimmingCharacters(in: .whitespaces) }
         }
         optional("aerospaceCli", c.aerospaceCli)
+        optional("canvasCollection", c.canvasCollection)
         optional("boardHotkey", c.boardHotkey)
         optional("assistantHotkey", c.assistantHotkey)
         optional("glanceHotkey", c.glanceHotkey)

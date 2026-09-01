@@ -78,8 +78,15 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
     ];
     if (body.canvas) {
       lines.push(
-        `"this canvas", "the canvas" and "my canvas" all mean collection ${body.canvas}. Never create a new canvas for those words — add to, remove from, or restyle that one, with collection_add, collection_remove and canvas_style.`,
-        "Replacing it means removing the members it has and adding the new ones. It is not a new collection.",
+        `"this canvas", "the canvas" and "my canvas" all mean the canvas whose id is ${body.canvas}.`,
+        // Naming the verb, not only the id.
+        //
+        // The first version of this line gave the id and forbade canvas_create,
+        // and the model created two canvases anyway — named after the id,
+        // because canvas_create was the only tool that placed many blocks at
+        // once and `title` was the only slot an id would fit in. A prohibition
+        // without a verb to obey it with is a prohibition that loses.
+        `Put things on it with canvas_place, passing that id as \`canvas\` and every block in one call. To replace what is on it, use canvas_place with replace=true. To recolor or resize, canvas_style. Never canvas_create — that makes a NEW canvas, and there is nothing here to make.`,
       );
     }
     lines.push(

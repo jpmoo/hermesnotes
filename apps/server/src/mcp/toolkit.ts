@@ -1290,13 +1290,27 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
 
   tool(
     "collection_add",
-    "Add an existing block (id or title) to a collection (id or title).",
-    { collection: z.string(), block: z.string() },
+    "Add one or more existing blocks (ids or titles) to a collection (id or title). " +
+      "Pass every block in one call — this is not a one-at-a-time tool.",
+    { collection: z.string(), block: z.string().optional(), blocks: z.array(z.string()).optional() },
     run(async (a) => {
+      /**
+       * A list, because one-at-a-time was costing a step per block.
+       *
+       * Twenty steps is the budget for a message, and a request to put a
+       * project's tasks on a board is routinely more blocks than that. The
+       * model would get most of the way and stop — and worse, it learned to
+       * reach for `canvas_create` instead, because that was the only tool here
+       * that took many blocks at once. A missing plural made a wrong tool the
+       * attractive one.
+       */
+      const named = a.blocks?.length ? a.blocks : a.block ? [a.block] : [];
+      if (!named.length) return "Name a block, or several.";
       const colId = await resolveCollectionId(a.collection);
-      const id = await resolveBlockId(a.block);
-      await api.post(`/collections/${colId}/members`, { blockId: id });
-      return `Added [${id}] to collection [${colId}].`;
+      const ids: string[] = [];
+      for (const it of named) ids.push(await resolveBlockId(it));
+      for (const id of ids) await api.post(`/collections/${colId}/members`, { blockId: id });
+      return `Added ${ids.length} block${ids.length === 1 ? "" : "s"} to collection [${colId}].`;
     }),
   );
 
@@ -1351,6 +1365,70 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
         await api.patch(`/collections/${c.id}`, { canvas_edges: edges });
       }
       return `Created canvas "${a.title}" [${c.id}] with ${n} block${n === 1 ? "" : "s"}${a.connect ? ", connected in order" : ""}.`;
+    }),
+  );
+
+  tool(
+    "canvas_place",
+    "Put blocks on a canvas that ALREADY EXISTS, arranged and optionally colored. " +
+      "Use this whenever the user means a canvas they already have — 'this canvas', 'my canvas', or one named or given by id. " +
+      "canvas_create is only for making a NEW canvas. " +
+      "layout: grid | row | column. replace=true takes off what is already there first, which is what 'replace this canvas' means. " +
+      "Pass every block in one call.",
+    {
+      canvas: z.string(),
+      items: z.array(z.string()).min(1),
+      layout: z.enum(["grid", "row", "column"]).default("grid"),
+      color: z.string().optional(),
+      replace: z.boolean().default(false),
+    },
+    run(async (a) => {
+      /**
+       * The verb that was missing, and whose absence sent the model the wrong way.
+       *
+       * There was no way to say "put these on THAT canvas". `canvas_create`
+       * placed many blocks and made a new board; `collection_add` took one
+       * block at a time. Asked to fill an existing canvas, the model reached
+       * for the tool that could place many — and, handed a canvas id with
+       * nowhere to put it, passed the id as the *title*. Two canvases came out
+       * named after the one they should have been.
+       */
+      const canvasId = await resolveCollectionId(a.canvas);
+      const ids: string[] = [];
+      for (const it of a.items) ids.push(await resolveBlockId(it));
+
+      let removed = 0;
+      if (a.replace) {
+        // The same read `collection_members` uses: a collection answers with
+        // its members, and a member's own id is the block's.
+        const d = await api.get<{ members: { id: string }[] }>(`/collections/${canvasId}`);
+        for (const m of d.members ?? []) {
+          if (ids.includes(m.id)) continue; // staying anyway; do not churn it
+          await api.del(`/collections/${canvasId}/members/${m.id}`);
+          removed += 1;
+        }
+      }
+
+      const W = 280;
+      const H = 190;
+      const GAP = 60;
+      const n = ids.length;
+      const cols = a.layout === "row" ? n : a.layout === "column" ? 1 : Math.max(1, Math.ceil(Math.sqrt(n)));
+      for (let i = 0; i < n; i++) {
+        const context = {
+          x: (i % cols) * (W + GAP),
+          y: Math.floor(i / cols) * (H + GAP),
+          w: W,
+          h: H,
+          ...(a.color ? { color: a.color } : {}),
+        };
+        // Already a member? Then this is a placement, not a join.
+        await api.post(`/collections/${canvasId}/members`, { blockId: ids[i], context }).catch(async () => {
+          await api.patch(`/collections/${canvasId}/members/${ids[i]}`, { context });
+        });
+      }
+      const said = a.replace ? `Replaced ${removed} with ${n}` : `Placed ${n}`;
+      return `${said} block${n === 1 ? "" : "s"} on canvas [${canvasId}]${a.color ? `, colored ${a.color}` : ""}.`;
     }),
   );
 

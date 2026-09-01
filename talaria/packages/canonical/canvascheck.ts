@@ -1,0 +1,141 @@
+/**
+ * Does the canvas mapping hold its shape?
+ *
+ * Pure, so it can be asked directly. The failures worth catching here are not
+ * crashes — they are a canvas that comes back subtly rearranged, which looks
+ * like the user misremembering where they put something and is the hardest
+ * class of bug to be told about.
+ */
+import {
+  contextOf,
+  documentFrom,
+  itemFrom,
+  sameContext,
+  writesFor,
+  type CanvasDocument,
+  type Collection,
+} from "./src/canvas.js";
+
+let bad = 0;
+const check = (name: string, ok: boolean, detail = "") => {
+  console.log(`  ${ok ? "ok  " : "FAIL"}  ${name}${detail ? `   ${detail}` : ""}`);
+  if (!ok) bad += 1;
+};
+
+const node = (over: Record<string, unknown> = {}) => ({
+  id: "i1",
+  x: 10,
+  y: 20,
+  w: 130,
+  h: 90,
+  shape: "rectangle",
+  fill: "#00ffdd",
+  strokeWidth: 1.5,
+  strokeStyle: "solid",
+  hAlign: "center",
+  vAlign: "middle",
+  ...over,
+});
+
+console.log("\ncanvas mapping\n");
+
+// ── the bag ────────────────────────────────────────────────────────────────
+const bag = contextOf(node({ blockId: "b1" }) as never);
+check("position and size use Hermes' own names", bag.x === 10 && bag.y === 20 && bag.w === 130 && bag.h === 90);
+check("fill travels as `color`, which Hermes' canvas reads", bag.color === "#00ffdd");
+check("shape travels under its own name", bag.shape === "rectangle");
+check("the item's identity is in the bag", bag.itemId === "i1");
+check(
+  "no key is prefixed — the context bag is the one place the prefix rule does not reach",
+  Object.keys(bag).every((k) => !k.includes(":")),
+  Object.keys(bag).join(","),
+);
+check(
+  "a linked node carries no copy of its title",
+  !("text" in bag),
+  "a second version of a fact drifts the moment somebody renames the block",
+);
+
+// ── and back ───────────────────────────────────────────────────────────────
+const back = itemFrom({ object: "b1", context: bag }, "MINTED");
+check("a round trip keeps the item's own id", back.id === "i1");
+check("a round trip keeps the block it stands for", back.blockId === "b1");
+check(
+  "a round trip keeps every value",
+  back.x === 10 && back.y === 20 && back.w === 130 && back.h === 90 && back.fill === "#00ffdd" && back.shape === "rectangle",
+);
+check(
+  "a member nobody here placed still becomes a node",
+  itemFrom({ object: "b9" }, "MINTED").id === "MINTED",
+  "the assistant placing a task is exactly this case",
+);
+
+// ── the whole document ─────────────────────────────────────────────────────
+const collection: Collection = {
+  id: "c1",
+  kind: "canvas",
+  version: 3,
+  members: [
+    { object: "b1", version: 7, context: { ...bag } },
+    { object: "b2", version: 2, context: { x: 400, y: 0, w: 200, h: 100 } },
+  ],
+  properties: {
+    "talaria:items": [node({ id: "note1", text: "a sticky" })],
+    "talaria:links": [{ id: "l1", from: "i1", to: "note1" }],
+    "talaria:regions": [{ id: "r1", members: ["i1"], title: "Ideas" }],
+  },
+};
+let minted = 0;
+const doc = documentFrom(collection, () => `m${++minted}`);
+check("members and our own items both arrive", doc.items.length === 3);
+check("links arrive", doc.links.length === 1 && doc.links[0]!.id === "l1");
+check("regions arrive", doc.regions.length === 1 && doc.regions[0]!.title === "Ideas");
+check(
+  "a region still names an item that exists",
+  doc.items.some((i) => i.id === doc.regions[0]!.members[0]),
+  "this is what a fresh id every sync would break",
+);
+
+// ── what to write ──────────────────────────────────────────────────────────
+const edited: CanvasDocument = {
+  items: [
+    { ...(node({ blockId: "b1", x: 999 }) as never) },
+    { ...(node({ id: "i3", blockId: "b3" }) as never) },
+    { ...(node({ id: "note1", text: "a sticky" }) as never) },
+  ],
+  links: [],
+  regions: [],
+};
+const w = writesFor(edited, collection);
+check("a moved node is a place, carrying the version it saw", w.place.length === 1 && w.place[0]!.version === 7);
+check("the move actually carries the new position", (w.place[0]!.context as { x: number }).x === 999);
+check("a node new to the canvas is an add", w.add.length === 1 && w.add[0]!.object === "b3");
+check("a node no longer on the canvas is a removal", w.remove.length === 1 && w.remove[0] === "b2");
+check(
+  "an unlinked item is collection furniture, never a member",
+  (w.properties["talaria:items"] as unknown[]).length === 1 &&
+    !w.place.some((p) => p.object === "note1") &&
+    !w.add.some((p) => p.object === "note1"),
+);
+check(
+  "everything of ours on the collection is prefixed",
+  Object.keys(w.properties).every((k) => k.startsWith("talaria:")),
+  Object.keys(w.properties).join(","),
+);
+check(
+  "a canvas that did not change asks for no adds and no removals",
+  (() => {
+    const same = documentFrom(collection, () => "x");
+    const out = writesFor(same, collection);
+    return out.add.length === 0 && out.remove.length === 0;
+  })(),
+  "a sync that rewrites everything every tick is a sync that fights the user",
+);
+
+// ── the comparison ─────────────────────────────────────────────────────────
+check("an unchanged bag compares equal", sameContext(bag, { ...bag }));
+check("a moved bag does not", !sameContext(bag, { ...bag, x: 11 }));
+check("a bag that lost a key does not", !sameContext(bag, { ...bag, shape: undefined }));
+
+console.log(bad ? `\n${bad} failed\n` : "\nall good\n");
+process.exit(bad ? 1 : 0);

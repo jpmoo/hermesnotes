@@ -35,6 +35,20 @@ const configSchema = z.object({
   /** How often to ask for changes while the network is up, in seconds. */
   pollSeconds: z.number().int().min(2).max(3600).default(30),
   /**
+   * Where Talaria's own chat thinks, and with what.
+   *
+   * Its own URL rather than Glance's, and that is the point rather than an
+   * oversight. Glance runs an *embedding* model and this needs a tool-capable
+   * *chat* model, which is often not the same box: embeddings are small and
+   * constant and belong next to the words being embedded, and a model that can
+   * hold a conversation and call tools may well live somewhere with a GPU.
+   * Defaulted to the same place because that is where most people have one,
+   * and separable the moment it is not.
+   */
+  inferenceUrl: z.string().url().default("http://localhost:11434"),
+  /** A tool-capable chat model — llama3.1, qwen2.5 and the like. */
+  inferenceModel: z.string().default(""),
+  /**
    * Where Glance embeds, and with what.
    *
    * Local by default, and that is the point rather than a default: what gets

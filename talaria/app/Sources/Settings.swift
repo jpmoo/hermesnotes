@@ -38,6 +38,11 @@ struct TalariaConfig: Equatable, Sendable {
     var pollSeconds = 30
     var glanceUrl = "http://localhost:11434"
     var glanceModel = "nomic-embed-text:latest"
+    /// Where Talaria's own chat thinks. Separate from Glance's on purpose —
+    /// an embedding model and a tool-calling chat model are rarely the same
+    /// one, and often not even the same machine.
+    var inferenceUrl = "http://localhost:11434"
+    var inferenceModel = ""
     var contextExclude: [String] = []
     var aerospaceCli = ""
 
@@ -89,6 +94,8 @@ enum ConfigStore {
         c.pollSeconds = (obj["pollSeconds"] as? Int) ?? 30
         if !str("glanceUrl").isEmpty { c.glanceUrl = str("glanceUrl") }
         if !str("glanceModel").isEmpty { c.glanceModel = str("glanceModel") }
+        if !str("inferenceUrl").isEmpty { c.inferenceUrl = str("inferenceUrl") }
+        c.inferenceModel = str("inferenceModel")
         c.contextExclude = (obj["contextExclude"] as? [String]) ?? []
         c.aerospaceCli = str("aerospaceCli")
         c.boardHotkey = str("boardHotkey")
@@ -123,6 +130,8 @@ enum ConfigStore {
         obj["pollSeconds"] = c.pollSeconds
         obj["glanceUrl"] = c.glanceUrl
         obj["glanceModel"] = c.glanceModel
+        obj["inferenceUrl"] = c.inferenceUrl
+        obj["inferenceModel"] = c.inferenceModel
 
         // Present when set, absent when not. See `TalariaConfig.defaults`.
         func optional(_ key: String, _ value: String) {

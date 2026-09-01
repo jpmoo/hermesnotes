@@ -49,7 +49,23 @@ export interface MoveIntent {
   /** Where it came from, so the region it left can undo what it did. */
   fromRegion: number | null;
 }
-export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent;
+/**
+ * A block renamed from somewhere that shows its title.
+ *
+ * A canvas node linked to a block wears that block's title and stores no copy
+ * of it. Typing over one is therefore not a local edit with a remote copy to
+ * reconcile — it is an edit to the block, arriving through a different window.
+ * Any app respecting the format would write it back, and this is that write.
+ */
+export interface RetitleIntent {
+  kind: "retitle";
+  blockId: string;
+  /** The key the type's profile names as its title. */
+  key: string;
+  title: string;
+}
+
+export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent | RetitleIntent;
 
 export type ReplayResult =
   | { id: number; outcome: "applied" | "already" }
@@ -237,6 +253,8 @@ export class Queue {
         return this.replayAppend(row, intent);
       case "move":
         return this.replayMove(row, intent);
+      case "retitle":
+        return this.replayRetitle(row, intent);
     }
   }
 
@@ -255,6 +273,26 @@ export class Queue {
    * their version down so the following write agrees with it. Parking the whole
    * canvas because one node was contended would strand every other edit in it.
    */
+  /**
+   * A title, written through the binding.
+   *
+   * The version travels, so an edit made against a title somebody else has
+   * since changed is refused rather than merged — which is the right answer
+   * here: two people renaming one thing is not a merge, it is a choice, and
+   * the one who wrote second should be told rather than silently winning.
+   */
+  private async replayRetitle(row: QueuedIntent, intent: RetitleIntent): Promise<ReplayResult> {
+    // The version is required by the binding, and rightly: a patch that does
+    // not say what it expects cannot be refused for being stale. Zero when the
+    // mirror never saw one, which the producer reads as "no opinion".
+    const answer = await this.ix.patch(intent.blockId, {
+      set: { [intent.key]: intent.title },
+      version: row.baseVersion ?? 0,
+    });
+    if (answer.conflict) return { id: row.id, outcome: "parked", reason: "that block was renamed elsewhere first" };
+    return { id: row.id, outcome: "applied" };
+  }
+
   /**
    * Idempotent by construction: the id was decided locally, so a repeat of this
    * create is recognizably the same create and the server hands back what it

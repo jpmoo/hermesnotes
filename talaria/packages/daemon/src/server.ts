@@ -1678,6 +1678,7 @@ export function buildServer(deps: {
           properties: z.record(z.unknown()).optional(),
         }),
         z.object({ kind: z.literal("complete"), blockId: z.string().uuid(), status: z.string().optional() }),
+        z.object({ kind: z.literal("retitle"), blockId: z.string().uuid(), title: z.string() }),
         z.object({ kind: z.literal("append"), date: z.string(), text: z.string().min(1) }),
         z.object({
           kind: z.literal("move"),
@@ -1716,6 +1717,18 @@ export function buildServer(deps: {
       if (!status) return reply.code(400).send({ error: "that block's type has no completed status" });
       baseVersion = row.version;
       intent = { kind: "complete", blockId: body.blockId, status };
+    } else if (body.kind === "retitle") {
+      const raw = mirror.rawBlock(body.blockId);
+      if (!raw) return reply.code(404).send({ error: "not in the mirror" });
+      const row = JSON.parse(raw) as { version: number; type?: string | null };
+      const type = row.type ? types().get(row.type) : undefined;
+      // The key the profile names, never a field called "title". A type is user
+      // data and its fields are named by whoever made it; what makes a field
+      // the title is the profile pointing at it.
+      const key = type?.profiles?.task?.title;
+      if (typeof key !== "string") return reply.code(400).send({ error: "that block's type declares no title field" });
+      baseVersion = row.version;
+      intent = { kind: "retitle", blockId: body.blockId, key, title: body.title };
     } else if (body.kind === "move") {
       // Asked before the local placement below, which would otherwise make
       // every card look like an existing member.

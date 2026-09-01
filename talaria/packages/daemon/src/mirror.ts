@@ -31,7 +31,7 @@ export interface StoredBlock {
 
 export interface QueuedIntent {
   id: number;
-  kind: "create" | "complete" | "append" | "move";
+  kind: "create" | "complete" | "append" | "move" | "retitle";
   /** What the user meant, as JSON — never the document that would result. */
   payload: string;
   /** The block version this was based on, when there was one. */

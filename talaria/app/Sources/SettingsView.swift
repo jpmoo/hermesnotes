@@ -161,6 +161,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     hermes
+                    inference
                     glance
                     shortcuts
                     desktop
@@ -209,6 +210,30 @@ struct SettingsView: View {
                     Text("seconds while the network is up")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var inference: some View {
+        section(
+            "Chat",
+            "Where Talaria's own chat thinks. Separate from the embedding above on purpose: that runs a small embedding model beside the words it embeds, and this needs a tool-capable chat model — llama3.1, qwen2.5 and the like — which is often on a different machine."
+        ) {
+            field("Server") {
+                TextField("http://localhost:11434", text: $model.config.inferenceUrl)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+            }
+            field("Model") {
+                VStack(alignment: .leading, spacing: 4) {
+                    TextField("llama3.1", text: $model.config.inferenceModel)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                    Text("It has to be able to call tools. A model that cannot will hold a conversation and change nothing on the canvas, which looks like a broken canvas rather than the wrong model.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }

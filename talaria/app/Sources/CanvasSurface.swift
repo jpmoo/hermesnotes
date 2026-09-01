@@ -626,6 +626,15 @@ final class CanvasModel: ObservableObject {
     @Published private(set) var regions: [CanvasRegion] = []
     /// Under the pointer. Highlighted, and nothing more.
     @Published var hovered: UUID?
+    /**
+     A linked node was renamed. Told to whoever can write it back.
+
+     A closure rather than a call, because the model is the canvas and knows
+     nothing about Hermes — the same reason it holds a block id and never a
+     block.
+     */
+    var onRetitle: ((String, String) -> Void)?
+
     /// Clicked. Gets the resize handles.
     /**
      What is selected, as one value.
@@ -1149,7 +1158,25 @@ final class CanvasModel: ObservableObject {
             return
         }
         if let at = items.firstIndex(where: { $0.id == id }) {
-            items[at].text = draft
+            /**
+             A linked node's words belong to its block.
+
+             The node stores no copy of the title — it wears the one the block
+             has — so typing over it is not a local edit with a remote copy to
+             reconcile. It is an edit to the block, made through a different
+             window, and any app respecting the format writes it back.
+
+             The local text is left empty rather than set. Setting it would give
+             the node words of its own, and a node with its own words stops
+             following the block: rename it in Hermes afterwards and the canvas
+             would go on showing what was typed here.
+             */
+            if let block = items[at].blockId {
+                items[at].text = ""
+                onRetitle?(block, text)
+            } else {
+                items[at].text = draft
+            }
         }
         fitToText(id, text: draft)
         draft = ""
@@ -2770,6 +2797,12 @@ struct CanvasSurface: View {
                 // of the sync cursor every twenty seconds, and a reload only
                 // when it has actually moved. Nothing new had to be built; this
                 // view simply had not been told it was long-lived.
+                model.onRetitle = { block, title in
+                    Task.detached(priority: .userInitiated) {
+                        _ = try? Daemon.write(["kind": "retitle", "blockId": block, "title": title])
+                        await MainActor.run { refreshLinks() }
+                    }
+                }
                 let w = MirrorWatch { refreshLinks() }
                 w.start()
                 watch = w

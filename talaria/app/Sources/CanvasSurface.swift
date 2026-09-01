@@ -3024,10 +3024,22 @@ struct CanvasSurface: View {
                 }
             }
             let types = (try? Daemon.types()) ?? []
+            // Frozen before crossing to the main actor.
+            //
+            // The three above are `var`s built by the loop, and reading a `var`
+            // inside `MainActor.run` captures the variable rather than its
+            // value — which Swift 6 makes an error, and which is a real hazard
+            // rather than a formality: a second pass through this function
+            // would be mutating the same storage the first pass is about to
+            // read. Letting them go still is what makes the closure sendable
+            // and what makes the answer the one this pass actually found.
+            let answers = found
+            let missing = gone
+            let daemonAnswered = reachable
             await MainActor.run {
-                guard reachable || !found.isEmpty else { return }
-                linked = Dictionary(uniqueKeysWithValues: found.map { ($0.id, $0) })
-                goneBlocks = gone
+                guard daemonAnswered || !answers.isEmpty else { return }
+                linked = Dictionary(uniqueKeysWithValues: answers.map { ($0.id, $0) })
+                goneBlocks = missing
                 if !types.isEmpty {
                     blockTypes = Dictionary(uniqueKeysWithValues: types.map { ($0.id, $0) })
                 }
@@ -3114,7 +3126,11 @@ struct CanvasSurface: View {
     private func toggleDone(_ block: Daemon.LinkedBlock, type: Daemon.BlockType?) {
         guard let type, let want = isDone(block) ? type.undoneValue : type.doneValue else { return }
         Task.detached(priority: .userInitiated) {
-            try? Daemon.write(["kind": "complete", "blockId": block.id, "status": want])
+            // Discarded on purpose: the write answers with the block it wrote
+            // and the canvas re-reads everything a line later anyway. Said out
+            // loud with `_ =` so it reads as a decision rather than a result
+            // somebody forgot to look at.
+            _ = try? Daemon.write(["kind": "complete", "blockId": block.id, "status": want])
             await MainActor.run { refreshLinks() }
         }
     }

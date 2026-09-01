@@ -40,7 +40,7 @@
           }
         }
       },
-      "why": "The whole premise is that people model things their own way. If my fields do not survive a trip through your tool, the format has failed at the only job it has. Store unknowns opaquely — do not normalize, reorder, coerce types, or strip nesting."
+      "why": "The whole premise is that people model things their own way. If my fields do not survive a trip through your tool, the format has failed at the only job it has. Store unknowns opaquely \u2014 do not normalize, reorder, coerce types, or strip nesting."
     },
     {
       "id": "roundtrip/unknown-top-level-key-survives",
@@ -127,6 +127,39 @@
         }
       },
       "why": "The two obvious wrong answers are dropping the object and un-archiving it. Both are visible to the user immediately and both look like data loss, because they are."
+    },
+    {
+      "id": "roundtrip/an-archived-collection-is-still-archived",
+      "level": 2,
+      "op": "roundtrip",
+      "given": {
+        "collection": {
+          "id": "c_1",
+          "kind": "canvas",
+          "archived": true,
+          "members": [
+            {
+              "object": "o_1"
+            },
+            {
+              "object": "o_2"
+            }
+          ]
+        }
+      },
+      "when": {
+        "importInto": "a tool with no archive concept",
+        "reexport": true
+      },
+      "with": {
+        "archive": false
+      },
+      "expect": {
+        "result": {
+          "archived": true
+        }
+      },
+      "why": "The same flag one noun along, and the failure is larger here. An archived board still exports its members, so a consumer that cannot see the flag does not quietly show one hidden thing \u2014 it shows every card on a board somebody tidied away months ago, arriving as though it were current. Dropping the collection is the other wrong answer and takes the arrangement with it."
     },
     {
       "id": "roundtrip/no-id-rewriting",

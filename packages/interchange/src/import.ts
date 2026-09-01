@@ -289,7 +289,13 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     //
     // That is the shape of the failure worth remembering — an exhaustive
     // handler is only exhaustive until the format grows.
-    const COLLECTION_KEYS = new Set(["id", "name", "kind", "properties", "placement", "membership", "members", "order"]);
+    // `archived` is here for the reason `version` is on an object: it is a real
+    // field, not an annotation. Left out, it would ride back out in the carried
+    // bag and land somewhere else in the collection — nothing lost, and a
+    // round-trip diff saying so.
+    const COLLECTION_KEYS = new Set([
+      "id", "name", "kind", "properties", "placement", "membership", "members", "order", "archived", "version",
+    ]);
     const cExtra: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(c)) if (!COLLECTION_KEYS.has(k)) cExtra[k] = v;
     // `order` is open like every other object here, and consuming it is not a
@@ -382,7 +388,10 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
             }
           : {}),
       },
-      archivedAt: null,
+      // Hardcoded null until now, which un-archived every board that arrived
+      // put away — and an archived board still carries all its members, so the
+      // result was a shelf of somebody's tidied-away cards reading as current.
+      archivedAt: c.archived === true ? new Date(0).toISOString() : null,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString(),
       tags: [],

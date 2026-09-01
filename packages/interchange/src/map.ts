@@ -504,6 +504,15 @@ export function toInterchange(input: ExportInput): {
       id: c.id,
       name: String(props.title ?? "Untitled"),
       kind,
+      // Put away, not deleted — the same flag an object carries, and the row it
+      // is read from is the same row, because a collection here *is* a block.
+      //
+      // Leaving it off was worse here than it would have been on an object. An
+      // archived board still exports every one of its members, so a consumer
+      // that could not see the flag did not quietly show one hidden thing: it
+      // showed a whole shelf of them, every card on a board somebody tidied
+      // away, arriving as though it were current.
+      archived: c.archivedAt !== null,
       // The same reasoning that puts a version on an object: a producer that
       // accepts one on a write and never issues one has made safe writing
       // impossible through its own binding, because the only way to learn the

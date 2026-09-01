@@ -237,6 +237,14 @@ empty page — so it reports `journal.duplicate` and shows what it found.
 
 `archived` means hidden from normal views but not deleted. A consumer with no such concept must preserve the flag rather than dropping the object or un-archiving it.
 
+**A collection carries it too**, on the same terms. A producer that can put a
+board away has the same fact to report as one that can put a note away, and the
+noun it hangs on is the only difference. Leaving it off is worse for a
+collection than for an object: an archived board still exports its members, so a
+consumer that cannot see the flag does not show one hidden thing, it shows a
+whole shelf of them — every card on a board the user tidied away months ago,
+arriving as though it were current.
+
 ### Where a thing lives
 
 An object may carry `url`: an absolute address where a person can go to see it.

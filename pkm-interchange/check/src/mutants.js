@@ -445,6 +445,22 @@ const MUTANTS = [
     }),
   },
   {
+    // The obvious reading of "we have no archive concept": drop the flag. On an
+    // object that shows one hidden thing; on a board it shows every card the
+    // board was holding, as though the whole shelf were current.
+    name: "un-archives a collection it cannot represent",
+    caught: "roundtrip/an-archived-collection-is-still-archived",
+    patch: (a) => ({
+      ...a,
+      roundtrip: (env, caps) => {
+        const out = a.roundtrip(env, caps);
+        out.result.collections = (out.result.collections ?? []).map(({ archived, ...rest }) => rest);
+        if (out.result.archived !== undefined && out.result.kind) delete out.result.archived;
+        return out;
+      },
+    }),
+  },
+  {
     // Rewritten when its target was. It used to drop relations carrying
     // `resolved: false`, and the format had since removed that flag outright —
     // a join a consumer can do in one pass, and a second version of a fact

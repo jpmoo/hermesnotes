@@ -4,7 +4,7 @@
  *
  * What makes one of these different from an ordinary note is not its content but
  * its provenance: it belongs to a span of time rather than being filed by hand.
- * That single fact is what drives all the behaviour they share:
+ * That single fact is what drives all the behavior they share:
  *
  * - created on demand, by opening the day or the review, not by a "new" action;
  * - identified by the period they belong to (a date in `properties[marker]`),
@@ -15,10 +15,10 @@
  *   and would keep rendering one that was supposedly filed away.
  *
  * Adding a kind — a monthly review, say — is an entry here plus the page that
- * owns it. The behaviours above then apply without hunting for the places that
+ * owns it. The behaviors above then apply without hunting for the places that
  * check for a marker.
  *
- * Two spots still encode per-kind behaviour on purpose, because it genuinely
+ * Two spots still encode per-kind behavior on purpose, because it genuinely
  * differs rather than being shared:
  * - collections/query.ts, where daily notes can be opted BACK IN via the Daily
  *   Note sentinel type while reflections are always hidden;

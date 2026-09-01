@@ -127,7 +127,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
          * Chosen by the caller, the way `POST /blocks` already allows.
          *
          * What it buys is retry: a client that never heard the answer can send
-         * the same request again and have the second one recognised as the
+         * the same request again and have the second one recognized as the
          * first. Without it the interchange binding's create could not promise
          * that, and a dropped response would leave a second board behind every
          * time a client restarted mid-call.
@@ -560,7 +560,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
          * Keys to take out of the context bag.
          *
          * `context` merges, which is right — a caller that moved a card sends
-         * the coordinates it moved and must not delete the size and colour
+         * the coordinates it moved and must not delete the size and color
          * another tool put there. That leaves no way to remove one, so removal
          * is said out loud, and the read-modify-write lives here rather than in
          * every caller that wants to clear a flag.

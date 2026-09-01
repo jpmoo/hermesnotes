@@ -483,7 +483,7 @@ export function MarkdownEditor({
    * Send the selection forward: mark it, and it's copied into the next daily
    * note (or weekly reflection) as that note is made, and the one after that,
    * for as long as it's still marked. The moment is recorded because several
-   * pieces travelling together read in the order they were first sent.
+   * pieces traveling together read in the order they were first sent.
    */
   const sendForward = () => {
     if (!extract || !editor) return;
@@ -729,7 +729,7 @@ export function MarkdownEditor({
             // any height, and it used to cap itself at 320px and scroll. On
             // macOS the scrollbar is an overlay that only appears while you're
             // scrolling, so there was nothing to say the rest was down there —
-            // the last thing visible was a grey heading, and the commands under
+            // the last thing visible was a gray heading, and the commands under
             // it may as well not have existed.
             style={{ ...menuStyle, zIndex: 1000 }}
             onMouseDown={(e) => e.stopPropagation()}

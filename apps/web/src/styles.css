@@ -31,7 +31,7 @@
      sitting on the page background reads as raised off it. */
   --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.15);
   --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.2);
-  /* Bare colour, for the panels: each casts toward the content it floats over,
+  /* Bare color, for the panels: each casts toward the content it floats over,
      so the offset differs per edge and can't come from a ready-made token. */
   --shadow-color: rgba(0, 0, 0, 0.15);
 }
@@ -952,7 +952,7 @@ label,
   opacity: 0.45;
 }
 /* The same button, while a turn is running: stop rather than send. Muted, so
-   the panel doesn't read as though the accent colour were inviting a click. */
+   the panel doesn't read as though the accent color were inviting a click. */
 .ai-stop,
 .ai-stop:hover {
   background: var(--text-muted);
@@ -1329,7 +1329,7 @@ label,
   color: var(--text);
 }
 
-/* The mark is one path with fill: currentColor, so its colour is set here
+/* The mark is one path with fill: currentColor, so its color is set here
    rather than baked into a file. Teal, which is what the mark it replaced
    was — the difference is that a dark theme can now say otherwise. */
 .sidebar .logo {
@@ -2141,7 +2141,7 @@ input.collection-title:focus {
   background: #eef4f6;
   color: var(--accent-ink);
 }
-/* A segment carrying a glyph rather than a word sits tighter and centres it. */
+/* A segment carrying a glyph rather than a word sits tighter and centers it. */
 .seg-icon {
   display: inline-flex;
   align-items: center;
@@ -2149,7 +2149,7 @@ input.collection-title:focus {
   padding: 6px 8px;
 }
 /* Where you are, said by disabling the way there — so it reads as a position
-   rather than as a button greyed out for some reason of its own. */
+   rather than as a button grayed out for some reason of its own. */
 .seg.active:disabled {
   opacity: 1;
   cursor: default;
@@ -2869,7 +2869,7 @@ input.li-text:focus {
   border-left: 2px solid var(--accent);
   border-radius: 0;
   padding: 0 0 0 10px;
-  /* Longhand, so an outline indent (.hi-N) on this line isn't cancelled — the raw
+  /* Longhand, so an outline indent (.hi-N) on this line isn't canceled — the raw
      line would otherwise jump to the margin the moment the caret entered it. */
   margin-top: 0;
   margin-bottom: 0.55em;
@@ -3792,7 +3792,7 @@ input.matrix-axis-y::placeholder {
   column-gap: 14px;
 }
 /* Keep the exact selected column count; contain narrow cards so their fields
-   don't bleed into neighbouring columns (they may clip in very tight columns —
+   don't bleed into neighboring columns (they may clip in very tight columns —
    expand a card to edit comfortably). */
 .masonry-item .card {
   overflow: hidden;
@@ -4650,7 +4650,7 @@ input.matrix-axis-y::placeholder {
   flex-shrink: 0;
 }
 /* Outside the editor a mention is part of a sentence, not a control: drop the
-   pill and mark it with weight and a soft underline instead. Colour is inherited
+   pill and mark it with weight and a soft underline instead. Color is inherited
    rather than set, because these sit on cards whose background the user chooses —
    a fixed accent is unreadable on some of them, and the filled pill fought the
    card besides. */
@@ -4675,7 +4675,7 @@ input.matrix-axis-y::placeholder {
 }
 .mention-chip.mention-inline svg {
   /* `gap` belongs to the flex box we just gave up. The nudge puts a fixed-size
-     icon back where centring had it — within half a pixel at the size these
+     icon back where centering had it — within half a pixel at the size these
      read at, rather than sitting flat on the baseline. */
   margin-right: 2px;
   vertical-align: -0.02em;
@@ -4861,7 +4861,7 @@ input.matrix-axis-y::placeholder {
   padding-top: 30px;
 }
 /* Anchors the actions menu under its button. Lifecycle actions live in here
-   rather than as bare icons: they belong nowhere near the favourite star, and a
+   rather than as bare icons: they belong nowhere near the favorite star, and a
    menu leaves room for more of them later. */
 .info-menu {
   position: relative;
@@ -5467,7 +5467,7 @@ input.matrix-axis-y::placeholder {
 
 /* An ephemeral note writes on the same markdown surface as a longtext field,
    but the paper IS the note — so the field's box, its focus ring and its own
-   background all come off, leaving the sticky's colour and nothing else.
+   background all come off, leaving the sticky's color and nothing else.
    Blocks on the canvas keep their fields looking like fields. */
 .cv-note .longtext,
 .cv-note .longtext:focus-within {
@@ -5494,15 +5494,15 @@ input.matrix-axis-y::placeholder {
    the cut corner instead of outlining a rectangle that isn't there. */
 /* A sticky's paper is pale in both themes, so its ink is dark in both. Without
    this the text is var(--text), which in the dark theme is nearly white and
-   vanishes on the note. A note given a colour of its own overrides this
-   inline, with the ink chosen for that colour. */
+   vanishes on the note. A note given a color of its own overrides this
+   inline, with the ink chosen for that color. */
 .cv-note .cv-paper {
   color: #1f2328;
 }
 
 /* And everything written on the paper inherits it.
 
-   Setting a colour on the paper alone was not enough: .md-input names
+   Setting a color on the paper alone was not enough: .md-input names
    var(--text) explicitly, which beats anything inherited, so in the dark theme
    the note's text stayed nearly white on pale paper. The editors inside a note
    take the paper's ink instead — the note is the one place in the app whose
@@ -5657,9 +5657,9 @@ input.cv-zoom {
   background: var(--surface-2);
   border-color: var(--border-strong);
 }
-/* The custom-colour swatch: the same square, but it opens the system picker.
+/* The custom-color swatch: the same square, but it opens the system picker.
    The input itself is invisible and fills the square, so the click lands on it
-   — a button that then tries to open a colour input can't, since the system
+   — a button that then tries to open a color input can't, since the system
    picker only opens from a real user gesture on the input. */
 .cv-swatch-custom {
   position: relative;
@@ -6402,7 +6402,7 @@ input.cv-add-input {
 
 /* Moving to the next range slides rather than cuts, so the days read as having
    moved under you. The body is keyed on the range, so it remounts and the
-   animation plays from whichever side you're travelling towards. Clipped by the
+   animation plays from whichever side you're traveling towards. Clipped by the
    wrapper (see .cal-wrap), so nothing is seen arriving from off the page. */
 @keyframes calSlideNext {
   from { transform: translateX(28%); opacity: 0.35; }
@@ -6428,7 +6428,7 @@ input.cv-add-input {
 
 /* What else is dated in range, a type at a time — the same pills the calendars
    above use, so "which sources am I looking at" has one answer and one shape.
-   The colour comes from the type's own icon rather than a feed's, so these
+   The color comes from the type's own icon rather than a feed's, so these
    read as the app's own things next to somebody else's calendar. */
 .cal-dated-toggle {
   gap: 5px;
@@ -7926,7 +7926,7 @@ mark[data-from]::before {
   background: rgba(0, 0, 0, 0.28);
 }
 
-/* A block converted from a calendar feed keeps that calendar's colour as a
+/* A block converted from a calendar feed keeps that calendar's color as a
    bold left edge — the same signal its feed chip carried. Only the edge: the
    tinted background says "still the feed's", and this one is yours now. */
 .cal-chip.cal-from-feed {

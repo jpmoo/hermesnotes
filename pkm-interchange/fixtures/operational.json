@@ -1,7 +1,7 @@
 {
   "suite": "operational",
   "level": 4,
-  "about": "Behaviour of a live surface rather than the shape of a file. Everything below is a rule a snapshot format never needs and a mutable one cannot live without: how a partial write is expressed, what a write owes the caller when it could not keep everything, and what a follower is told when something goes away. Every case here comes from a bug in a real implementation.",
+  "about": "Behavior of a live surface rather than the shape of a file. Everything below is a rule a snapshot format never needs and a mutable one cannot live without: how a partial write is expressed, what a write owes the caller when it could not keep everything, and what a follower is told when something goes away. Every case here comes from a bug in a real implementation.",
   "cases": [
     {
       "id": "operational/absent-is-not-delete",

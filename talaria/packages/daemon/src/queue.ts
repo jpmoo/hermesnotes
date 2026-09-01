@@ -346,7 +346,7 @@ export class Queue {
   private async replayAppend(row: QueuedIntent, intent: AppendIntent): Promise<ReplayResult> {
     const note = await this.hermes.dailyNote(intent.date);
     const existing = note.content ?? "";
-    // A lost response has no id to recognise itself by, so the text itself is
+    // A lost response has no id to recognize itself by, so the text itself is
     // the evidence. Fails toward not duplicating, which is the right direction:
     // a line the user has to add again is a smaller injury than one that
     // silently appears twice.

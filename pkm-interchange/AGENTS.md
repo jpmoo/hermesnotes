@@ -11,7 +11,7 @@ A wire format for moving personal-knowledge objects — notes, tasks, events, pe
 1. Read this file. It is self-contained; it references no other specification normatively.
 2. Load `fixtures/*.json`. **The fixtures are authoritative.** Where this prose and a fixture disagree, the fixture is correct and the prose is a bug.
 3. Read `example/library.json` — one complete, valid export. Pattern-match off it.
-4. Run the fixtures against your implementation. Each has a `why`; when one fails, read it before patching, because it usually explains a rule that has untested neighbours.
+4. Run the fixtures against your implementation. Each has a `why`; when one fails, read it before patching, because it usually explains a rule that has untested neighbors.
 
 ---
 
@@ -45,7 +45,7 @@ can lose.
 | **0 · Readable** | a valid export | envelope, types, objects | someone can open it and see it |
 | **1 · Legible** | declared profiles | profiles on types; no name-guessing | a stranger's tool finds the due date without knowing your vocabulary |
 | **2 · Faithful** | round-trip | unknown fields, ids, flags, relation types all survive | your app can be a **waypoint** rather than a terminus |
-| **3 · Honest** | loud failure | fidelity reporting; manifest matches behaviour | a human can trust the transfer |
+| **3 · Honest** | loud failure | fidelity reporting; manifest matches behavior | a human can trust the transfer |
 | **4 · Operable** | a live surface | patch semantics, capability discovery, a change feed | a harness can drive both apps in unison |
 
 Rungs are earned **per role**, because they are different work. Levels 0 and 1
@@ -113,9 +113,9 @@ A consumer preserves prefixed and unprefixed keys alike; the round-trip rule doe
 
 ## Unknown fields
 
-**Any property a consumer does not recognise MUST survive a round-trip byte-identical.**
+**Any property a consumer does not recognize MUST survive a round-trip byte-identical.**
 
-This is the single most important rule for interoperability between tools that model things differently, and it is the one implementations skip. If my app has a field yours has never heard of and you re-export, mine must still be there. Store unknowns opaquely; do not normalise, reorder, or coerce them.
+This is the single most important rule for interoperability between tools that model things differently, and it is the one implementations skip. If my app has a field yours has never heard of and you re-export, mine must still be there. Store unknowns opaquely; do not normalize, reorder, or coerce them.
 
 → `fixtures/roundtrip.json`
 
@@ -255,7 +255,7 @@ person nowhere in any other.
 **It is a value, not a rule.** The obvious cheaper design — a template in
 `producer`, `"https://notes.example/block/{id}"` — is a construction rule, and
 shipping one licenses exactly what the rest of this format forbids. A consumer
-holding a template will build addresses for objects that never travelled,
+holding a template will build addresses for objects that never traveled,
 including ones that do not exist, and it will do so by **parsing and
 interpolating an id that is supposed to be opaque**. One string per object costs
 bytes; a template costs the id rule. An address a producer hands you is not a
@@ -308,9 +308,9 @@ A completion-anchored rule is a state machine: the next occurrence depends on an
 
 ### On `monthEnd`
 
-A monthly rule anchored to January 31 has two defensible behaviours. `skip` omits February and gives March 31 — this is what `RRULE`, EventKit, and most calendars do. `clamp` gives February 28, and then, in most implementations, permanently re-anchors to the 28th thereafter.
+A monthly rule anchored to January 31 has two defensible behaviors. `skip` omits February and gives March 31 — this is what `RRULE`, EventKit, and most calendars do. `clamp` gives February 28, and then, in most implementations, permanently re-anchors to the 28th thereafter.
 
-The format does not pick. It requires you to say. Silently clamping rewrites the user's intent after one short month, and the user never finds out; declaring it means the behaviour travels with the data and a consumer can reproduce it exactly.
+The format does not pick. It requires you to say. Silently clamping rewrites the user's intent after one short month, and the user never finds out; declaring it means the behavior travels with the data and a consumer can reproduce it exactly.
 
 If your implementation clamps, say `"clamp"`. Do not say `"skip"` because it sounds more correct.
 
@@ -400,7 +400,7 @@ A region is a string, or an object when the name a machine matches on is not the
 
 `name` is an identifier — it is what a member's `region` matches and what a write names, so it must not change when somebody edits the wording. `label` is for display and carries no meaning. A bare string is both at once, which is right whenever the two agree.
 
-The object is **open**, like everything else here. A producer that colours its regions says so under its own key and the colour travels untouched; the format does not name it, because what colour a quadrant is drawn in is not something another tool needs to agree about. Consuming a producer's region definitions to build this list and dropping whatever else was on them is the round-trip rule broken by the code that publishes the region.
+The object is **open**, like everything else here. A producer that colors its regions says so under its own key and the color travels untouched; the format does not name it, because what color a quadrant is drawn in is not something another tool needs to agree about. Consuming a producer's region definitions to build this list and dropping whatever else was on them is the round-trip rule broken by the code that publishes the region.
 
 The distinction is not fussiness. Producers derive the name from the label — slugging "Delegate & Wait" into `delegate-wait` is the obvious implementation — and a format with nowhere to put the label makes that derivation lossy: the board arrives with regions a consumer can match on and cannot render, so it draws "Region 3" over somebody's own words.
 
@@ -747,7 +747,7 @@ likes and says nothing about it.
 **A producer that cannot search MUST refuse rather than answer unfiltered.** This
 is the one narrowing that is not permission to send less, and it inverts: `since`
 and `profile` ignored give a client more than it asked for, which is safe, while
-`q` ignored gives a client the whole library labelled as matches. A tool that
+`q` ignored gives a client the whole library labeled as matches. A tool that
 offered "add the block you searched for" would offer every block there is, and
 the person choosing has no way to tell.
 
@@ -977,7 +977,7 @@ anyway looks exactly like success.
 **`context` merges; `unset` is the only way to remove a key.** This is the
 round-trip rule at write time and it is the half that gets skipped. A tool that
 drags a card sends the two numbers it moved and has never heard of the size and
-the colour another tool put there; a write that replaced the bag would delete
+the color another tool put there; a write that replaced the bag would delete
 them and answer `ok`. A key named by neither is untouched, exactly as on an
 object.
 
@@ -1038,7 +1038,7 @@ put things reached past the format for the single call that starts everything �
 which is the call most worth having in it.
 
 **The client chooses the id**, exactly as on an object create, and for the same
-reason: an id decided before the request is what makes a repeat recognisable as
+reason: an id decided before the request is what makes a repeat recognizable as
 a repeat. A client that could not name what it was making would have to ask what
 it got, and a lost answer would leave it unable to tell a retry from a second
 board. Two ids in one request is `create.id-mismatch`.
@@ -1151,7 +1151,7 @@ report reduced on everything and the field stops carrying information.
 
 `object` is the object as it now stands and `cursor` is where the write landed.
 Both are optional and both are worth sending: they are what let a follower that
-also writes recognise its own echo instead of trying to filter it out. A refusal
+also writes recognize its own echo instead of trying to filter it out. A refusal
 answers in the same shape — `ok: false`, with `conflict: true` for a stale
 `version` — because "that region is not on this board" and "the network is down"
 call for completely different things, and a caller that cannot tell them apart
@@ -1162,7 +1162,7 @@ will retry the one it should report.
 A manifest on an export describes that file. A live surface has to answer
 **before** a client writes, so `conformance` is something you can ask for. Same
 shape as the envelope's, with `bindings`, and the same rule: it is a promise
-about behaviour, not an aspiration. Claiming `operate` while offering only the
+about behavior, not an aspiration. Claiming `operate` while offering only the
 `file` binding is claiming to be operable with nothing to operate.
 
 ### The change feed

@@ -191,7 +191,7 @@
       "why": "When a board's columns are generated from a status field the objects already carry, the column is a rendering of data held elsewhere and carries nothing of its own. Same kind, opposite answer — which is exactly why the collection kind cannot be trusted to imply the semantics."
     },
     {
-      "id": "placement/labelled-region-survives",
+      "id": "placement/labeled-region-survives",
       "level": 2,
       "op": "roundtrip",
       "given": {
@@ -240,7 +240,7 @@
           ]
         }
       },
-      "why": "A region is a string OR an object, and the obvious implementation casts the list to string[] and indexes straight into it. That holds until a region grows a label, and then indexOf finds nothing: every member on the board silently loses its placement, the producer's own keys on the region are dropped, and the consumer reports it as the producer's fault. Two independent implementations made this exact mistake, and neither caught it, because the library each tested against happened to contain no labelled regions."
+      "why": "A region is a string OR an object, and the obvious implementation casts the list to string[] and indexes straight into it. That holds until a region grows a label, and then indexOf finds nothing: every member on the board silently loses its placement, the producer's own keys on the region are dropped, and the consumer reports it as the producer's fault. Two independent implementations made this exact mistake, and neither caught it, because the library each tested against happened to contain no labeled regions."
     },
     {
       "id": "placement/region-label-is-not-an-identifier",

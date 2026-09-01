@@ -97,10 +97,10 @@ func combined(_ h: TextAlign, _ v: TextVAlign) -> Alignment {
     }
 }
 
-// MARK: - Colours, as text
+// MARK: - Colors, as text
 
 /**
- A colour, stored as a hex string.
+ A color, stored as a hex string.
 
  Not as archived `NSColor` data, and not as three floats. The canvas file is
  something a person opens and reads — that is the whole argument for it being
@@ -110,7 +110,7 @@ func combined(_ h: TextAlign, _ v: TextVAlign) -> Alignment {
  translated later.
 
  Nil means "whatever the theme says", which is not the same as black. This canvas
- is drawn over a frost that follows the system appearance, and a colour stored
+ is drawn over a frost that follows the system appearance, and a color stored
  the first time somebody opened the inspector would be a label that disappears
  the next time they switch to dark.
  */
@@ -121,7 +121,7 @@ enum Hex {
         let g = Int((srgb.greenComponent * 255).rounded())
         let b = Int((srgb.blueComponent * 255).rounded())
         let a = srgb.alphaComponent
-        // Alpha only when it is doing something. Most colours are opaque and an
+        // Alpha only when it is doing something. Most colors are opaque and an
         // eight-digit hex for every one of them is noise in a file people read.
         if a >= 0.999 { return String(format: "#%02x%02x%02x", r, g, b) }
         return String(format: "#%02x%02x%02x%02x", r, g, b, Int((a * 255).rounded()))
@@ -144,7 +144,7 @@ enum Hex {
 
 // MARK: - The inspector
 
-/// One labelled row, so every control in here lines up with every other.
+/// One labeled row, so every control in here lines up with every other.
 private struct Row<Content: View>: View {
     let label: String
     @ViewBuilder var content: Content
@@ -205,7 +205,7 @@ private extension Segmented where Label == Image {
 
  It was three SF Symbols, and the one for dashed was `line.3.horizontal.decrease`
  — the filter glyph. Three horizontal bars of decreasing length, which does not
- look dashed and, worse, is nearly the same picture as the centre-align icon two
+ look dashed and, worse, is nearly the same picture as the center-align icon two
  rows above it in the same panel. A control that sets how a line is drawn should
  show the line.
  */
@@ -233,13 +233,13 @@ private struct LineStyleGlyph: View {
 }
 
 /**
- A colour well with a way back to nothing.
+ A color well with a way back to nothing.
 
  `ColorPicker` is the system control, which means the system panel, which means
  the eyedropper and the palettes and everything else a person already knows. What
- it has no idea about is "unset" — it always holds a colour — so the row carries
- its own way to say "no colour", because that is a different answer from the
- colour that happens to be showing.
+ it has no idea about is "unset" — it always holds a color — so the row carries
+ its own way to say "no color", because that is a different answer from the
+ color that happens to be showing.
  */
 private struct ColorWell: View {
     let label: String

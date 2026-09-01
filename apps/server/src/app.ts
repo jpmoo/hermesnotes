@@ -139,7 +139,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Block mutations reach the user's live-sync (SSE) connections from the change
   // log — see events/watcher.ts. This used to be worked out here instead, from
   // the shape of the request that had just succeeded, which could only ever see
-  // writes recognisable from the outside: nothing done during a GET, and nothing
+  // writes recognizable from the outside: nothing done during a GET, and nothing
   // whose URL didn't match a handful of patterns.
 
   app.get("/health", async () => ({ ok: true }));

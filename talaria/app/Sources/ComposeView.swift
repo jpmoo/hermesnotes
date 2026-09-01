@@ -96,7 +96,7 @@ final class ComposeModel: ObservableObject {
      and the profile is redirecting its storage out of the property bag.
 
      Read apart, which is what this did, you get two editors. The Text type
-     declares `description` labelled "Body" and puts its prose in `content`, so
+     declares `description` labeled "Body" and puts its prose in `content`, so
      the panel drew that field *and* a synthesised body beneath it, both called
      Body. Hermes writes neither of the two: zero of nineteen Text blocks in
      this library have a `description` at all.
@@ -478,7 +478,7 @@ struct ComposeView: View {
     private func row(_ field: Daemon.TypeField) -> some View {
         switch field.kind {
         case "text":
-            labelled(field.display) {
+            labeled(field.display) {
                 ClearableField(text: binding(field.key), plain: !standalone)
             }
         case "richtext":
@@ -488,7 +488,7 @@ struct ComposeView: View {
             if field.key == model.bodyField?.key {
                 bodyEditor(field.display)
             } else {
-                labelled(field.display) {
+                labeled(field.display) {
                     TextEditor(text: binding(field.key))
                         .font(.system(size: 12))
                         .scrollContentBackground(.hidden)
@@ -498,11 +498,11 @@ struct ComposeView: View {
                 }
             }
         case "number":
-            labelled(field.display) {
+            labeled(field.display) {
                 ClearableField(text: binding(field.key), width: 90, plain: !standalone)
             }
         case "enum":
-            labelled(field.display) {
+            labeled(field.display) {
                 FieldMenu(summary: (model.strings[field.key] ?? "").isEmpty ? "—" : model.strings[field.key]!) {
                     Button("—") { model.strings[field.key] = "" }
                     Divider()
@@ -516,14 +516,14 @@ struct ComposeView: View {
                 }
             }
         case "datespan":
-            labelled(field.display) {
+            labeled(field.display) {
                 VStack(alignment: .leading, spacing: 5) {
                     DateLeg(label: field.startLabel ?? "Start", date: dateBinding(field.key, start: true))
                     DateLeg(label: field.endLabel ?? "End", date: dateBinding(field.key, start: false))
                 }
             }
         case "reference":
-            labelled(field.display) {
+            labeled(field.display) {
                 ReferencePicker(
                     candidates: model.candidates[field.targetType ?? ""] ?? [],
                     problem: model.candidateError,
@@ -562,7 +562,7 @@ struct ComposeView: View {
     // MARK: Pieces
 
     private func bodyEditor(_ label: String) -> some View {
-        labelled(label) {
+        labeled(label) {
             TextEditor(text: $model.body)
                 .font(.system(size: 12))
                 .scrollContentBackground(.hidden)
@@ -595,7 +595,7 @@ struct ComposeView: View {
         )
     }
 
-    private func labelled<C: View>(_ label: String, @ViewBuilder content: () -> C) -> some View {
+    private func labeled<C: View>(_ label: String, @ViewBuilder content: () -> C) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(label)
                 .font(.system(size: 11))

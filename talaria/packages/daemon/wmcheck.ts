@@ -7,7 +7,7 @@
  * things did not degrade cleanly, and this is those two.
  *
  * Driven by a fake `aerospace` that can be made to answer or not, because the
- * behaviour under test is precisely what happens at the moment it stops. The
+ * behavior under test is precisely what happens at the moment it stops. The
  * fake matters more than it looks: it is the seam that made swapping Rift for
  * AeroSpace a rewrite of one function rather than of a test suite, because the
  * suite was written against *a window manager* rather than against Rift.

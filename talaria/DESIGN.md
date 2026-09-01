@@ -270,7 +270,7 @@ than by usage, and reached without saying so.
 The honest answer to "how stale before it lies" is that a task mirror and a
 calendar mirror have different answers, but a PoC gets one policy:
 
-| State | Condition | Behaviour |
+| State | Condition | Behavior |
 |---|---|---|
 | **Fresh** | last successful sync < 5 min, or SSE attached | Serve silently. |
 | **Stale** | 5 min – 24 h | Serve, and stamp every response with `syncedAt`. CLI prints a dim `(as of 14:20)` footer. Spotlight results are unmarked — there is nowhere to put it. |
@@ -366,7 +366,7 @@ Block UUIDs are stable, server-minted, and already the deep-link key
 block UUID. `domainIdentifier` = the block type id, which gives us cheap
 per-type deletion via `deleteSearchableItems(withDomainIdentifiers:)`.
 
-Verified archive behaviour: `blocks.archived_at` is a timestamp column, and the
+Verified archive behavior: `blocks.archived_at` is a timestamp column, and the
 schema comment is unambiguous —
 
 > When set, the block is archived: hidden from every normal query and only
@@ -381,7 +381,7 @@ and the indexer reacts to the resulting state.
 Note the interaction with auto-archive: `archive/worker.ts` sweeps completed
 tasks after `autoarchiveDoneDays`. A user with that set will see tasks leave
 Spotlight days after completion, with no explicit action. That is correct
-behaviour and will still feel surprising the first time. Worth a line in the
+behavior and will still feel surprising the first time. Worth a line in the
 eventual README rather than a code change.
 
 **Deletion** has the retention subtlety. Within 7 days, an `op='delete'` row
@@ -498,7 +498,7 @@ export interface CanonicalBlock {
 
 `kind` is inferred from the type's *shape*, in this order:
 
-1. `builtin === true` and a recognised seeded name → that kind. Covers the
+1. `builtin === true` and a recognized seeded name → that kind. Covers the
    default install.
 2. Otherwise by structure: a `status_field` with `complete_values` and a
    `datespan` → `task`; a `datespan` and no status → `event`; `isText` → `note`;

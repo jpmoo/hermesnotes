@@ -217,7 +217,7 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
   // An address is a value, never a rule for making one.
   //
   // `urlTemplate` is the cheaper design and it is the wrong one. A consumer
-  // holding one will build addresses for objects that never travelled — objects
+  // holding one will build addresses for objects that never traveled — objects
   // that may not exist — by parsing and interpolating an id this format
   // promises is opaque. One string per object costs bytes; a template costs the
   // id rule, which everything else leans on.

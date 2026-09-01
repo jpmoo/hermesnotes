@@ -20,13 +20,13 @@ enum Snap {
 
     /// What matched, so the surface can draw it.
     enum Reason: Equatable {
-        /// Two edges, or two centres, lined up.
+        /// Two edges, or two centers, lined up.
         case alignment
         /// The dotted grid.
         case grid
         /// Made the same size as something else.
         case size
-        /// Put the same distance from its neighbour as the others are.
+        /// Put the same distance from its neighbor as the others are.
         case spacing
         /// A connector pulled back into a straight line.
         case straight
@@ -80,7 +80,7 @@ enum Snap {
      Where a box being dragged should actually sit.
 
      Each axis is decided on its own. That is not a simplification — a box can
-     be aligned left with one thing and vertically centred on another, and
+     be aligned left with one thing and vertically centered on another, and
      forcing one answer for both would mean the second never happens.
 
      The order things are offered matters only for ties: alignment first,
@@ -96,7 +96,7 @@ enum Snap {
         var x: Offer?
         var y: Offer?
 
-        // Edges and centres.
+        // Edges and centers.
         for other in others {
             for mine in stops(rect.minX, rect.maxX) {
                 for theirs in stops(other.minX, other.maxX) where abs(theirs - mine) <= tolerance {
@@ -110,7 +110,7 @@ enum Snap {
             }
         }
 
-        // The same gap as the neighbours already have.
+        // The same gap as the neighbors already have.
         if let offer = spacingOffer(rect, others: others, tolerance: tolerance, horizontal: true) {
             x = better(x, offer)
         }
@@ -141,7 +141,7 @@ enum Snap {
     }
 
     /**
-     The gap the neighbours are already using.
+     The gap the neighbors are already using.
 
      Only among boxes that share a band with this one — things in a row are
      things at the same height, and "evenly spaced" between two objects on

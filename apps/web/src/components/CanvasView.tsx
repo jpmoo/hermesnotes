@@ -82,13 +82,13 @@ const NOTE_H = 120;
 // Ephemeral notes are opaque sticky notes — post-it yellow by default so one
 // never renders see-through (a note created without a color still gets this).
 const NOTE_COLOR = "#fdf3d8";
-/** How much canvas the edge layer covers, centred on the origin. Generous
+/** How much canvas the edge layer covers, centered on the origin. Generous
  *  enough that nothing is ever drawn outside it, small enough to stay cheap. */
 const EDGE_SPAN = 20000;
 const MIN_W = 140;
 const MIN_H = 80;
 // Two rows: the pale papers a card is normally written on, and a muted set for
-// when a canvas has enough cards that colour has to carry meaning. Both stay
+// when a canvas has enough cards that color has to carry meaning. Both stay
 // light enough for dark text, which is what the node styling assumes.
 const NODE_COLORS = ["#ffffff", "#fdf3d8", "#e7f1e4", "#e3edf5", "#f5e3e7", "#ece5f6", "#eef4f6"];
 const NODE_COLORS_MUTED = ["#e4d9b8", "#c9d8c4", "#bfd0dd", "#ddc3c9", "#cfc6e0", "#c8d6da", "#d6d3ce"];
@@ -422,13 +422,13 @@ export function CanvasView({
       setLinkPairs([]);
       return;
     }
-    let cancelled = false;
+    let canceled = false;
     void api
       .post<{ pairs: { from: string; to: string }[] }>("/blocks/links", { ids })
-      .then((r) => !cancelled && setLinkPairs(r.pairs))
-      .catch(() => !cancelled && setLinkPairs([]));
+      .then((r) => !canceled && setLinkPairs(r.pairs))
+      .catch(() => !canceled && setLinkPairs([]));
     return () => {
-      cancelled = true;
+      canceled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showLinks, members]);
@@ -454,8 +454,8 @@ export function CanvasView({
     return m ? ctxOf(m) : null;
   };
   /**
-   * Alignment while dragging or resizing: a node's edges and centres look for
-   * the same lines on its neighbours, and snap to them when they're within a
+   * Alignment while dragging or resizing: a node's edges and centers look for
+   * the same lines on its neighbors, and snap to them when they're within a
    * few pixels ON SCREEN — the tolerance is divided by the zoom, so it feels the
    * same close up as far out. Every line that actually matched is drawn, so what
    * you see is what the node lined up with, not a guess at it.
@@ -484,7 +484,7 @@ export function CanvasView({
   const xLines = (r: Rect) => [r.x, r.x + r.w / 2, r.x + r.w];
   const yLines = (r: Rect) => [r.y, r.y + r.h / 2, r.y + r.h];
 
-  /** The lines `r` now shares with its neighbours, for drawing. */
+  /** The lines `r` now shares with its neighbors, for drawing. */
   const guidesFor = (r: Rect, others: Rect[]): Guide[] => {
     const out: Guide[] = [];
     const near = (a: number, b: number) => Math.abs(a - b) < 0.5;
@@ -526,7 +526,7 @@ export function CanvasView({
    * the moving one across that axis (things in the same row, or the same
    * column — a card two rows down isn't part of this spacing):
    *   between — sitting between two others, the gaps either side made equal;
-   *   extending — placed after a neighbour at the same gap the run already uses.
+   *   extending — placed after a neighbor at the same gap the run already uses.
    */
   interface Spacing {
     axis: "v" | "h";
@@ -548,7 +548,7 @@ export function CanvasView({
    * to fit into one: sit between two of them with equal gaps either side, or
    * extend it at the same gap the run already uses — and "the gap the run uses"
    * comes from every pair in it, not just the pair nearest the pointer, so a row
-   * of six keeps its rhythm rather than only agreeing with its neighbour. The
+   * of six keeps its rhythm rather than only agreeing with its neighbor. The
    * measures are then drawn across EVERY gap of that size in the row: the claim
    * is about the series, so the series is what's shown.
    */
@@ -622,7 +622,7 @@ export function CanvasView({
     return null;
   };
 
-  /** Nudge a moving rect onto the nearest neighbouring line, per axis. */
+  /** Nudge a moving rect onto the nearest neighboring line, per axis. */
   const snapMove = (r: Rect, others: Rect[]): Rect => {
     const tol = SNAP_PX / view.z;
     let dx = 0;
@@ -653,7 +653,7 @@ export function CanvasView({
   };
 
   /**
-   * The same for a resize, plus matching a neighbour's size outright: a note
+   * The same for a resize, plus matching a neighbor's size outright: a note
    * pulled to nearly the width of the one beside it takes that width exactly,
    * which is the thing you were doing by eye.
    */
@@ -667,7 +667,7 @@ export function CanvasView({
     let bw = tol;
     let bh = tol;
     for (const o of others) {
-      // Same width / height as a neighbour.
+      // Same width / height as a neighbor.
       if (Math.abs(o.w - out.w) < bw) {
         bw = Math.abs(o.w - out.w);
         if (movingW) out.x = out.x + out.w - o.w;
@@ -678,7 +678,7 @@ export function CanvasView({
         if (movingN) out.y = out.y + out.h - o.h;
         out.h = o.h;
       }
-      // The edge being dragged, onto a neighbour's line.
+      // The edge being dragged, onto a neighbor's line.
       for (const b of xLines(o)) {
         if (movingE && Math.abs(b - (out.x + out.w)) < tol) out.w = Math.max(MIN_W, b - out.x);
         if (movingW && Math.abs(b - out.x) < tol) {
@@ -1428,7 +1428,7 @@ export function CanvasView({
     }
     saveEdges(edges.filter((e) => e.from !== id && e.to !== id));
   };
-  /** A node's current colour, for the native picker to open on. */
+  /** A node's current color, for the native picker to open on. */
   const colorOf = (id: string): string | null => {
     if (id.startsWith("n:")) return notes.find((n) => n.id === id)?.color ?? null;
     return (local[id] ?? ctxOf(members.find((m) => m.id === id) ?? ({} as Member)))?.color ?? null;
@@ -1712,7 +1712,7 @@ export function CanvasView({
         top: r.y,
         width: r.w,
         height: r.h,
-        // A note's colour is on its paper (above), so the cut corner shows what's
+        // A note's color is on its paper (above), so the cut corner shows what's
         // behind the note rather than more note.
         background: isNote ? "transparent" : r.color || "var(--surface)",
       }}
@@ -1746,9 +1746,9 @@ export function CanvasView({
           corners with it — they sit a few pixels outside its box. */}
       <div
         className="cv-paper"
-        // Ink as well as paper. Without a colour here the text is whatever the
+        // Ink as well as paper. Without a color here the text is whatever the
         // theme's is, and in the dark theme that is nearly white — on a pale
-        // sticky, invisible. A note with no colour of its own falls through to
+        // sticky, invisible. A note with no color of its own falls through to
         // the stylesheet, since its paper is light in both themes.
         style={isNote ? { background: r.color || "var(--postit)", color: readableOn(r.color) } : undefined}
       >
@@ -1832,7 +1832,7 @@ export function CanvasView({
             </div>
           );
         })}
-        {/* A real viewport, centred on the canvas origin, rather than a 0×0 one
+        {/* A real viewport, centered on the canvas origin, rather than a 0×0 one
             painting outside itself. "overflow: visible" on an <svg> root is
             honoured by browsers but not by every engine — one that clips to the
             viewport instead drops every edge, which looks exactly like
@@ -2209,7 +2209,7 @@ export function CanvasView({
                   one with the eyedropper and the palettes people already keep.
                   The menu stays open while it's up — closing it would take the
                   input away and the picker with it. */}
-              <label className="cv-swatch cv-swatch-custom" title="Custom colour…">
+              <label className="cv-swatch cv-swatch-custom" title="Custom color…">
                 <Pipette size={12} />
                 <input
                   type="color"
@@ -2441,7 +2441,7 @@ export function CanvasView({
                     onClick={() => patchRegion(rg.id, { color: c })}
                   />
                 ))}
-                <label className="cv-swatch cv-swatch-custom" title="Custom colour…">
+                <label className="cv-swatch cv-swatch-custom" title="Custom color…">
                   <Pipette size={12} />
                   <input
                     type="color"

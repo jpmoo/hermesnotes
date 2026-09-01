@@ -40,7 +40,7 @@
           }
         }
       },
-      "why": "The whole premise is that people model things their own way. If my fields do not survive a trip through your tool, the format has failed at the only job it has. Store unknowns opaquely — do not normalise, reorder, coerce types, or strip nesting."
+      "why": "The whole premise is that people model things their own way. If my fields do not survive a trip through your tool, the format has failed at the only job it has. Store unknowns opaquely — do not normalize, reorder, coerce types, or strip nesting."
     },
     {
       "id": "roundtrip/unknown-top-level-key-survives",
@@ -69,7 +69,7 @@
           ]
         }
       },
-      "why": "Additive extension at the top level is how this format grows without a version bump. A consumer that drops keys it does not recognise makes every future extension a breaking change."
+      "why": "Additive extension at the top level is how this format grows without a version bump. A consumer that drops keys it does not recognize makes every future extension a breaking change."
     },
     {
       "id": "roundtrip/unknown-relation-type-survives",

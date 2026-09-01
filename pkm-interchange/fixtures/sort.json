@@ -1037,7 +1037,7 @@
           ],
           "order": {
             "groupBy": {
-              "meta": "colour"
+              "meta": "color"
             }
           }
         }
@@ -1083,7 +1083,7 @@
           }
         ]
       },
-      "why": "Spelled out, both of them. `desc` is what most producers store internally and it is not what this format carries, so the abbreviation has to fail loudly here rather than being read as ascending by everything that does not recognise it."
+      "why": "Spelled out, both of them. `desc` is what most producers store internally and it is not what this format carries, so the abbreviation has to fail loudly here rather than being read as ascending by everything that does not recognize it."
     },
     {
       "id": "sort/consumer-without-sorting",

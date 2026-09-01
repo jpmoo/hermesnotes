@@ -33,7 +33,7 @@ export function firstSentence(text: string): string {
  * The single-line label for a block (doc: lists, search results, references):
  * the `title` property if present, else the first sentence of the `description`
  * property, else the first sentence of the block's text `content` (a text
- * note's body is its description, labelled "Body").
+ * note's body is its description, labeled "Body").
  */
 export function oneLineLabel(
   properties: Record<string, unknown> | null | undefined,

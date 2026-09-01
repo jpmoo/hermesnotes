@@ -86,7 +86,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await tx.insert(userSettings).values({
         userId: id,
         ...(adminRow ?? {}),
-        // A zone this runtime doesn't recognise is no better than none: leave it
+        // A zone this runtime doesn't recognize is no better than none: leave it
         // null so the "which zone are you in" prompt still finds them.
         ...(isValidTimeZone(timezone) ? { timezone } : {}),
       });

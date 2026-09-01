@@ -70,7 +70,7 @@ export function forwardMark(markdown: string, since: string, from?: string): str
 
 /**
  * A piece of text set down in another day's note, saying which day it came
- * from — but not travelling on from there. Sending something to a particular
+ * from — but not traveling on from there. Sending something to a particular
  * day is putting it there, not starting it on a journey.
  */
 export function fromMark(markdown: string, from: string): string {
@@ -129,7 +129,7 @@ export function forwardedIn(content: string | null | undefined): ForwardedLine[]
   MARK_RE.lastIndex = 0;
   while ((m = MARK_RE.exec(content)) !== null) {
     const since = attr(m[1] ?? "", "data-fwd");
-    // No data-fwd means it isn't travelling — text sent to this day in
+    // No data-fwd means it isn't traveling — text sent to this day in
     // particular, which has arrived and stays put.
     if (!since) continue;
     const from = attr(m[1] ?? "", "data-from");
@@ -164,7 +164,7 @@ export function forwardedIn(content: string | null | undefined): ForwardedLine[]
  *
  * `previousDate` is the day that note belongs to, stamped on anything setting
  * out for the first time. A piece already carrying an origin keeps it: it has
- * been travelling, and the day it came from is not the day it passed through.
+ * been traveling, and the day it came from is not the day it passed through.
  */
 export function carryForward(
   previousContent: string | null | undefined,

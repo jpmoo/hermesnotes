@@ -79,8 +79,8 @@ export async function probe(base, token) {
   );
 
   // --- do the two agree? ----------------------------------------------------
-  // A manifest is a promise about behaviour. This is the one place from outside
-  // where the promise and the behaviour can be held against each other.
+  // A manifest is a promise about behavior. This is the one place from outside
+  // where the promise and the behavior can be held against each other.
   const declared = new Set(m.features ?? []);
   const used = Object.entries(FEATURES).filter(([, present]) => present(e)).map(([k]) => k);
   const undeclared = used.filter((f) => !declared.has(f));

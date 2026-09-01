@@ -75,7 +75,7 @@
         "ok": true,
         "object": { "properties": { "title": "Ship it", "status": "doing", "owner": "o_9" } }
       },
-      "why": "Tags and properties are separate namespaces and a write to one is not a write to the other. Worth pinning because the obvious implementation rebuilds the object, and rebuilding is where the property nobody modelled goes missing."
+      "why": "Tags and properties are separate namespaces and a write to one is not a write to the other. Worth pinning because the obvious implementation rebuilds the object, and rebuilding is where the property nobody modeled goes missing."
     },
     {
       "id": "tags/the-same-tag-added-and-removed-is-refused",

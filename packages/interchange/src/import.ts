@@ -158,7 +158,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     for (const [k, v] of Object.entries(o)) if (!OBJECT_KEYS.has(k)) extra[k] = v;
     if (Object.keys(extra).length) {
       note(
-        "object.carried-not-modelled",
+        "object.carried-not-modeled",
         "hermes",
         `An object arrived with ${Object.keys(extra).join(", ")}, which Hermes has no column for. It is kept in the property bag so a re-export can put it back, and nothing in the app will ever show it.`,
       );
@@ -229,13 +229,13 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
   for (const c of inCollections) {
     // A region is a name, or a name and the words a person reads. This cast
     // said `string[]` and `indexOf` matched against it, which was true until a
-    // region grew a label — and then every card on a labelled board lost its
+    // region grew a label — and then every card on a labeled board lost its
     // placement, `matrix_regions` was rebuilt with an object where a title
     // string belongs, and the export got blamed for it with a
     // `placement.region-not-declared` finding owned by `format`.
     //
     // The same cast, in the same shape, that Talaria found on its own side. It
-    // survived here because no test library had a labelled region until one did.
+    // survived here because no test library had a labeled region until one did.
     const placement = (c.placement ?? {}) as {
       semantic?: boolean;
       regions?: (string | Record<string, unknown>)[];
@@ -244,7 +244,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     const names = declared.map((r) => (typeof r === "string" ? r : String(r.name ?? "")));
     // Back to Hermes' shape: the label is the title a person edits, the name is
     // what a member matches on, and the producer's own keys lose the prefix
-    // they travelled under so they land where Hermes keeps them.
+    // they traveled under so they land where Hermes keeps them.
     const regionDefs = declared.map((r, i) => {
       if (typeof r === "string") return { title: r, tag: r };
       const { name: _n, label, ...rest } = r;
@@ -343,7 +343,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
         note(
           "order.grouping-dropped",
           "hermes",
-          `This collection is grouped and Hermes' ${kindName} view has nowhere to put grouping, so it arrives as a flat arrangement. The members are all here; the headings somebody organised them under are not.`,
+          `This collection is grouped and Hermes' ${kindName} view has nowhere to put grouping, so it arrives as a flat arrangement. The members are all here; the headings somebody organized them under are not.`,
         );
       }
     }
@@ -419,7 +419,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
   for (const [k, v] of Object.entries(envelope)) if (!ENVELOPE_KEYS.has(k)) carry[k] = v;
   if (Object.keys(carry).length) {
     note(
-      "envelope.carried-not-modelled",
+      "envelope.carried-not-modeled",
       "hermes",
       `The envelope carried ${Object.keys(carry).join(", ")} at the top level, which Hermes has no table for.`,
     );

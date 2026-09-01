@@ -359,7 +359,7 @@ export const hermesAdapter = {
     event: { completed?: string } = {},
   ) => {
     const r = series?.rule ?? {};
-    // The format's rule, said in Hermes' words. Nothing here is a behaviour
+    // The format's rule, said in Hermes' words. Nothing here is a behavior
     // change — it is the same engine the app runs, asked the same question.
     const rec: Recurrence = {
       completeFrom: r.anchor === "completion" ? "completed" : "scheduled",

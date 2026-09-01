@@ -119,9 +119,9 @@ interface Item {
   blockTypeId: string | null;
   label: string;
   props: Record<string, unknown>;
-  /** The colour of the calendar this came out of, if it came out of one. */
+  /** The color of the calendar this came out of, if it came out of one. */
   feedColor?: string | null;
-  /** …and its name, because colours repeat and a bar on its own can only say
+  /** …and its name, because colors repeat and a bar on its own can only say
    *  "somewhere else". */
   feedName?: string | null;
   version: number;
@@ -713,9 +713,9 @@ export function CalendarView({
   // Source blocks: smart → live query matches; else the explicit members.
   const source = useMemo<Item[]>(() => {
     const toItem = (b: { id: string; blockTypeId: string | null; properties: unknown; content?: string | null; version: number }): Item => {
-      // Converted from a feed event: carry that calendar's colour, so a block
+      // Converted from a feed event: carry that calendar's color, so a block
       // that walked in from Outlook still says so at a glance. A feed since
-      // deleted (or switched off) leaves no colour, which is the truth of it.
+      // deleted (or switched off) leaves no color, which is the truth of it.
       const origin = String((b.properties as Record<string, unknown>)?.feed_origin ?? "");
       return {
         id: b.id,
@@ -1194,8 +1194,8 @@ export function CalendarView({
                   <button
                     key={id}
                     className={`cal-feed-toggle cal-dated-toggle${on ? "" : " off"}`}
-                    // Borrowing the feed pills' colouring means bringing a
-                    // colour to borrow it with: the type's own, else the accent.
+                    // Borrowing the feed pills' coloring means bringing a
+                    // color to borrow it with: the type's own, else the accent.
                     style={{ ["--feed-color" as string]: type!.iconColor || "var(--accent)" }}
                     title={`${on ? "Hide" : "Show"} ${n} ${type!.name}${n === 1 ? "" : "s"} dated in this range`}
                     onClick={() => toggleDatedType(id)}
@@ -1216,7 +1216,7 @@ export function CalendarView({
       )}
 
       {/* Keyed on the range so a move remounts the body, which is what starts
-          the slide: it comes in from the side you're travelling towards, so
+          the slide: it comes in from the side you're traveling towards, so
           the days appear to move under you rather than to be swapped out. */}
       <div key={rangeStart} className={`cal-slide${slide ? ` cal-slide-${slide}` : ""}`}>
       {view === "month" ? (

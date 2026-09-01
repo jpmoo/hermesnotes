@@ -2,12 +2,12 @@
  * The Hermes Notes mark.
  *
  * Inline rather than an `<img>` pointing at a file, for one reason: `fill` is
- * `currentColor`, so the wing takes the colour of whatever it is sitting in.
+ * `currentColor`, so the wing takes the color of whatever it is sitting in.
  * The mark it replaces was a teal PNG, which meant a fixed teal on the login
  * card, in the sidebar, and on a dark theme that wanted something lighter — and
  * no way to say so short of shipping a second file.
  *
- * One path, square, `viewBox` 0 0 32 32. Callers size it and colour it; nothing
+ * One path, square, `viewBox` 0 0 32 32. Callers size it and color it; nothing
  * here decides either. The favicon is the same path as a static file
  * (`public/brand/wing.svg`), which cannot be `currentColor` because a browser
  * tab inherits nothing from the page.

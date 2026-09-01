@@ -11,7 +11,7 @@ import SwiftUI
  A panel that stole the cursor would be answering a question by interrupting the
  work that raised it.
 
- Muted rather than dim: the type stays legible, the material carries the colour
+ Muted rather than dim: the type stays legible, the material carries the color
  of whatever is behind it, and nothing here competes with the application it is
  floating over.
  */
@@ -512,7 +512,7 @@ enum Focused {
      Run one of the scripts above.
 
      Every failure is silence to the caller — Glance falls back to the window
-     title, which is the right behaviour — but it is no longer silence in the
+     title, which is the right behavior — but it is no longer silence in the
      log. Treating "not permitted" the same as "no document open" is what made
      an unentitled binary indistinguishable from Word simply having nothing to
      say, and -1743 in particular has a specific cause and a specific fix.
@@ -978,7 +978,7 @@ struct GlanceView: View {
  panel wearing it looks like part of the machine rather than a guest on it.
 
  `.behindWindow` is what makes it genuinely translucent: the blur samples the
- windows underneath rather than its own background, which is why the colour of
+ windows underneath rather than its own background, which is why the color of
  whatever you are working in comes through it.
 
  The rounding lives here rather than in SwiftUI. A borderless window with a

@@ -139,7 +139,7 @@ async function refTitleMap(
 
 /**
  * Project id -> title for every project these tasks reference, in one pass. Same
- * cap and failure behaviour as refTitleMap: an id that won't resolve is rendered
+ * cap and failure behavior as refTitleMap: an id that won't resolve is rendered
  * as the id rather than dropped.
  */
 async function projectNamesFor(api: Api, ctx: Ctx, tasks: HermesBlock[]): Promise<Map<string, string>> {
@@ -1305,12 +1305,14 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
     "Create a canvas and arrange the given blocks (ids or titles) on it. " +
       "layout: grid | row | column. connect=true chains the items with arrows in the given order " +
       "(use this for an ordered flow, e.g. arranging tasks in sequence). Decide the order yourself, " +
-      "then pass items in that order.",
+      "then pass items in that order. color sets the background of every block placed (any CSS color, " +
+      "e.g. 'orange' or '#f97316'); use canvas_style afterwards to color or resize individual ones.",
     {
       title: z.string(),
       items: z.array(z.string()).min(1),
       layout: z.enum(["grid", "row", "column"]).default("grid"),
       connect: z.boolean().default(false),
+      color: z.string().optional(),
     },
     run(async (a) => {
       const ids: string[] = [];
@@ -1324,7 +1326,10 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
       const pos = (i: number) => ({ x: (i % cols) * (W + GAP), y: Math.floor(i / cols) * (H + GAP) });
       for (let i = 0; i < n; i++) {
         const p = pos(i);
-        await api.post(`/collections/${c.id}/members`, { blockId: ids[i], context: { x: p.x, y: p.y, w: W, h: H } });
+        await api.post(`/collections/${c.id}/members`, {
+          blockId: ids[i],
+          context: { x: p.x, y: p.y, w: W, h: H, ...(a.color ? { color: a.color } : {}) },
+        });
       }
       if (a.connect && n > 1) {
         // Emit fully-formed edges (id + facing sides + arrow/live) so the canvas
@@ -1346,6 +1351,48 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
         await api.patch(`/collections/${c.id}`, { canvas_edges: edges });
       }
       return `Created canvas "${a.title}" [${c.id}] with ${n} block${n === 1 ? "" : "s"}${a.connect ? ", connected in order" : ""}.`;
+    }),
+  );
+
+  tool(
+    "canvas_style",
+    "Change how blocks already on a canvas are drawn: background color, size, or position. " +
+      "Takes the canvas (id or title) and items (ids or titles). Any CSS color, e.g. 'orange' or '#f97316'. " +
+      "Use this to color blocks a canvas already holds — canvas_create only sets one color for all of them.",
+    {
+      canvas: z.string(),
+      items: z.array(z.string()).min(1),
+      color: z.string().optional(),
+      w: z.number().optional(),
+      h: z.number().optional(),
+      x: z.number().optional(),
+      y: z.number().optional(),
+    },
+    run(async (a) => {
+      const canvasId = await resolveCollectionId(a.canvas);
+      /**
+       * Only what was named.
+       *
+       * The membership PATCH merges, so a call that meant "make these orange"
+       * must send orange and nothing else. Sending the undefined ones as nulls
+       * would move every block to the top-left corner as a side effect of
+       * coloring it, which is the kind of help nobody asks for twice.
+       */
+      const context: Record<string, unknown> = {};
+      if (a.color !== undefined) context.color = a.color;
+      if (a.w !== undefined) context.w = a.w;
+      if (a.h !== undefined) context.h = a.h;
+      if (a.x !== undefined) context.x = a.x;
+      if (a.y !== undefined) context.y = a.y;
+      if (!Object.keys(context).length) return "Nothing to change — name a color, size, or position.";
+
+      const ids: string[] = [];
+      for (const it of a.items) ids.push(await resolveBlockId(it));
+      for (const id of ids) {
+        await api.patch(`/collections/${canvasId}/members/${id}`, { context });
+      }
+      const what = Object.keys(context).join(", ");
+      return `Set ${what} on ${ids.length} block${ids.length === 1 ? "" : "s"}.`;
     }),
   );
 

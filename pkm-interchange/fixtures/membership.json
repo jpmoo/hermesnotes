@@ -49,7 +49,7 @@
           }
         }
       },
-      "why": "The round-trip rule at write time, in the place it is most often skipped. A tool that drags a card sends the two numbers it moved; the size and the colour were put there by something else and it has never heard of them. A write that replaced the bag would delete them, and the caller would be told it succeeded."
+      "why": "The round-trip rule at write time, in the place it is most often skipped. A tool that drags a card sends the two numbers it moved; the size and the color were put there by something else and it has never heard of them. A write that replaced the bag would delete them, and the caller would be told it succeeded."
     },
     {
       "id": "membership/unset-is-the-only-way-to-remove",
@@ -714,7 +714,7 @@
           "kind": "canvas"
         }
       },
-      "why": "An id decided before the request is what makes a repeat recognisable as a repeat. A client that could not name the collection it was making would have to ask what it got, and a lost answer would leave it unable to tell a retry from a second board."
+      "why": "An id decided before the request is what makes a repeat recognizable as a repeat. A client that could not name the collection it was making would have to ask what it got, and a lost answer would leave it unable to tell a retry from a second board."
     },
     {
       "id": "membership/repeating-a-collection-create-is-not-a-second-board",

@@ -50,14 +50,14 @@ check(
   JSON.stringify(regionNamesOf(props)) === JSON.stringify(["do", "delegate-wait", "region-2", "defer"]),
 );
 check(
-  "a colour rides along under the producer's own prefix",
+  "a color rides along under the producer's own prefix",
   (r[1] as Record<string, unknown>)["hermes:color"] === "#5fa4b5",
 );
 check(
-  "a colour on a region that would otherwise be a bare string still forces the object form",
+  "a color on a region that would otherwise be a bare string still forces the object form",
   typeof regionsOf({ matrix_regions: [{ title: "do", color: "#fff" }] })[0] === "object",
 );
-check("a null colour is not a colour", (r[3] as Record<string, unknown>)["hermes:color"] === undefined);
+check("a null color is not a color", (r[3] as Record<string, unknown>)["hermes:color"] === undefined);
 check("a board with no regions invents none", regionsOf({}).length === 0);
 
 console.log(bad ? `\n${bad} failed` : "\nall good");

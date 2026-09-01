@@ -14,7 +14,7 @@ import SwiftUI
  What is *not* duplicated is the part that could drift: where a line runs and
  which sides it leaves from, what box a region occupies, what shape a shape is.
  All of that comes from the same `LinkGeometry`, `CanvasRegion.box` and
- `CanvasShape.path` the surface uses. This file decides only what colour to paint
+ `CanvasShape.path` the surface uses. This file decides only what color to paint
  things, and there is no version of that which can disagree about a diagram.
 
  At one to one, in canvas coordinates, translated so the top-left of everything
@@ -136,11 +136,11 @@ struct CanvasPrint: View {
                 guard link.width > 0,
                       let a = rect(of: link.from), let b = rect(of: link.to) else { continue }
                 let g = LinkGeometry.of(from: a, to: b, bend: link.bend)
-                let colour = Hex.color(link.color) ?? .black.opacity(0.55)
+                let color = Hex.color(link.color) ?? .black.opacity(0.55)
                 var path = Path()
                 path.move(to: g.start)
                 path.addQuadCurve(to: g.end, control: g.control)
-                context.stroke(path, with: .color(colour),
+                context.stroke(path, with: .color(color),
                                style: StrokeStyle(lineWidth: link.width, dash: link.style.dash(link.width)))
                 if link.style == .double {
                     let gap = max(link.width * 1.6, 2.5)
@@ -152,7 +152,7 @@ struct CanvasPrint: View {
                         to: CGPoint(x: g.end.x + side.dx, y: g.end.y + side.dy),
                         control: CGPoint(x: g.control.x + side.dx, y: g.control.y + side.dy)
                     )
-                    context.stroke(twin, with: .color(colour), lineWidth: link.width)
+                    context.stroke(twin, with: .color(color), lineWidth: link.width)
                 }
                 let d = g.arrival
                 let len = max(link.width * 6, 5), half = max(link.width * 3, 2.5)
@@ -163,7 +163,7 @@ struct CanvasPrint: View {
                 head.addLine(to: CGPoint(x: back.x + side.dx * half, y: back.y + side.dy * half))
                 head.addLine(to: CGPoint(x: back.x - side.dx * half, y: back.y - side.dy * half))
                 head.closeSubpath()
-                context.fill(head, with: .color(colour))
+                context.fill(head, with: .color(color))
             }
         }
     }
@@ -176,14 +176,14 @@ struct CanvasPrint: View {
                 let inset = max(item.strokeWidth / 2, 1)
                 if let fill = Hex.color(item.fill) { item.shape.path(in: box).fill(fill) }
                 if item.strokeWidth > 0 {
-                    let colour = Hex.color(item.stroke) ?? .black.opacity(0.7)
+                    let color = Hex.color(item.stroke) ?? .black.opacity(0.7)
                     item.shape.path(in: box.insetBy(dx: inset, dy: inset))
-                        .stroke(colour, style: StrokeStyle(lineWidth: item.strokeWidth,
+                        .stroke(color, style: StrokeStyle(lineWidth: item.strokeWidth,
                                                            dash: item.strokeStyle.dash(item.strokeWidth)))
                     if item.strokeStyle == .double {
                         let gap = max(item.strokeWidth * 2, 3)
                         item.shape.path(in: box.insetBy(dx: inset + gap, dy: inset + gap))
-                            .stroke(colour, lineWidth: item.strokeWidth)
+                            .stroke(color, lineWidth: item.strokeWidth)
                     }
                 }
             }

@@ -293,7 +293,7 @@ const MUTANTS = [
   },
   {
     // The other half. An id minted at the server means a repeat cannot be
-    // recognised as one, so a queue draining on a bad network leaves two.
+    // recognized as one, so a queue draining on a bad network leaves two.
     name: "a create mints its own id and makes a second object",
     caught: "create/repeating-a-create-is-not-a-second-object",
     patch: (a) => ({
@@ -405,7 +405,7 @@ const MUTANTS = [
     }),
   },
   {
-    name: "normalises prose into its own markup",
+    name: "normalizes prose into its own markup",
     caught: "inline/prose-is-opaque",
     patch: (a) => ({
       ...a,
@@ -637,7 +637,7 @@ const MUTANTS = [
     }),
   },
   {
-    // Keeps only what it recognises. Invisible, because a create has nothing
+    // Keeps only what it recognizes. Invisible, because a create has nothing
     // earlier to be compared against.
     name: "a collection create keeps only the keys it knows",
     caught: "membership/a-collection-can-be-brought-into-being",
@@ -729,7 +729,7 @@ const MUTANTS = [
   },
   {
     // The obvious implementation of a placement write, and the one that loses
-    // the size and the colour every time somebody drags a card two pixels.
+    // the size and the color every time somebody drags a card two pixels.
     name: "replaces a member's furniture instead of merging into it",
     caught: "membership/context-merges",
     patch: (a) => ({

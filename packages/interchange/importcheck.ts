@@ -7,7 +7,7 @@
  * every card on that board loses its placement and the export is blamed for it.
  *
  * The same cast, in the same shape, as the one Talaria already found on its own
- * side. It survived here because no test library had a labelled region.
+ * side. It survived here because no test library had a labeled region.
  */
 import { fromInterchange } from "./src/import.js";
 
@@ -22,7 +22,7 @@ const envelope = {
   types: [{ id: "t", name: "Task", fields: [{ key: "title", kind: "text" }] }],
   objects: [
     { id: "o1", type: "t", properties: { title: "In a plain region" } },
-    { id: "o2", type: "t", properties: { title: "In a labelled one" } },
+    { id: "o2", type: "t", properties: { title: "In a labeled one" } },
   ],
   collections: [
     {
@@ -52,14 +52,14 @@ console.log(`  memberships:    ${JSON.stringify(back.memberships.map((m) => ({ b
 console.log(`  findings:       ${JSON.stringify(back.findings.map((f) => f.code))}\n`);
 
 check("a bare region keeps its card", placed("o1") === 0, `region ${placed("o1")}`);
-check("a labelled region keeps its card too", placed("o2") === 1, `region ${placed("o2")}`);
+check("a labeled region keeps its card too", placed("o2") === 1, `region ${placed("o2")}`);
 check(
   "the rebuilt region titles are strings, not objects",
   regions.every((r) => typeof r.title === "string"),
   JSON.stringify(regions.map((r) => typeof r.title)),
 );
 check(
-  "the labelled region comes back under the words a person reads",
+  "the labeled region comes back under the words a person reads",
   regions[1]?.title === "Delegate & Wait",
   JSON.stringify(regions[1]?.title),
 );

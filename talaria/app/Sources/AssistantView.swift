@@ -307,7 +307,7 @@ struct AssistantView: View {
  a canvas with a chat panel permanently across the bottom is a canvas that is a
  third smaller for the sake of something used occasionally.
 
- Kept to the leading edge on purpose. The surface strip sits centred at the very
+ Kept to the leading edge on purpose. The surface strip sits centered at the very
  bottom of the desk and is drawn over everything; a tab in the middle would be
  underneath it, and a tab that is underneath something is a tab nobody finds.
  */

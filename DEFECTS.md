@@ -40,7 +40,7 @@ arriving a second time through the opposite door — and this time the checked
 manifest is the *optimistic* one, so nothing catches it.
 
 Talaria's `discrepancies()` will not catch it either: it holds `said` from
-`/conformance` against the envelope's *behaviour*, and never looks at the
+`/conformance` against the envelope's *behavior*, and never looks at the
 envelope's own inline manifest.
 
 **The fix is not simply to copy `CONFORMANCE` in.** A file export genuinely
@@ -66,7 +66,7 @@ whenever the slug and the label differ, because a board whose regions a consumer
 can match on and cannot render draws "Region 3" over somebody's own words. The
 importer casts that list to `string[]` and indexes straight into it.
 
-**What breaks, against a labelled region:**
+**What breaks, against a labeled region:**
 
 - `names.indexOf("delegate-wait")` returns `-1`, so **every member on that board
   loses its placement**;
@@ -84,11 +84,11 @@ the region list to `string[]` and indexed straight into it. That was true until 
 region grew a label."* The cast was what silenced the compiler there too.
 
 **Why nothing caught it:** `pnpm foreign` round-trips `example/library.json`,
-which has no labelled regions. Same shape as `placement/position-is-opaque`
+which has no labeled regions. Same shape as `placement/position-is-opaque`
 passing under a locale-aware sort because its data was `a0 / a0V / a1` — a
 fixture that does not contain the discriminating case.
 
-**Proved.** `placement/labelled-region-survives` is that case — the collection
+**Proved.** `placement/labeled-region-survives` is that case — the collection
 declares `{ "name": "delegate-wait", "label": "Delegate & Wait",
 "hermes:color": "#5fa4b5" }`, a member sits in it, and it round-trips. One
 `regionName()` helper is shared between map and import.
@@ -116,7 +116,7 @@ objects, and `features` includes `"series"`. A comment explaining an absence tha
 has since been filled is worse than no comment, because the next reader will
 trust it.
 
-Check the neighbouring comments in the same function while fixing this one.
+Check the neighboring comments in the same function while fixing this one.
 
 ---
 
@@ -194,7 +194,7 @@ by there being **no place a new one could land**.
 
 **The shape worth remembering:** an exhaustive handler is only exhaustive until
 the format grows, and it fails silently at exactly the moment it stops being so.
-An object's loop was written as "everything I do not recognise"; a collection's
+An object's loop was written as "everything I do not recognize"; a collection's
 was written as "these six keys". The first survives a new field and the second
 cannot.
 

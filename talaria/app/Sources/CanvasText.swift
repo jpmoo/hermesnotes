@@ -5,7 +5,7 @@ import SwiftUI
  The words on a canvas item, and the small amount of markup they may carry.
 
  Markdown, held as the plain string it looks like. Not an archived attributed
- string, for the same reason colours are hex and pictures are files: the canvas
+ string, for the same reason colors are hex and pictures are files: the canvas
  is one JSON document somebody can open and read, and `**like this**` survives
  that where a base64 blob does not. It is also what Hermes writes, so the day
  these are exchanged there is nothing to translate.

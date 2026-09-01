@@ -105,7 +105,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
     // existed decodes to exactly the canvas somebody left.
     var hAlign: TextAlign = .center
     var vAlign: TextVAlign = .middle
-    /// Hex, or nothing for "whatever the theme's text colour is". Nothing is not
+    /// Hex, or nothing for "whatever the theme's text color is". Nothing is not
     /// the same as black: this canvas is drawn over a frost that follows the
     /// system appearance, and a stored black would be invisible in the dark.
     var textColor: String?
@@ -218,7 +218,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
      default value or not — so adding `shape` to this struct would have made
      every canvas.json written before shapes existed fail to decode. The store
      keeps a file it cannot read rather than overwriting it, which is the right
-     behaviour and would still have looked, to somebody who had just drawn a
+     behavior and would still have looked, to somebody who had just drawn a
      diagram, exactly like losing it.
 
      A field added to a stored shape needs a decoder that can do without it. That
@@ -255,7 +255,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
 
  **The bend is an offset, not a place.** It says how far the midpoint has been
  pulled off the straight line, measured from the point halfway between the two
- items' centres. Storing where the handle *is* would be simpler and wrong: move
+ items' centers. Storing where the handle *is* would be simpler and wrong: move
  either item and the curve would stay behind, hanging off nothing. Storing how
  far it was pulled means the curve travels with what it connects, which is what
  anybody who bent it meant.
@@ -494,7 +494,7 @@ final class MemoryCanvasStore: CanvasStore {
  deliberate difference rather than an inconsistency: which pane you were looking
  at is a fact about an afternoon, and a diagram somebody drew is work.
 
- **Written by rename.** The bytes go to a neighbouring file and that file is
+ **Written by rename.** The bytes go to a neighboring file and that file is
  moved over this one, so a crash or a power cut during a write leaves the
  previous canvas intact rather than half of two. Saving happens once per
  gesture — on a commit, on a drag letting go — never per frame, so this is a
@@ -1041,7 +1041,7 @@ final class CanvasModel: ObservableObject {
     static let newItemSize = CGSize(width: 180, height: 24)
 
     /**
-     Drop a new text item, centred on where the tool was let go, and start
+     Drop a new text item, centered on where the tool was let go, and start
      typing in it.
 
      It is a real item from this moment, which is what lets everything else —
@@ -1243,9 +1243,9 @@ final class CanvasModel: ObservableObject {
 
  **Closest edge to closest edge, measured toward the bend.** Each end anchors at
  the middle of whichever of its four sides faces the point the line is heading
- for. With no bend that point is halfway between the two centres, which gives the
+ for. With no bend that point is halfway between the two centers, which gives the
  sides that face each other. Pull the handle up and over, and both ends
- re-anchor to their top edges on the way — which is the behaviour asked for, and
+ re-anchor to their top edges on the way — which is the behavior asked for, and
  it falls out rather than being a case.
 
  **The curve passes through the handle**, which is the other thing that has to be
@@ -1265,7 +1265,7 @@ struct LinkGeometry {
 
     /// The middle of each of a box's four sides. The only four places a line
     /// is ever allowed to touch a box.
-    static func sideCentres(_ r: CGRect) -> [CGPoint] {
+    static func sideCenters(_ r: CGRect) -> [CGPoint] {
         [
             CGPoint(x: r.midX, y: r.minY),
             CGPoint(x: r.midX, y: r.maxY),
@@ -1275,30 +1275,30 @@ struct LinkGeometry {
     }
 
     /**
-     Whichever side centre is nearest.
+     Whichever side center is nearest.
 
-     Plain distance between the four centres and the point the line is heading
+     Plain distance between the four centers and the point the line is heading
      for — the side is chosen by where its middle is, and nothing else about the
      side is considered.
 
      Worth knowing what this does at the edges, because it is not the rule most
      canvas tools use. On a box much wider than it is tall, the north and south
-     centres sit close together near the middle and the east and west ones are
+     centers sit close together near the middle and the east and west ones are
      far out to the sides, so a handle pulled a long way up and moderately to
-     the right can still be nearer the east centre than the north one — and the
+     the right can still be nearer the east center than the north one — and the
      line leaves sideways out of a curve heading upwards. That is the rule doing
      exactly what it says; it is only surprising if you expected the line to
      follow the direction of travel rather than the geometry.
      */
     private static func nearestSide(of r: CGRect, to p: CGPoint) -> CGPoint {
-        sideCentres(r).min { a, b in
+        sideCenters(r).min { a, b in
             hypot(a.x - p.x, a.y - p.y) < hypot(b.x - p.x, b.y - p.y)
         } ?? CGPoint(x: r.midX, y: r.midY)
     }
 
     static func of(from: CGRect, to: CGRect, bend: CGSize) -> LinkGeometry {
         // Which sides face each other is a question about the two boxes, and
-        // the midpoint of their centres is the answer to it — aimed at from
+        // the midpoint of their centers is the answer to it — aimed at from
         // both ends, so each picks the side pointing at the other.
         let aim = CGPoint(
             x: (from.midX + to.midX) / 2 + bend.width,
@@ -1311,7 +1311,7 @@ struct LinkGeometry {
         // not the same question and was being answered with the first one's
         // maths.
         //
-        // The midpoint of two centres is the midpoint of two anchors only when
+        // The midpoint of two centers is the midpoint of two anchors only when
         // the boxes are the same size and facing. A region is not: it is the
         // size of everything inside it and a node is a node, so the two
         // midpoints sat a hundred points apart and the control point solved
@@ -1337,7 +1337,7 @@ struct LinkGeometry {
         )
     }
 
-    /// The direction the line is travelling as it arrives, for the arrowhead.
+    /// The direction the line is traveling as it arrives, for the arrowhead.
     var arrival: CGVector {
         let dx = 2 * (end.x - control.x)
         let dy = 2 * (end.y - control.y)
@@ -1411,7 +1411,7 @@ struct CursorArea: NSViewRepresentable {
 
  The pointer becomes a finger over it, and the canvas is told so it can stop
  asserting its own. One modifier, worn by every control, so a new one gets the
- behaviour by being a control rather than by somebody remembering.
+ behavior by being a control rather than by somebody remembering.
  */
 private struct Chrome: ViewModifier {
     @Binding var depth: Int
@@ -1523,8 +1523,8 @@ enum CanvasTool: String, CaseIterable, Identifiable {
  because Talaria is a way into Hermes. One file, one mark, no second copy to
  fall out of step.
 
- A template image, so it takes the colour it is given rather than arriving black
- on a coloured button.
+ A template image, so it takes the color it is given rather than arriving black
+ on a colored button.
  */
 struct WingMark: View {
     var size: CGFloat = 11
@@ -2017,7 +2017,7 @@ private struct CanvasToolStrip: View {
              */
             // Width given, not inherited. A `Divider` in a `VStack` takes all
             // the width there is, and this stack is in an overlay on the whole
-            // canvas — so it stretched the strip from edge to edge and centred
+            // canvas — so it stretched the strip from edge to edge and centered
             // every tool in it. The one greedy view in a column of fixed ones
             // decides the column.
             Divider().frame(width: 40).padding(.top, 2)
@@ -2204,9 +2204,9 @@ private struct CanvasItemView: View {
                     item.shape.path(in: box).fill(fill)
                 }
                 if item.strokeWidth > 0 {
-                    let colour = Hex.color(item.stroke) ?? Color.primary.opacity(0.7)
+                    let color = Hex.color(item.stroke) ?? Color.primary.opacity(0.7)
                     item.shape.path(in: box.insetBy(dx: inset, dy: inset))
-                        .stroke(colour, style: StrokeStyle(
+                        .stroke(color, style: StrokeStyle(
                             lineWidth: weight,
                             dash: item.strokeStyle.dash(weight).map { $0 * hairline / max(hairline, 1) }
                         ))
@@ -2217,7 +2217,7 @@ private struct CanvasItemView: View {
                     if item.strokeStyle == .double {
                         let gap = max(weight * 2, 3 * hairline)
                         item.shape.path(in: box.insetBy(dx: inset + gap, dy: inset + gap))
-                            .stroke(colour, lineWidth: weight)
+                            .stroke(color, lineWidth: weight)
                     }
                 }
             }
@@ -2407,7 +2407,7 @@ private struct CanvasItemView: View {
      and does not, so a tag that compensated would grow apart from the badge it
      is part of at every zoom but 1.
 
-     And nothing else on the node changes. The colours here belong to whoever
+     And nothing else on the node changes. The colors here belong to whoever
      set them, and dimming a node to say something about Hermes would be
      spending somebody's styling on our message.
      */
@@ -2481,7 +2481,7 @@ private struct CanvasItemView: View {
  each remember where the viewport is will disagree the first time one of them is
  animated.
 
- Canvas coordinates have their origin at the centre of the pane when the canvas
+ Canvas coordinates have their origin at the center of the pane when the canvas
  is at rest, which is what the zoom arithmetic in `DeskChrome` already assumes.
  Everything that converts between the two goes through `canvasPoint`, once, so
  there is one place to be wrong.
@@ -2789,18 +2789,18 @@ struct CanvasSurface: View {
             }
             .onChange(of: openMenu) { _ in forgetChrome() }
             /**
-             Closing the inspector closes the colour panel.
+             Closing the inspector closes the color panel.
 
              `NSColorPanel` is shared and persistent: it is one panel for the
              whole application, it stays up until something closes it, and it
              remembers whatever it was last pointed at. So a well opened once
              left it hanging around, and the next well found a panel already
-             open — which is why picking a colour felt like it was showing the
+             open — which is why picking a color felt like it was showing the
              last thing rather than this one.
 
              Tied to the inspector rather than to the pick itself, because the
              pick is continuous. Closing it on the first change would mean the
-             panel shut the instant somebody touched the colour wheel, which is
+             panel shut the instant somebody touched the color wheel, which is
              one drag into choosing rather than the end of it.
              */
             .onChange(of: inspecting) { now in
@@ -3111,7 +3111,7 @@ struct CanvasSurface: View {
                 let under = hoveredLink == link.id
                 let held = straightened && model.selectedLink == link.id
                 let own = Hex.color(link.color)
-                let colour: Color = held
+                let color: Color = held
                     ? Theme.snapGuide
                     : (chosen ? Theme.accent : (own ?? .primary.opacity(under ? 0.85 : 0.55)))
                 // Somebody's own weight is theirs. The selected and hovered
@@ -3126,7 +3126,7 @@ struct CanvasSurface: View {
                 path.move(to: start)
                 path.addQuadCurve(to: end, control: control)
                 if link.width > 0 {
-                    context.stroke(path, with: .color(colour), style: StrokeStyle(
+                    context.stroke(path, with: .color(color), style: StrokeStyle(
                         lineWidth: width, dash: link.style.dash(width)
                     ))
                     if link.style == .double {
@@ -3140,7 +3140,7 @@ struct CanvasSurface: View {
                             to: CGPoint(x: end.x + side.dx, y: end.y + side.dy),
                             control: CGPoint(x: control.x + side.dx, y: control.y + side.dy)
                         )
-                        context.stroke(twin, with: .color(colour), lineWidth: width)
+                        context.stroke(twin, with: .color(color), lineWidth: width)
                     }
                 }
 
@@ -3164,7 +3164,7 @@ struct CanvasSurface: View {
                 head.addLine(to: CGPoint(x: back.x + side.dx * head_half, y: back.y + side.dy * head_half))
                 head.addLine(to: CGPoint(x: back.x - side.dx * head_half, y: back.y - side.dy * head_half))
                 head.closeSubpath()
-                context.fill(head, with: .color(colour))
+                context.fill(head, with: .color(color))
             }
         }
         .allowsHitTesting(false)
@@ -3242,8 +3242,8 @@ struct CanvasSurface: View {
      point wide whatever the zoom — a guide that thickens as you zoom in stops
      being a reference and becomes a band with a middle you have to judge.
 
-     Dashed, and in their own colour rather than the accent: an accent-coloured
-     guide over an accent-coloured selection is two meanings in one colour, and
+     Dashed, and in their own color rather than the accent: an accent-colored
+     guide over an accent-colored selection is two meanings in one color, and
      the one that matters at that moment is the one that is moving.
      */
     @ViewBuilder
@@ -3308,10 +3308,10 @@ struct CanvasSurface: View {
             }
         } label: {
             // The same disc as the one beside it, because it is the same kind
-            // of thing: a white mark on a plain grey circle. It had a black
+            // of thing: a white mark on a plain gray circle. It had a black
             // fill and an accent ring to say "this one is linked" — but the
             // node already says that, twice, with the badge and the tag, and a
-            // button that changes colour to report a state it does not control
+            // button that changes color to report a state it does not control
             // is a third voice saying it in the row where the controls live.
             WingMark(size: 9 * buttonScale)
                 .frame(width: 13 * buttonScale, height: 13 * buttonScale)
@@ -3436,9 +3436,9 @@ struct CanvasSurface: View {
      The appearance panel, drawn on the canvas rather than in a popover.
 
      It was a popover, and a popover closes when anything else takes the focus —
-     which is exactly what opening the colour panel does. So reaching for the
-     colour wheel dismissed the thing you had reached from, and the auto-close
-     then took the colour panel away with it. The panel flew off as you moved
+     which is exactly what opening the color panel does. So reaching for the
+     color wheel dismissed the thing you had reached from, and the auto-close
+     then took the color panel away with it. The panel flew off as you moved
      toward it.
 
      Every other menu on this surface is a drawn overlay for the same reason.
@@ -3731,7 +3731,7 @@ struct CanvasSurface: View {
                             model.bend(link.id, by: snapped)
                             // The guide for a straightened connector is the
                             // connector: there is nothing else to line it up
-                            // with, so the line itself is what changes colour.
+                            // with, so the line itself is what changes color.
                             straightened = held
                         }
                         .onEnded { _ in
@@ -3858,7 +3858,7 @@ struct CanvasSurface: View {
                     }
                     // A button going down is not a pointer moving, so the hover
                     // above will not have run. Without this the hand does not
-                    // close until the drag has already travelled a few points.
+                    // close until the drag has already traveled a few points.
                     //
                     // Named outright rather than read back off `cursor`, which
                     // is computed from state written one line ago — that reads
@@ -3892,12 +3892,12 @@ struct CanvasSurface: View {
                         return
                     }
                     if let id = draggingRegion {
-                        if let onto = linkTarget, let travelled = regionOrigin {
+                        if let onto = linkTarget, let traveled = regionOrigin {
                             // Back where it came from, and a line left behind.
                             // Exactly what dropping one card on another does,
                             // and it has to be exactly that or the two gestures
                             // would mean different things by the same motion.
-                            model.moveRegion(id, by: CGSize(width: -travelled.width, height: -travelled.height))
+                            model.moveRegion(id, by: CGSize(width: -traveled.width, height: -traveled.height))
                             model.link(from: id, to: onto)
                             model.clearSelection()
                         } else {
@@ -4212,7 +4212,7 @@ struct CanvasSurface: View {
         Canvas { context, size in
             let step = 24 * chrome.zoom
             // Below this the dots merge into a wash and the grid stops being
-            // information — better to draw nothing than a grey field.
+            // information — better to draw nothing than a gray field.
             guard step > 6 else { return }
             let dot = max(0.7, 1.1 * min(chrome.zoom, 1.6))
             // Anchored to the pan so the grid moves with the content rather

@@ -255,7 +255,7 @@ whose output the format could not say.
 
 It closed as `url` on an object and on a collection — a value, not the template
 in `producer` that was the other candidate. A template is a construction rule,
-and a consumer holding one builds addresses for objects that never travelled by
+and a consumer holding one builds addresses for objects that never traveled by
 parsing and interpolating an id the format says is opaque. One string per object
 costs bytes; a template costs the id rule.
 
@@ -408,7 +408,7 @@ so a float rule keyed on bundle id is the likely answer.
 **Forking Rift is a cost, not a shortcut.** The integration surface is already
 richer than this document originally assumed, so the case for a fork is weak —
 and the cost is not the code. Rift's entire job is tracking undocumented macOS
-behaviour through reverse-engineered private APIs, on a beta OS. Upstream is what
+behavior through reverse-engineered private APIs, on a beta OS. Upstream is what
 keeps those workarounds alive as the OS moves; a fork means re-earning that
 forever. Contribute upstream instead — the project takes PRs, and anything
 wanted here is plausibly wanted by the status-bar crowd too. If a fork happens at

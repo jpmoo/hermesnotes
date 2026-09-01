@@ -349,7 +349,7 @@ private struct WorkspacesPane: View {
                                         tile(model.spaces[i], width: tileW, height: tileH)
                                     } else {
                                         // Keeps the last row aligned with the
-                                        // ones above rather than centring three
+                                        // ones above rather than centering three
                                         // tiles under four.
                                         Color.clear.frame(width: tileW, height: tileH)
                                     }
@@ -382,7 +382,7 @@ private struct WorkspacesPane: View {
             VStack(alignment: .leading, spacing: spacing) {
                 ZStack {
                     // A hollow in the surface rather than a panel on top of
-                    // it: at 0.06 of the foreground colour an empty tile reads
+                    // it: at 0.06 of the foreground color an empty tile reads
                     // as a recess, and the frost behind still shows.
                     RoundedRectangle(cornerRadius: 7)
                         .fill(Color.primary.opacity(0.04))
@@ -402,7 +402,7 @@ private struct WorkspacesPane: View {
                             .foregroundStyle(.tertiary)
                     } else {
                         // No picture: the applications themselves, which is
-                        // still enough to recognise a workspace by.
+                        // still enough to recognize a workspace by.
                         HStack(spacing: 4) {
                             ForEach(Array(WorkspacesModel.others(space).prefix(4).enumerated()), id: \.offset) { _, window in
                                 if let icon = Self.icon(for: window.bundleId) {
@@ -668,7 +668,7 @@ struct DeskView: View {
                 .offset(x: -CGFloat(chrome.surface.rawValue) * geo.size.width)
                 // Pinned to the left and cut to one page.
                 //
-                // A frame twice as wide as its parent is *centred* in it by
+                // A frame twice as wide as its parent is *centered* in it by
                 // default, so the first attempt showed the right half of the
                 // desk beside the left half of the canvas and looked like a
                 // rendering fault rather than a pager. The offset only means
@@ -844,7 +844,7 @@ final class DeskChrome: ObservableObject {
     private var hideStrip: Timer?
 
     /// A horizontal two-finger swipe, in points. Positive is content moving
-    /// right — a finger travelling left to right.
+    /// right — a finger traveling left to right.
     func swiped(by dx: CGFloat) {
         reveal()
         // Enough to be a decision rather than a wobble on the way to scrolling
@@ -912,12 +912,12 @@ final class DeskChrome: ObservableObject {
 
      Which is what zooming is, everywhere it is done well: you put the pointer on
      the thing you are interested in and it stays there while everything else
-     moves away from it. Zooming about the centre instead makes the thing you
+     moves away from it. Zooming about the center instead makes the thing you
      were looking at slide off the edge, and the gesture becomes zoom-then-hunt.
 
      The arithmetic falls out of how the content is drawn — scaled about the
-     centre, then offset by `pan` — so the canvas point under a screen point is
-     `(screen - centre - pan) / zoom`, and holding it still across a change of
+     center, then offset by `pan` — so the canvas point under a screen point is
+     `(screen - center - pan) / zoom`, and holding it still across a change of
      zoom means moving the pan by that point times the change.
 
      Nothing happens when the zoom clamps. At either stop the canvas has not

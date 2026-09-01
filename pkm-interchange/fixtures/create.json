@@ -30,7 +30,7 @@
         "created": true,
         "object": { "id": "chosen-by-the-client" }
       },
-      "why": "Identity says an id is opaque and does not say who mints it, which always permitted this and never provided the verb. The client choosing is not a convenience: it is the whole mechanism behind the next two cases, because an id decided before the request is what makes a repeat recognisable as a repeat."
+      "why": "Identity says an id is opaque and does not say who mints it, which always permitted this and never provided the verb. The client choosing is not a convenience: it is the whole mechanism behind the next two cases, because an id decided before the request is what makes a repeat recognizable as a repeat."
     },
     {
       "id": "create/repeating-a-create-is-not-a-second-object",

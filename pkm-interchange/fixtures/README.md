@@ -140,7 +140,7 @@ live binding and is checked there, by `pkm-check --url`, not here.
 | `conditions: [...]` | query condition kinds it can evaluate |
 | `profiles: [...]` | profiles it understands |
 | `richtext: false` | cannot hold prose at all |
-| `richtextRewrite: true` | normalises prose into its own markup on import |
+| `richtextRewrite: true` | normalizes prose into its own markup on import |
 | `fixedSchema: true` | maps into a fixed internal model — the hard case for unknown fields |
 | `remapIds: true` | keys objects by its own ids internally |
 | `sorting: false` | shows a list in its stored order and cannot derive one |

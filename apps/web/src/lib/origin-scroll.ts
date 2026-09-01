@@ -24,7 +24,7 @@ export function useOriginScroll(ready: boolean) {
   // what it's showing — stepping from day to day on the Today sheet — kept
   // being handed the same one and kept hunting for it. Landing halfway down
   // today, on a card you opened from some other day, was that: the block was
-  // in the day's lists, so it was found and centred.
+  // in the day's lists, so it was found and centered.
   const consumed = useRef(0);
 
   useEffect(() => {

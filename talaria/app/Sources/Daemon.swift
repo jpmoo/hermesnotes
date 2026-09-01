@@ -99,7 +99,7 @@ enum Daemon {
          removing it.
 
          Kept as `epoch` rather than renamed, because the wire name is shared
-         with the daemon and a rename is a change to both ends for no behaviour.
+         with the daemon and a rename is a change to both ends for no behavior.
          Read `Health.cursor` when you want the cursor; this exists so the
          payload decodes.
          */

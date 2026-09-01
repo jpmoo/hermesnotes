@@ -28,7 +28,7 @@ export function SendToDaysModal({
   onClose,
   onSent,
 }: {
-  /** The markdown being sent — shown back, so it's clear what's travelling. */
+  /** The markdown being sent — shown back, so it's clear what's traveling. */
   text: string;
   /** The date of the note it's being sent from (YYYY-MM-DD). */
   from: string;

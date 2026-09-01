@@ -103,7 +103,7 @@
           }
         }
       },
-      "why": "Nobody has to understand double brackets, double parens, or whatever the next tool invents. The format deliberately does not standardise a markup dialect — it standardises that yours comes back exactly as you wrote it. A consumer that normalises prose into its own syntax has rewritten the user's writing, which is the one thing in a knowledge base nobody wants touched."
+      "why": "Nobody has to understand double brackets, double parens, or whatever the next tool invents. The format deliberately does not standardise a markup dialect — it standardises that yours comes back exactly as you wrote it. A consumer that normalizes prose into its own syntax has rewritten the user's writing, which is the one thing in a knowledge base nobody wants touched."
     },
     {
       "id": "inline/rewriting-prose-must-report",

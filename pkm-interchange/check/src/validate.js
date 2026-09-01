@@ -36,7 +36,7 @@ export function validate(envelope) {
 
   // An object that is its own ancestor describes no document and hangs anything
   // that walks it. Checked by walking up from each object rather than by
-  // colouring the graph, because the answer wanted is "is there a cycle", and a
+  // coloring the graph, because the answer wanted is "is there a cycle", and a
   // walk that has taken more steps than there are objects has found one.
   {
     const parents = new Map((envelope.objects ?? []).map((o) => [o.id, o.parent]));
@@ -68,7 +68,7 @@ export function validate(envelope) {
       if (!named) fail("order.by-invalid", `${at}.order`);
       // Spelled out, both of them. `desc` is what most producers store and it is
       // not what this carries, so it fails here rather than being read as
-      // ascending by everything that does not recognise it.
+      // ascending by everything that does not recognize it.
       if (spec.direction !== undefined && spec.direction !== "ascending" && spec.direction !== "descending") {
         fail("order.direction-invalid", `${at}.order`);
       }
@@ -160,7 +160,7 @@ export function validate(envelope) {
   // An address is a value, never a rule for making one.
   //
   // `urlTemplate` is the cheaper design and it is the wrong one. A consumer
-  // holding one will build addresses for objects that never travelled — objects
+  // holding one will build addresses for objects that never traveled — objects
   // that may not exist — by parsing and interpolating an id this format
   // promises is opaque. One string per object costs bytes; a template costs the
   // id rule, which everything else leans on.

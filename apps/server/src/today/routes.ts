@@ -445,7 +445,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
    *
    * Calling something off says you're done with it, and days that haven't
    * happened yet shouldn't still be holding it — whether it was going to arrive
-   * there by travelling or was set down on that day by hand. Days already past
+   * there by traveling or was set down on that day by hand. Days already past
    * keep every word: what you wrote on Tuesday is what you wrote on Tuesday,
    * and this has never rewritten history.
    *

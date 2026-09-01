@@ -104,7 +104,7 @@ the one with somebody's morning in it ends up behind the empty one.
 
 **What it cost Hermes to say it, which is the useful part.** Hermes marks a
 daily note with a `today_note` property that no type declared — so the date a
-whole feature is built on travelled as an unexplained string, and a `journal`
+whole feature is built on traveled as an unexplained string, and a `journal`
 mapping onto it would have been refused by the format's own rule that a mapping
 must land. The exporter declares the field now. The same fault as the missing
 `title` on text types, found the same way: by trying to say something true and
@@ -235,7 +235,7 @@ route, which was the largest remaining hole in the port.
 **What the format has now:** `PUT <base>/interchange/objects/<id>`. The client
 chooses the id, which Identity always permitted and no verb ever used — and
 which is the whole mechanism rather than a detail, because an id decided before
-the request is what makes a repeat recognisable as a repeat. A queue that could
+the request is what makes a repeat recognizable as a repeat. A queue that could
 not tell a retry from a second create would answer a flaky network with
 duplicates.
 
@@ -284,7 +284,7 @@ a private route, which is precisely the outcome the rule existed to prevent.
 
 `PUT` and `DELETE` at the same address make and unmake a membership, divided the
 way `PUT` and `PATCH` are divided on an object and for the same reason: a repeat
-must be recognisable as a repeat. `DELETE` unmakes the membership and leaves the
+must be recognizable as a repeat. `DELETE` unmakes the membership and leaves the
 object alone, and removing something that is not there is a success, because a
 replaying queue cannot know which of its writes landed.
 
@@ -307,7 +307,7 @@ they agree; it does not prove either of them read the spec.
 
 `?q=` is a third narrowing on a read, and it inverts the rule the other two
 follow. `since` and `profile` ignored give a client more than it asked for, which
-is safe; `q` ignored gives a client the whole library labelled as matches, so a
+is safe; `q` ignored gives a client the whole library labeled as matches, so a
 producer that cannot search **MUST** refuse. Relevance order and no scores: a
 ranking number from one producer means nothing beside another's, and a consumer
 comparing two of them is comparing noise.

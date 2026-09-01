@@ -217,7 +217,7 @@
           ]
         }
       },
-      "why": "Both spellings mean the same member, and a consumer that expands the short one has lost nothing. This case exists because a round-trip through a real implementation came back structurally different for exactly this reason, and a rule that reads as absolute — do not normalise — needs its one exception written down rather than argued about."
+      "why": "Both spellings mean the same member, and a consumer that expands the short one has lost nothing. This case exists because a round-trip through a real implementation came back structurally different for exactly this reason, and a rule that reads as absolute — do not normalize — needs its one exception written down rather than argued about."
     }
   ]
 }

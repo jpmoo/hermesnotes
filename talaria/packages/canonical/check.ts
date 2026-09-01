@@ -39,7 +39,7 @@ const titled = all.filter((c) => c.title && c.title !== "Untitled").length;
 check("every object got a title", titled === all.length, `${titled}/${all.length}`);
 
 const tasks = all.filter((c) => c.kind === "task");
-check("tasks were recognised", tasks.length > 0, `${tasks.length}`);
+check("tasks were recognized", tasks.length > 0, `${tasks.length}`);
 check(
   "every task can be completed",
   tasks.every((c) => c.completable),
@@ -55,11 +55,11 @@ check("some are done and some are not", done > 0 && done < tasks.length, `${done
 
 const scheduled = all.filter((c) => c.schedule);
 check("dates were found", scheduled.length > 0, `${scheduled.length} scheduled`);
-const labelled = scheduled.filter((c) => c.schedule?.startLabel || c.schedule?.endLabel);
-check("the producer's own date labels came through", labelled.length > 0, `${labelled.length} labelled`);
+const labeled = scheduled.filter((c) => c.schedule?.startLabel || c.schedule?.endLabel);
+check("the producer's own date labels came through", labeled.length > 0, `${labeled.length} labeled`);
 
 const notes = all.filter((c) => c.kind === "note");
-check("notes were recognised", notes.length > 0, `${notes.length}`);
+check("notes were recognized", notes.length > 0, `${notes.length}`);
 check(
   "notes have a body",
   notes.filter((c) => c.body).length > 0,
@@ -67,7 +67,7 @@ check(
 );
 
 check("links were derived", all.some((c) => c.links.length > 0), `${all.reduce((n, c) => n + c.links.length, 0)} links`);
-check("versions travelled", all.every((c) => typeof c.version === "number"));
+check("versions traveled", all.every((c) => typeof c.version === "number"));
 
 // The one thing nothing may do. Comments stripped first: the modules explain
 // what they used to read, and a check that cannot tell prose from code would

@@ -265,7 +265,7 @@ export function create(object = {}, ctx = {}) {
     ok: true,
     created: true,
     // Cloned, and every property kept — including the ones no type declares.
-    // A producer that keeps only what it recognises turns each create into a
+    // A producer that keeps only what it recognizes turns each create into a
     // lossy import, and the loss cannot be seen because there is nothing
     // earlier to compare it with.
     object: { ...structuredClone(object), id: at },
@@ -292,7 +292,7 @@ export function create(object = {}, ctx = {}) {
  *
  * `context` merges. This is the round-trip rule at write time and it is the half
  * that gets skipped: a tool that drags a card and sends `{x, y}` has never heard
- * of the `w`, `h` and colour somebody else's tool put there, and a write that
+ * of the `w`, `h` and color somebody else's tool put there, and a write that
  * replaced the bag would delete them. Removing a key has to be said out loud, in
  * `unset`, for the same reason it does on an object.
  */
@@ -430,7 +430,7 @@ export function patchCollection(collection, p = {}) {
  * make the container the first time it runs, and asking again after a lost
  * answer must not make a second one.
  *
- * The client chooses the id, which is what makes a repeat recognisable as a
+ * The client chooses the id, which is what makes a repeat recognizable as a
  * repeat rather than as a new board.
  *
  * Creates and never edits. A create at an id already taken is a success that

@@ -60,7 +60,7 @@
       "expect": {
         "due": "2026-02-28"
       },
-      "why": "Clamping is a legitimate behaviour and many tools do it. It is only a bug when undeclared. Both this case and the one above must pass — the format does not pick a winner, it requires producers to say which they do."
+      "why": "Clamping is a legitimate behavior and many tools do it. It is only a bug when undeclared. Both this case and the one above must pass — the format does not pick a winner, it requires producers to say which they do."
     },
     {
       "id": "recurrence/monthly-clamp-does-not-reanchor",

@@ -5,7 +5,7 @@ import SwiftUI
  Everything Talaria needed a text editor for, in a window.
 
  Wearing Glance's material rather than a stock settings sheet, because it is the
- same application and should look like it — but not Glance's behaviour. This one
+ same application and should look like it — but not Glance's behavior. This one
  does not dismiss when you click away, and that is a deliberate difference: the
  board and the assistant can afford it because they are cheap to summon again,
  while a panel you leave to go and copy an access key out of a browser must
@@ -443,7 +443,7 @@ struct SettingsView: View {
     }
 
     private func verdict(_ reach: Reach) -> some View {
-        let (icon, colour): (String, Color) = {
+        let (icon, color): (String, Color) = {
             switch reach {
             case .ok: return ("checkmark.circle.fill", Theme.accent)
             case .warn: return ("exclamationmark.triangle.fill", Color(hex: "c47f2e") ?? .orange)
@@ -455,7 +455,7 @@ struct SettingsView: View {
             Text(reach.detail).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(colour)
+        .foregroundStyle(color)
     }
 
     private func section<Content: View>(

@@ -11,9 +11,9 @@ enum Theme {
     static let accent = Color(hex: "5fa4b5")!      // --accent, the logo teal
     static let accentInk = Color(hex: "3d4247")!   // --accent-ink, the logo slate
     static let danger = Color(hex: "b5525f")!      // --danger
-    /// The colour of a line that is only there while something is being
-    /// dragged. Deliberately not the accent: an accent-coloured guide over an
-    /// accent-coloured selection is two different meanings in one colour.
+    /// The color of a line that is only there while something is being
+    /// dragged. Deliberately not the accent: an accent-colored guide over an
+    /// accent-colored selection is two different meanings in one color.
     static let snapGuide = Color(hex: "e0555f")!
     static let postit = Color(hex: "fdf3b6")!      // --postit
 
@@ -70,7 +70,7 @@ enum Theme {
         }
     }
 
-    /// Whether a tool is one worth pausing over. Used to colour a confirmation,
+    /// Whether a tool is one worth pausing over. Used to color a confirmation,
     /// not to decide anything — Hermes has already decided by returning it as
     /// pending, and second-guessing that here would be a second opinion nobody
     /// asked for.
@@ -104,7 +104,7 @@ enum Opener {
 }
 
 extension Color {
-    /// Region colours arrive as hex, and Hermes writes eight digits — the last
+    /// Region colors arrive as hex, and Hermes writes eight digits — the last
     /// two being alpha, which a six-digit parser silently reads as blue.
     init?(hex: String) {
         var s = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")).lowercased()

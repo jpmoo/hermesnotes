@@ -106,15 +106,15 @@ export function darkTextOn(color: string): boolean {
 }
 
 /**
- * A readable text colour for a coloured background: light on dark, dark on
+ * A readable text color for a colored background: light on dark, dark on
  * light.
  *
  * Lives here rather than in one view because two of them need it — a matrix
- * region and a canvas note are both "someone chose a colour and text has to sit
- * on it", and a sticky whose text is the theme's own colour disappears the
+ * region and a canvas note are both "someone chose a color and text has to sit
+ * on it", and a sticky whose text is the theme's own color disappears the
  * moment the theme is dark and the paper is not.
  *
- * Eight-digit values are accepted because that is what the colour pickers
+ * Eight-digit values are accepted because that is what the color pickers
  * store; the alpha is ignored, since what matters is the ink, not the paper's
  * transparency.
  */

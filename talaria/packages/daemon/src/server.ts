@@ -501,7 +501,7 @@ export function buildServer(deps: {
       .map((b) => ({
         id: b.id,
         title: b.title,
-        // Enough to recognise it by in a result row, without pasting a whole
+        // Enough to recognize it by in a result row, without pasting a whole
         // note into the index.
         description: (b.body ?? "").replace(/\s+/g, " ").trim().slice(0, 300),
         /**
@@ -616,7 +616,7 @@ export function buildServer(deps: {
       name: declared[i] ? regionName(declared[i]!) : `region-${i}`,
       title: declared[i] ? regionLabel(declared[i]!) : `Region ${i + 1}`,
       // Deliberately Hermes-specific, and the only such thing in this file.
-      // The format does not name a colour and should not: a prefixed key is one
+      // The format does not name a color and should not: a prefixed key is one
       // producer's word, so nothing generic can read it. Talaria chooses to know
       // this one so a Hermes board looks like itself — decoration only, and
       // nothing anywhere depends on it being there.
@@ -1250,7 +1250,7 @@ export function buildServer(deps: {
       .parse(req.query);
     const span = days ?? 14;
     const iso = (d: Date) => d.toISOString().slice(0, 10);
-    // Parsed as noon so a timezone offset can't tip the date to its neighbour,
+    // Parsed as noon so a timezone offset can't tip the date to its neighbor,
     // which is the classic way a day view ends up showing yesterday.
     const today = date ? new Date(`${date}T12:00:00`) : new Date();
     const start = iso(today);
@@ -1349,7 +1349,7 @@ export function buildServer(deps: {
           // times say it themselves.
           endLabel: e === date && s !== e ? b.schedule?.endLabel ?? null : null,
           // A block converted from a calendar feed remembers which one, so it
-          // can wear that calendar's colour — and go quiet when that feed is
+          // can wear that calendar's color — and go quiet when that feed is
           // switched off, the same as the events still living in it.
           feedOrigin: feedOriginOf(b.id),
           url: b.url, tags: b.tags,
@@ -1489,7 +1489,7 @@ export function buildServer(deps: {
          * The type's icon, under the producer's own name.
          *
          * Deliberately Hermes-specific and decoration only, like the region
-         * colours on a board. The format does not name an icon and should not:
+         * colors on a board. The format does not name an icon and should not:
          * a prefixed key is one producer's word, so nothing generic can read it.
          * Talaria chooses to know this one so a block on a canvas looks like
          * itself, and nothing anywhere depends on its being there.

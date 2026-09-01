@@ -217,7 +217,7 @@ export function ollamaEmbedder(url: string, model: string): Embedder {
 /**
  * Cosine similarity.
  *
- * Not normalised in advance, because these vectors arrive from a model that does
+ * Not normalized in advance, because these vectors arrive from a model that does
  * not promise unit length and a wrong assumption there is invisible: every score
  * would be off by a constant factor per pair, which still sorts *almost* right.
  */

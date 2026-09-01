@@ -1041,7 +1041,7 @@ export function MatrixView({
     setActive((e.active.data.current as unknown as Item) ?? null);
   };
   /**
-   * Where the card would land right now. Taken from the dragged card's centre
+   * Where the card would land right now. Taken from the dragged card's center
    * against the card it's over: past the midpoint means below it, which is what
    * a reorder is usually reaching for. Hovering a region rather than a card
    * means the end of that region's list.
@@ -1099,7 +1099,7 @@ export function MatrixView({
       return;
     }
     // Dropped onto a card (or into a region's empty tail) → land exactly where
-    // the strip was, which means naming BOTH neighbours: a position is generated
+    // the strip was, which means naming BOTH neighbors: a position is generated
     // between them, and sending only the one below would put the card at the top
     // of the region instead of above that card.
     if (landing && (over.startsWith("chip:") || over.startsWith("r:"))) {

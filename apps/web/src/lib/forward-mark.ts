@@ -6,7 +6,7 @@ import { forwardOpenTag } from "@hermes/shared";
  *
  * The first version wrapped the run in a mention node whose whole payload was
  * one string, which meant a sentence naming `|Acme` arrived in tomorrow's note
- * as the bare word "Acme": the words travelled and the connection didn't. A
+ * as the bare word "Acme": the words traveled and the connection didn't. A
  * mark wraps ordinary inline content instead, mentions and all, so what comes
  * through is what was written — chips that link, appear in the graph, and are
  * picked up by a rollup keyed on them.
@@ -29,7 +29,7 @@ export const ForwardMark = Mark.create({
         parseHTML: (el) => el.getAttribute("data-fwd") ?? "",
         renderHTML: (attrs) => (attrs.since ? { "data-fwd": String(attrs.since) } : {}),
       },
-      // Where it set out from, on a copy that has travelled. Carried through
+      // Where it set out from, on a copy that has traveled. Carried through
       // the editor so a day you open and save doesn't quietly strip the origin
       // off everything it was handed.
       from: {
@@ -42,7 +42,7 @@ export const ForwardMark = Mark.create({
   },
 
   // Both: a mark with only an origin is text sent to this day in particular. It
-  // isn't travelling, but it is the same kind of thing, and if the editor didn't
+  // isn't traveling, but it is the same kind of thing, and if the editor didn't
   // know it the first save of that day would drop the tag and with it the answer
   // to "where did this come from".
   parseHTML() {

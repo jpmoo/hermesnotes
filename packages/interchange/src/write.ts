@@ -61,7 +61,7 @@ const regionNames = (c: WriteCollection | undefined) =>
  * unreadable looks exactly like success.
  *
  * `context` merges. A tool that drags a card sends the two numbers it moved and
- * has never heard of the size and colour another tool put there; replacing the
+ * has never heard of the size and color another tool put there; replacing the
  * bag would delete them and answer ok. Removing a key is said out loud in
  * `unset`, for the reason it is on an object: absent means absent.
  */

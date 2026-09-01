@@ -129,7 +129,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     if (!pending) return;
     setMsgs((m) => m.map((x, i) => (i === idx ? { ...x, resolved: true } : x)));
     if (!approve) {
-      setMsgs((m) => [...m, { role: "assistant", content: "Okay — cancelled, nothing was deleted." }]);
+      setMsgs((m) => [...m, { role: "assistant", content: "Okay — canceled, nothing was deleted." }]);
       return;
     }
     setBusy(true);

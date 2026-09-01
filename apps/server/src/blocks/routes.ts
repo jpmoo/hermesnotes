@@ -1179,7 +1179,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   /**
    * Everything connected to a block, in full.
    *
-   * The graph panel's first ring, answered as blocks rather than as labelled
+   * The graph panel's first ring, answered as blocks rather than as labeled
    * dots: whatever a project's page shows underneath it has to be sortable by
    * the properties of the things in it, and a node with an icon and a name is
    * not enough to sort by a due date.
@@ -1202,7 +1202,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     }
     const ids = graph.nodes.filter((n) => n.gen === 1).map((n) => n.id);
     if (!ids.length) return { blocks: [], truncated: graph.truncated };
-    // Archived neighbours are left out. The info pane keeps them and marks them,
+    // Archived neighbors are left out. The info pane keeps them and marks them,
     // because there the question is "does this link still point somewhere"; here
     // the question is what is around this project now, and something archived
     // has been answered already.

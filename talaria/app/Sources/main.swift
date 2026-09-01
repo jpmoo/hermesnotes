@@ -84,7 +84,7 @@ final class DaemonProcess {
      and discovering, months later, the one that was still holding the old
      value.
 
-     The old process's `terminationHandler` is cleared *before* it is signalled,
+     The old process's `terminationHandler` is cleared *before* it is signaled,
      because otherwise both it and this would relaunch: the handler schedules a
      start in five seconds, this one starts immediately, and the machine ends up
      with two daemons on the same SQLite file. Clearing it first makes this
@@ -325,7 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         daemon?.stop()
     }
 
-    /// Take the daemon down with us when we are signalled.
+    /// Take the daemon down with us when we are signaled.
     ///
     /// `applicationWillTerminate` is an AppKit courtesy and a SIGTERM is not —
     /// launchd stopping this app does not run it, so the node process it
@@ -544,7 +544,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // wrong here. The desk has a scratchpad and a composer in it. With
             // it set, Escape and every other keystroke went past the desk to
             // the application underneath, so pressing Escape to dismiss this
-            // cancelled whatever was behind it instead. Which is worse than not
+            // canceled whatever was behind it instead. Which is worse than not
             // dismissing: it does something, somewhere else, invisibly.
             // Titled, with the title bar made invisible — not borderless.
             //
@@ -579,7 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the *app* is. Without `isFloatingPanel` and a level it is allowed to
         // be key at, activation went through and the window still came up
         // unfocused behind the application it was covering — so keystrokes went
-        // there instead, and Escape cancelled whatever was underneath.
+        // there instead, and Escape canceled whatever was underneath.
         // A title bar exists so the window manager can see a window. Nothing
         // should be drawn for it.
         panel.title = "Talaria Desk"
@@ -697,7 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the window server is concerned, so `activate` returned having done
         // nothing: the panel became Talaria's key window while Talaria itself
         // stayed in the background, and every keystroke went to the application
-        // underneath. Which is how pressing Escape over the desk cancelled
+        // underneath. Which is how pressing Escape over the desk canceled
         // something behind it.
         //
         // Switching policy is the documented way for an accessory app to take
@@ -713,7 +713,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // nothing: the panel became Talaria's key window while Talaria itself
         // stayed in the background, and every keystroke went to the application
         // underneath. Which is how pressing Escape over a full-screen overlay
-        // cancelled something behind it instead of dismissing it.
+        // canceled something behind it instead of dismissing it.
         //
         // Switching policy is the documented way for an accessory app to take
         // the foreground. It is put back on the way out, so the Dock icon lasts
@@ -762,7 +762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Which surface you were on survives this; the strip does not. See
         // `DeskChrome.closed`.
         deskChrome.closed()
-        // The colour panel is shared and outlives whatever opened it, so a desk
+        // The color panel is shared and outlives whatever opened it, so a desk
         // put away with one up leaves a floating panel over an empty desktop
         // pointed at something nobody can see.
         if NSColorPanel.sharedColorPanelExists, NSColorPanel.shared.isVisible {
@@ -844,27 +844,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
          A modal — `NSApp.modalWindow` is set for as long as `runModal` runs,
          which covers the file panel.
 
-         And the colour panel, which is not modal at all: it is a shared floating
-         panel, so nothing about the app's state says it is up. Opening a colour
+         And the color panel, which is not modal at all: it is a shared floating
+         panel, so nothing about the app's state says it is up. Opening a color
          well from the canvas inspector therefore hid the desk, exactly as the
          file panel did, and the eyedropper made it worse — the dropper takes
-         over the screen, so the click that picks a colour is a click in another
+         over the screen, so the click that picks a color is a click in another
          app as far as the global monitor is concerned. Both are answered by
          asking whether the panel is on screen at all, rather than by trying to
          classify the click.
          */
         let modalUp = { NSApp.modalWindow != nil }
-        /// The colour panel is up somewhere, which matters to the global
+        /// The color panel is up somewhere, which matters to the global
         /// monitor: the eyedropper takes over the screen, so the click that
-        /// picks a colour lands in another application.
-        let pickingColour = { NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible }
+        /// picks a color lands in another application.
+        let pickingColor = { NSColorPanel.sharedColorPanelExists && NSColorPanel.shared.isVisible }
         let global = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { _ in
-            guard !modalUp(), !pickingColour() else { return }
+            guard !modalUp(), !pickingColor() else { return }
             Task { @MainActor in onHide() }
         }
         let local = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) {
             event in
-            // A click *in* the colour panel, specifically — not "any click
+            // A click *in* the color panel, specifically — not "any click
             // while it happens to be open". Suppressing everything would mean a
             // panel left open makes the desk undismissable, and the only way to
             // close the panel is through the desk.
@@ -924,7 +924,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
      A titled panel, and why none of them use `.fullSizeContentView`.
 
      They did. It is what lets the material run the whole height of a window
-     rather than stopping at a grey strip, and that is genuinely the nicer look
+     rather than stopping at a gray strip, and that is genuinely the nicer look
      — but it puts the content view over the title bar's own, and the content
      view here is an `NSVisualEffectView` that paints. The result was a title
      nobody could read and three traffic lights that were present in the
@@ -1179,7 +1179,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         // Near the top of whichever screen the pointer is on — where a prompt
-        // belongs, rather than dead centre over whatever is being read.
+        // belongs, rather than dead center over whatever is being read.
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
             let f = panel.frame
             panel.setFrameOrigin(NSPoint(
@@ -1221,7 +1221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         // The same material as Glance, and for the same reason: a window that
-        // carries the colour of what is behind it reads as part of the machine
+        // carries the color of what is behind it reads as part of the machine
         // rather than as a thing an application put on the screen.
         //
         // Still titled, still resizable — unlike Glance this is somewhere you

@@ -2,7 +2,7 @@
  * Copy / cut / paste for a text field whose own right-click menu we've taken
  * over.
  *
- * A canvas node answers right-clicks with its own menu — colour, convert,
+ * A canvas node answers right-clicks with its own menu — color, convert,
  * remove — which means the browser's menu never appears, and with it goes the
  * one place copy and paste live. So the menu has to carry them itself.
  *

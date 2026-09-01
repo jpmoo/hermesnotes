@@ -172,7 +172,7 @@ Two hops: the profile tells you which key to look under, then you look under it.
 
 Notice what never appears: `type.name`. You do not know or care that they call it a `Thing To Do`.
 
-### What a consumer gives back is behaviour, not a message
+### What a consumer gives back is behavior, not a message
 
 There is no reply to send, but you are not off the hook. If that data ever leaves you again, the fields you never understood come back intact, and anything you could not keep, you say so out loud. Those are the two rungs above simply reading a file, and they are the obligations that make somebody else willing to point their library at you.
 
@@ -330,7 +330,7 @@ A name written before the thing exists is not a link with a piece missing. It is
 
 An object may carry `url`: an absolute address where a person can go to see it. A consumer treats it as opaque — it must not rewrite it, and it must not invent one for an object that arrived without.
 
-The rejected design is the one everybody reaches for first. A single `urlTemplate` on the producer costs a handful of bytes instead of one string per object, and it is wrong: a consumer holding a template builds addresses by interpolating an id, for objects that never travelled and may not exist. The format promises ids are opaque, and everything else leans on that promise. A template quietly spends it, so a validator rejects one.
+The rejected design is the one everybody reaches for first. A single `urlTemplate` on the producer costs a handful of bytes instead of one string per object, and it is wrong: a consumer holding a template builds addresses by interpolating an id, for objects that never traveled and may not exist. The format promises ids are opaque, and everything else leans on that promise. A template quietly spends it, so a validator rejects one.
 
 Emit an address if your app has a place a person can go. Emitting none is honest — the format reads it as "this producer does not publish addresses" rather than as an omission — while a guessed one is a link that sends somebody nowhere.
 
@@ -396,7 +396,7 @@ Then ask where that leaves you — see [Checking yourself](#checking-yourself).
 
 ### Level 1 — the one to do even if you do nothing else
 
-Add `profiles` to any type that is one of the four things a stranger can recognise: `task`, `event`, `contact`, `note`.
+Add `profiles` to any type that is one of the four things a stranger can recognize: `task`, `event`, `contact`, `note`.
 
 ```json
 "profiles": {
@@ -431,7 +431,7 @@ Some real shapes you might have:
 
 ### Level 2 — the one everybody skips
 
-**Any property you do not recognise must survive a round-trip byte-identical.**
+**Any property you do not recognize must survive a round-trip byte-identical.**
 
 This is the rule that makes the format worth anything, and it is the one that gets skipped because it feels like it is about somebody else's problem. It is about whether anyone can afford to try your app.
 
@@ -558,7 +558,7 @@ Leave off anything you have not built. **Missing counts as failing**, deliberate
 
 Some cases come back **n/a** rather than passing or failing. Those are the ones that ask a consumer to behave as though it lacked something — no board, no query engine, no prose — which a reference implementation can pretend and a real one cannot. Asking an app with a matrix view to answer as though it had none tests nothing about that app. They are counted separately and reported next to the level, because an applicability rule is also the obvious way to dodge a suite.
 
-The operations are described in [`fixtures/README.md`](fixtures/README.md). Each case carries a `why` explaining the failure it exists to prevent — when one goes red, read that before changing anything, because it usually describes a rule with untested neighbours.
+The operations are described in [`fixtures/README.md`](fixtures/README.md). Each case carries a `why` explaining the failure it exists to prevent — when one goes red, read that before changing anything, because it usually describes a rule with untested neighbors.
 
 **Derive your level from the run.** Do not write one down and hope. A manifest a producer writes is a promise; one that falls out of a suite is evidence.
 

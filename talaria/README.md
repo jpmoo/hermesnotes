@@ -214,7 +214,7 @@ composed on a train exists locally and is sent on reconnect.
   moved from here: a canvas is a spatial argument someone made on purpose.
 - **calendar** — an agenda that scrolls forward from today, day by day, merging
   dated blocks with your calendar-feed events. There is nothing to click to see
-  next week; it is further down. Days with nothing on them are left out. Feed events wear their feed's colour;
+  next week; it is further down. Days with nothing on them are left out. Feed events wear their feed's color;
   per-type pills persist; completed things sink and mute. Feed events are
   cached, so a lost connection gives you yesterday's copy and says so rather
   than an empty week.

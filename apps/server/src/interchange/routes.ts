@@ -323,7 +323,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
        * Free text, narrowed by Hermes' own search.
        *
        * Delegated rather than reimplemented, like every write here: the ranking
-       * is literal matches by recency and then semantic neighbours the literal
+       * is literal matches by recency and then semantic neighbors the literal
        * pass missed, and a second copy of that in the binding would be a second
        * ranking to keep in step.
        *
@@ -334,7 +334,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
        *
        * This is the one narrowing that is not permission to send less. Ignoring
        * `since` or `profile` gives a caller more than it asked for, which is
-       * safe; ignoring this one hands back the whole library labelled as
+       * safe; ignoring this one hands back the whole library labeled as
        * matches, and a tool offering "add the block you searched for" would
        * offer every block there is.
        */
@@ -927,7 +927,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
      * past the format for the single call that starts everything.
      *
      * `PUT` rather than `POST`, and the id in the path, for the reason a create
-     * on an object is spelled the same way: it makes a repeat recognisable as a
+     * on an object is spelled the same way: it makes a repeat recognizable as a
      * repeat. Creates and never edits — a caller repeating a create has by
      * definition not read what is there, so replacing would throw away every key
      * it had never heard of.

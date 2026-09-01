@@ -86,7 +86,7 @@ const {execSync}=require("child_process");
 const s=JSON.parse(require("fs").readFileSync(process.env.STUB_STORE,"utf8"));
 const b=s.blocks.find(x=>x.properties?.title==="Booked on the plane");
 const r=execSync(`curl -s -X POST http://127.0.0.1:58080/api/blocks -H "authorization: Bearer probe-key" -H "content-type: application/json" -d ${JSON.stringify(JSON.stringify({id:b.id,properties:{title:"Booked on the plane"}}))}`).toString();
-console.log("re-sending the same create returned version:", JSON.parse(r).version, "(1 = it was new; >1 or same id = recognised)");
+console.log("re-sending the same create returned version:", JSON.parse(r).version, "(1 = it was new; >1 or same id = recognized)");
 const after=JSON.parse(require("fs").readFileSync(process.env.STUB_STORE,"utf8"));
 console.log("blocks with that title now:", after.blocks.filter(x=>x.properties?.title==="Booked on the plane").length);'
 

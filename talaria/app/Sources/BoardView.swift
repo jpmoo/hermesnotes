@@ -357,7 +357,7 @@ struct BoardView: View {
                         }
                         // Banded, because a wide row is hard to follow across
                         // without something to hold the eye on the line — as a
-                        // tint of the text rather than a surface colour, which
+                        // tint of the text rather than a surface color, which
                         // is what a control is painted with.
                         .background(r.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.06))
                         .contentShape(Rectangle())
@@ -514,7 +514,7 @@ struct BoardView: View {
         let tint = region.color.flatMap { Color(hex: $0) }
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                // The region's colour as a bar rather than a wash: a card has to
+                // The region's color as a bar rather than a wash: a card has to
                 // stay readable on top, and a full-strength tint behind small
                 // text is what made this look like a toy.
                 Capsule().fill(tint ?? Theme.accent).frame(width: 3, height: 11)
@@ -544,7 +544,7 @@ struct BoardView: View {
                 // Hermes stores these with alpha already — around 0.8 — so a
                 // further 0.07 on top left barely a tint at all. The cards
                 // sitting on it carry their own opaque background, so the
-                // region can be the colour it was chosen to be.
+                // region can be the color it was chosen to be.
                 .fill((tint ?? Color.secondary).opacity(0.45))
         )
         .overlay(
@@ -560,8 +560,8 @@ struct BoardView: View {
 private struct CardRow: View {
     let card: Daemon.Card
     @ObservedObject var model: BoardModel
-    /// The region's colour, when the card is sitting in one. A card takes a
-    /// shade of its region rather than being a white box on a coloured field —
+    /// The region's color, when the card is sitting in one. A card takes a
+    /// shade of its region rather than being a white box on a colored field —
     /// which is what makes a card read as belonging to the quadrant it is in
     /// rather than as something dropped on top of it.
     var tint: Color? = nil
@@ -610,7 +610,7 @@ private struct CardRow: View {
         .padding(.vertical, 5).padding(.horizontal, 7)
         .background(
             // Opaque underneath, so text stays readable whatever the region's
-            // colour is, with a wash of that colour over it.
+            // color is, with a wash of that color over it.
             RoundedRectangle(cornerRadius: Theme.controlRadius)
                 .fill(.background)
                 .overlay(
@@ -689,7 +689,7 @@ struct CanvasBoard: View {
             )
             .overlay(alignment: .bottomTrailing) { zoomControls(in: geo.size).padding(10) }
             .onAppear {
-                centre(in: geo.size)
+                center(in: geo.size)
                 // Only while a canvas is on screen: a monitor left running
                 // would eat scrolling everywhere else in the app.
                 scrollPan.shouldPan = { [weak scrollPanBox] in
@@ -706,14 +706,14 @@ struct CanvasBoard: View {
 
     /// Zoom about the pointer rather than the middle of the window.
     ///
-    /// Anchoring at the centre means the thing being looked at slides away as
+    /// Anchoring at the center means the thing being looked at slides away as
     /// it grows, and the way to inspect a corner becomes zoom, pan back, zoom,
     /// pan back. Keeping the point under the cursor fixed is what makes a
     /// canvas feel like a surface rather than a picture being resized.
     private func zoom(to next: CGFloat, in size: CGSize) {
         let clamped = min(2.5, max(0.2, next))
         guard clamped != scale else { return }
-        // Where the cursor is, relative to the centre the scale is applied about.
+        // Where the cursor is, relative to the center the scale is applied about.
         let anchor = CGPoint(x: (cursor?.x ?? size.width / 2) - size.width / 2,
                              y: (cursor?.y ?? size.height / 2) - size.height / 2)
         // The content coordinate currently under it, which must not move.
@@ -962,7 +962,7 @@ struct CanvasBoard: View {
             Button {
                 scale = 0.75
                 pinchStart = 0.75
-                centre(in: size)
+                center(in: size)
             } label: { Image(systemName: "arrow.counterclockwise") }
             .help("Fit")
         }
@@ -974,7 +974,7 @@ struct CanvasBoard: View {
 
     /// Start with the content in view rather than wherever the origin happens
     /// to be — a canvas laid out around (2000, 1200) otherwise opens on nothing.
-    private func centre(in size: CGSize) {
+    private func center(in size: CGSize) {
         let boxes = nodes.map(\.rect)
         let xs = boxes.flatMap { [$0.minX, $0.maxX] }
         let ys = boxes.flatMap { [$0.minY, $0.maxY] }
@@ -1109,8 +1109,8 @@ private struct RollupNode: View {
 /// One connection, drawn the way it was drawn.
 ///
 /// A canvas's edges carry a side to leave from, a side to arrive at, a dash
-/// pattern, a width, a colour and which ends wear an arrow. Reduced to a plain
-/// line between two centres — which is what this was — a diagram someone
+/// pattern, a width, a color and which ends wear an arrow. Reduced to a plain
+/// line between two centers — which is what this was — a diagram someone
 /// arranged becomes a handful of anonymous strokes.
 private struct EdgeShape: View {
     let edge: Daemon.Edge
@@ -1156,7 +1156,7 @@ private struct EdgeShape: View {
     }
 
     /// The middle of the named side, so a line leaves a box where it was drawn
-    /// to leave it rather than from its centre.
+    /// to leave it rather than from its center.
     private func anchor(_ rect: CGRect, _ side: String) -> CGPoint {
         switch side {
         case "n": return CGPoint(x: rect.midX, y: rect.minY)

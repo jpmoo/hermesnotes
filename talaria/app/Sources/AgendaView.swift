@@ -158,7 +158,7 @@ struct AgendaView: View {
     /// re-filter every time you open it is one you stop opening.
     private var typeBar: some View {
         HStack(spacing: 6) {
-            // Feeds first, each in its own colour, then the other dated types.
+            // Feeds first, each in its own color, then the other dated types.
             // Events themselves aren't offered: a calendar you can switch the
             // calendar off in is a strange object, and the web app doesn't.
             ForEach(model.feeds) { feed in
@@ -253,7 +253,7 @@ struct AgendaView: View {
 
     private func feedRow(_ event: Daemon.FeedEvent) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            // The feed's own colour as a bar, which is how the web app says
+            // The feed's own color as a bar, which is how the web app says
             // where an event came from.
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(Color(hex: event.color) ?? Theme.accent)

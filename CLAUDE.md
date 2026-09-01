@@ -42,7 +42,7 @@ Four things in one pnpm monorepo, in the order they depend on each other:
 
 `pkm-interchange/AGENTS.md` is a **format specification**, not instructions for
 you. It is named that way because it is meant to be pasted at an agent
-implementing the format. An agent that auto-loads `AGENTS.md` files as behaviour
+implementing the format. An agent that auto-loads `AGENTS.md` files as behavior
 will read a wire-format spec as a set of orders. Treat it as reference.
 
 ## Invariants

@@ -95,7 +95,7 @@
         }
       },
       "when": {
-        "importInto": "a tool that normalises URLs",
+        "importInto": "a tool that normalizes URLs",
         "reexport": true
       },
       "expect": {
@@ -130,7 +130,7 @@
           }
         ]
       },
-      "why": "A template is the cheaper design and it is the wrong one. It is a construction rule, and a consumer holding one will build addresses for objects that never travelled — including objects that do not exist — by parsing and interpolating an id the format says is opaque. One string per object costs bytes. A template costs the id rule. An address a producer hands you is not a licence to construct another one."
+      "why": "A template is the cheaper design and it is the wrong one. It is a construction rule, and a consumer holding one will build addresses for objects that never traveled — including objects that do not exist — by parsing and interpolating an id the format says is opaque. One string per object costs bytes. A template costs the id rule. An address a producer hands you is not a licence to construct another one."
     }
   ]
 }

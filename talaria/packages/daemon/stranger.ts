@@ -91,7 +91,7 @@ const BOARD = {
   properties: { description: "Where chores go" },
   placement: { semantic: true, regions: [{ name: "now", label: "Now", "stranger:tag": "urgent", "stranger:tagOnEnter": true }, { name: "soon", label: "Fairly Soon", "stranger:color": "#5fa4b5" }, "someday"] },
   membership: { mode: "explicit" },
-  // colour is the producer's own key; the format does not name it
+  // color is the producer's own key; the format does not name it
 
   members: [
     { object: "c1", region: "now", position: "a0" },
@@ -262,17 +262,17 @@ try {
   check("with the producer's name for it", b1?.title === "The Wall", String(b1?.title));
 
   const stored = JSON.parse(mirror.rawBlock("b1")!) as { placement?: { regions?: unknown[] } };
-  check("the declared regions travelled", (stored.placement?.regions ?? []).length === 3);
+  check("the declared regions traveled", (stored.placement?.regions ?? []).length === 3);
   check(
-    "a labelled region kept both halves",
+    "a labeled region kept both halves",
     (stored.placement?.regions?.[1] as { name: string; label: string })?.label === "Fairly Soon",
   );
   check(
-    "a region's own behaviour travelled too",
+    "a region's own behavior traveled too",
     (stored.placement?.regions?.[0] as Record<string, unknown>)?.["stranger:tag"] === "urgent",
   );
   check(
-    "and a colour under the stranger's own prefix",
+    "and a color under the stranger's own prefix",
     (stored.placement?.regions?.[1] as Record<string, unknown>)?.["stranger:color"] === "#5fa4b5",
   );
 
@@ -297,12 +297,12 @@ try {
 
   // The translation the app actually performs: a person points at a cell, and
   // what goes over the wire is the board's name for it. Both spellings, because
-  // a labelled region is an object and an unlabelled one is a string — and the
+  // a labeled region is an object and an unlabelled one is a string — and the
   // two call sites that did this by hand both cast the list to `string[]` and
-  // sent the whole object, so every drag into a labelled region was refused.
+  // sent the whole object, so every drag into a labeled region was refused.
   const { regionNameAt } = await import("./src/interchange.js");
   const boardRow = JSON.parse(mirror.rawBlock("b1")!) as Parameters<typeof regionNameAt>[0];
-  check("cell 0 resolves to the name of a labelled region", regionNameAt(boardRow, 0) === "now");
+  check("cell 0 resolves to the name of a labeled region", regionNameAt(boardRow, 0) === "now");
   check("cell 2 resolves to the name of a bare one", regionNameAt(boardRow, 2) === "someday");
   check("a cell nobody declared resolves to nothing", regionNameAt(boardRow, 9) === null);
 

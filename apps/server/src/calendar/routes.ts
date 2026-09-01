@@ -718,7 +718,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     // so suppressing the feed event too would make the event vanish outright).
     // The row itself is kept, so unarchiving silently resumes the sync.
     // Events converted before the block started recording which calendar it came
-    // from have no colour to show, and nothing else would ever give them one.
+    // from have no color to show, and nothing else would ever give them one.
     // The link rows know, so fill them in from there — idempotent, and matches
     // nothing at all once it has run. (A "copy" conversion left no link row, so
     // those keep their silence: there is genuinely no record of the origin.)
@@ -849,7 +849,7 @@ export async function calendarRoutes(app: FastifyInstance): Promise<void> {
     const type = await resolveEventType(userId);
     // Where it came from, kept on the block: converting it makes it yours, but
     // which calendar it walked in from is still worth knowing at a glance, and
-    // the feed row is the only other place that colour lives.
+    // the feed row is the only other place that color lives.
     const properties = { ...eventProperties(type, body), feed_origin: body.feedId };
     const embedSource = computeEmbedSource(type, { content: null, properties });
 

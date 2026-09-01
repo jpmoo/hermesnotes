@@ -76,7 +76,7 @@ export interface ExportInput {
  * carrying only field names would have had to drop it or invent a fake field.
  *
  * `.start` and `.end` are the only compound suffixes Hermes writes — the web
- * app's `valueFor` recognises exactly those two — so splitting on them is not a
+ * app's `valueFor` recognizes exactly those two — so splitting on them is not a
  * guess about where a key ends.
  */
 function sortKeyOf(key: string): { field?: string; part?: string; meta?: string } | null {
@@ -138,7 +138,7 @@ export function toInterchange(input: ExportInput): {
    *
    * Note what is *not* published: a template. A consumer holding
    * `"{origin}/block/{id}"` would build addresses for objects that never
-   * travelled, by parsing and interpolating an id the format says is opaque.
+   * traveled, by parsing and interpolating an id the format says is opaque.
    * One string per object costs bytes; a template costs the id rule.
    */
   const origin = input.origin?.replace(/\/$/, "");
@@ -496,7 +496,7 @@ export function toInterchange(input: ExportInput): {
       note(
         "order.per-view-dropped",
         "format",
-        "A collection holds a different sort on more than one of its views, and the format carries one order per collection. The view matching the collection's kind travelled; the others are still in this export under Hermes' own prefix, but nothing outside Hermes will read them as arrangements.",
+        "A collection holds a different sort on more than one of its views, and the format carries one order per collection. The view matching the collection's kind traveled; the others are still in this export under Hermes' own prefix, but nothing outside Hermes will read them as arrangements.",
       );
     }
 
@@ -810,7 +810,7 @@ export function regionsOf(
   return regions.map((r, i) => {
     const name = slug(r.title) || `region-${i}`;
     const label = (r.title ?? "").trim();
-    // Everything else the producer hung on this region rides along. A colour is
+    // Everything else the producer hung on this region rides along. A color is
     // the obvious one and the format has no business naming it — but consuming
     // `matrix_regions` to build this list and dropping the remainder destroyed
     // it, which is the round-trip rule broken by the very code that publishes
@@ -827,7 +827,7 @@ export function regionsOf(
         // spelled twice. The importer gives every region `tag: name` because
         // Hermes wants one, so emitting it made a round trip *gain* a key it
         // did not arrive with: `"do"` went out, came back as
-        // `{ name: "do", "hermes:tag": "do" }`, and the labelled-region fixture
+        // `{ name: "do", "hermes:tag": "do" }`, and the labeled-region fixture
         // failed on a board nobody had touched. Dropped only when it is
         // derivable — a tag that differs from the name is a real choice and
         // still travels.

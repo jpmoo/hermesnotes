@@ -282,5 +282,20 @@ check(
   "a known-set of block ids alone kept every old note and appended the new one — five became ten",
 );
 
+check(
+  "a push before the first read still does not duplicate",
+  (() => {
+    // `known` undefined: this canvas has read nothing. Every existing row is
+    // therefore somebody else's and must survive — except the ones this very
+    // write is about to produce, which cannot be both.
+    const round = documentFrom(collection, () => "x");
+    const out = writesFor(round, collection);
+    const notes = out.properties["hermes:canvas_notes"] as { id: string }[];
+    const regions = out.properties["hermes:canvas_regions"] as { id: string }[];
+    return notes.length === 1 && regions.length === 1;
+  })(),
+  "two regions became four became eight, once per launch, because the first push precedes the first pull",
+);
+
 console.log(bad ? `\n${bad} failed\n` : "\nall good\n");
 process.exit(bad ? 1 : 0);

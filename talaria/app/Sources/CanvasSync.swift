@@ -59,12 +59,37 @@ final class CanvasSync {
     /// The answer arrives off a socket, so it is later than the first draw.
     var onBackedChanged: ((Bool) -> Void)?
 
+    /// Whether anything has been read yet. Nothing is sent before it has.
+    private var read = false
+
     init() {
         Task.detached(priority: .utility) {
             let ok = (try? Daemon.canvasBacked()) ?? false
+            // Read before writing, and not as a nicety.
+            //
+            // The first push of a session used to go out before the first pull,
+            // so the read-set was empty, every existing row looked like
+            // somebody else's, and the same rows were kept *and* appended. Two
+            // regions became four, then eight, once per launch.
+            //
+            // The far end refuses to duplicate now whatever this does, but a
+            // canvas that overwrites a collection it has never looked at is
+            // wrong on its own terms — what it holds is a guess until it has
+            // read one.
+            let first = ok ? try? Daemon.canvasPull() : nil
             await MainActor.run {
                 self.backed = ok
                 self.onBackedChanged?(ok)
+                if let first {
+                    self.read = true
+                    self.sent = first
+                    self.known = Set(
+                        first.items.map { $0.blockId ?? $0.id.uuidString }
+                            + first.links.map { $0.id.uuidString }
+                            + first.regions.map { $0.id.uuidString }
+                    )
+                    self.onPulled?(first)
+                }
                 // Anything offered before we knew is sent now. Without this the
                 // contents a canvas already had would wait for the next edit.
                 if ok, self.pending != nil { self.flush() }
@@ -86,7 +111,8 @@ final class CanvasSync {
     }
 
     private func flush() {
-        guard backed, let document = pending, !pushing else { return }
+        // Never before the first read. See `init`.
+        guard backed, read, let document = pending, !pushing else { return }
         pending = nil
         pushing = true
         sent = document
@@ -125,6 +151,7 @@ final class CanvasSync {
                 // ids meant no note was ever recognized as one we had read, and
                 // every push kept the old rows and appended the new ones. Five
                 // notes became ten.
+                self.read = true
                 self.known = Set(
                     fetched.items.map { $0.blockId ?? $0.id.uuidString }
                         + fetched.links.map { $0.id.uuidString }

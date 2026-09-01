@@ -375,8 +375,13 @@ export function writesFor(
     remove,
     properties: {
       // The half Hermes draws, under the id it knows a note by…
-      [K_NOTES]: keeping(current, K_NOTES, K_NOTES_BARE, seen, (n: { id: string }) =>
-        n.id.startsWith("n:") ? n.id.slice(2) : n.id,
+      [K_NOTES]: keeping(
+        current,
+        K_NOTES,
+        K_NOTES_BARE,
+        seen,
+        (n: { id: string }) => (n.id.startsWith("n:") ? n.id.slice(2) : n.id),
+        new Set(unlinked.map((i) => i.id)),
       ).concat(
         unlinked.map((i) => ({
           id: hermesIdOf(i),
@@ -404,7 +409,14 @@ export function writesFor(
       // Connections, as edges Hermes draws. `arrow` and `live` are not
       // decoration over there: an edge without them is a row the renderer
       // skips, which is why one written bare appears nowhere.
-      [K_EDGES]: keeping(current, K_EDGES, K_EDGES_BARE, seen, (e: { id: string }) => e.id).concat(
+      [K_EDGES]: keeping(
+        current,
+        K_EDGES,
+        K_EDGES_BARE,
+        seen,
+        (e: { id: string }) => e.id,
+        new Set(doc.links.map((l) => l.id)),
+      ).concat(
         doc.links
           .map((l) => {
             const from = byId.get(l.from);
@@ -420,7 +432,14 @@ export function writesFor(
 
       // Regions likewise: Hermes has them, with a title, a color and the ids
       // it holds. Ours keeps the stroke and the alignment it does not.
-      [K_REGIONS_H]: keeping(current, K_REGIONS_H, K_REGIONS_H_BARE, seen, (r: { id: string }) => r.id).concat(
+      [K_REGIONS_H]: keeping(
+        current,
+        K_REGIONS_H,
+        K_REGIONS_H_BARE,
+        seen,
+        (r: { id: string }) => r.id,
+        new Set(doc.regions.map((r) => r.id)),
+      ).concat(
         doc.regions.map((r) => ({
           id: r.id,
           title: r.title ?? "",
@@ -451,11 +470,26 @@ function keeping<T>(
   bare: string,
   known: Set<string> | null,
   idOf: (row: T) => string,
+  /**
+   * The ids about to be written, which are never kept whatever else is true.
+   *
+   * The guard `known` alone was not enough, and the way it failed is worth
+   * keeping. A push before the first pull has read nothing, so `known` is empty
+   * and every row is somebody else's and survives — and then the same rows are
+   * appended again from the document. Two regions became four, then eight, once
+   * per launch.
+   *
+   * A row this write is about to produce cannot also be a row it must preserve.
+   * That holds with no knowledge of what was read, which is exactly the case
+   * that broke.
+   */
+  writing: Set<string>,
 ): T[] {
   const props = (current.properties ?? {}) as Record<string, unknown>;
   const rows = (Array.isArray(props[prefixed]) ? props[prefixed] : Array.isArray(props[bare]) ? props[bare] : []) as T[];
-  if (known === null) return rows.slice();
-  return rows.filter((r) => !known.has(idOf(r)));
+  const keep = rows.filter((r) => !writing.has(idOf(r)));
+  if (known === null) return keep;
+  return keep.filter((r) => !known.has(idOf(r)));
 }
 
 /** For a caller that wants to know whether anything actually moved. */

@@ -35,6 +35,19 @@ const configSchema = z.object({
   /** How often to ask for changes while the network is up, in seconds. */
   pollSeconds: z.number().int().min(2).max(3600).default(30),
   /**
+   * The Hermes collection Talaria's canvas *is*.
+   *
+   * An id, never a name. A name is a thing somebody renames — and renaming it
+   * in Hermes would not break the link loudly, it would break it silently:
+   * Talaria would find nothing, make a second canvas, and both would look
+   * right from where they were each being used.
+   *
+   * Absent until the canvas has been backed by one. When it is set and the
+   * collection is not there, Talaria creates it at exactly this id, which is
+   * the whole reason the format's create lets the client choose one.
+   */
+  canvasCollection: z.string().uuid().optional(),
+  /**
    * Where Glance embeds, and with what.
    *
    * Local by default, and that is the point rather than a default: what gets

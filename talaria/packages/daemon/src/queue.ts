@@ -49,7 +49,34 @@ export interface MoveIntent {
   /** Where it came from, so the region it left can undo what it did. */
   fromRegion: number | null;
 }
-export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent;
+/**
+ * A canvas, as it should now stand.
+ *
+ * The whole arrangement rather than one gesture, and that is the trade worth
+ * knowing. A queue of "moved this node 40 points left" replays into nonsense
+ * when the canvas has changed underneath; a queue holding *where everything
+ * should end up* collapses to the last one and is right whenever it lands. A
+ * canvas is edited in bursts — drag, drag, drag, stop — and the burst is what
+ * a person means, not each frame of it.
+ *
+ * Which also makes this cheap to coalesce: two of these for one collection are
+ * the same intent said twice, and only the newer one matters.
+ */
+export interface CanvasIntent {
+  kind: "canvas";
+  collectionId: string;
+  /** Members that exist and should move, with the version each was read at. */
+  place: { object: string; context: Record<string, unknown>; version?: number }[];
+  /** Members that should start existing. */
+  add: { object: string; context: Record<string, unknown> }[];
+  /** Memberships that should stop existing. The blocks do not. */
+  remove: string[];
+  /** Our own keys on the collection — notes, connectors, regions. */
+  properties: Record<string, unknown>;
+  collectionVersion: number | null;
+}
+
+export type Intent = CreateIntent | CompleteIntent | AppendIntent | MoveIntent | CanvasIntent;
 
 export type ReplayResult =
   | { id: number; outcome: "applied" | "already" }
@@ -237,7 +264,29 @@ export class Queue {
         return this.replayAppend(row, intent);
       case "move":
         return this.replayMove(row, intent);
+      case "canvas":
+        return this.replayCanvas(row, intent);
     }
+  }
+
+  /**
+   * A canvas laid down as it should stand.
+   *
+   * Removals first, then adds, then moves, then the collection's own keys. The
+   * order is not taste: a node that moved onto a spot another node has just
+   * left would otherwise be placed before the leaver had gone, and a connector
+   * naming a node is written after the node exists rather than before.
+   *
+   * A conflict on one member is not a failure of the canvas. Somebody else
+   * moved that one node — the assistant, most likely, since it is the other
+   * hand on this collection — and their placement is newer than ours. Theirs
+   * wins, the rest of the arrangement still lands, and the next read brings
+   * their version down so the following write agrees with it. Parking the whole
+   * canvas because one node was contended would strand every other edit in it.
+   */
+  private async replayCanvas(row: QueuedIntent, intent: CanvasIntent): Promise<ReplayResult> {
+    await applyCanvas(this.ix, intent);
+    return { id: row.id, outcome: "applied" };
   }
 
   /**
@@ -359,4 +408,51 @@ export class Queue {
     });
     return { id: row.id, outcome: "applied" };
   }
+}
+
+/**
+ * A canvas laid down as it should stand.
+ *
+ * Out here rather than in the queue because both doors need it: a write that
+ * goes out now and one replayed after a reconnect must do the same thing in
+ * the same order, and two copies of an ordering rule is how one of them ends up
+ * being the older one.
+ *
+ * Removals first, then adds, then moves, then the collection's own keys. Not
+ * taste: a node moving onto a spot another has just left would otherwise be
+ * placed before the leaver had gone, and a connector naming a node is written
+ * after that node exists rather than before.
+ */
+export async function applyCanvas(ix: Interchange, intent: CanvasIntent): Promise<{ contended: number }> {
+  for (const object of intent.remove) {
+    await ix.removeMember(intent.collectionId, object);
+  }
+  for (const m of intent.add) {
+    await ix.addMember(intent.collectionId, m.object, { context: m.context });
+  }
+  /**
+   * A conflict on one member is not a failure of the canvas.
+   *
+   * Somebody else moved that one node — the assistant, most likely, being the
+   * other hand on this collection — and their placement is newer than ours.
+   * Theirs stands, the rest of the arrangement still lands, and the next read
+   * brings their version down so the following write agrees with it. Parking
+   * the whole canvas over one contended node would strand every other edit in
+   * the same gesture.
+   */
+  let contended = 0;
+  for (const m of intent.place) {
+    const answer = await ix.place(intent.collectionId, m.object, null, m.version, { context: m.context });
+    if (answer.conflict) contended += 1;
+  }
+  if (Object.keys(intent.properties).length) {
+    await ix.patchCollection(intent.collectionId, {
+      set: intent.properties,
+      ...(typeof intent.collectionVersion === "number" ? { version: intent.collectionVersion } : {}),
+    });
+  }
+  if (contended) {
+    console.warn(`talaria: ${contended} canvas node(s) had moved under us; theirs kept`);
+  }
+  return { contended };
 }

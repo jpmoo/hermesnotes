@@ -283,15 +283,32 @@ export class Interchange {
    * one zoom level, and the two are not interchangeable — see `arrange` below,
    * which is the other half and is refused on a board that works in names.
    */
+  /**
+   * Where a member sits — a region, a bag of furniture, or both.
+   *
+   * `context` arrived with the canvas. A board's move is a region and nothing
+   * else; a canvas node's is coordinates, a size and a color, and the format
+   * carries those in the member's own bag. Both are this one verb, which is the
+   * shape the format chose deliberately: placement is the collection's business
+   * whatever the collection happens to draw.
+   *
+   * Only what the caller named is sent. The producer merges, so a call meaning
+   * "this moved" must carry the two numbers that moved and not a full bag with
+   * nulls in the gaps — which would land as a node dragged to the origin and
+   * stripped of its color as a side effect of being moved.
+   */
   async place(
     collection: string,
     object: string,
     region: string | null,
     version?: number | null,
+    furniture?: { context?: Record<string, unknown>; unset?: string[] },
   ): Promise<WriteAnswer> {
     return this.answered(() =>
       this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, {
-        region,
+        ...(region === null && !furniture ? { region } : region !== null ? { region } : {}),
+        ...(furniture?.context ? { context: furniture.context } : {}),
+        ...(furniture?.unset?.length ? { unset: furniture.unset } : {}),
         // Omitted rather than sent as null when unknown: a producer reads the
         // field's presence as "compare this", and null is not a version.
         ...(typeof version === "number" ? { version } : {}),

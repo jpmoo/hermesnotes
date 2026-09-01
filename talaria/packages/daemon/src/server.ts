@@ -15,6 +15,10 @@ import {
   toCanonical,
   type InterchangeObject,
   type InterchangeType,
+  documentFrom,
+  writesFor,
+  type CanvasDocument,
+  type Collection,
 } from "@talaria/canonical";
 import type { Config } from "./config.js";
 import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, workspaces } from "./context.js";
@@ -1458,6 +1462,90 @@ export function buildServer(deps: {
     });
   });
 
+  /**
+   * The canvas, read out of the collection that backs it.
+   *
+   * From the mirror, like everything else here, so it is free to ask for and
+   * right while offline. Answers a document in the shape the app already
+   * writes — the mapping lives in `@talaria/canonical` beside the rest of the
+   * seam, and this route is the plumbing around it and nothing more.
+   */
+  app.get("/canvas", async (_req, reply) => {
+    const id = config.canvasCollection;
+    if (!id) return reply.code(404).send({ error: "no canvas collection configured" });
+    const raw = mirror.rawBlock(id);
+    if (!raw) return reply.code(404).send({ error: "that collection is not in the mirror" });
+    const collection = JSON.parse(raw) as Collection;
+    collection.members = mirror.canvasMembers(id).map((m) => ({
+      object: m.object,
+      context: m.context,
+      ...(m.version === null ? {} : { version: m.version }),
+    }));
+    let n = 0;
+    return envelope({
+      collection: id,
+      version: collection.version ?? null,
+      document: documentFrom(collection, () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`),
+    });
+  });
+
+  /**
+   * The canvas, as it should now stand.
+   *
+   * The whole arrangement rather than one gesture — see `CanvasIntent`. What
+   * has to change is worked out here against the mirror's copy, so the app
+   * sends what it has and never has to know which of its nodes are members and
+   * which are furniture.
+   *
+   * Queued, not written. That is what makes a canvas edited on a train exist
+   * locally and go out on reconnect, and it is the same queue every other write
+   * in this app goes through.
+   */
+  app.post("/canvas", async (req, reply) => {
+    const id = config.canvasCollection;
+    if (!id) return reply.code(404).send({ error: "no canvas collection configured" });
+    const doc = req.body as CanvasDocument;
+    const raw = mirror.rawBlock(id);
+    if (!raw) return reply.code(404).send({ error: "that collection is not in the mirror" });
+    const collection = JSON.parse(raw) as Collection;
+    collection.members = mirror.canvasMembers(id).map((m) => ({
+      object: m.object,
+      context: m.context,
+      ...(m.version === null ? {} : { version: m.version }),
+    }));
+
+    const w = writesFor(doc, collection);
+    // Nothing to say. A canvas that has not changed must not enqueue a write
+    // every time it is saved, or an idle canvas is a permanent trickle of
+    // no-op traffic and a log nobody can read.
+    const propsUnchanged = Object.entries(w.properties).every(
+      ([k, v]) => JSON.stringify((collection.properties ?? {})[k]) === JSON.stringify(v),
+    );
+    if (!w.place.length && !w.add.length && !w.remove.length && propsUnchanged) {
+      return envelope({ queued: false });
+    }
+    const intent = {
+      kind: "canvas" as const,
+      collectionId: id,
+      place: w.place,
+      add: w.add,
+      remove: w.remove,
+      properties: w.properties,
+      collectionVersion: collection.version ?? null,
+    };
+    // One canvas has one pending intent. Two are the same thing said twice and
+    // only the newer is true, so the older is dropped rather than replayed into
+    // a board that has moved on.
+    for (const row of mirror.pending()) {
+      if (row.kind !== "canvas") continue;
+      const was = JSON.parse(row.payload) as { collectionId?: string };
+      if (was.collectionId === id) mirror.dequeue(row.id);
+    }
+    mirror.enqueue("canvas", intent, collection.version ?? null);
+    void queue.drain();
+    return envelope({ queued: true });
+  });
+
   app.get("/types", async () =>
     envelope(
       [...types().values()].map((t) => ({
@@ -1850,6 +1938,11 @@ export function buildServer(deps: {
       });
       if (!answer.ok) throw new HermesError(answer.conflict ? 409 : 400, "the write was refused");
       return { id: intent.blockId };
+    }
+    if (intent.kind === "canvas") {
+      const { applyCanvas } = await import("./queue.js");
+      const { contended } = await applyCanvas(ix, intent);
+      return { collection: intent.collectionId, contended };
     }
     const note = await hermes.dailyNote(intent.date);
     const { appendedContent } = await import("./queue.js");

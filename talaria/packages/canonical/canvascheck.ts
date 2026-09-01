@@ -77,7 +77,7 @@ const collection: Collection = {
   version: 3,
   members: [
     { object: "b1", version: 7, context: { ...bag } },
-    { object: "b2", version: 2, context: { x: 400, y: 0, w: 200, h: 100 } },
+    { object: "b2", version: 2, context: { x: 400, y: 0, w: 200, h: 100, itemId: "i2" } },
   ],
   properties: {
     "talaria:items": [node({ id: "note1", text: "a sticky" })],
@@ -123,13 +123,36 @@ check(
   Object.keys(w.properties).join(","),
 );
 check(
-  "a canvas that did not change asks for no adds and no removals",
+  "a canvas that did not change asks for no writes at all",
   (() => {
     const same = documentFrom(collection, () => "x");
     const out = writesFor(same, collection);
-    return out.add.length === 0 && out.remove.length === 0;
+    return out.add.length === 0 && out.remove.length === 0 && out.place.length === 0;
   })(),
-  "a sync that rewrites everything every tick is a sync that fights the user",
+  "places included — checking only adds and removals is what let an idle save rewrite every node",
+);
+check(
+  "only the node that moved is written",
+  (() => {
+    const doc2 = documentFrom(collection, () => "x");
+    doc2.items[0]!.x = 777;
+    const out = writesFor(doc2, collection);
+    return out.place.length === 1 && (out.place[0]!.context as { x: number }).x === 777;
+  })(),
+);
+check(
+  "a member somebody else placed is claimed on the next save",
+  (() => {
+    // No `itemId` — the assistant put this one here. Reading it mints an
+    // identity, and the next save writes that identity back, which is how a
+    // node the canvas did not create becomes one it can put in a region.
+    const theirs: Collection = {
+      id: "c1",
+      members: [{ object: "b9", version: 1, context: { x: 1, y: 2, w: 3, h: 4 } }],
+    };
+    const out = writesFor(documentFrom(theirs, () => "minted"), theirs);
+    return out.place.length === 1 && (out.place[0]!.context as { itemId: string }).itemId === "minted";
+  })(),
 );
 
 // ── the comparison ─────────────────────────────────────────────────────────

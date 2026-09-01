@@ -205,8 +205,20 @@ export function writesFor(
   for (const [object, item] of want) {
     const bag = contextOf(item);
     const existing = have.get(object);
-    if (!existing) add.push({ object, context: bag });
-    else place.push({ object, context: bag, version: existing.version });
+    if (!existing) {
+      add.push({ object, context: bag });
+      continue;
+    }
+    // Only what moved.
+    //
+    // Emitting a place for every member turned an idle save into a rewrite of
+    // the whole board — and worse than the traffic, every one of those carries
+    // a version, so a canvas nobody had touched would collect conflicts against
+    // whoever *had* touched it and log them as contention. A save that changes
+    // nothing must ask for nothing.
+    if (!sameContext(existing.context, bag)) {
+      place.push({ object, context: bag, version: existing.version });
+    }
   }
 
   // A member here and not on the canvas is one the canvas dropped. Removing the

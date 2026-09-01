@@ -31,7 +31,7 @@ export interface StoredBlock {
 
 export interface QueuedIntent {
   id: number;
-  kind: "create" | "complete" | "append" | "move";
+  kind: "create" | "complete" | "append" | "move" | "canvas";
   /** What the user meant, as JSON — never the document that would result. */
   payload: string;
   /** The block version this was based on, when there was one. */
@@ -438,6 +438,30 @@ export class Mirror {
          ORDER BY m.position`,
       )
       .all(collectionId) as { raw: string; region: string | null; position: string | null; context: string }[];
+  }
+
+  /**
+   * A collection's memberships as the format spells them.
+   *
+   * `membersOf` above answers the block behind each membership, which is what a
+   * board needs to draw a card. A canvas needs the *placement* — the id, the
+   * bag and the version to write back against — and joining to `blocks` to get
+   * it would mean a node vanishing from the arrangement because the block it
+   * names has not synced yet. Which is the wrong failure: the membership is
+   * there, and where it sits is a fact about the collection.
+   */
+  canvasMembers(collectionId: string): { object: string; version: number | null; context: Record<string, unknown> }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT block_id AS object, version, context FROM memberships
+         WHERE collection_id = ? AND hidden = 0 ORDER BY position`,
+      )
+      .all(collectionId) as { object: string; version: number | null; context: string }[];
+    return rows.map((r) => ({
+      object: r.object,
+      version: r.version,
+      context: JSON.parse(r.context || "{}") as Record<string, unknown>,
+    }));
   }
 
   // ── types ────────────────────────────────────────────────────────────────

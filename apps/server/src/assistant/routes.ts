@@ -64,12 +64,12 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
    * has no way to know which collection somebody means by "this canvas" when
    * the question did not come from a page that is showing one.
    *
-   * The second half is not Talaria-specific in spirit and is scoped here on
-   * purpose, because that is what was asked for. It exists because the model
-   * answered "here's your updated canvas with all 11 tasks" having called
-   * exactly one tool, a search — no create, no placement, nothing written. The
-   * report was fluent and entirely false, and a fluent false report is worse
-   * than a refusal because nobody goes to check.
+   * What is left here is Talaria-specific and nothing else. The rule about
+   * reporting only what the tools did started here — it was written after the
+   * model answered "here's your updated canvas with all 11 tasks" having called
+   * exactly one tool, a search — and moved to the base prompt, because a
+   * fluent report of work that did not happen is not a Talaria problem. It is
+   * worse than a refusal anywhere, since nobody goes back to check.
    */
   const surfaceLine = (body: { client?: string; canvas?: string }): string => {
     if (body.client !== "talaria") return "";
@@ -83,7 +83,6 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
       );
     }
     lines.push(
-      "Report only what your tools actually did. If you did not call a tool, you did not do the thing — say what you found and what you would do next, and never describe a canvas you have not written to as updated.",
       "Talaria draws shapes, borders and regions that Hermes does not. Do not offer sticky notes as a way to get a shape: in Hermes a sticky note and a task block are drawn identically, so it buys nothing and loses the block.",
     );
     return lines.join(" ");

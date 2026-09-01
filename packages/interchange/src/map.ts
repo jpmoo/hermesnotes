@@ -356,6 +356,17 @@ export function toInterchange(input: ExportInput): {
         object: m.blockId,
         ...(region ? { region } : {}),
         ...(m.position ? { position: m.position } : {}),
+        /**
+         * The number a client needs to move this card twice.
+         *
+         * A membership is the most contended thing in the format — an object is
+         * usually edited by whoever opened it, and a placement is edited by
+         * anybody who drags anything and by every agent asked to arrange
+         * something. The write side has honoured `version` since it was
+         * written; the read side never issued one, so the check could not fire
+         * and a client that sent a version believed it was protected.
+         */
+        ...(m.version === undefined ? {} : { version: m.version }),
         ...(Object.keys(rest).length && !gridded ? { context: rest } : {}),
       };
     });

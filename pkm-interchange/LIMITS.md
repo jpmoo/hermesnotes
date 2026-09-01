@@ -326,6 +326,43 @@ changed is that the lump is now a lump you can put down as well as pick up.
 
 → `fixtures/membership.json`
 
+### A membership could be written and not held — closed
+
+Found by probing, not by reading. A canvas node was patched through the binding
+to see whether a producer's own furniture survives a consumer that does not
+understand it — it does, byte for byte — and the answer that came back described
+a member with only the keys that had been sent. Chasing that turned up the
+larger thing behind it.
+
+`place` had honoured `version` since it was written, and the fixture proving a
+stale move is refused had passed from the day it was added. Both were true and
+neither did anything, because the read never issued a version. The number a
+client would have to send back was one no client could obtain, so the comparison
+ran every time against `undefined` and let every write through. A check that
+cannot fire is worse than no check: a client that sends a version believes it is
+protected.
+
+Fixtures measure a function, and this lived in the gap between the function and
+the binding. That is the second time this file has had to record it — the canvas
+entry below says green cases and caught mutants agreeing with each other prove
+they agree and not that either read the spec. Same lesson, found from the other
+side: here they agreed with the spec and with each other, and the binding
+underneath them issued nothing for them to agree about.
+
+Closed by saying it in the format — a producer that honours `version` on a
+placement MUST issue one on the read — and then by three things that had to be
+true together: the read carries it, the answer carries the version the write
+produced rather than the one it was given, and the comparison is part of the
+UPDATE rather than a check in front of it. The last is the one that looks
+optional. Read-compare-write is two statements with a gap, and two clients that
+both read 7 and both find it current both write, which is the bug the version
+was added to prevent, reintroduced by the shape of the check.
+
+The membership is the right place to have found this. An object is usually
+edited by whoever opened it; a placement is edited by anybody who drags anything
+and by every agent asked to arrange something, so it is the most contended thing
+the format has and was the least protected.
+
 ### A write costs a full export — not a format limit
 
 Kept, moved, because it does not belong in Open and deleting it would lose the

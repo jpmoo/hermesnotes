@@ -621,6 +621,54 @@ const MUTANTS = [
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),
   },
   {
+    // The check that costs nothing, passes its own tests, and can never fire.
+    // A producer in this state looks safer than one that versions nothing at
+    // all, and is less safe: a client sends a version and believes it is
+    // protected, and every write lands whatever it sent.
+    name: "honours a member version on the write and never issues one on the read",
+    caught: "membership/a-move-answers-with-the-next-version",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) => {
+        const out = a.place(col, m, p);
+        if (out.ok && out.member) delete out.member.version;
+        return out;
+      },
+    }),
+  },
+  {
+    // A board that can be moved once. The second drag sends the number the
+    // first one was answered with, which is now stale, and is refused — so the
+    // card springs back and nothing says why.
+    name: "answers a placement with the version it was given rather than the one it wrote",
+    caught: "membership/a-move-answers-with-the-next-version",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) => {
+        const out = a.place(col, m, p);
+        if (out.ok && out.member && m?.version !== undefined) out.member.version = m.version;
+        return out;
+      },
+    }),
+  },
+  {
+    // Refusing on a number nobody keeps. The mirror image of the first: a
+    // producer with no membership versions that rejects a hopeful client's
+    // guess, which makes it impossible to write through rather than merely
+    // unprotected.
+    name: "refuses a version against a membership it does not version",
+    caught: "membership/an-unversioned-membership-accepts-anything",
+    patch: (a) => ({
+      ...a,
+      place: (col, m, p) => {
+        if (p?.version !== undefined && m?.version === undefined) {
+          return { ok: false, conflict: true, member: m, fidelity: "full", reports: [] };
+        }
+        return a.place(col, m, p);
+      },
+    }),
+  },
+  {
     // The obvious implementation of a placement write, and the one that loses
     // the size and the colour every time somebody drags a card two pixels.
     name: "replaces a member's furniture instead of merging into it",

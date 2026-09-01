@@ -68,6 +68,12 @@ CREATE TABLE IF NOT EXISTS memberships (
   position      TEXT,
   region        TEXT,
   context       TEXT NOT NULL DEFAULT '{}',
+  -- The number a write has to send back to be sure of what it is changing.
+  -- Null for a membership mirrored before the producer issued one, and for a
+  -- producer that does not version memberships at all; a write then sends
+  -- nothing and is unprotected, which is the honest state rather than a
+  -- guess that would be refused.
+  version       INTEGER,
   hidden        INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (collection_id, block_id)
 );
@@ -148,6 +154,30 @@ export class Mirror {
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA foreign_keys = ON");
     this.db.exec(SCHEMA);
+    this.addColumns();
+  }
+
+  /**
+   * Columns added to tables that already exist.
+   *
+   * `CREATE TABLE IF NOT EXISTS` builds the schema on a fresh machine and does
+   * nothing at all on one that has synced before — so a column added here
+   * arrives for new users and never for anybody else, and the bug is invisible
+   * because everything else about the table is right.
+   *
+   * Bumping the seam does not help: a reseed re-reads the data into the table
+   * that is already there. The column has to be added.
+   *
+   * Idempotent by asking first rather than by catching the duplicate-column
+   * error, because a swallowed error here would hide the next thing too.
+   */
+  private addColumns(): void {
+    const want: [string, string, string][] = [["memberships", "version", "INTEGER"]];
+    for (const [table, column, type] of want) {
+      const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+      if (cols.some((c) => c.name === column)) continue;
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
   }
 
   close(): void {
@@ -176,7 +206,14 @@ export class Mirror {
     rows: {
       id: string; raw: string; updatedAt: string; archived: boolean; title: string; body: string;
       kind: string; typeId: string | null; noteDate: string | null;
-      memberships?: { collectionId: string; position: string | null; region: string | null; context: unknown; hidden: boolean }[];
+      memberships?: {
+        collectionId: string;
+        position: string | null;
+        region: string | null;
+        context: unknown;
+        hidden: boolean;
+        version?: number | null;
+      }[];
     }[],
   ): void {
     if (!rows.length) return;
@@ -193,11 +230,12 @@ export class Mirror {
     // would leave a card sitting in a collection it was taken out of.
     const dropMem = this.db.prepare("DELETE FROM memberships WHERE block_id = ?");
     const addMem = this.db.prepare(
-      `INSERT INTO memberships (collection_id, block_id, position, region, context, hidden)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO memberships (collection_id, block_id, position, region, context, hidden, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(collection_id, block_id) DO UPDATE SET
          position = excluded.position, region = excluded.region,
-         context = excluded.context, hidden = excluded.hidden`,
+         context = excluded.context, hidden = excluded.hidden,
+         version = excluded.version`,
     );
     this.db.exec("BEGIN");
     try {
@@ -206,7 +244,15 @@ export class Mirror {
         if (r.memberships) {
           dropMem.run(r.id);
           for (const m of r.memberships) {
-            addMem.run(m.collectionId, r.id, m.position, m.region, JSON.stringify(m.context ?? {}), m.hidden ? 1 : 0);
+            addMem.run(
+              m.collectionId,
+              r.id,
+              m.position,
+              m.region,
+              JSON.stringify(m.context ?? {}),
+              m.hidden ? 1 : 0,
+              m.version ?? null,
+            );
           }
         }
       }
@@ -322,6 +368,21 @@ export class Mirror {
       .prepare("SELECT 1 AS hit FROM memberships WHERE collection_id = ? AND block_id = ?")
       .get(collectionId, blockId);
     return row !== undefined;
+  }
+
+  /**
+   * The version of a membership as the mirror last saw it.
+   *
+   * What a write sends back to be sure of what it is changing. Null when the
+   * mirror has no row, and when the producer does not version memberships — a
+   * write then sends nothing, which is unprotected and honest, rather than a
+   * guess that would be refused.
+   */
+  memberVersion(collectionId: string, blockId: string): number | null {
+    const row = this.db
+      .prepare("SELECT version FROM memberships WHERE collection_id = ? AND block_id = ?")
+      .get(collectionId, blockId) as { version: number | null } | undefined;
+    return row?.version ?? null;
   }
 
   /** Which region a card currently sits in, if any. */

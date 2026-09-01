@@ -283,9 +283,19 @@ export class Interchange {
    * one zoom level, and the two are not interchangeable — see `arrange` below,
    * which is the other half and is refused on a board that works in names.
    */
-  async place(collection: string, object: string, region: string | null): Promise<WriteAnswer> {
+  async place(
+    collection: string,
+    object: string,
+    region: string | null,
+    version?: number | null,
+  ): Promise<WriteAnswer> {
     return this.answered(() =>
-      this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, { region }),
+      this.req<WriteAnswer>("PATCH", `/interchange/collections/${collection}/members/${object}`, {
+        region,
+        // Omitted rather than sent as null when unknown: a producer reads the
+        // field's presence as "compare this", and null is not a version.
+        ...(typeof version === "number" ? { version } : {}),
+      }),
     );
   }
 

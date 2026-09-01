@@ -29,6 +29,9 @@ export interface HermesMembership {
   blockId: string;
   position: string | null;
   context: Record<string, unknown>;
+  /** Optional so a caller that has no row version — an import building
+   *  memberships from an envelope — is not made to invent one. */
+  version?: number;
 }
 
 /**

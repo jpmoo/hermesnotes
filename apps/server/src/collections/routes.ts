@@ -555,6 +555,15 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
          * every caller that wants to clear a flag.
          */
         unsetContext: z.array(z.string()).optional(),
+        /**
+         * The version the caller believes it is changing.
+         *
+         * Optional: a caller that has not read the membership is writing
+         * blind and is entitled to, the same as before this existed. When it
+         * *is* sent, it is compared as part of the UPDATE rather than before
+         * it — see below, where the guard is a WHERE clause and not an `if`.
+         */
+        expectVersion: z.number().int().optional(),
       })
       .parse(req.body);
 
@@ -588,11 +597,30 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
 
     if (Object.keys(set).length === 0) return { ok: true };
     set.version = sql`${memberships.version} + 1`;
+    /**
+     * The comparison is part of the write.
+     *
+     * Not `read the version, check it, then update` — those are two statements
+     * with a gap between them, and the gap is exactly where the other writer
+     * goes. Two clients both read 7, both find it current, and both write, and
+     * the version that was added to prevent that has instead documented it.
+     *
+     * As a WHERE clause the database does the comparing, and a stale caller
+     * updates no rows. Which is then indistinguishable from a membership that
+     * is not there at all — so that is asked separately, and only when zero
+     * rows came back, where it costs nothing on the path that worked.
+     */
     const touched = await db
       .update(memberships)
       .set(set)
-      .where(and(eq(memberships.collectionId, id), eq(memberships.blockId, blockId)))
-      .returning({ id: memberships.id });
+      .where(
+        and(
+          eq(memberships.collectionId, id),
+          eq(memberships.blockId, blockId),
+          ...(body.expectVersion === undefined ? [] : [eq(memberships.version, body.expectVersion)]),
+        ),
+      )
+      .returning({ id: memberships.id, version: memberships.version });
     // A write that changed nothing must not answer as though it did.
     //
     // Patching a membership that does not exist updates no rows, and this used
@@ -600,7 +628,21 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     // dragged out of a smart matrix's drawer has no membership row, so the move
     // reported success and the card stayed exactly where it was, with nothing
     // anywhere to say why. Silence is what made it take months to find.
-    if (touched.length === 0) throw notFound("membership");
-    return { ok: true };
+    if (touched.length === 0) {
+      // Which of the two it was. A caller told "not found" for a card that is
+      // on the board and was merely moved underneath it would go looking for a
+      // membership bug, and a caller told "conflict" for a card that is not
+      // there would retry forever.
+      if (body.expectVersion !== undefined) {
+        const [row] = await db
+          .select({ version: memberships.version })
+          .from(memberships)
+          .where(and(eq(memberships.collectionId, id), eq(memberships.blockId, blockId)))
+          .limit(1);
+        if (row) throw conflict(`membership is at version ${row.version}`);
+      }
+      throw notFound("membership");
+    }
+    return { ok: true, version: touched[0]?.version };
   });
 }

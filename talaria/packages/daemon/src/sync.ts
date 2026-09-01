@@ -42,7 +42,7 @@ import type { Mirror } from "./mirror.js";
 // objects that moved and says nothing about a library that is now described
 // differently. A collection nobody edited is never re-read, so a board would
 // have kept its old region list forever.
-const SEAM_VERSION = "7-regions";
+const SEAM_VERSION = "8-member-versions";
 const SEAM = "seam.version";
 
 const CURSOR = "sync.cursor";
@@ -154,7 +154,14 @@ export class Sync {
 
     const byObject = new Map<
       string,
-      { collectionId: string; position: string | null; region: string | null; context: unknown; hidden: boolean }[]
+      {
+        collectionId: string;
+        position: string | null;
+        region: string | null;
+        context: unknown;
+        hidden: boolean;
+        version: number | null;
+      }[]
     >();
     for (const c of env.collections ?? []) {
       // A grid is drawn left to right, so everything that renders one counts in
@@ -173,6 +180,10 @@ export class Sync {
             region: m.region ?? null,
             context: index >= 0 ? { ...(m.context ?? {}), region: index } : (m.context ?? {}),
             hidden: false,
+            // Kept so a write can say which version it is changing. Null when
+            // the producer does not version memberships, which a write then
+            // reports honestly by sending nothing.
+            version: typeof m.version === "number" ? m.version : null,
           },
         ]);
       }

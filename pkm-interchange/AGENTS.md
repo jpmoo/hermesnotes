@@ -1061,6 +1061,35 @@ If you version collections, carry the version on the read and accept it on the
 write, exactly as for objects. A producer that demands one and never issues one
 has made safe writing impossible through its own binding.
 
+#### Members carry `version` too
+
+A membership is the third versioned thing, and it is the one most likely to be
+written by two hands at once. An object is usually edited by whoever opened it;
+a *placement* is edited by anybody who drags anything, and by every agent asked
+to arrange something. Two clients moving two cards on one board is the ordinary
+case, not the contended one.
+
+So: **if a `place` honours `version`, the read MUST carry `version` on each
+member.** This is the same rule as for objects and it fails in the same way,
+but it is easier to get half-right — the check costs nothing to write, passes
+its own tests, and can never fire, because the number it compares against is one
+no client was ever given. Accepting a version you do not issue is not a safety
+feature. It is the appearance of one, which is worse than admitting you have
+none: a client that sends a version believes it is protected.
+
+Opaque, like the others. Compare for equality; do not parse or order it.
+
+A producer that does not version memberships accepts any version sent to it and
+says so by never issuing one. That is a weaker promise honestly made, and it is
+a legitimate place to stop.
+
+**The comparison must be part of the write.** Reading the member, comparing, and
+then writing is two statements with a gap between them, and the gap is exactly
+where the other writer goes. Two clients both read version 7, both find it
+current, and both write — which is the bug the version was added to prevent,
+reintroduced by the shape of the check. A producer whose store cannot make the
+compare and the write one operation should not claim to version memberships.
+
 → `fixtures/membership.json`
 
 ### Every write answers for itself

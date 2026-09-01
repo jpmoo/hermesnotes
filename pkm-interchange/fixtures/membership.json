@@ -189,7 +189,7 @@
           "placement.region-not-declared"
         ]
       },
-      "why": "A region nothing renders is a card that has vanished from the board with nobody told. The write knows which regions exist — they are on the collection it is written against — so it is the last place this can be caught."
+      "why": "A region nothing renders is a card that has vanished from the board with nobody told. The write knows which regions exist \u2014 they are on the collection it is written against \u2014 so it is the last place this can be caught."
     },
     {
       "id": "membership/region-null-is-still-a-member",
@@ -221,7 +221,7 @@
           "object": "o_1"
         }
       },
-      "why": "Added but not placed is a real state — a card in the drawer beside the board — and it is not the same as not being on the board at all. Null is admissible here, unlike in `context`, because a region is one slot rather than a bag: there is no value it could be confused with."
+      "why": "Added but not placed is a real state \u2014 a card in the drawer beside the board \u2014 and it is not the same as not being on the board at all. Null is admissible here, unlike in `context`, because a region is one slot rather than a bag: there is no value it could be confused with."
     },
     {
       "id": "membership/a-stale-move-is-refused",
@@ -254,6 +254,80 @@
         "conflict": true
       },
       "why": "Merging a stale move is how one person's drag silently reverts another's, with the writer told it landed. A producer that versions memberships must refuse; one that does not version them accepts, which is a weaker promise honestly made rather than a stronger one pretended to."
+    },
+    {
+      "id": "membership/a-move-answers-with-the-next-version",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": {
+            "semantic": false
+          }
+        },
+        "member": {
+          "object": "o_1",
+          "version": 7,
+          "context": {
+            "x": 340
+          }
+        },
+        "patch": {
+          "context": {
+            "x": 400
+          },
+          "version": 7
+        }
+      },
+      "expect": {
+        "ok": true,
+        "member": {
+          "object": "o_1",
+          "version": 8,
+          "context": {
+            "x": 400
+          }
+        }
+      },
+      "why": "A client that drags a card twice must not have to re-read the board between drags. If the answer does not carry the version the write produced, the second drag sends the first one's number and is refused as stale \u2014 so a producer that versions memberships and answers without one has built a board that can be moved once. This is the same rule as a write answering with its object, applied to the thing that is actually contended."
+    },
+    {
+      "id": "membership/an-unversioned-membership-accepts-anything",
+      "level": 4,
+      "op": "place",
+      "given": {
+        "collection": {
+          "id": "c_board",
+          "kind": "canvas",
+          "placement": {
+            "semantic": false
+          }
+        },
+        "member": {
+          "object": "o_1",
+          "context": {
+            "x": 340
+          }
+        },
+        "patch": {
+          "context": {
+            "x": 400
+          },
+          "version": 3
+        }
+      },
+      "expect": {
+        "ok": true,
+        "member": {
+          "object": "o_1",
+          "context": {
+            "x": 400
+          }
+        }
+      },
+      "why": "A producer that does not version memberships says so by never issuing one, and must then accept whatever a hopeful client sends rather than refusing on a number it does not keep. The answer carries no version either \u2014 inventing one here would tell the client it is protected when nothing is comparing. A weaker promise honestly made."
     },
     {
       "id": "membership/put-makes-a-membership",
@@ -343,7 +417,7 @@
           }
         }
       },
-      "why": "The same division `PUT` and `PATCH` draw on an object, for the same reason. This is a caller asking again because it never heard the first answer, not a caller asking for the card to be moved back to the origin — and a verb that did both could not be retried after a timeout."
+      "why": "The same division `PUT` and `PATCH` draw on an object, for the same reason. This is a caller asking again because it never heard the first answer, not a caller asking for the card to be moved back to the origin \u2014 and a verb that did both could not be retried after a timeout."
     },
     {
       "id": "membership/put-refuses-a-region-nobody-declared",
@@ -499,7 +573,7 @@
           "collection.unprefixed-write"
         ]
       },
-      "why": "Not an abstraction. Hermes was spending twenty-nine unprefixed names on collections, `sort_mode` and `table_sort` among them — this document's own open limit, no sort or grouping on a collection, being solved privately under the name v0.1 would want. This write is the door that rule had not been applied to. The collection's structural keys need no rule of their own: `kind`, `placement` and `members` are not in `properties` and are unreachable from here, which is stronger than refusing them."
+      "why": "Not an abstraction. Hermes was spending twenty-nine unprefixed names on collections, `sort_mode` and `table_sort` among them \u2014 this document's own open limit, no sort or grouping on a collection, being solved privately under the name v0.1 would want. This write is the door that rule had not been applied to. The collection's structural keys need no rule of their own: `kind`, `placement` and `members` are not in `properties` and are unreachable from here, which is stronger than refusing them."
     },
     {
       "id": "membership/a-collection-write-leaves-the-rest-alone",
@@ -549,7 +623,7 @@
           "obsidian:folder"
         ]
       },
-      "why": "The reason this write exists at all is a canvas's sticky notes, which are not objects and can be written no other way. It must not become the reason another producer's keys disappear — including the keys of a producer this one has never heard of."
+      "why": "The reason this write exists at all is a canvas's sticky notes, which are not objects and can be written no other way. It must not become the reason another producer's keys disappear \u2014 including the keys of a producer this one has never heard of."
     },
     {
       "id": "membership/unset-removes-one-key-and-only-one",

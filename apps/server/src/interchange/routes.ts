@@ -224,6 +224,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           blockId: memberships.blockId,
           position: memberships.position,
           context: memberships.context,
+          version: memberships.version,
         })
         .from(memberships)
         .innerJoin(blocks, and(eq(blocks.id, memberships.blockId), eq(blocks.ownerId, userId)));
@@ -286,6 +287,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           blockId: m.blockId,
           position: m.position,
           context: (m.context ?? {}) as Record<string, unknown>,
+          version: m.version,
         })),
         seriesRows,
         producer: { name: "hermes", version: "2.0.0" },
@@ -675,8 +677,16 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
     /** The placement half of a member write, in Hermes' words. */
     const placementPayload = (
       collection: Record<string, unknown>,
-      body: { region?: string | null; context?: Record<string, unknown>; unset?: string[] },
+      body: {
+        region?: string | null;
+        context?: Record<string, unknown>;
+        unset?: string[];
+        version?: number;
+      },
     ) => {
+      // Carried on every shape below, because the guard belongs to the write
+      // and not to one kind of write.
+      const guard = body.version === undefined ? {} : { expectVersion: body.version };
       if (body.region !== undefined) {
         // Read off the declared placement, which is where the format keeps the
         // names — not off Hermes' own `matrix_regions`, which an export does not
@@ -688,9 +698,10 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         const index = body.region === null ? null : declared.indexOf(body.region);
         // Null overwrites where an empty object would merge, so "nowhere in
         // particular" has to be said explicitly or the card never leaves.
-        return { context: index === null ? null : { region: index } };
+        return { ...guard, context: index === null ? null : { region: index } };
       }
       return {
+        ...guard,
         ...(body.context ? { context: body.context } : {}),
         ...(body.unset?.length ? { unsetContext: body.unset } : {}),
       };
@@ -770,10 +781,23 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
         payload: placementPayload(col, body),
       });
+      // A stale write is a conflict and says so in the format's own shape. It
+      // is answered from the row rather than from `placeMember`'s pre-check,
+      // which compared against a snapshot read moments earlier and cannot see a
+      // writer that arrived in between.
+      if (wrote.statusCode === 409) {
+        return reply.code(409).send({ ok: false, conflict: true, fidelity: "full", reports: [] });
+      }
       if (wrote.statusCode >= 400) {
         return reply.code(wrote.statusCode).send({ ok: false, reports: ["placement.refused"] });
       }
-      return { ok: true, fidelity: "full", reports: [], member: decided.member };
+      // The version the row actually reached, not the one predicted from a
+      // snapshot. They agree whenever nothing else wrote; when something did,
+      // the row is right and the prediction is the stale half.
+      const landed = (wrote.json() as { version?: number }).version;
+      const member =
+        landed === undefined ? decided.member : { ...decided.member, version: landed };
+      return { ok: true, fidelity: "full", reports: [], member };
     });
 
     /**

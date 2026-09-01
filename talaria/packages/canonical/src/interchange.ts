@@ -92,7 +92,22 @@ export interface InterchangeCollection {
     sort?: { by?: { field?: string; part?: string; meta?: string }; direction?: string }[];
     groupBy?: { field?: string; part?: string; meta?: string };
   };
-  members?: { object?: string; position?: string; region?: string; context?: Record<string, unknown> }[];
+  /**
+   * `version` is what makes a placement safe to write twice.
+   *
+   * Read here rather than taken from Hermes' copy of the format, like
+   * everything else in this file: two implementations that agree is the only
+   * evidence the format says what it means. Optional, because a producer that
+   * does not version memberships is making a weaker promise honestly and this
+   * has to be able to describe one.
+   */
+  members?: {
+    object?: string;
+    position?: string;
+    region?: string;
+    context?: Record<string, unknown>;
+    version?: number;
+  }[];
 }
 
 export interface Envelope {

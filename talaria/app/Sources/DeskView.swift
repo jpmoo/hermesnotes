@@ -610,6 +610,10 @@ struct DeskView: View {
     @ObservedObject var glance: GlanceModel
     @ObservedObject var canvas: CanvasModel
     @ObservedObject var assistant: AssistantModel
+    /// The canvas's own chat, which draws and nothing else. Separate from the
+    /// Hermes assistant above because they do different jobs — and both can be
+    /// on screen at once.
+    @ObservedObject var canvasChat: CanvasChatModel
     /// Whether the canvas's chat drawer is out. Held here rather than in the
     /// canvas: the drawer belongs to the page, not to the drawing, and it should
     /// survive a redraw of the surface.
@@ -659,7 +663,7 @@ struct DeskView: View {
                             // of those, and threading it through would put a
                             // conversation in the one file that has no business
                             // holding one.
-                            ChatDrawer(model: assistant, open: $chatOpen)
+                            ChatDrawer(model: canvasChat, open: $chatOpen)
                         }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)

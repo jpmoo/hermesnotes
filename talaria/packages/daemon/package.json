@@ -17,7 +17,8 @@
     "stranger": "tsx stranger.ts",
     "contextcheck": "tsx contextcheck.ts",
     "wmcheck": "tsx wmcheck.ts",
-    "glancecheck": "tsx glancecheck.ts"
+    "glancecheck": "tsx glancecheck.ts",
+    "canvastools": "tsx canvastools.check.ts"
   },
   "dependencies": {
     "@hermes/shared": "workspace:*",

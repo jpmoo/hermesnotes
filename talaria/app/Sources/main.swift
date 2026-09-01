@@ -181,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let glanceModel = GlanceModel()
     private let boardModel = BoardModel()
     private let assistantModel = AssistantModel()
+    private let canvasChatModel = CanvasChatModel()
     private let settingsModel = SettingsModel()
     private let composeModel = ComposeModel()
 
@@ -612,6 +613,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             glance: glanceModel,
             canvas: canvasModel,
             assistant: assistantModel,
+            canvasChat: canvasChatModel,
             onCompose: { [weak self] seed, made in self?.compose(seed: seed, then: made) },
             onLeave: { [weak self] in self?.hideDesk() },
             onPickWorkspace: { [weak self] name in

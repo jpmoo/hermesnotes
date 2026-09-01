@@ -296,7 +296,7 @@ struct AssistantView: View {
 // MARK: - The drawer
 
 /**
- Chat, pulled up from the bottom of the canvas.
+ The canvas's own chat, pulled up from the bottom of it.
 
  A drawer rather than a fifth quadrant or a second window. The canvas is the one
  surface here that fills the page — there is no spare quarter to put a panel in —
@@ -312,7 +312,7 @@ struct AssistantView: View {
  underneath it, and a tab that is underneath something is a tab nobody finds.
  */
 struct ChatDrawer: View {
-    @ObservedObject var model: AssistantModel
+    @ObservedObject var model: CanvasChatModel
     @Binding var open: Bool
 
     /// Tall enough for a question, an answer and the tools it ran, which is the
@@ -325,7 +325,7 @@ struct ChatDrawer: View {
         VStack(alignment: .leading, spacing: 0) {
             tab
             if open {
-                AssistantView(model: model, standalone: false, autofocus: true)
+                CanvasChatView(model: model)
                     .frame(width: Self.width, height: Self.height)
                     .background(
                         RoundedRectangle(cornerRadius: Theme.cardRadius)
@@ -352,9 +352,11 @@ struct ChatDrawer: View {
             withAnimation(.easeOut(duration: 0.2)) { open.toggle() }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "bubble.left.and.bubble.right.fill")
+                // A pencil, not the wings. What draws is not what files, and
+                // the Hermes assistant can be open over the top of this one.
+                Image(systemName: "pencil.and.scribble")
                     .font(.system(size: 11))
-                Text("Chat").font(Theme.chrome(11, weight: .medium))
+                Text("Draw").font(Theme.chrome(11, weight: .medium))
                 Image(systemName: open ? "chevron.down" : "chevron.up")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -370,7 +372,7 @@ struct ChatDrawer: View {
             .shadow(color: .black.opacity(0.12), radius: 6, y: 1)
         }
         .buttonStyle(.plain)
-        .help(open ? "Close chat" : "Ask Hermes Notes about this canvas")
+        .help(open ? "Close" : "Ask for something to be drawn on this canvas")
         // Above the drawer when it is open, so the two read as one piece: a tab
         // on the lid rather than a button that happens to sit near a panel.
         .padding(.bottom, open ? 6 : 0)

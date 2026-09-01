@@ -1458,6 +1458,40 @@ export function buildServer(deps: {
     });
   });
 
+  /**
+   * Talaria's own chat, which draws and does nothing else.
+   *
+   * Separate from `/assistant` on purpose, and not only in scope: it runs
+   * against the user's own inference server rather than Hermes', so a canvas
+   * can be arranged with no network beyond this machine. The other one is the
+   * PKM's assistant and can change the library; this one can change a picture.
+   */
+  app.post("/canvas/chat", async (req, reply) => {
+    const body = z
+      .object({
+        message: z.string().min(1).max(20_000),
+        history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).default([]),
+      })
+      .parse(req.body);
+    if (!config.inferenceModel) {
+      return reply.code(400).send({
+        error: "No chat model set. Choose a tool-capable one (llama3.1, qwen2.5) in Settings → Chat.",
+      });
+    }
+    try {
+      const { runCanvasChat } = await import("./canvasagent.js");
+      const turn = await runCanvasChat({
+        url: config.inferenceUrl,
+        model: config.inferenceModel,
+        ix,
+        messages: [...body.history, { role: "user" as const, content: body.message }],
+      });
+      return envelope(turn);
+    } catch (err) {
+      return reply.code(502).send({ error: (err as Error).message });
+    }
+  });
+
   app.get("/types", async () =>
     envelope(
       [...types().values()].map((t) => ({
@@ -1862,6 +1896,11 @@ export function buildServer(deps: {
         version: current.version ?? 0,
       });
       if (!answer.ok) throw new HermesError(answer.conflict ? 409 : 400, "the write was refused");
+      return { id: intent.blockId };
+    }
+    if (intent.kind === "retitle") {
+      const answer = await ix.patch(intent.blockId, { set: { [intent.key]: intent.title }, version: 0 });
+      if (!answer.ok) throw new HermesError(answer.conflict ? 409 : 400, "the rename was refused");
       return { id: intent.blockId };
     }
     const note = await hermes.dailyNote(intent.date);

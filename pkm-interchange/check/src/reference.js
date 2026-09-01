@@ -423,6 +423,67 @@ export function patchCollection(collection, p = {}) {
 }
 
 /**
+ * A collection brought into being.
+ *
+ * The same verb as a create on an object, one noun along, and it exists for the
+ * same reason: a client that keeps its own document somewhere has to be able to
+ * make the container the first time it runs, and asking again after a lost
+ * answer must not make a second one.
+ *
+ * The client chooses the id, which is what makes a repeat recognisable as a
+ * repeat rather than as a new board.
+ *
+ * Creates and never edits. A create at an id already taken is a success that
+ * changed nothing — replacing would discard every key the caller had never
+ * heard of, which is the round-trip rule broken at write time by the verb least
+ * likely to be suspected of it.
+ */
+export function createCollection(collection = {}, ctx = {}) {
+  const at = ctx.at ?? collection.id;
+
+  if (collection.id !== undefined && at !== undefined && collection.id !== at) {
+    return { ok: false, created: false, fidelity: "full", reports: ["create.id-mismatch"] };
+  }
+
+  // Already there. It succeeded once; this is the caller asking again because
+  // it never heard so.
+  if (ctx.existing) {
+    return { ok: true, created: false, collection: ctx.existing, fidelity: "full", reports: [] };
+  }
+
+  // The prefix rule reaches this door too.
+  //
+  // `collectionPatch` refuses an unprefixed key because unprefixed names belong
+  // to the format. A create that did not would be the way around it: make the
+  // collection with `sort_mode` already on it and no write ever has to be
+  // refused. Same rule, and the one place it would otherwise have a gap.
+  const bare = Object.keys(collection.properties ?? {}).filter((k) => !k.includes(":"));
+  if (bare.length) {
+    return { ok: false, created: false, fidelity: "full", reports: ["collection.unprefixed-write"] };
+  }
+
+  // Members are a separate write, and not out of tidiness. Joining a collection
+  // can tag a card, move it, or change its status — a region declares what it
+  // does to what lands in it — and a bag of ids carried along with a create
+  // cannot say whether any of that ran. Refused rather than dropped, because a
+  // caller whose members vanished silently would believe the board was full.
+  if (Array.isArray(collection.members) && collection.members.length) {
+    return { ok: false, created: false, fidelity: "full", reports: ["collection.members-are-a-separate-write"] };
+  }
+
+  return {
+    ok: true,
+    created: true,
+    // Everything kept, including whatever this implementation has never heard
+    // of — a create is the one write with no earlier version to compare
+    // against, so a reduction nobody mentions is invisible for good.
+    collection: { ...structuredClone(collection), id: at },
+    fidelity: "full",
+    reports: [],
+  };
+}
+
+/**
  * What a follower concludes from a change feed.
  *
  * Rows arrive in order and the last one about an object is the current one — in
@@ -635,5 +696,6 @@ export const adapter = {
   place,
   member,
   patchCollection,
+  createCollection,
   follow,
 };

@@ -621,6 +621,65 @@ const MUTANTS = [
     patch: (a) => ({ ...a, validate: () => ({ valid: true, errors: [] }) }),
   },
   {
+    // The obvious create, and the one that empties a board every time a client
+    // restarts — because the check-and-create at startup *is* a repeat.
+    name: "a collection create replaces the collection already there",
+    caught: "membership/repeating-a-collection-create-is-not-a-second-board",
+    patch: (a) => ({
+      ...a,
+      createCollection: (col, ctx) => ({
+        ok: true,
+        created: true,
+        collection: { ...col, id: ctx.at ?? col.id },
+        fidelity: "full",
+        reports: [],
+      }),
+    }),
+  },
+  {
+    // Keeps only what it recognises. Invisible, because a create has nothing
+    // earlier to be compared against.
+    name: "a collection create keeps only the keys it knows",
+    caught: "membership/a-collection-can-be-brought-into-being",
+    patch: (a) => ({
+      ...a,
+      createCollection: (col, ctx) => {
+        const out = a.createCollection(col, ctx);
+        if (out.ok && out.created) out.collection = { id: out.collection.id, kind: out.collection.kind };
+        return out;
+      },
+    }),
+  },
+  {
+    // The way around the prefix rule: never refuse a write, just let the key
+    // arrive at creation instead.
+    name: "takes an unprefixed key when the collection is being created",
+    caught: "membership/a-created-collection-cannot-take-an-unprefixed-key",
+    patch: (a) => ({
+      ...a,
+      createCollection: (col, ctx) => {
+        const bare = Object.keys(col?.properties ?? {}).filter((k) => !k.includes(":"));
+        if (bare.length) {
+          return { ok: true, created: true, collection: { ...col, id: ctx.at ?? col.id }, fidelity: "full", reports: [] };
+        }
+        return a.createCollection(col, ctx);
+      },
+    }),
+  },
+  {
+    // Members dropped rather than refused. The board comes back empty and the
+    // client was told it worked.
+    name: "drops the members a create was given instead of refusing them",
+    caught: "membership/members-do-not-arrive-with-a-collection",
+    patch: (a) => ({
+      ...a,
+      createCollection: (col, ctx) => {
+        const { members, ...rest } = col ?? {};
+        return a.createCollection(rest, ctx);
+      },
+    }),
+  },
+  {
     // The check that costs nothing, passes its own tests, and can never fire.
     // A producer in this state looks safer than one that versions nothing at
     // all, and is less safe: a client sends a version and believes it is

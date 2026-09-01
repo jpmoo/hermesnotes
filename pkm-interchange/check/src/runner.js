@@ -324,6 +324,31 @@ function runCase(adapter, c, bySuiteId) {
       }
       return { pass: checks.every(Boolean), got };
     }
+    case "collectionCreate": {
+      const at = given.args?.at ?? given.collection?.id;
+      const got = adapter.createCollection(given.collection, { at, existing: given.existing ?? null }, caps);
+      const checks = [];
+      if (c.expect.ok !== undefined) checks.push(got.ok === c.expect.ok);
+      if (c.expect.created !== undefined) checks.push(Boolean(got.created) === c.expect.created);
+      if (c.expect.fidelity !== undefined) checks.push(got.fidelity === c.expect.fidelity);
+      if (c.expect.reports !== undefined) {
+        checks.push(
+          c.expect.reports.length === 0
+            ? (got.reports ?? []).length === 0
+            : c.expect.reports.every((r) => (got.reports ?? []).includes(r)),
+        );
+      }
+      if (c.expect.collection !== undefined) {
+        checks.push(subset(c.expect.collection, got.collection));
+        // Exact, like every other write in this suite: a key that did not
+        // survive being created is invisible to a subset match, and there is no
+        // earlier version to notice it against.
+        if (c.expect.keys) {
+          checks.push(exact([...c.expect.keys].sort(), Object.keys(got.collection?.properties ?? {}).sort()));
+        }
+      }
+      return { pass: checks.every(Boolean), got };
+    }
     default:
       return { pass: false, got: `unknown op "${c.op}"` };
   }
@@ -358,6 +383,7 @@ const ROLES = {
   place: ["operate"],
   member: ["operate"],
   collectionPatch: ["operate"],
+  collectionCreate: ["operate"],
   follow: ["operate"],
 };
 

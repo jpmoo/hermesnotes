@@ -23,7 +23,7 @@ import {
   type Recurrence,
 } from "@hermes/shared";
 import { fromInterchange, hermesSortKey } from "./src/import.js";
-import { memberWrite, patchCollectionProps, placeMember } from "./src/write.js";
+import { createCollection, memberWrite, patchCollectionProps, placeMember } from "./src/write.js";
 import { toInterchange } from "./src/map.js";
 import { CONFORMANCE } from "./src/conformance.js";
 import { validateEnvelope } from "./src/validate.js";
@@ -197,6 +197,7 @@ export const hermesAdapter = {
     body: Parameters<typeof memberWrite>[3],
   ) => memberWrite(collection, object, op, body),
   patchCollection: patchCollectionProps,
+  createCollection,
 
   /** The same foldChanges the live-sync watcher uses. */
   follow: (feed: { seq?: number; object: string; op: string; cause?: string }[]) =>

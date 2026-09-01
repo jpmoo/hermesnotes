@@ -64,6 +64,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       ["POST", `${mount}/collections/:id/members`],
       ["DELETE", `${mount}/collections/:id/members/:blockId`],
       ["PATCH", `${mount}/collections/:id`],
+      ["POST", `${mount}/collections`],
       ["GET", `${mount}/search`],
     ];
     const missing = needed.filter(([method, url]) => !app.hasRoute({ method: method as "GET", url }));
@@ -917,6 +918,94 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
      * unprefixed in its own database — the prefix is the format's way of saying
      * whose they are on the wire, not a rename.
      */
+    /**
+     * A collection brought into being, at an id the caller chose.
+     *
+     * The last verb the collection side was missing. The binding could arrange
+     * a collection, write its own keys, and add and remove its members, and not
+     * make one — so a client that needed somewhere to put things had to reach
+     * past the format for the single call that starts everything.
+     *
+     * `PUT` rather than `POST`, and the id in the path, for the reason a create
+     * on an object is spelled the same way: it makes a repeat recognisable as a
+     * repeat. Creates and never edits — a caller repeating a create has by
+     * definition not read what is there, so replacing would throw away every key
+     * it had never heard of.
+     */
+    guarded.put("/interchange/collections/:collection", async (req, reply) => {
+      const { collection } = z.object({ collection: z.string().uuid() }).parse(req.params);
+      const body = z
+        .object({
+          id: z.string().optional(),
+          name: z.string().optional(),
+          kind: z.string(),
+          properties: z.record(z.unknown()).optional(),
+          members: z.array(z.unknown()).optional(),
+        })
+        .parse(req.body ?? {});
+
+      if (body.id !== undefined && body.id !== collection) {
+        return reply.code(400).send({ ok: false, created: false, reports: ["create.id-mismatch"] });
+      }
+
+      // Joining a collection can tag a card, move it, or change its status, and
+      // a bag of ids carried along with a create cannot say whether any of that
+      // ran. Refused rather than dropped: a caller whose members vanished
+      // quietly would believe the board was full.
+      if (body.members?.length) {
+        return reply
+          .code(400)
+          .send({ ok: false, created: false, reports: ["collection.members-are-a-separate-write"] });
+      }
+
+      // The prefix rule reaches this door too — otherwise it is the way around
+      // it, with the key arriving at creation instead of by a write.
+      const bare = Object.keys(body.properties ?? {}).filter((k) => !k.includes(":"));
+      if (bare.length) {
+        return reply.code(400).send({ ok: false, created: false, reports: ["collection.unprefixed-write"] });
+      }
+
+      // Already there? Then this is a repeat, and the answer is the collection
+      // as it stands — untouched.
+      const before = await collectionAsRead(req, collection);
+      if (before) {
+        return reply.code(200).send({ ok: true, created: false, fidelity: "full", reports: [], collection: before });
+      }
+
+      const made = await app.inject({
+        method: "POST",
+        url: `${mount}/collections`,
+        headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+        payload: { id: collection, kind: body.kind, title: body.name ?? "Untitled" },
+      });
+      if (made.statusCode >= 400) {
+        return reply.code(made.statusCode).send({ ok: false, created: false, reports: ["write.refused"] });
+      }
+
+      // The caller's own keys, laid over the defaults Hermes seeds by kind.
+      // Through the same door a patch uses, so there is one implementation of
+      // what a prefixed key means rather than two that can disagree.
+      if (body.properties && Object.keys(body.properties).length) {
+        const own = `${PRODUCER}:`;
+        const strip = (k: string) => (k.startsWith(own) ? k.slice(own.length) : k);
+        const set = Object.fromEntries(Object.entries(body.properties).map(([k, v]) => [strip(k), v]));
+        const wrote = await app.inject({
+          method: "PATCH",
+          url: `${mount}/collections/${collection}`,
+          headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+          payload: { patch: { set, unset: [] } },
+        });
+        if (wrote.statusCode >= 400) {
+          return reply.code(wrote.statusCode).send({ ok: false, created: true, reports: ["write.refused"] });
+        }
+      }
+
+      // Read back the way a reader would, so the collection in this answer is
+      // the one the next `?since=` will carry.
+      const after = await collectionAsRead(req, collection);
+      return reply.code(201).send({ ok: true, created: true, fidelity: "full", reports: [], collection: after });
+    });
+
     guarded.patch("/interchange/collections/:collection", async (req, reply) => {
       const { collection } = z.object({ collection: z.string().uuid() }).parse(req.params);
       const body = z

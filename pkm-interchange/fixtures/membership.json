@@ -664,6 +664,200 @@
         ]
       },
       "why": "Set and unset, with the meaning they have everywhere else in this document. Stated as its own case because a bag-shaped write is exactly where an implementation is tempted to treat the payload as the whole object."
+    },
+    {
+      "id": "membership/a-collection-can-be-brought-into-being",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "id": "c_scratch",
+          "name": "Talaria Scratch Canvas",
+          "kind": "canvas",
+          "placement": {
+            "semantic": false
+          }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "created": true,
+        "collection": {
+          "id": "c_scratch",
+          "name": "Talaria Scratch Canvas",
+          "kind": "canvas",
+          "placement": {
+            "semantic": false
+          }
+        }
+      },
+      "why": "A client that keeps a document of its own has to be able to make the container the first time it runs. Without this the format could arrange a collection, write its keys, add and remove its members, and not make one \u2014 so every client that needed a place to put things reached past the format for the one call that starts everything, which is the call most worth having in it."
+    },
+    {
+      "id": "membership/the-client-chooses-the-collection-id",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "name": "Talaria Scratch Canvas",
+          "kind": "canvas"
+        },
+        "args": {
+          "at": "c_scratch"
+        }
+      },
+      "expect": {
+        "ok": true,
+        "created": true,
+        "collection": {
+          "id": "c_scratch",
+          "kind": "canvas"
+        }
+      },
+      "why": "An id decided before the request is what makes a repeat recognisable as a repeat. A client that could not name the collection it was making would have to ask what it got, and a lost answer would leave it unable to tell a retry from a second board."
+    },
+    {
+      "id": "membership/repeating-a-collection-create-is-not-a-second-board",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "id": "c_scratch",
+          "name": "Talaria Scratch Canvas",
+          "kind": "canvas",
+          "placement": {
+            "semantic": false
+          }
+        },
+        "existing": {
+          "id": "c_scratch",
+          "name": "Talaria Scratch Canvas",
+          "kind": "canvas",
+          "placement": {
+            "semantic": false
+          },
+          "properties": {
+            "talaria:regions": [
+              {
+                "title": "Ideas"
+              }
+            ]
+          }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "created": false,
+        "collection": {
+          "properties": {
+            "talaria:regions": [
+              {
+                "title": "Ideas"
+              }
+            ]
+          }
+        }
+      },
+      "why": "The check-and-create a client runs at startup is this exact call, every time it starts. It succeeded once; this is the caller asking again because it never heard so, and answering with a fresh empty board would throw away everything on it."
+    },
+    {
+      "id": "membership/a-collection-create-does-not-replace",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "id": "c_scratch",
+          "kind": "canvas",
+          "name": "Renamed"
+        },
+        "existing": {
+          "id": "c_scratch",
+          "kind": "canvas",
+          "name": "Talaria Scratch Canvas",
+          "properties": {
+            "hermes:sort_mode": "manual"
+          }
+        }
+      },
+      "expect": {
+        "ok": true,
+        "created": false,
+        "collection": {
+          "name": "Talaria Scratch Canvas",
+          "properties": {
+            "hermes:sort_mode": "manual"
+          }
+        }
+      },
+      "why": "The round-trip rule at write time, by the verb least likely to be suspected of it. A create that replaced would discard every key the caller had never heard of \u2014 and a caller repeating a create has by definition not read what is there. Renaming is what a patch is for."
+    },
+    {
+      "id": "membership/two-collection-ids-is-a-refusal",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "id": "c_one",
+          "kind": "canvas"
+        },
+        "args": {
+          "at": "c_two"
+        }
+      },
+      "expect": {
+        "ok": false,
+        "created": false,
+        "reports": [
+          "create.id-mismatch"
+        ]
+      },
+      "why": "Two ids in one request is a caller's bug, and either reading is obviously right. Choosing between them silently is how a board is made somewhere nobody will look for it."
+    },
+    {
+      "id": "membership/a-created-collection-cannot-take-an-unprefixed-key",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "id": "c_scratch",
+          "kind": "canvas",
+          "properties": {
+            "sort_mode": "manual"
+          }
+        }
+      },
+      "expect": {
+        "ok": false,
+        "created": false,
+        "reports": [
+          "collection.unprefixed-write"
+        ]
+      },
+      "why": "The prefix rule reaches this door too. A patch refuses an unprefixed key because unprefixed names belong to the format; a create that did not would be the way around it \u2014 make the collection with the key already on it and no write ever has to be refused."
+    },
+    {
+      "id": "membership/members-do-not-arrive-with-a-collection",
+      "level": 4,
+      "op": "collectionCreate",
+      "given": {
+        "collection": {
+          "id": "c_scratch",
+          "kind": "canvas",
+          "members": [
+            {
+              "object": "o_1"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "ok": false,
+        "created": false,
+        "reports": [
+          "collection.members-are-a-separate-write"
+        ]
+      },
+      "why": "Joining a collection can tag a card, move it, or change its status \u2014 a region declares what it does to what lands in it \u2014 and a bag of ids carried along with a create cannot say whether any of that ran. Refused rather than dropped: a caller whose members vanished quietly would believe the board was full."
     }
   ]
 }

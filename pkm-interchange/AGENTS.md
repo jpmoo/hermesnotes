@@ -1024,6 +1024,47 @@ Placement rules apply on the way in exactly as they do on a move — a `PUT`
 naming a region the collection never declared is refused, not accepted with the
 region quietly dropped, which would add a card nothing draws.
 
+### Making a collection
+
+```
+PUT <base>/collections/c_scratch
+{ "id": "c_scratch", "name": "Talaria Scratch Canvas", "kind": "canvas",
+  "placement": { "semantic": false } }
+```
+
+The format could arrange a collection, write its own keys, and add and remove
+its members before it could make one. So every client that needed somewhere to
+put things reached past the format for the single call that starts everything —
+which is the call most worth having in it.
+
+**The client chooses the id**, exactly as on an object create, and for the same
+reason: an id decided before the request is what makes a repeat recognisable as
+a repeat. A client that could not name what it was making would have to ask what
+it got, and a lost answer would leave it unable to tell a retry from a second
+board. Two ids in one request is `create.id-mismatch`.
+
+**It creates and never edits.** A create at an id already taken is a success
+that changed nothing — `created: false`, and the collection as it stands. This
+is the round-trip rule at write time, arriving through the verb least likely to
+be suspected of it: a caller repeating a create has by definition not read what
+is there, so replacing would discard every key it had never heard of. The
+check-and-create a client runs at startup *is* this call, every time it starts.
+Renaming is what a patch is for.
+
+**The prefix rule reaches this door too.** `properties` on a create is refused
+for an unprefixed key with `collection.unprefixed-write`, the same as a patch.
+Otherwise it is the way around the rule: make the collection with `sort_mode`
+already on it, and no write ever has to be refused.
+
+**Members are a separate write**, and not out of tidiness. Joining a collection
+can tag a card, move it, or change its status — a region declares what it does
+to what lands in it — and a bag of ids carried along with a create cannot say
+whether any of that ran. `collection.members-are-a-separate-write`, refused
+rather than dropped: a caller whose members vanished quietly would believe the
+board was full.
+
+→ `fixtures/membership.json`
+
 ### Writing a collection's own keys
 
 ```

@@ -123,6 +123,16 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const body = z
       .object({
+        /**
+         * Chosen by the caller, the way `POST /blocks` already allows.
+         *
+         * What it buys is retry: a client that never heard the answer can send
+         * the same request again and have the second one recognised as the
+         * first. Without it the interchange binding's create could not promise
+         * that, and a dropped response would leave a second board behind every
+         * time a client restarted mid-call.
+         */
+        id: z.string().uuid().optional(),
         kind: collectionKindSchema,
         title: z.string().default("Untitled"),
         description: z.string().optional(),
@@ -190,6 +200,7 @@ export async function collectionRoutes(app: FastifyInstance): Promise<void> {
     const [row] = await db
       .insert(blocks)
       .values({
+        ...(body.id ? { id: body.id } : {}),
         ownerId: userId,
         blockTypeId: null,
         collectionKind: body.kind,

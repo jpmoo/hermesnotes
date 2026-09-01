@@ -72,6 +72,7 @@ a live binding.
 | `place` | `collection`, `member`, `patch` | `{ ok, conflict?, member, fidelity, reports }` |
 | `member` | `collection`, `args.object`, `args.op`, `patch?` | `{ ok, created?, removed?, member?, reports }` |
 | `collectionPatch` | `collection`, `patch` | `{ ok, conflict?, collection, fidelity, reports }` |
+| `collectionCreate` | `collection`, `existing?`, `args.at?` | `{ ok, created, collection, fidelity, reports }` |
 | `follow` | `feed` | `{ alive, gone }` — what a follower concludes |
 
 `fidelity` is `"full"` or `"reduced"`. `reports` name what was lost; a `reduced`
@@ -99,6 +100,10 @@ The three collection writes are all handed the **whole collection**, because
 every rule they enforce is the collection's: which regions exist, whether
 placement is a judgment or furniture, which members are already there. A member
 handed over on its own cannot answer any of them.
+
+`collectionCreate` matches its properties bag exactly too, and for a sharper
+reason than the others: a create has no earlier version to be compared against,
+so a key that did not survive being created is invisible for good.
 
 `place` and `collectionPatch` match their bags **exactly**, for the reason
 `patch` does: what these suites are about is a key quietly not surviving a write,

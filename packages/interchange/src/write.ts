@@ -194,3 +194,59 @@ export function patchCollectionProps(
 
   return { ok: true, collection: next, fidelity: "full", reports: [] };
 }
+
+/**
+ * A collection brought into being.
+ *
+ * The rules only, like every other function here — the route does the storing.
+ * Which is the point of the split: what a create means is decided once, in a
+ * function the fixtures can ask directly, and the binding is left with nothing
+ * to get wrong except delegation.
+ */
+export function createCollection(
+  collection: WriteCollection = {},
+  ctx: { at?: string; existing?: WriteCollection | null } = {},
+): {
+  ok: boolean;
+  created: boolean;
+  collection?: WriteCollection;
+  fidelity: "full";
+  reports: string[];
+} {
+  const at = ctx.at ?? collection.id;
+
+  if (collection.id !== undefined && at !== undefined && collection.id !== at) {
+    return { ok: false, created: false, fidelity: "full", reports: ["create.id-mismatch"] };
+  }
+
+  // Already there. It succeeded once; this is the caller asking again because
+  // it never heard so, and a fresh empty board would throw away what is on it.
+  if (ctx.existing) {
+    return { ok: true, created: false, collection: ctx.existing, fidelity: "full", reports: [] };
+  }
+
+  // The prefix rule reaches this door too — otherwise a create is the way
+  // around the refusal a patch would give.
+  const bare = Object.keys((collection.properties ?? {}) as Record<string, unknown>).filter(
+    (k) => !k.includes(":"),
+  );
+  if (bare.length) {
+    return { ok: false, created: false, fidelity: "full", reports: ["collection.unprefixed-write"] };
+  }
+
+  // Members are a separate write: joining a collection can tag a card, move it
+  // or change its status, and a bag of ids carried along cannot say whether any
+  // of that ran.
+  const members = (collection as { members?: unknown[] }).members;
+  if (Array.isArray(members) && members.length) {
+    return { ok: false, created: false, fidelity: "full", reports: ["collection.members-are-a-separate-write"] };
+  }
+
+  return {
+    ok: true,
+    created: true,
+    collection: { ...collection, ...(at === undefined ? {} : { id: at }) },
+    fidelity: "full",
+    reports: [],
+  };
+}

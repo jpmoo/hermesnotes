@@ -609,6 +609,11 @@ struct DeskView: View {
     @ObservedObject var compose: ComposeModel
     @ObservedObject var glance: GlanceModel
     @ObservedObject var canvas: CanvasModel
+    @ObservedObject var assistant: AssistantModel
+    /// Whether the canvas's chat drawer is out. Held here rather than in the
+    /// canvas: the drawer belongs to the page, not to the drawing, and it should
+    /// survive a redraw of the surface.
+    @State private var chatOpen = false
     /// Open the New Block window seeded with these words, and hand back the id
     /// of whatever it made.
     var onCompose: (String, @escaping (String) -> Void) -> Void
@@ -641,12 +646,21 @@ struct DeskView: View {
                     // and there is nothing to say where the surface stops and
                     // the desktop showing through it begins.
                     DeskPane(title: "Canvas", opaque: !chrome.seeThrough) {
-                        // The zoom control lives inside the surface rather than
-                        // over the pane. It is the canvas's own chrome, and the
-                        // surface is the one thing that knows where all of that
-                        // is — which is what lets the pointer become a finger
-                        // over every part of it and stay a hand over the rest.
-                        CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose, onLeave: onLeave)
+                        ZStack(alignment: .bottomLeading) {
+                            // The zoom control lives inside the surface rather
+                            // than over the pane. It is the canvas's own chrome,
+                            // and the surface is the one thing that knows where
+                            // all of that is — which is what lets the pointer
+                            // become a finger over every part of it and stay a
+                            // hand over the rest.
+                            CanvasSurface(chrome: chrome, model: canvas, onCompose: onCompose, onLeave: onLeave)
+                            // Over the canvas rather than inside it. The surface
+                            // knows about items, links and regions; chat is none
+                            // of those, and threading it through would put a
+                            // conversation in the one file that has no business
+                            // holding one.
+                            ChatDrawer(model: assistant, open: $chatOpen)
+                        }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                 }
@@ -722,8 +736,18 @@ struct DeskView: View {
                     GlanceView(model: glance, standalone: false)
                 }
                 .frame(width: w, height: h)
-                WorkspacesPane(model: workspaces, onPick: onPickWorkspace)
-                    .frame(width: w, height: h)
+                // Chat, where the workspace picker was.
+                //
+                // `WorkspacesPane` above is deliberately still here and
+                // deliberately unreferenced. The intention is that the four
+                // quadrants become a choice rather than a layout — pick what
+                // goes in each — and deleting the pane now would mean writing
+                // it again then. It compiles, it works, and the day the desk
+                // learns to be arranged it goes straight back in.
+                DeskPane(title: "Chat") {
+                    AssistantView(model: assistant, standalone: false, autofocus: false)
+                }
+                .frame(width: w, height: h)
             }
         }
     }

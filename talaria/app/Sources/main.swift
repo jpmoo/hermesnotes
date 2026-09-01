@@ -611,6 +611,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             compose: composeModel,
             glance: glanceModel,
             canvas: canvasModel,
+            assistant: assistantModel,
             onCompose: { [weak self] seed, made in self?.compose(seed: seed, then: made) },
             onLeave: { [weak self] in self?.hideDesk() },
             onPickWorkspace: { [weak self] name in

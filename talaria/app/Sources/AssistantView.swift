@@ -76,12 +76,33 @@ final class AssistantModel: ObservableObject {
 
 struct AssistantView: View {
     @ObservedObject var model: AssistantModel
+    /**
+     Its own window, or somebody else's.
+
+     The same distinction `ComposeView` and `GlanceView` already draw, and for
+     the same reason: a panel that owns a window draws its own title and decides
+     its own size, and the identical panel inside a pane must do neither — the
+     pane has a title and the layout has already decided how big this is.
+     */
+    var standalone = true
+    /**
+     Whether appearing means the keyboard.
+
+     True for a window somebody summoned and for a drawer somebody pulled open —
+     both are "I want to type now". False in a quadrant of the desk, which
+     appears because the desk appeared; taking the caret there would mean the
+     scratchpad lost it every time the overlay opened, to a pane nobody looked
+     at.
+     */
+    var autofocus = true
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if standalone {
+                header
+                Divider()
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -101,8 +122,9 @@ struct AssistantView: View {
             Divider()
             composer
         }
-        .frame(width: 540, height: 460)
-        .onAppear { focused = true }
+        .frame(width: standalone ? 540 : nil, height: standalone ? 460 : nil)
+        .frame(maxWidth: standalone ? nil : .infinity, maxHeight: standalone ? nil : .infinity)
+        .onAppear { if autofocus { focused = true } }
     }
 
     private var header: some View {
@@ -268,5 +290,89 @@ struct AssistantView: View {
             .disabled(model.busy || model.draft.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
+    }
+}
+
+// MARK: - The drawer
+
+/**
+ Chat, pulled up from the bottom of the canvas.
+
+ A drawer rather than a fifth quadrant or a second window. The canvas is the one
+ surface here that fills the page — there is no spare quarter to put a panel in —
+ and asking somebody to leave the canvas to ask a question about what is on it
+ is asking them to stop doing the thing they wanted help with.
+
+ Closed it is a tab and nothing else, which is the whole argument for the shape:
+ a canvas with a chat panel permanently across the bottom is a canvas that is a
+ third smaller for the sake of something used occasionally.
+
+ Kept to the leading edge on purpose. The surface strip sits centred at the very
+ bottom of the desk and is drawn over everything; a tab in the middle would be
+ underneath it, and a tab that is underneath something is a tab nobody finds.
+ */
+struct ChatDrawer: View {
+    @ObservedObject var model: AssistantModel
+    @Binding var open: Bool
+
+    /// Tall enough for a question, an answer and the tools it ran, which is the
+    /// shortest exchange worth having. Not resizable yet — one size that works
+    /// beats a grip nobody has asked for.
+    private static let height: CGFloat = 300
+    private static let width: CGFloat = 520
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            tab
+            if open {
+                AssistantView(model: model, standalone: false, autofocus: true)
+                    .frame(width: Self.width, height: Self.height)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.cardRadius)
+                            .fill(.background.opacity(0.97))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Theme.cardRadius)
+                            .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: -2)
+                    // Up from under the edge it is attached to, so it reads as
+                    // one thing coming out of the bottom of the page rather
+                    // than a panel that faded in over it.
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.leading, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var tab: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.2)) { open.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 11))
+                Text("Chat").font(Theme.chrome(11, weight: .medium))
+                Image(systemName: open ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+            .foregroundStyle(open ? Theme.accent : Color.secondary)
+            .background(
+                Capsule().fill(.background.opacity(0.88))
+                    .overlay(Capsule().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
+            )
+            .shadow(color: .black.opacity(0.12), radius: 6, y: 1)
+        }
+        .buttonStyle(.plain)
+        .help(open ? "Close chat" : "Ask Hermes Notes about this canvas")
+        // Above the drawer when it is open, so the two read as one piece: a tab
+        // on the lid rather than a button that happens to sit near a panel.
+        .padding(.bottom, open ? 6 : 0)
     }
 }

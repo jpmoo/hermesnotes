@@ -214,7 +214,7 @@ struct CanvasItem: Identifiable, Equatable, Codable {
     /**
      Written out by hand for one line of it.
 
-     Swift's synthesised decoder requires every non-optional key to be present,
+     Swift's synthesized decoder requires every non-optional key to be present,
      default value or not — so adding `shape` to this struct would have made
      every canvas.json written before shapes existed fail to decode. The store
      keeps a file it cannot read rather than overwriting it, which is the right
@@ -287,7 +287,7 @@ struct CanvasLink: Identifiable, Equatable, Codable {
         self.to = to
     }
 
-    /// By hand, for the same reason `CanvasItem` is: the synthesised decoder
+    /// By hand, for the same reason `CanvasItem` is: the synthesized decoder
     /// demands every non-optional key whether or not it has a default, so a
     /// field added here would make every canvas written before it unreadable.
     init(from decoder: Decoder) throws {
@@ -2635,7 +2635,7 @@ struct CanvasSurface: View {
 
      Clamped, because "follows the zoom" taken literally means a two-point
      target at 0.15x and a button the size of a saucer at 6x. Between a half and
-     twice, which keeps it recognisably attached without ever making it
+     twice, which keeps it recognizably attached without ever making it
      unclickable.
      */
     private var buttonScale: CGFloat { min(max(chrome.zoom, 0.5), 2) }
@@ -2991,7 +2991,7 @@ struct CanvasSurface: View {
     }
 
     /// Hermes names its icons in its own vocabulary; this is the small part of
-    /// it that has an obvious equivalent here. Anything unrecognised falls back
+    /// it that has an obvious equivalent here. Anything unrecognized falls back
     /// to a page, which is what a block is when nothing more is known.
     private func sfSymbol(for key: String) -> String {
         switch key {

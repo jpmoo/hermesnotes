@@ -83,7 +83,7 @@ check("carries no collections either", cols(quiet).length === 0);
 check("says so, rather than being an empty document", Array.isArray(quiet.changes));
 
 // A delta that did carry something still carries every board, which is the case
-// the narrowing above deliberately does not optimise: the board a card was
+// the narrowing above deliberately does not optimize: the board a card was
 // taken *off* no longer lists it, so filtering by membership would drop the one
 // collection the follower most needs.
 check(

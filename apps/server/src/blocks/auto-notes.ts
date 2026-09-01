@@ -17,7 +17,7 @@ import { db } from "../db.js";
  *
  * The other guards are deliberately strict, because "empty content" alone
  * doesn't mean "empty note": a day with no text can still carry a banner or a
- * customised layout, and either is worth keeping. Only a note nobody wrote in
+ * customized layout, and either is worth keeping. Only a note nobody wrote in
  * AND with nothing else hanging off it goes.
  *
  * `keepId` spares the note currently being viewed, which is legitimately empty

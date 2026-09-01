@@ -596,12 +596,12 @@ enum Daemon {
         let archived: Bool
 
         /// Spelled out, because writing `init(from:)` is what stops Swift
-        /// synthesising these.
+        /// synthesizing these.
         enum CodingKeys: String, CodingKey {
             case id, title, typeId, status, url, version, archived
         }
 
-        /// By hand, because a synthesised decoder rejects a missing key however
+        /// By hand, because a synthesized decoder rejects a missing key however
         /// obvious the default is — and this one is missing from every daemon
         /// built before it was added. An app that refused to decode a linked
         /// block would draw every canvas node as gone, which is the failure

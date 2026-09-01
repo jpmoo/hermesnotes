@@ -22,7 +22,7 @@ const shown: string[] = [];
 for (const [path, value] of leaves(envelope)) {
   if (path.startsWith("conformance")) continue; // a claim about the producer, not their data
   // A bare id and a member object mean the same member; the format says so, and
-  // expanding the short spelling is the one normalisation it permits.
+  // expanding the short spelling is the one normalization it permits.
   if (after.has(`${path}.object`) && after.get(`${path}.object`) === value) continue;
   if (after.has(path) && JSON.stringify(after.get(path)) === JSON.stringify(value)) continue;
   lost += 1;

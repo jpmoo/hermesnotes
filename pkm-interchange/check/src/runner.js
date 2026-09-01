@@ -64,7 +64,7 @@ function slice(given, envelope, of) {
  */
 function subset(expected, actual) {
   // A member is an object; a bare id is shorthand for one with nothing else to
-  // say. Expanding it is the single normalisation the format permits, so a
+  // say. Expanding it is the single normalization the format permits, so a
   // fixture written either way matches an implementation that chose the other.
   // Encoded here rather than in each expectation, because it is a fact about the
   // format and not about any one case.

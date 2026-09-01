@@ -142,7 +142,7 @@ export function toCanonical(
   const collectionKind = opts.collectionKind ?? null;
 
   // Hermes' word for "this note is the daily note for that day". Not a format
-  // concept, so it reads as an unrecognised property — which is exactly what the
+  // concept, so it reads as an unrecognized property — which is exactly what the
   // round-trip rule protects, and it is legible enough to use.
   const noteDate = typeof props.today_note === "string" ? props.today_note : null;
 
@@ -196,7 +196,7 @@ export function toCanonical(
     updatedAt: String(object.updated ?? ""),
     version: object.version ?? 0,
     // The producer's own address, when it publishes one. Opaque: not parsed,
-    // not rewritten, and never synthesised for an object that arrived without
+    // not rewritten, and never synthesized for an object that arrived without
     // one — absent means this producer publishes no address for this thing,
     // which is a different fact from an address that went missing.
     //

@@ -573,7 +573,7 @@ export class Mirror {
    * Write a context row, unless it says the same as the last one.
    *
    * A title-change event fires per keystroke in some editors, so the dedupe is
-   * not an optimisation — without it a minute of typing is a hundred rows
+   * not an optimization — without it a minute of typing is a hundred rows
    * saying one thing, and the rolling window empties itself of everything
    * useful.
    */

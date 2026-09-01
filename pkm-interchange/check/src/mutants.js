@@ -445,13 +445,22 @@ const MUTANTS = [
     }),
   },
   {
-    name: "tidies away mentions whose target has gone",
-    caught: "inline/unresolved-mention-survives",
+    // Rewritten when its target was. It used to drop relations carrying
+    // `resolved: false`, and the format had since removed that flag outright —
+    // a join a consumer can do in one pass, and a second version of a fact
+    // otherwise. So the mutant attacked a field nothing emitted and could not
+    // fail, which is the same shape as the dangling name it was found by.
+    //
+    // The mistake in the model as it stands is tidier and more tempting: an
+    // object with no type does not look like a real object, so a consumer
+    // sweeps it up — and every sentence naming it now points at nothing.
+    name: "tidies away the stub an unwritten name became",
+    caught: "inline/a-name-with-no-thing-is-a-stub",
     patch: (a) => ({
       ...a,
       roundtrip: (env, caps) => {
         const out = a.roundtrip(env, caps);
-        out.result.relations = (out.result.relations ?? []).filter((r) => r.resolved !== false);
+        out.result.objects = (out.result.objects ?? []).filter((o) => o.stub !== true);
         return out;
       },
     }),
@@ -842,7 +851,18 @@ for (const m of MUTANTS) {
   const results = runSuites(m.patch(reference), FIXTURES);
   const target = results.find((r) => r.id === m.caught);
   const others = results.filter((r) => r.id !== m.caught && !r.pass).map((r) => r.id);
-  if (target?.pass) {
+  // A mutant naming a case that no longer exists.
+  //
+  // `find` answers undefined, `undefined?.pass` is falsy, and the else branch
+  // below then prints "caught" — so renaming a fixture silently turned one of
+  // these into a mutant nothing was checking, and the total kept saying every
+  // one was caught. Exactly the failure this suite exists to find, in the suite
+  // itself. Loud, and counted as an escape, because that is what it is.
+  if (!target) {
+    escaped += 1;
+    console.log(`ESCAPED  ${m.name}`);
+    console.log(`         names "${m.caught}", which is not a case in the fixtures`);
+  } else if (target.pass) {
     escaped += 1;
     console.log(`ESCAPED  ${m.name}`);
     console.log(`         nothing failed in ${m.caught}`);

@@ -279,7 +279,7 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
     delete carried.unmatched_placements;
     // A collection's own top-level keys, which until now went nowhere.
     //
-    // Objects have carried their unrecognised keys since level 2 was claimed;
+    // Objects have carried their unrecognized keys since level 2 was claimed;
     // collections never did, because every key the format had for one — `id`,
     // `name`, `kind`, `placement`, `membership`, `members` — was consumed just
     // above, so there was visibly nothing left over. `url` was the first key to

@@ -162,7 +162,7 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
     /// drawn and connected to nothing — the Apple menu included. Saying what the
     /// app is at launch and building the menu then is what makes it work.
     static func installMainMenu() {
-        // No guard on there already being one. AppKit synthesises a menu for a
+        // No guard on there already being one. AppKit synthesizes a menu for a
         // regular app that ships no nib, so "install only if absent" meant
         // never installing — which is why there was no View menu and no
         // Command-R. Ours replaces whatever was made for us.

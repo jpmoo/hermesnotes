@@ -237,7 +237,7 @@ export function patch(object, p = {}, capabilities = {}) {
  * as a success that changed nothing.
  *
  * That is also what makes it safe to repeat. The client picked the id before it
- * sent anything, so a retry after a lost answer is recognisably the same create
+ * sent anything, so a retry after a lost answer is recognizably the same create
  * rather than a second object.
  */
 export function create(object = {}, ctx = {}) {

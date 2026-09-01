@@ -121,7 +121,7 @@ place a `PUT` quietly started editing.
 Search has no op, deliberately. `?q=` is specified in `AGENTS.md`, but what a
 fixture could assert about it is either trivial (a producer returns an envelope)
 or wrong (that these three objects rank in this order), and the format explicitly
-declines to standardise ranking. The rule that *is* worth enforcing — a producer
+declines to standardize ranking. The rule that *is* worth enforcing — a producer
 that cannot search must refuse rather than answer unfiltered — is a property of a
 live binding and is checked there, by `pkm-check --url`, not here.
 

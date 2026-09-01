@@ -28,8 +28,8 @@ art = Image.open(src).convert("RGBA")
 # unreadable at this size anyway, which is what a mark is for.
 # The mark and the words touch — the wing sweeps up and to the right, over
 # where "Hermes" begins — so there is no gap to cut at, and a square taken off
-# the left clips the wing tip. They do differ in colour, though: the mark is
-# teal and the lettering is neutral grey. So separate them that way, and keep
+# the left clips the wing tip. They do differ in color, though: the mark is
+# teal and the lettering is neutral gray. So separate them that way, and keep
 # only the teal, which also drops the sliver of the "H" the wing passes over.
 def is_mark(px):
     r, g, b, a = px

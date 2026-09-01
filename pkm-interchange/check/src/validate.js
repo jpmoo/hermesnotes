@@ -178,7 +178,7 @@ export function validate(envelope) {
   // what a reader will go on to dereference: a string is a field key (or the one
   // reserved body slot), `{field}` names one, and anything else — a list of
   // complete values — is not a reference at all. Only the v0 vocabulary, since
-  // a profile nobody standardised is carried and not interpreted.
+  // a profile nobody standardized is carried and not interpreted.
   (envelope.types ?? []).forEach((t, i) => {
     const declared = new Set((t.fields ?? []).map((f) => f.key));
     for (const [profile, map] of Object.entries(t.profiles ?? {})) {

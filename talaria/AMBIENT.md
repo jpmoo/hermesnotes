@@ -248,7 +248,7 @@ producer.
 Clicking a search result made "an object has no address" *worth specifying*. The
 picker made it blocking, and the difference is worth keeping hold of because it
 is a test for whether a limit is real: every other feature here degrades
-gracefully without an address — you can rank, scope, default and summarise with
+gracefully without an address — you can rank, scope, default and summarize with
 none. A picker that drops a link into whatever you are writing in has **nothing
 left**, because the address is the entire deliverable. It was the first feature
 whose output the format could not say.

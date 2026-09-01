@@ -53,7 +53,7 @@
       "why": "Collections were the last part of the format whose top-level keys had nowhere to land, because every key one could carry was consumed by an exhaustive handler. That handler was exhaustive until `url` arrived, and then a board's address vanished with no finding and no trace. An exhaustive handler fails silently at exactly the moment it stops being exhaustive."
     },
     {
-      "id": "address/absent-url-is-not-synthesised",
+      "id": "address/absent-url-is-not-synthesized",
       "level": 2,
       "op": "roundtrip",
       "given": {

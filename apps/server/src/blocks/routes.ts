@@ -471,7 +471,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
          * is no local fact that separates "it never landed" from "it landed and
          * I didn't hear": retrying makes two blocks, not retrying loses one.
          * Naming the id up front settles it, because a repeat of the same
-         * create is then recognisably the same create.
+         * create is then recognizably the same create.
          */
         id: z.string().uuid().optional(),
         blockTypeId: z.string().uuid().optional(),

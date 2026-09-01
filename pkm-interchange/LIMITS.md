@@ -372,7 +372,7 @@ reasoning.
 the exporter derives relations and resolves inline mentions across the entire
 set — running it on one block would resolve a mention against a library of one
 and mint a stub with a fresh id. 143 objects, milliseconds, correctness over
-micro-optimisation, and it will not stay tolerable.
+micro-optimization, and it will not stay tolerable.
 
 **Why it is not a limit of the format.** This file's own rule is that an entry
 is *something a real client needed and the format had no way to say*. The format

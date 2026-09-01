@@ -562,7 +562,7 @@ export function toInterchange(input: ExportInput): {
     .map((s) => ({
       id: s.id,
       rule: formatRule(s.rule, dayOfDue.get(s.id), note),
-      // Hermes materialises exactly one unstarted occurrence, which is also the
+      // Hermes materializes exactly one unstarted occurrence, which is also the
       // only number a completion-anchored rule is allowed to claim.
       horizon: 1,
       instances: instancesOf.get(s.id) ?? [],

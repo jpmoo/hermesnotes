@@ -47,7 +47,7 @@ export interface InterchangeObject {
    * Where a person can go to see this, as the producer says it.
    *
    * Opaque, like an id. Not to be rewritten, not to be pattern-matched, and
-   * never to be synthesised for an object that lacks one — absent means this
+   * never to be synthesized for an object that lacks one — absent means this
    * producer publishes no address for this thing, which is a different fact
    * from an address that went missing.
    *

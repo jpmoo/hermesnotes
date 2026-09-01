@@ -101,7 +101,7 @@ Structural objects here are open — a type, a field, a collection, a region, a 
 { "name": "delegate-wait", "label": "Delegate & Wait", "hermes:color": "#5fa4b5" }
 ```
 
-Without this, two producers write `color` meaning different things and a consumer cannot tell which it is holding; worse, a later version of the format standardises `color` and every producer that got there first is now wrong in a way no validator can see. A prefix costs seven characters and makes both impossible.
+Without this, two producers write `color` meaning different things and a consumer cannot tell which it is holding; worse, a later version of the format standardizes `color` and every producer that got there first is now wrong in a way no validator can see. A prefix costs seven characters and makes both impossible.
 
 This is about *structural* keys. An object's `properties` are keyed by the producer's own declared fields and are not in this namespace — `properties.deadline` is data, not an extension.
 
@@ -161,7 +161,7 @@ The type system is open. Producers do not share an ontology, so an export carrie
 
 Dates are `YYYY-MM-DD`. Datetimes are `YYYY-MM-DDTHH:mm` with an optional `timezone` on the field (IANA name). A `datespan` is `{ "start": ..., "end": ... }`, both optional, with producer-supplied labels — do not assume the labels are "Start" and "Due".
 
-**The list is open.** A producer with a kind nobody has standardised declares it anyway and it travels untouched; consumers treat an unknown kind as opaque and must not drop the field. The alternative is that a field's type becomes unsayable while its values survive, leaving a consumer holding data it cannot describe.
+**The list is open.** A producer with a kind nobody has standardized declares it anyway and it travels untouched; consumers treat an unknown kind as opaque and must not drop the field. The alternative is that a field's type becomes unsayable while its values survive, leaving a consumer holding data it cannot describe.
 
 There is deliberately **no recurrence value kind**. Recurrence is not a value; see Series.
 
@@ -262,7 +262,7 @@ bytes; a template costs the id rule. An address a producer hands you is not a
 licence to construct another one.
 
 A producer that offers addresses declares `addresses` in `features`. Consumers
-must treat `url` as opaque, must not rewrite it, and must not synthesise one for
+must treat `url` as opaque, must not rewrite it, and must not synthesize one for
 an object that lacks it — absent means *this producer does not publish an
 address for this*, which is different from an address it forgot to send.
 
@@ -301,7 +301,7 @@ A completion-anchored rule is a state machine: the next occurrence depends on an
 ```
 
 - `anchor`: `"schedule"` | `"completion"`.
-- `horizon`: how many unstarted instances the producer materialises ahead. **If `anchor` is `"completion"`, `horizon` MUST be 1.** Anything else is unrepresentable, not merely unusual.
+- `horizon`: how many unstarted instances the producer materializes ahead. **If `anchor` is `"completion"`, `horizon` MUST be 1.** Anything else is unrepresentable, not merely unusual.
 - `end`: `{"type":"never"}` | `{"type":"after","count":N}` | `{"type":"on","date":"YYYY-MM-DD"}`. Note that `after` is enforced by counting `instances`, not by a stored index — an occurrence counter carried on the rule is instance state hiding in a rule object, and every site that copies the rule then has to nurse it.
 - `monthEnd`: `"skip"` | `"clamp"`. **Required for monthly and yearly rules.**
 - `byMonthDay`: which day of the month the rule is anchored to. **Also required for monthly and yearly rules**, because a rule that can only be read by looking at one of its instances is not a rule — and the instance may already have been clamped, in which case it says the 28th and the intent said the 31st.
@@ -555,7 +555,7 @@ Two mechanisms, deliberately.
 { "from": "o_412", "to": "o_88", "type": "supports" }
 ```
 
-`type` is a free string. There is no vocabulary and v0 does not attempt one — the moment you standardise an edge vocabulary you are running an ontology committee, which is where this genre of project goes to die. Consumers preserve relation types they do not understand and must not drop them.
+`type` is a free string. There is no vocabulary and v0 does not attempt one — the moment you standardize an edge vocabulary you are running an ontology committee, which is where this genre of project goes to die. Consumers preserve relation types they do not understand and must not drop them.
 
 `via` says where an edge came from: `"inline"` for one written into prose (see below), `"edge"` for one drawn — on a canvas, say. Absent means unspecified. It is not decoration: an edge in a sentence and an edge someone dragged are edited in completely different ways, and a consumer that flattens them together will offer to change the wrong one.
 
@@ -621,7 +621,7 @@ Most of the graph in a knowledge base is not in the schema. It is in the writing
 
 The rule has two halves, and the second is the one nobody implements.
 
-**Prose is opaque and must survive byte-identical.** This is the round-trip rule, and it is absolute: `[[double brackets]]`, `((double parens))`, `@names`, whatever the next tool invents. The format deliberately standardises no markup dialect. Normalising someone's prose into your syntax is rewriting their writing, which is the one thing in a knowledge base nobody wants touched.
+**Prose is opaque and must survive byte-identical.** This is the round-trip rule, and it is absolute: `[[double brackets]]`, `((double parens))`, `@names`, whatever the next tool invents. The format deliberately standardizes no markup dialect. Normalizing someone's prose into your syntax is rewriting their writing, which is the one thing in a knowledge base nobody wants touched.
 
 **Every inline reference is also mirrored into `relations`.**
 
@@ -637,7 +637,7 @@ That is the whole proposal. Prose stays a black box; its edges are stated in a p
 - A consumer that rewrites prose and cannot guarantee the mentions survive **MUST** report reduced fidelity.
 - `field` **MUST** name a field the object's type actually declares. An edge that cannot be traced back to a sentence is either a stale export or a producer guessing, and a consumer has no way to tell which.
 
-There is no syntax vocabulary here and there should not be one. Standardising markup is the same trap as standardising an edge vocabulary, one layer down.
+There is no syntax vocabulary here and there should not be one. Standardizing markup is the same trap as standardizing an edge vocabulary, one layer down.
 
 → `fixtures/inline.json`
 

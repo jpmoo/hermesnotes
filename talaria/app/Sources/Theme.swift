@@ -4,7 +4,7 @@ import SwiftUI
 /// Hermes' own palette and shapes.
 ///
 /// Taken from `apps/web/src/styles.css` rather than invented, so the two
-/// surfaces are recognisably the same application. The names match the CSS
+/// surfaces are recognizably the same application. The names match the CSS
 /// custom properties they came from, which is what will make it obvious what to
 /// change if the web app's palette ever moves.
 enum Theme {

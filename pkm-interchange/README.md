@@ -280,7 +280,7 @@ GET /interchange?since=40
   "objects": [ { "id": "o_7", "version": 3, ... } ] }
 ```
 
-Here you meet your own write coming back, and the tempting optimisation is to filter it out — *skip the changes I caused*. Don't. Look at what rode along with it: `finished_on`, which you never sent. In a real library the same write would also have created **the next occurrence of a repeating task** — a new object, attributed to you.
+Here you meet your own write coming back, and the tempting optimization is to filter it out — *skip the changes I caused*. Don't. Look at what rode along with it: `finished_on`, which you never sent. In a real library the same write would also have created **the next occurrence of a repeating task** — a new object, attributed to you.
 
 The echo is not noise about something you already know. It is the producer telling you what actually happened, and the answer is to make it harmless rather than absent: you already hold version 3 from step 4, so applying it changes nothing.
 
@@ -336,7 +336,7 @@ Emit an address if your app has a place a person can go. Emitting none is honest
 
 ### Prose is opaque, and its links are mirrored
 
-Most of the graph in a knowledge base is inside the writing — `[[wikilinks]]`, `@names`, whatever your editor does. The format standardises **no markup dialect**: yours comes back exactly as you wrote it. But every reference inside prose is also stated in `relations`, so a consumer that cannot parse your dialect still holds your graph, and one that is about to rewrite your prose can tell what it is about to break.
+Most of the graph in a knowledge base is inside the writing — `[[wikilinks]]`, `@names`, whatever your editor does. The format standardizes **no markup dialect**: yours comes back exactly as you wrote it. But every reference inside prose is also stated in `relations`, so a consumer that cannot parse your dialect still holds your graph, and one that is about to rewrite your prose can tell what it is about to break.
 
 ---
 
@@ -380,9 +380,9 @@ This is the same `Thing To Do` from the top of the page, with the rest of its fi
 }
 ```
 
-Value kinds are `text · richtext · number · boolean · url · date · datetime · datespan · enum · reference · attachment`, **and the list is open** — if you have a kind nobody standardised, declare it under your own name and it travels untouched.
+Value kinds are `text · richtext · number · boolean · url · date · datetime · datespan · enum · reference · attachment`, **and the list is open** — if you have a kind nobody standardized, declare it under your own name and it travels untouched.
 
-The same goes for keys. Types, fields, collections, regions and the envelope itself are all open objects, and anything you hang on them survives a trip through somebody else's app. One rule: **unprefixed keys belong to the format, and yours go under a prefix you control** — `hermes:color`, not `color`. Two apps writing `color` at different meanings is one problem; the format later standardising `color` underneath everyone who got there first is the worse one.
+The same goes for keys. Types, fields, collections, regions and the envelope itself are all open objects, and anything you hang on them survives a trip through somebody else's app. One rule: **unprefixed keys belong to the format, and yours go under a prefix you control** — `hermes:color`, not `color`. Two apps writing `color` at different meanings is one problem; the format later standardizing `color` underneath everyone who got there first is the worse one.
 
 One thing worth getting right at this stage, because it is the commonest shape in a knowledge base and the easiest to leave unsaid: **if a field can hold more than one value, say so.** One task in two projects, one note citing four sources.
 

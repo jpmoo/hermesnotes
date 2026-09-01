@@ -102,6 +102,9 @@ function derive(type: InterchangeType | undefined): CanonicalKind {
     contact: "person",
     project: "project",
     organization: "organization",
+    // British spelling kept deliberately: this is somebody else's type name,
+    // not our prose. A library whose type is called "Organisation" must still
+    // be recognized, and a spelling sweep that reaches data breaks exactly this.
     organisation: "organization",
     company: "organization",
   };

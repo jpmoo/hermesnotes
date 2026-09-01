@@ -113,7 +113,7 @@
           }
         ]
       },
-      "why": "Completion-anchored recurrence is a function of history, not of time. The date of occurrence N+2 depends on when the user completes N+1, which has not happened. A producer claiming to have materialised three instances ahead is claiming to know something unknowable."
+      "why": "Completion-anchored recurrence is a function of history, not of time. The date of occurrence N+2 depends on when the user completes N+1, which has not happened. A producer claiming to have materialized three instances ahead is claiming to know something unknowable."
     },
     {
       "id": "recurrence/completion-anchor-late",

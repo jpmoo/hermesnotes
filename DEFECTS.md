@@ -183,7 +183,7 @@ why it is worth writing down.
 
 **Where:** `packages/interchange/src/import.ts`, the collection loop.
 
-Objects have carried their unrecognised keys into `pkm:carried` since level 2
+Objects have carried their unrecognized keys into `pkm:carried` since level 2
 was claimed. Collections never did — and nothing was visibly wrong, because
 every key the format had for a collection was consumed by the handler just
 above it. There was genuinely nothing left over to lose.

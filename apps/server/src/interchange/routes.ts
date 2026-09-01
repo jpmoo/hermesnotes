@@ -442,7 +442,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
      *
      * That is also what makes it safe for a queue to replay. The client chose
      * the id before it sent anything, so a retry after a lost answer is
-     * recognisably the same create rather than a second radiator.
+     * recognizably the same create rather than a second radiator.
      */
     guarded.put("/interchange/objects/:id", async (req, reply) => {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);

@@ -278,7 +278,7 @@
       "expect": {
         "valid": true
       },
-      "why": "The companion to the case above, and the reason it is safe to run. Three things in a profile are not field keys: a list of complete values, the halves of a compound field named through `{field, part}`, and `content` — the one reserved slot outside the property bag. A profile nobody standardised is carried and not interpreted, so `habit` naming a field this type does not have is not an error either. A rule that fired on any of these would be one producers learn to ignore."
+      "why": "The companion to the case above, and the reason it is safe to run. Three things in a profile are not field keys: a list of complete values, the halves of a compound field named through `{field, part}`, and `content` — the one reserved slot outside the property bag. A profile nobody standardized is carried and not interpreted, so `habit` naming a field this type does not have is not an error either. A rule that fired on any of these would be one producers learn to ignore."
     }
   ]
 }

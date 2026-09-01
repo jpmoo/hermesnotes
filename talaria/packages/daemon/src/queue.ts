@@ -242,7 +242,7 @@ export class Queue {
 
   /**
    * Idempotent by construction: the id was decided locally, so a repeat of this
-   * create is recognisably the same create and the server hands back what it
+   * create is recognizably the same create and the server hands back what it
    * already has rather than making a second one.
    */
   private async replayCreate(row: QueuedIntent, intent: CreateIntent): Promise<ReplayResult> {

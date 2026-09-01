@@ -97,7 +97,7 @@ final class ComposeModel: ObservableObject {
 
      Read apart, which is what this did, you get two editors. The Text type
      declares `description` labeled "Body" and puts its prose in `content`, so
-     the panel drew that field *and* a synthesised body beneath it, both called
+     the panel drew that field *and* a synthesized body beneath it, both called
      Body. Hermes writes neither of the two: zero of nineteen Text blocks in
      this library have a `description` at all.
 
@@ -186,7 +186,7 @@ final class ComposeModel: ObservableObject {
         // Word ends its lines with a carriage return, and splitting on "\n"
         // alone found none — so a two-line selection arrived as one line, the
         // whole thing went into the title, and the split looked broken in
-        // exactly the application it had just been made to work in. Normalise
+        // exactly the application it had just been made to work in. Normalize
         // first; "\r\n" before "\r" or every Windows-authored paragraph
         // becomes two.
         let flat = seed.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")

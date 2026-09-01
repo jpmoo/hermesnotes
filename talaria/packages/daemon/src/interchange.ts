@@ -104,7 +104,7 @@ export function regionNameAt(
 }
 
 /** The readable part of an error body: first meaningful line, hard-capped. */
-function summarise(body: string): string {
+function summarize(body: string): string {
   const trimmed = body.trim();
   if (!trimmed) return "(no body)";
   // An HTML page has nothing useful in its first line, so say what it is
@@ -175,7 +175,7 @@ export class Interchange {
     // `talaria doctor` printed all two hundred lines of Cloudflare's into the
     // terminal under the heading "producer". The status and the first line of
     // it are the whole diagnostic; the rest is someone else's stylesheet.
-    if (!res.ok) throw new Error(`${res.status} ${summarise(text)}`);
+    if (!res.ok) throw new Error(`${res.status} ${summarize(text)}`);
     return (text ? JSON.parse(text) : null) as T;
   }
 
@@ -188,7 +188,7 @@ export class Interchange {
    *
    * Safe to replay, which is the property the queue is built on. The id is
    * decided here before anything is sent, so a create that went out and whose
-   * answer was lost is recognisably the same create when it goes out again: the
+   * answer was lost is recognizably the same create when it goes out again: the
    * producer answers `created: false` and changes nothing, rather than making a
    * second one.
    */

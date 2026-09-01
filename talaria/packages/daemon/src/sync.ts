@@ -347,7 +347,7 @@ export class Sync {
       if (opts.onlyMissing && this.mirror.get(`query.${row.id}`) !== null) continue;
       // The producer shipped a snapshot, so there is nothing to ask for. This
       // is the branch that makes the off-spec call disappear on a Hermes that
-      // materialises, without a flag day and without stranding one that does
+      // materializes, without a flag day and without stranding one that does
       // not — including a producer that is not Hermes at all.
       if (this.mirror.membersOf(row.id).length > 0) {
         // And drop whatever we worked out last time. Leaving it costs nothing

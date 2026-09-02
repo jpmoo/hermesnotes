@@ -704,7 +704,36 @@ export function CanvasView({
         }
       }
     }
+    // The grid only where a neighbour did not already claim the axis, which is
+    // what "loses every tie" means in practice: `bx` is still the tolerance
+    // when nothing matched.
+    if (bx === tol) {
+      const g = gridSnap(r.x, tol);
+      if (g !== null) dx = g - r.x;
+    }
+    if (by === tol) {
+      const g = gridSnap(r.y, tol);
+      if (g !== null) dy = g - r.y;
+    }
     return { ...r, x: r.x + dx, y: r.y + dy };
+  };
+
+  /**
+   * The dot grid, which is drawn at 26px and was never snapped to.
+   *
+   * Offered last everywhere it is offered, and losing every tie, so a box
+   * already touching a neighbour's edge is not pulled off it by a grid line the
+   * same distance away. Alignment to another card is a thing somebody meant;
+   * the grid is a thing they get.
+   *
+   * Only when the grid is showing. Snapping to lines nobody can see is a canvas
+   * that moves in steps for no visible reason.
+   */
+  const GRID = 26;
+  const gridSnap = (v: number, tol: number): number | null => {
+    if (!grid) return null;
+    const near = Math.round(v / GRID) * GRID;
+    return Math.abs(near - v) < tol ? near : null;
   };
 
   /**
@@ -747,6 +776,35 @@ export function CanvasView({
         if (movingN && Math.abs(b - out.y) < tol) {
           out.h = Math.max(MIN_H, out.y + out.h - b);
           out.y = b;
+        }
+      }
+    }
+    // And the grid, for the edge being dragged, when nothing else claimed it.
+    // Same rule as a move: offered last, so a card already flush with its
+    // neighbour is not pulled off by a dot the same distance away.
+    if (bw === tol) {
+      if (movingE) {
+        const g = gridSnap(out.x + out.w, tol);
+        if (g !== null) out.w = Math.max(MIN_W, g - out.x);
+      } else if (movingW) {
+        const g = gridSnap(out.x, tol);
+        if (g !== null) {
+          const right = out.x + out.w;
+          out.x = g;
+          out.w = Math.max(MIN_W, right - g);
+        }
+      }
+    }
+    if (bh === tol) {
+      if (movingS) {
+        const g = gridSnap(out.y + out.h, tol);
+        if (g !== null) out.h = Math.max(MIN_H, g - out.y);
+      } else if (movingN) {
+        const g = gridSnap(out.y, tol);
+        if (g !== null) {
+          const bottom = out.y + out.h;
+          out.y = g;
+          out.h = Math.max(MIN_H, bottom - g);
         }
       }
     }
@@ -2422,8 +2480,12 @@ export function CanvasView({
                 <button
                   key={c.name}
                   className="cv-swatch cv-shape-swatch"
+                  // The shape decides the swatch's own geometry in CSS. Setting
+                  // only a clip path left three of the five identical: `.cv-swatch`
+                  // carries a 6px radius, and a clip cannot take a corner radius
+                  // off — so rounded, square and post-it were the same blob.
+                  data-shape={c.key ?? "rounded"}
                   title={c.name}
-                  style={c.key ? { clipPath: SHAPES[c.key] } : undefined}
                   onClick={() => {
                     setNodeShape(nodeMenu.id, c.key);
                     setNodeMenu(null);
@@ -2438,13 +2500,22 @@ export function CanvasView({
                 {orderedTypes.map((t) => (
                   <button
                     key={t.id}
-                    className="menu-item"
+                    className="menu-item menu-item-icon"
                     onClick={() => {
                       void convertNote(menuNote, t);
                       setNodeMenu(null);
                     }}
                   >
-                    {t.isText ? "Note (text)" : t.name}
+                    {/* The same icon the type wears everywhere else. A list of
+                        type names with no icons is a list you read; with them it
+                        is a list you recognise, and these are the same seven
+                        words every time. */}
+                    <BlockIcon
+                      iconKey={t.isText ? "type" : t.iconKey}
+                      color={t.isText ? null : t.iconColor}
+                      size={14}
+                    />
+                    <span>{t.isText ? "Note (text)" : t.name}</span>
                   </button>
                 ))}
               </>

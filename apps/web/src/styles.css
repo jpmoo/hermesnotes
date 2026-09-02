@@ -8053,6 +8053,23 @@ body:has(.embed-scratchpad) #root {
 .cv-swatch.cv-shape-swatch:hover {
   background: var(--accent);
 }
+/* One geometry each, or they are not choices. A clip path alone left three of
+   these identical, because `.cv-swatch` rounds every corner and a clip cannot
+   unround one. */
+.cv-shape-swatch[data-shape="rounded"] { border-radius: 6px; }
+.cv-shape-swatch[data-shape="rectangle"] { border-radius: 0; }
+.cv-shape-swatch[data-shape="ellipse"] { border-radius: 50%; }
+.cv-shape-swatch[data-shape="triangle"] {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+/* The sticky reads by its cut corner, so the cut has to be big enough to see at
+   twenty pixels — deeper here than on the node itself, where the same
+   proportion would look like a chunk missing. */
+.cv-shape-swatch[data-shape="postIt"] {
+  border-radius: 2px;
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 62% 100%, 0 100%);
+}
 
 /* A clipped node loses its border to the clip, so the outline is an inset
    shadow instead — set per node in the style attribute, since the shape decides
@@ -8084,4 +8101,13 @@ body:has(.embed-scratchpad) #root {
   stroke-width: 1.5px;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+}
+
+/* A menu row that carries an icon has to lay it beside the words rather than
+   above them: `.menu-item` is `display: block`, which stacks an svg and a span.
+   Scoped to the rows that opt in, so every other menu in the app is untouched. */
+.menu-item.menu-item-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }

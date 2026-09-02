@@ -478,3 +478,123 @@ struct CanvasInspector: View {
         )
     }
 }
+
+/**
+ Search Hermes Notes, and hand back what was chosen.
+
+ Answers as you type. That is affordable here and would not be over the network:
+ the daemon searches its own mirror, so a keystroke costs a local query and
+ still works on a train — which is the whole reason this app keeps a mirror.
+
+ Debounced all the same, at a tenth of a second. Not to save the query but to
+ save the *list*: firing on every keystroke makes the results flicker through
+ three wrong answers on the way to the word somebody is typing, and a list that
+ changes under a pointer is a list you cannot click.
+ */
+struct BlockSearch: View {
+    /// Nil when dismissed without choosing.
+    let pick: (Daemon.Reference?) -> Void
+
+    @State private var text = ""
+    @State private var hits: [Daemon.Reference] = []
+    @State private var searching = false
+    @State private var trouble: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                TextField("Search Hermes Notes…", text: $text)
+                    .textFieldStyle(.plain)
+                    .font(Theme.body(12))
+                    .focused($focused)
+                    .onSubmit { if let first = hits.first { pick(first) } }
+                if searching { ProgressView().controlSize(.small) }
+                Button { pick(nil) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+
+            if !hits.isEmpty {
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(hits) { hit in
+                            Button { pick(hit) } label: {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(hit.title.isEmpty ? "Untitled" : hit.title)
+                                        .font(Theme.body(12))
+                                        .lineLimit(1)
+                                    if let kind = hit.typeName, !kind.isEmpty {
+                                        Text(kind).font(Theme.chrome(10)).foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 190)
+            } else if let trouble {
+                Divider()
+                Text(trouble)
+                    .font(Theme.body(11)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 9).padding(.vertical, 6)
+            } else if !text.isEmpty, !searching {
+                Divider()
+                Text("Nothing matches that.")
+                    .font(Theme.body(11)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 9).padding(.vertical, 6)
+            }
+        }
+        .frame(width: 280)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cardRadius)
+                .fill(.background.opacity(0.97))
+                .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1))
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 3)
+        )
+        .onAppear { focused = true }
+        .onChange(of: text) { now in look(for: now) }
+    }
+
+    /// The most recent thing typed, so a slow answer to an old query cannot
+    /// land on top of a fast answer to a new one.
+    @State private var latest = ""
+
+    private func look(for typed: String) {
+        latest = typed
+        let want = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !want.isEmpty else {
+            hits = []
+            trouble = nil
+            return
+        }
+        searching = true
+        Task.detached(priority: .userInitiated) {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            await MainActor.run {
+                guard latest == typed else { return }  // overtaken; let the newer one answer
+                do {
+                    hits = try Daemon.find(want)
+                    trouble = nil
+                } catch {
+                    hits = []
+                    trouble = "Talaria could not reach its own daemon."
+                }
+                searching = false
+            }
+        }
+    }
+}

@@ -652,6 +652,17 @@ enum Daemon {
     /// Throws rather than returning empty. "Nothing of that type yet" and "the
     /// payload changed shape under us" look identical in a dropdown, and only
     /// one of them is the user's problem.
+    /**
+     Blocks matching some words, for a picker that answers as somebody types.
+
+     From the mirror, which is what makes it usable that way: a keystroke costs
+     a local query rather than a round trip, and it still answers on a train.
+     */
+    static func find(_ text: String, limit: Int = 12) throws -> [Reference] {
+        let q = text.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        return try JSONDecoder().decode(Envelope<[Reference]>.self, from: get("/blocks?q=\(q)&limit=\(limit)")).data
+    }
+
     static func blocks(ofType typeId: String, limit: Int = 200) throws -> [Reference] {
         let path = "/blocks?type=\(typeId)&limit=\(limit)"
         return try JSONDecoder().decode(Envelope<[Reference]>.self, from: get(path)).data

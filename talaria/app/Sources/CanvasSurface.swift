@@ -1083,6 +1083,30 @@ final class CanvasModel: ObservableObject {
 
     /// Remember which block a node became. Called once, after the composer
     /// says what it made.
+    /**
+     A block from Hermes, put on the canvas as itself.
+
+     No words of its own: a linked node wears its block's title, and a copy
+     stored here would stop it keeping up — which is the whole reason to put a
+     task on as a task rather than as a label that happens to say the same thing.
+     */
+    func addLinked(_ block: String, at point: CGPoint) {
+        let size = CanvasShape.roundedRectangle.defaultSize
+        var item = CanvasItem(
+            id: UUID(),
+            x: point.x - size.width / 2,
+            y: point.y - size.height / 2,
+            w: size.width,
+            h: size.height,
+            text: "",
+            shape: .roundedRectangle
+        )
+        item.blockId = block
+        items.append(item)
+        select(item: item.id)
+        persist()
+    }
+
     func attach(_ item: UUID, to block: String) {
         guard let at = items.firstIndex(where: { $0.id == item }) else { return }
         items[at].blockId = block
@@ -1568,6 +1592,12 @@ private extension View {
  */
 enum CanvasTool: String, CaseIterable, Identifiable {
     case text
+    /// Put something that already exists in Hermes onto the canvas.
+    ///
+    /// Above the picture tool, because it is nearer in kind to writing a node
+    /// than to pasting one: what arrives is a node like any other, except that
+    /// it stands for a block and therefore keeps up with it.
+    case find
     case image
     case select
 
@@ -1576,6 +1606,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .text: return "textformat"
+        case .find: return "magnifyingglass"
         case .image: return "photo"
         case .select: return "rectangle.dashed"
         }
@@ -1584,6 +1615,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .text: return "Text"
+        case .find: return "Find"
         case .image: return "Image"
         case .select: return "Select"
         }
@@ -1592,6 +1624,7 @@ enum CanvasTool: String, CaseIterable, Identifiable {
     var hint: String {
         switch self {
         case .text: return "Drag onto the canvas to write"
+        case .find: return "Drag on, then search Hermes Notes for what to put there"
         case .image: return "Add a picture from the clipboard or a file"
         case .select: return "Click, then drag a box around things"
         }
@@ -2201,8 +2234,9 @@ private struct CanvasToolStrip: View {
                     .chrome($overChrome)
                     .offset(x: -68)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
-            case .select:
-                // A mode has nothing behind it.
+            case .select, .find:
+                // A mode has nothing behind it, and Find asks its question
+                // where it lands rather than from the strip.
                 EmptyView()
             case .image:
                 ImageMenu { source in
@@ -2716,6 +2750,8 @@ struct CanvasSurface: View {
     /// picture comes from. Both points: where to draw the question, and where
     /// the picture goes once it is answered.
     @State private var askingImage: (screen: CGPoint, canvas: CGPoint)?
+    /// A Find tool has landed and is waiting to be told what to put there.
+    @State private var searching: (screen: CGPoint, canvas: CGPoint)?
 
     /// What Hermes says about the blocks this canvas is linked to, and the
     /// types they are. Read from the mirror, so it is free and works offline;
@@ -2882,6 +2918,7 @@ struct CanvasSurface: View {
                     linkChrome(geo.size)
                     carriedTool
                     imageQuestion
+                    findQuestion
                     marqueeBox(geo.size)
                     CursorArea(cursor: cursor)
                     troubleNote
@@ -3641,6 +3678,11 @@ struct CanvasSurface: View {
             // Where, then what. The question of which picture is asked at the
             // point it was dropped, so the answer arrives where the drag ended.
             askingImage = (here, canvasPoint(here, in: geo.size))
+        case .find:
+            // The same shape as the picture: land first, then ask what goes
+            // there. A search that opened before the drop would have nowhere to
+            // put its answer.
+            searching = (here, canvasPoint(here, in: geo.size))
         }
     }
 
@@ -3725,6 +3767,24 @@ struct CanvasSurface: View {
                 .background(Circle().fill(.background.opacity(0.8)))
                 .position(at)
                 .allowsHitTesting(false)
+        }
+    }
+
+    /// The search that follows a dropped Find tool.
+    @ViewBuilder
+    private var findQuestion: some View {
+        if let asking = searching {
+            BlockSearch { block in
+                searching = nil
+                guard let block else { return }
+                model.addLinked(block.id, at: asking.canvas)
+                // Straight away, so the node has its title and its icon before
+                // the next tick rather than sitting blank for twenty seconds.
+                refreshLinks()
+            }
+            .fixedSize()
+            .chrome($overChrome)
+            .position(x: asking.screen.x + 92, y: asking.screen.y + 46)
         }
     }
 

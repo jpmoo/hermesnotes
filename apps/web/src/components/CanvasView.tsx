@@ -274,8 +274,20 @@ const OUT: Record<Side, { x: number; y: number }> = {
  * arrive without explicit sides (e.g. canvas_create over MCP, which only knows
  * from/to), so a bare {from,to} edge still routes sensibly instead of crashing. */
 function facingSide(a: Rect, b: Rect): Side {
-  const dx = b.x + b.w / 2 - (a.x + a.w / 2);
-  const dy = b.y + b.h / 2 - (a.y + a.h / 2);
+  return sideToward(a, { x: b.x + b.w / 2, y: b.y + b.h / 2 });
+}
+
+/**
+ * Which side of a box faces a point.
+ *
+ * Scaled by the box's own width and height rather than compared raw, which is
+ * what keeps a wide, short card from leaving by its north edge for anything
+ * even slightly above it: the question is which side the point is *nearest in
+ * proportion*, not which axis the difference is bigger on.
+ */
+function sideToward(a: Rect, p: { x: number; y: number }): Side {
+  const dx = p.x - (a.x + a.w / 2);
+  const dy = p.y - (a.y + a.h / 2);
   return Math.abs(dx) / a.w > Math.abs(dy) / a.h ? (dx > 0 ? "e" : "w") : dy > 0 ? "s" : "n";
 }
 
@@ -2049,8 +2061,24 @@ export function CanvasView({
     // leaving from the far side and looping around, which reads as a mistake
     // rather than a connection. Recomputing every render means the ends follow
     // as you drag, and the stored pair stays only as a record of how it started.
-    const fromSide = facingSide(fr, tr);
-    const toSide = facingSide(tr, fr);
+    /**
+     * Where the line is heading, which is not always the other end.
+     *
+     * With no bend it is the point halfway between the two centres, so each end
+     * leaves by the side facing the other — which is what it has always done.
+     * Pull the handle up and over and both ends re-anchor on the way, because
+     * the thing they are aiming at has moved.
+     *
+     * Without this a bent line left by the side it would have left by straight
+     * and then doubled back on itself, which reads as the drag fighting you
+     * rather than as a curve.
+     */
+    const aim = {
+      x: (fr.x + fr.w / 2 + tr.x + tr.w / 2) / 2 + (e.bendX ?? 0),
+      y: (fr.y + fr.h / 2 + tr.y + tr.h / 2) / 2 + (e.bendY ?? 0),
+    };
+    const fromSide = sideToward(fr, aim);
+    const toSide = sideToward(tr, aim);
     const a = anchor(fr, fromSide);
     const b = anchor(tr, toSide);
     const ext = 46;

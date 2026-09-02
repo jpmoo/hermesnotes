@@ -64,7 +64,27 @@ interface NodeCtx extends Rect {
    * and its photograph on another, and neither is the truth about the task.
    */
   showImage?: boolean;
+  /**
+   * The node's own outline: colour, thickness, style.
+   *
+   * The same three keys Talaria stores, under the same names, for the same
+   * reason `shape` and `color` share theirs — furniture, in the member's
+   * context, which the format says a consumer may discard. A canvas read by
+   * something that draws no borders still gets every node in the right place.
+   *
+   * On the sheet, never the frame. The frame carries the handles and the
+   * ephemeral mark; a border is part of how the node *looks*, which is the
+   * sheet's job.
+   */
+  stroke?: string | null;
+  strokeWidth?: number | null;
+  strokeStyle?: string | null;
 }
+
+/** What a border can be. Talaria's three, so the two canvases agree. */
+const BORDER_STYLES = ["solid", "dashed", "double"] as const;
+/** Off, hairline, and two weights you can see. More is a slider nobody wants. */
+const BORDER_WIDTHS = [0, 1, 2, 4] as const;
 
 /**
  * The outlines a node can wear, as clip paths.
@@ -423,6 +443,9 @@ export function CanvasView({
           color: c.color ?? null,
           shape: c.shape ?? null,
           showImage: c.showImage === true,
+          stroke: c.stroke ?? null,
+          strokeWidth: typeof c.strokeWidth === "number" ? c.strokeWidth : null,
+          strokeStyle: c.strokeStyle ?? null,
         }
       : null;
   };
@@ -1649,6 +1672,33 @@ export function CanvasView({
     persistMemberCtx(id, ctx);
   };
 
+  const setBorder = (id: string, patch: Partial<NodeCtx>) => {
+    if (id.startsWith("n:")) {
+      saveNotes(notes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+      return;
+    }
+    const r = rectOf(id) as NodeCtx | null;
+    if (!r) return;
+    const ctx = { ...r, ...patch };
+    setLocal((p) => ({ ...p, [id]: ctx }));
+    persistMemberCtx(id, ctx);
+  };
+
+  /**
+   * The border a node is actually drawn with.
+   *
+   * Nothing set is not the same as zero: a node nobody has touched wears the
+   * theme's hairline, and a node set to zero wears none. Returning undefined
+   * for the first lets the stylesheet keep its say.
+   */
+  const borderOf = (r: NodeCtx): string | undefined => {
+    const hasAny = r.stroke != null || r.strokeWidth != null || r.strokeStyle != null;
+    if (!hasAny) return undefined;
+    const w = r.strokeWidth ?? 1;
+    if (w === 0) return "none";
+    return `${w}px ${r.strokeStyle ?? "solid"} ${r.stroke ?? "var(--border-strong)"}`;
+  };
+
   const setNodeShape = (id: string, shape: string | null) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.map((n) => (n.id === id ? { ...n, shape } : n)));
@@ -2083,6 +2133,9 @@ export function CanvasView({
          * that construction now, which is the same reason it was right there.
          */
         ...(r.shape && SHAPES[r.shape] ? { border: "none", background: "transparent", boxShadow: "none" } : {}),
+        // A border set by hand lives on the sheet, so the frame stops drawing
+        // its own — two outlines a pixel apart is a node that looks doubled.
+        ...(borderOf(r) ? { border: "none", boxShadow: "none" } : {}),
       }}
       // Anywhere on a grouped node is a grip. The resize corners and connect
       // handles stop propagation, so they keep their own jobs.
@@ -2121,7 +2174,13 @@ export function CanvasView({
         // theme's is, and in the dark theme that is nearly white — on a pale
         // sticky, invisible. A note with no color of its own falls through to
         // the stylesheet, since its paper is light in both themes.
-        style={isNote ? { background: r.color || "var(--postit)", color: readableOn(r.color) } : undefined}
+        style={{
+          ...(isNote ? { background: r.color || "var(--postit)", color: readableOn(r.color) } : {}),
+          // The user's own border, when they have set one. `border-box` keeps
+          // the sheet where it was: it is absolutely positioned to the frame's
+          // edges, and a border that grew inward would otherwise move the text.
+          ...(borderOf(r) ? { border: borderOf(r), boxSizing: "border-box" as const } : {}),
+        }}
       >
         <div className="cv-grab" onPointerDown={(e) => startNodeDrag(id, e)} title="Drag to move">
           <GripHorizontal size={13} />
@@ -2693,6 +2752,48 @@ export function CanvasView({
                 </>
               );
             })()}
+            <div className="menu-sep" />
+            <div className="hint" style={{ padding: "4px 10px" }}>Border</div>
+            <div className="cv-menu-row">
+              {BORDER_WIDTHS.map((w) => (
+                <button
+                  key={w}
+                  className="cv-swatch cv-border-swatch"
+                  title={w === 0 ? "No border" : `${w}px`}
+                  data-w={w}
+                  onClick={() => setBorder(nodeMenu.id, { strokeWidth: w })}
+                />
+              ))}
+              {BORDER_STYLES.map((st) => (
+                <button
+                  key={st}
+                  className="cv-swatch cv-border-swatch"
+                  title={st}
+                  data-style={st}
+                  onClick={() =>
+                    // Choosing a style when there is no border yet has to give
+                    // one, or the click does nothing and looks broken.
+                    setBorder(nodeMenu.id, {
+                      strokeStyle: st,
+                      strokeWidth: (rectOf(nodeMenu.id) as NodeCtx | null)?.strokeWidth || 1,
+                    })
+                  }
+                />
+              ))}
+              <label className="cv-swatch cv-swatch-custom" title="Border color…">
+                <Pipette size={12} />
+                <input
+                  type="color"
+                  value={(rectOf(nodeMenu.id) as NodeCtx | null)?.stroke ?? "#5f6b74"}
+                  onChange={(e) =>
+                    setBorder(nodeMenu.id, {
+                      stroke: e.target.value,
+                      strokeWidth: (rectOf(nodeMenu.id) as NodeCtx | null)?.strokeWidth || 1,
+                    })
+                  }
+                />
+              </label>
+            </div>
             <div className="menu-sep" />
             <div className="hint" style={{ padding: "4px 10px" }}>Shape</div>
             <div className="cv-menu-row">

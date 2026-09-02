@@ -5539,7 +5539,7 @@ input.matrix-axis-y::placeholder {
 
    Offset out, so it reads as a mark around the note rather than as its edge. */
 .cv-node.cv-note {
-  outline: 1.5px dashed var(--border-strong);
+  outline: 1px dashed color-mix(in srgb, var(--border-strong) 55%, transparent);
   outline-offset: 3px;
   border-radius: 3px;
 }
@@ -8179,4 +8179,51 @@ body:has(.embed-scratchpad) #root {
   display: block;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+/* The border row. A width swatch shows its own weight and a style swatch shows
+   its own dashes, so the row reads as a set of samples rather than a set of
+   labels — the same idea as the colour swatches above it. */
+.cv-swatch.cv-border-swatch {
+  background: transparent;
+  border: none;
+  position: relative;
+}
+.cv-border-swatch::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  border-top-color: var(--text-muted);
+  border-top-style: solid;
+}
+.cv-border-swatch:hover::after {
+  border-top-color: var(--accent);
+}
+/* Nothing is hard to draw: a slash says "none" where an empty box says "this
+   button does nothing". */
+.cv-border-swatch[data-w="0"]::after {
+  border-top-width: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom right,
+    transparent 46%,
+    var(--text-muted) 46%,
+    var(--text-muted) 54%,
+    transparent 54%
+  );
+}
+.cv-border-swatch[data-w="1"]::after { border-top-width: 1px; }
+.cv-border-swatch[data-w="2"]::after { border-top-width: 2px; }
+.cv-border-swatch[data-w="4"]::after { border-top-width: 4px; }
+.cv-border-swatch[data-style="solid"]::after { border-top-width: 2px; }
+.cv-border-swatch[data-style="dashed"]::after {
+  border-top-width: 2px;
+  border-top-style: dashed;
+}
+.cv-border-swatch[data-style="double"]::after {
+  border-top-width: 3px;
+  border-top-style: double;
 }

@@ -2067,18 +2067,22 @@ export function CanvasView({
         // A note's color is on its paper (above), so the cut corner shows what's
         // behind the note rather than more note.
         background: isNote ? "transparent" : r.color || "var(--surface)",
-        ...(r.shape && SHAPES[r.shape]
-          ? {
-              clipPath: SHAPES[r.shape],
-              // A clipped edge cuts the border off with everything else, so the
-              // outline moves inside as a ring. Without this a circle is a
-              // rectangle's border clipped to a circle, which is no border at
-              // all down the curve.
-              border: "none",
-              borderRadius: 0,
-              boxShadow: `inset 0 0 0 1px var(--border-strong)`,
-            }
-          : {}),
+        // Handed to the sheet, which is what carries the colour once a shape
+        // has taken it off the frame.
+        ...(r.shape && SHAPES[r.shape] ? ({ "--cv-fill": r.color || "var(--surface)" } as React.CSSProperties) : {}),
+        /**
+         * A shaped node is a frame with a shaped sheet inside it.
+         *
+         * The clip used to be on this element, and it took the resize corners
+         * and connect handles with it — they sit at and outside the node's
+         * edges, so clipping the node clipped them away. It also fought the
+         * border radius, which is why "Rounded" came out square.
+         *
+         * The ephemeral note has always done it the other way: the note is only
+         * a frame, and `.cv-paper` inside it is what gets cut. Every shape uses
+         * that construction now, which is the same reason it was right there.
+         */
+        ...(r.shape && SHAPES[r.shape] ? { border: "none", background: "transparent", boxShadow: "none" } : {}),
       }}
       // Anywhere on a grouped node is a grip. The resize corners and connect
       // handles stop propagation, so they keep their own jobs.

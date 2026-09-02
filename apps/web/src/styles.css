@@ -8071,25 +8071,61 @@ body:has(.embed-scratchpad) #root {
   clip-path: polygon(0 0, 100% 0, 100% 62%, 62% 100%, 0 100%);
 }
 
-/* A clipped node loses its border to the clip, so the outline is an inset
-   shadow instead — set per node in the style attribute, since the shape decides
-   whether it is needed. What is left here is the one thing a clip cannot do:
-   the turned-up corner of a sticky, which is a second colour and therefore a
-   second element. */
-.cv-node.cv-shaped::after {
+/* A shape cuts the sheet, never the frame.
+
+   Clipping the node took the resize corners and the connect handles with it —
+   they sit at and outside its edges — and fought the border radius besides. The
+   ephemeral note has always cut `.cv-paper` instead and left the frame alone,
+   and every shape does that now.
+
+   Specificity does the rest: `.cv-node[data-shape=…] .cv-paper` outranks
+   `.cv-note .cv-paper`, so an ephemeral note explicitly given a circle is a
+   circle, and one left alone keeps the post-it it has always been. */
+.cv-node.cv-shaped .cv-paper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--cv-fill, var(--surface));
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.cv-node[data-shape="rectangle"] .cv-paper { border-radius: 0; }
+.cv-node[data-shape="ellipse"] .cv-paper {
+  border-radius: 50%;
+  clip-path: ellipse(50% 50% at 50% 50%);
+}
+.cv-node[data-shape="triangle"] .cv-paper {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+/* The same construction the ephemeral note uses, because it is the same thing —
+   and because choosing "Post-it" should give back the post-it already on the
+   canvas rather than a second, differently cut one. */
+.cv-node[data-shape="postIt"] {
+  --fold: 14px;
+}
+.cv-node[data-shape="postIt"] .cv-paper {
+  border-radius: 2px;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--fold)),
+    calc(100% - var(--fold)) 100%,
+    0 100%
+  );
+}
+.cv-node[data-shape="postIt"] .cv-paper::after {
   content: "";
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 22%;
-  height: 22%;
+  width: var(--fold);
+  height: var(--fold);
+  background: linear-gradient(
+    315deg,
+    color-mix(in srgb, var(--cv-fill, var(--postit)) 70%, #000) 0%,
+    color-mix(in srgb, var(--cv-fill, var(--postit)) 92%, #000) 100%
+  );
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.16);
-  clip-path: polygon(100% 0, 0 100%, 0 0);
-  display: none;
-}
-.cv-node.cv-shaped[data-shape="postIt"]::after {
-  display: block;
 }
 
 /* The bend grip: the same white-disc-with-an-accent-ring the rest of the app

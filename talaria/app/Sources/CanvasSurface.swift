@@ -43,7 +43,7 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
 
      Hermes draws these and Talaria did not, which is the whole of why it is
      here. It is a shape rather than a separate kind of thing — a note in this
-     app is already any node with words on it — so it inherits the colour, the
+     app is already any node with words on it — so it inherits the color, the
      border, the alignment and the link to a block that every other shape has,
      and costs one case rather than a second class of object.
      */
@@ -84,7 +84,7 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// The colour a shape wants when nobody has said. Only the sticky has an
+    /// The color a shape wants when nobody has said. Only the sticky has an
     /// opinion: a post-it with no paper is a square, which is a shape we
     /// already had.
     /// The same yellow Hermes uses. Paler than it was, which read as grey
@@ -130,16 +130,39 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
             p.closeSubpath()
             return p
         case .postIt:
-            // The page: a square with the bottom-right corner cut off. The
-            // turned-up flap is drawn separately, over the fill, because it is
-            // the one part of this that is a different colour from the rest.
+            // The page: a rounded square with the bottom-right corner cut off.
+            // The turned-up flap is drawn separately, over the fill, because it
+            // is the one part of this that is a different color from the rest.
+            //
+            // The three whole corners are rounded and the cut one is not. Sharp
+            // corners made this read as a cut-out rather than as paper — Hermes
+            // rounds its node frame, and that softness is most of why its
+            // sticky looks like an object and this one looked like a diagram.
+            // The fold stays crisp, because a crease is a crease.
             let cut = Self.fold(in: r)
+            let radius = min(10, min(r.width, r.height) / 6)
             var p = Path()
-            p.move(to: CGPoint(x: r.minX, y: r.minY))
-            p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+            p.move(to: CGPoint(x: r.minX + radius, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX - radius, y: r.minY))
+            p.addArc(
+                tangent1End: CGPoint(x: r.maxX, y: r.minY),
+                tangent2End: CGPoint(x: r.maxX, y: r.minY + radius),
+                radius: radius
+            )
             p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - cut))
             p.addLine(to: CGPoint(x: r.maxX - cut, y: r.maxY))
-            p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+            p.addLine(to: CGPoint(x: r.minX + radius, y: r.maxY))
+            p.addArc(
+                tangent1End: CGPoint(x: r.minX, y: r.maxY),
+                tangent2End: CGPoint(x: r.minX, y: r.maxY - radius),
+                radius: radius
+            )
+            p.addLine(to: CGPoint(x: r.minX, y: r.minY + radius))
+            p.addArc(
+                tangent1End: CGPoint(x: r.minX, y: r.minY),
+                tangent2End: CGPoint(x: r.minX + radius, y: r.minY),
+                radius: radius
+            )
             p.closeSubpath()
             return p
         }
@@ -1151,6 +1174,16 @@ final class CanvasModel: ObservableObject {
         guard let at = items.firstIndex(where: { $0.id == id }), items[at].shape != shape else { return }
         let was = items[at].shape
         items[at].shape = shape
+        // A shape carries its own idea of paper and line, and changing into one
+        // has to bring that with it — otherwise picking "Post-it" gave a square
+        // with the corner cut off, in whatever colors the last shape wore,
+        // which is a drawing of a sticky rather than a sticky. Only the
+        // untouched values move: a fill somebody chose, or a border weight
+        // somebody set, is a decision and stays one.
+        if items[at].fill == was.defaultFill { items[at].fill = shape.defaultFill }
+        if items[at].strokeWidth == was.defaultStrokeWidth {
+            items[at].strokeWidth = shape.defaultStrokeWidth
+        }
         if was == .plain, shape != .plain {
             let size = shape.defaultSize
             items[at].w = max(items[at].w, size.width)
@@ -2374,8 +2407,29 @@ private struct CanvasItemView: View {
                 let inset = max(weight / 2, hairline)
                 // Fill first, then the outline over it, so a thick border is
                 // not half-covered by the thing it is drawn around.
-                if let fill = Hex.color(item.fill) {
-                    item.shape.path(in: box).fill(fill)
+                // A post-it is paper whatever anybody has said, which is how
+                // Hermes draws it: its fold reads `var(--cv-fill, --postit)`,
+                // so a sticky nobody has colored is still yellow and still has
+                // a corner. Talaria drew the paper and the fold only when a
+                // fill was set, so a post-it made before the shape had a
+                // default — or converted from another shape — came out as an
+                // outline with a notch cut out of it, and nothing about it said
+                // sticky note.
+                let paper = Hex.color(item.fill)
+                    ?? Hex.color(item.shape.defaultFill)
+                if let fill = paper {
+                    item.shape.path(in: box)
+                        .fill(fill)
+                        // Paper sits on the canvas rather than being printed on
+                        // it. Hermes gets this from the node frame's
+                        // `--shadow-soft`; here the shape is the only thing
+                        // there is, so it casts its own.
+                        .shadow(
+                            color: .black.opacity(item.shape == .postIt ? 0.18 : 0),
+                            radius: 3,
+                            x: 0,
+                            y: 2
+                        )
                     // The turned corner: the paper again, then shaded across
                     // rather than flat.
                     //
@@ -2383,7 +2437,7 @@ private struct CanvasItemView: View {
                     // corner. Real paper lifted at a corner is darkest where it
                     // curls away from the sheet and lightest at the crease, and
                     // that gradient is the whole difference between a fold and
-                    // a patch. The paper's own colour underneath, so a pink
+                    // a patch. The paper's own color underneath, so a pink
                     // sticky does not grow a yellow corner.
                     item.shape.foldPath(in: box).fill(fill)
                     item.shape.foldPath(in: box).fill(

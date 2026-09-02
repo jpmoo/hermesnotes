@@ -38,6 +38,16 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
     case roundedRectangle
     case triangle
     case ellipse
+    /**
+     A sticky note: a square with one corner turned up.
+
+     Hermes draws these and Talaria did not, which is the whole of why it is
+     here. It is a shape rather than a separate kind of thing — a note in this
+     app is already any node with words on it — so it inherits the colour, the
+     border, the alignment and the link to a block that every other shape has,
+     and costs one case rather than a second class of object.
+     */
+    case postIt
 
     var id: String { rawValue }
 
@@ -48,6 +58,7 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
         case .roundedRectangle: return "app"
         case .triangle: return "triangle"
         case .ellipse: return "circle"
+        case .postIt: return "note"
         }
     }
 
@@ -58,14 +69,28 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
         case .roundedRectangle: return "Rounded"
         case .triangle: return "Triangle"
         case .ellipse: return "Circle"
+        case .postIt: return "Post-it"
         }
     }
 
     /// A shape wants room inside it. A bare label has no size of its own — see
     /// `CanvasItem.measure`, which gives it the size of what it says.
     var defaultSize: CGSize {
-        self == .plain ? CanvasItem.measure("") : CGSize(width: 130, height: 90)
+        switch self {
+        case .plain: return CanvasItem.measure("")
+        // Square-ish, because a sticky note is. A wide one reads as a card.
+        case .postIt: return CGSize(width: 120, height: 120)
+        default: return CGSize(width: 130, height: 90)
+        }
     }
+
+    /// The colour a shape wants when nobody has said. Only the sticky has an
+    /// opinion: a post-it with no paper is a square, which is a shape we
+    /// already had.
+    var defaultFill: String? { self == .postIt ? "#fdf3d8" : nil }
+
+    /// How far the turned corner reaches, given a box.
+    static func fold(in r: CGRect) -> CGFloat { min(26, min(r.width, r.height) / 3.5) }
 
     /// The outline, in a box.
     func path(in r: CGRect) -> Path {
@@ -85,7 +110,32 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
             p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
             p.closeSubpath()
             return p
+        case .postIt:
+            // The page: a square with the bottom-right corner cut off. The
+            // turned-up flap is drawn separately, over the fill, because it is
+            // the one part of this that is a different colour from the rest.
+            let cut = Self.fold(in: r)
+            var p = Path()
+            p.move(to: CGPoint(x: r.minX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.maxY - cut))
+            p.addLine(to: CGPoint(x: r.maxX - cut, y: r.maxY))
+            p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+            p.closeSubpath()
+            return p
         }
+    }
+
+    /// The turned-up corner, which is a triangle in the gap the page leaves.
+    func foldPath(in r: CGRect) -> Path {
+        guard self == .postIt else { return Path() }
+        let cut = Self.fold(in: r)
+        var p = Path()
+        p.move(to: CGPoint(x: r.maxX, y: r.maxY - cut))
+        p.addLine(to: CGPoint(x: r.maxX - cut, y: r.maxY))
+        p.addLine(to: CGPoint(x: r.maxX - cut, y: r.maxY - cut))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -1098,7 +1148,7 @@ final class CanvasModel: ObservableObject {
      */
     func addText(at point: CGPoint, shape: CanvasShape = .plain) {
         let size = shape.defaultSize
-        let item = CanvasItem(
+        var item = CanvasItem(
             id: UUID(),
             x: point.x - size.width / 2,
             y: point.y - size.height / 2,
@@ -1107,6 +1157,11 @@ final class CanvasModel: ObservableObject {
             text: "",
             shape: shape
         )
+        // A sticky note arrives on paper. Everything else arrives clear, which
+        // is the rule this canvas started from — a shape is a line round the
+        // outside rather than permission to paint behind the words. A post-it
+        // is the exception because the paper *is* the shape.
+        item.fill = shape.defaultFill
         items.append(item)
         clearSelection()
         draft = ""
@@ -2267,6 +2322,15 @@ private struct CanvasItemView: View {
                 // not half-covered by the thing it is drawn around.
                 if let fill = Hex.color(item.fill) {
                     item.shape.path(in: box).fill(fill)
+                    // The turned corner: the paper again, then shaded, so it
+                    // reads as the underside of a fold rather than as a notch
+                    // cut out of the note. Shaded rather than made transparent —
+                    // opacity over a light canvas *lightens*, which is the
+                    // wrong direction and made the fold nearly invisible. The
+                    // paper's own colour is kept so a pink sticky does not get
+                    // a yellow corner.
+                    item.shape.foldPath(in: box).fill(fill)
+                    item.shape.foldPath(in: box).fill(Color.black.opacity(0.16))
                 }
                 if item.strokeWidth > 0 {
                     let color = Hex.color(item.stroke) ?? Color.primary.opacity(0.7)

@@ -174,7 +174,11 @@ struct CanvasPrint: View {
             if item.shape != .plain, item.image == nil {
                 let box = CGRect(x: 0, y: 0, width: item.w, height: item.h)
                 let inset = max(item.strokeWidth / 2, 1)
-                if let fill = Hex.color(item.fill) { item.shape.path(in: box).fill(fill) }
+                if let fill = Hex.color(item.fill) {
+                    item.shape.path(in: box).fill(fill)
+                    item.shape.foldPath(in: box).fill(fill)
+                    item.shape.foldPath(in: box).fill(Color.black.opacity(0.16))
+                }
                 if item.strokeWidth > 0 {
                     let color = Hex.color(item.stroke) ?? .black.opacity(0.7)
                     item.shape.path(in: box.insetBy(dx: inset, dy: inset))

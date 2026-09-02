@@ -2822,48 +2822,57 @@ export function CanvasView({
                 </>
               );
             })()}
-            <div className="menu-sep" />
-            <div className="hint" style={{ padding: "4px 10px" }}>Border</div>
-            <div className="cv-menu-row">
-              {BORDER_WIDTHS.map((w) => (
-                <button
-                  key={w}
-                  className="cv-swatch cv-border-swatch"
-                  title={w === 0 ? "No border" : `${w}px`}
-                  data-w={w}
-                  onClick={() => setBorder(nodeMenu.id, { strokeWidth: w })}
-                />
-              ))}
-              {BORDER_STYLES.map((st) => (
-                <button
-                  key={st}
-                  className="cv-swatch cv-border-swatch"
-                  title={st}
-                  data-style={st}
-                  onClick={() =>
-                    // Choosing a style when there is no border yet has to give
-                    // one, or the click does nothing and looks broken.
-                    setBorder(nodeMenu.id, {
-                      strokeStyle: st,
-                      strokeWidth: (rectOf(nodeMenu.id) as NodeCtx | null)?.strokeWidth || 1,
-                    })
-                  }
-                />
-              ))}
-              <label className="cv-swatch cv-swatch-custom" title="Border color…">
-                <Pipette size={12} />
-                <input
-                  type="color"
-                  value={(rectOf(nodeMenu.id) as NodeCtx | null)?.stroke ?? "#5f6b74"}
-                  onChange={(e) =>
-                    setBorder(nodeMenu.id, {
-                      stroke: e.target.value,
-                      strokeWidth: (rectOf(nodeMenu.id) as NodeCtx | null)?.strokeWidth || 1,
-                    })
-                  }
-                />
-              </label>
-            </div>
+            {(() => {
+              // Read once. Every control below needs the node's current border,
+              // and asking four times invites the four answers to disagree.
+              const nr = rectOf(nodeMenu.id) as NodeCtx | null;
+              const w = nr?.strokeWidth ?? null;
+              const st = nr?.strokeStyle ?? "solid";
+              // A width nobody has chosen is the hairline the node already has,
+              // so that is what the row shows as current — not "none".
+              const shownW = w ?? 1;
+              return (
+                <>
+                  <div className="menu-sep" />
+                  <div className="hint" style={{ padding: "4px 10px" }}>Border weight</div>
+                  <div className="cv-menu-row">
+                    {BORDER_WIDTHS.map((bw) => (
+                      <button
+                        key={bw}
+                        className={`cv-swatch cv-border-swatch${shownW === bw ? " is-on" : ""}`}
+                        title={bw === 0 ? "No border" : `${bw}px`}
+                        data-w={bw}
+                        onClick={() => setBorder(nodeMenu.id, { strokeWidth: bw })}
+                      />
+                    ))}
+                    <label className="cv-swatch cv-swatch-custom" title="Border color…">
+                      <Pipette size={12} />
+                      <input
+                        type="color"
+                        value={nr?.stroke ?? "#5f6b74"}
+                        onChange={(e) =>
+                          // Colouring a border there is none of has to make one,
+                          // or the click changes nothing and reads as broken.
+                          setBorder(nodeMenu.id, { stroke: e.target.value, strokeWidth: w || 1 })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div className="hint" style={{ padding: "4px 10px" }}>Border style</div>
+                  <div className="cv-menu-row">
+                    {BORDER_STYLES.map((bs) => (
+                      <button
+                        key={bs}
+                        className={`cv-swatch cv-border-swatch${st === bs && shownW > 0 ? " is-on" : ""}`}
+                        title={bs}
+                        data-style={bs}
+                        onClick={() => setBorder(nodeMenu.id, { strokeStyle: bs, strokeWidth: w || 1 })}
+                      />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
             <div className="menu-sep" />
             <div className="hint" style={{ padding: "4px 10px" }}>Shape</div>
             <div className="cv-menu-row">

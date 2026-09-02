@@ -5365,7 +5365,7 @@ input.matrix-axis-y::placeholder {
 .cv-node {
   position: absolute;
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
+  border-radius: 15px;
   box-shadow: var(--shadow-soft);
   display: flex;
   flex-direction: column;
@@ -5552,6 +5552,10 @@ input.matrix-axis-y::placeholder {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  /* The sheet takes the frame's corner. Without this a border set by hand drew
+     a square inside a rounded node — the border was on the sheet and the radius
+     was on the frame, and they disagreed at every corner. Shapes override it. */
+  border-radius: inherit;
 }
 .cv-note .cv-paper {
   position: absolute;
@@ -8227,14 +8231,33 @@ body:has(.embed-scratchpad) #root {
 .cv-border-swatch[data-w="1"]::after { border-top-width: 1px; }
 .cv-border-swatch[data-w="2"]::after { border-top-width: 2px; }
 .cv-border-swatch[data-w="4"]::after { border-top-width: 4px; }
-.cv-border-swatch[data-style="solid"]::after { border-top-width: 2px; }
-.cv-border-swatch[data-style="dashed"]::after {
-  border-top-width: 2px;
-  border-top-style: dashed;
+/* A style swatch is a box, not a line.
+
+   Weights and styles were both drawn as short horizontal rules, so the row read
+   as seven of one control rather than two groups of a few. A border style is a
+   thing that goes *around* something, and showing it that way says which half
+   of the row it belongs to without a word of label. */
+.cv-border-swatch[data-style]::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  top: 3px;
+  border: 2px solid var(--text-muted);
+  border-radius: 3px;
 }
-.cv-border-swatch[data-style="double"]::after {
-  border-top-width: 3px;
-  border-top-style: double;
+.cv-border-swatch[data-style="dashed"]::after { border-style: dashed; }
+.cv-border-swatch[data-style="double"]::after { border-style: double; border-width: 3px; }
+.cv-border-swatch[data-style]:hover::after { border-color: var(--accent); }
+
+/* Which one is on. A row of choices with nothing marked is a row you press to
+   find out what you already chose. */
+.cv-border-swatch.is-on::after {
+  border-top-color: var(--accent);
+  border-color: var(--accent);
+}
+.cv-border-swatch.is-on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 5px;
 }
 
 /* Only a post-it has a folded corner.

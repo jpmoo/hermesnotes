@@ -8041,3 +8041,36 @@ body:has(.embed-scratchpad) #root {
   color: var(--muted, #888);
   font-size: 12px;
 }
+
+/* A shape swatch is a colour swatch that shows an outline instead of a colour:
+   the menu's other rows already teach that a small square in a row is a thing
+   you press, so the shape row borrows the target size and only changes what is
+   drawn inside it. */
+.cv-swatch.cv-shape-swatch {
+  background: var(--text-muted);
+  border-color: transparent;
+}
+.cv-swatch.cv-shape-swatch:hover {
+  background: var(--accent);
+}
+
+/* A clipped node loses its border to the clip, so the outline is an inset
+   shadow instead — set per node in the style attribute, since the shape decides
+   whether it is needed. What is left here is the one thing a clip cannot do:
+   the turned-up corner of a sticky, which is a second colour and therefore a
+   second element. */
+.cv-node.cv-shaped::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22%;
+  height: 22%;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.16);
+  clip-path: polygon(100% 0, 0 100%, 0 0);
+  display: none;
+}
+.cv-node.cv-shaped[data-shape="postIt"]::after {
+  display: block;
+}

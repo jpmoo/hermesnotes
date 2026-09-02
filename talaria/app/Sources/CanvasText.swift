@@ -132,6 +132,20 @@ struct MarkdownField: NSViewRepresentable {
     let changed: (String) -> Void
     let align: NSTextAlignment
     let color: NSColor
+    /**
+     Where the words sit down the box, while they are being edited.
+
+     A text view starts its text at the top and stays there, so a node set to
+     centre its words showed them centred and then edited them at the top —
+     everything jumped up on the first click and back down on the last. The
+     caret was in the right place and the words were not, which reads as the
+     alignment having been forgotten.
+
+     Applied as a top inset rather than by moving the view, because the view is
+     what the caret and the selection are measured in: shifting it would put
+     the pointer and the letters in different places.
+     */
+    var vAlign: TextVAlign = .top
 
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: MarkdownField
@@ -141,6 +155,31 @@ struct MarkdownField: NSViewRepresentable {
             guard let view = notification.object as? NSTextView else { return }
             parent.text = view.string
             parent.changed(view.string)
+            // Re-settled as it is typed: a second line halves the space above
+            // it, and text that did not move while growing would drift out of
+            // the centre it is supposed to be in.
+            Self.settle(view, vAlign: parent.vAlign)
+        }
+
+        /**
+         Push the text down so it sits where the rendered version does.
+
+         Measured from what the layout manager actually used rather than from
+         the line height times a count, which is wrong the moment anything wraps.
+         */
+        static func settle(_ view: NSTextView, vAlign: TextVAlign) {
+            guard vAlign != .top,
+                  let container = view.textContainer,
+                  let layout = view.layoutManager
+            else {
+                view.textContainerInset = .zero
+                return
+            }
+            layout.ensureLayout(for: container)
+            let used = layout.usedRect(for: container).height
+            let free = max(0, view.enclosingScrollView.map(\.contentSize.height) ?? view.bounds.height) - used
+            let top = vAlign == .middle ? free / 2 : free
+            view.textContainerInset = NSSize(width: 0, height: max(0, top))
         }
 
         func textView(_ view: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -216,7 +255,11 @@ struct MarkdownField: NSViewRepresentable {
         view.string = text
 
         scroll.documentView = view
-        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+        DispatchQueue.main.async {
+            view.window?.makeFirstResponder(view)
+            // After the scroll view has a size to measure against.
+            Coordinator.settle(view, vAlign: vAlign)
+        }
         return scroll
     }
 
@@ -226,5 +269,6 @@ struct MarkdownField: NSViewRepresentable {
         if view.string != text { view.string = text }
         view.alignment = align
         view.textColor = color
+        Coordinator.settle(view, vAlign: vAlign)
     }
 }

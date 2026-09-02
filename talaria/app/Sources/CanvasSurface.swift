@@ -2370,7 +2370,8 @@ private struct CanvasItemView: View {
                     commit: commit,
                     changed: fit,
                     align: item.hAlign.appKit,
-                    color: NSColor(Hex.color(item.textColor) ?? .primary)
+                    color: NSColor(Hex.color(item.textColor) ?? .primary),
+                    vAlign: item.vAlign
                 )
             } else {
                 // Rendered, not raw: the markers are what somebody typed and

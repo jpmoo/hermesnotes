@@ -45,7 +45,41 @@ interface Rect {
 }
 interface NodeCtx extends Rect {
   color?: string | null;
+  /** See `SHAPES`. Absent means the rounded rectangle everything has always been. */
+  shape?: string | null;
 }
+
+/**
+ * The outlines a node can wear, as clip paths.
+ *
+ * Clipped rather than drawn behind. A node here is a live div — typed fields,
+ * a title input, a checkbox — and putting an SVG behind it would mean laying
+ * out the shape and the content in two coordinate systems that have to agree
+ * about padding forever. Clipping keeps one box and one layout.
+ *
+ * The cost is honest and worth stating: a clip crops. A long title in a
+ * triangle loses its corners, exactly as it does in Talaria, because that is
+ * what a triangle does to a rectangle of text.
+ *
+ * `rounded` is absent from the list on purpose — it is the default and is done
+ * with `border-radius`, which unlike a clip lets the border draw.
+ */
+/** What the menu offers, in the order it offers it. Null is the default. */
+const SHAPE_CHOICES: { name: string; key: string | null }[] = [
+  { name: "Rounded", key: null },
+  { name: "Square", key: "rectangle" },
+  { name: "Circle", key: "ellipse" },
+  { name: "Triangle", key: "triangle" },
+  { name: "Post-it", key: "postIt" },
+];
+
+const SHAPES: Record<string, string> = {
+  rectangle: "inset(0)",
+  ellipse: "ellipse(50% 50% at 50% 50%)",
+  triangle: "polygon(50% 0%, 100% 100%, 0% 100%)",
+  // The cut corner of a sticky. The turned-up flap is drawn over it below.
+  postIt: "polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)",
+};
 export interface CanvasEdge {
   id: string;
   from: string; // block id or ephemeral "n:<id>"
@@ -65,6 +99,8 @@ interface CanvasNote extends Rect {
   id: string; // "n:<uuid>"
   text: string;
   color?: string | null;
+  /** A sticky can wear an outline too — see `SHAPES`. */
+  shape?: string | null;
 }
 interface CanvasRegion {
   id: string;
@@ -337,7 +373,7 @@ export function CanvasView({
   const ctxOf = (m: Member): NodeCtx | null => {
     const c = m.context as Partial<NodeCtx> | undefined;
     return typeof c?.x === "number" && typeof c?.y === "number"
-      ? { x: c.x, y: c.y, w: c.w ?? DEFAULT_W, h: c.h ?? DEFAULT_H, color: c.color ?? null }
+      ? { x: c.x, y: c.y, w: c.w ?? DEFAULT_W, h: c.h ?? DEFAULT_H, color: c.color ?? null, shape: c.shape ?? null }
       : null;
   };
   // Local position overrides (during + after drags) layered over member context.
@@ -1449,6 +1485,27 @@ export function CanvasView({
     }
   };
 
+  /**
+   * The outline a node wears.
+   *
+   * Stored on the placement, beside its position and colour, because that is
+   * what a shape is: furniture. It travels in the member's `context` — the bag
+   * the format calls furniture outright and says a consumer may discard — so a
+   * canvas read by something that draws no shapes still gets every node in the
+   * right place, and Talaria's already uses the same key.
+   */
+  const setNodeShape = (id: string, shape: string | null) => {
+    if (id.startsWith("n:")) {
+      saveNotes(notes.map((n) => (n.id === id ? { ...n, shape } : n)));
+    } else {
+      const r = rectOf(id) as NodeCtx | null;
+      if (!r) return;
+      const ctx = { ...r, shape };
+      setLocal((p) => ({ ...p, [id]: ctx }));
+      persistMemberCtx(id, ctx);
+    }
+  };
+
   // Bulk removal (Delete key / Clear): regions dissolve (blocks stay unless
   // themselves selected); block removal is membership-only, never deletion.
   // Focusing an ephemeral note edits it in the panel too — without touching
@@ -1704,9 +1761,10 @@ export function CanvasView({
     <div
       key={id}
       data-block-id={id}
+      data-shape={r.shape ?? undefined}
       className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}${
         groupWith(id) ? " cv-group" : ""
-      }${r.color ? " cv-shaded" : ""}`}
+      }${r.color ? " cv-shaded" : ""}${r.shape && SHAPES[r.shape] ? " cv-shaped" : ""}`}
       style={{
         left: r.x,
         top: r.y,
@@ -1715,6 +1773,18 @@ export function CanvasView({
         // A note's color is on its paper (above), so the cut corner shows what's
         // behind the note rather than more note.
         background: isNote ? "transparent" : r.color || "var(--surface)",
+        ...(r.shape && SHAPES[r.shape]
+          ? {
+              clipPath: SHAPES[r.shape],
+              // A clipped edge cuts the border off with everything else, so the
+              // outline moves inside as a ring. Without this a circle is a
+              // rectangle's border clipped to a circle, which is no border at
+              // all down the curve.
+              border: "none",
+              borderRadius: 0,
+              boxShadow: `inset 0 0 0 1px var(--border-strong)`,
+            }
+          : {}),
       }}
       // Anywhere on a grouped node is a grip. The resize corners and connect
       // handles stop propagation, so they keep their own jobs.
@@ -2217,6 +2287,22 @@ export function CanvasView({
                   onChange={(e) => setNodeColor(nodeMenu.id, e.target.value)}
                 />
               </label>
+            </div>
+            <div className="menu-sep" />
+            <div className="hint" style={{ padding: "4px 10px" }}>Shape</div>
+            <div className="cv-menu-row">
+              {SHAPE_CHOICES.map((c) => (
+                <button
+                  key={c.name}
+                  className="cv-swatch cv-shape-swatch"
+                  title={c.name}
+                  style={c.key ? { clipPath: SHAPES[c.key] } : undefined}
+                  onClick={() => {
+                    setNodeShape(nodeMenu.id, c.key);
+                    setNodeMenu(null);
+                  }}
+                />
+              ))}
             </div>
             {menuNote && (
               <>

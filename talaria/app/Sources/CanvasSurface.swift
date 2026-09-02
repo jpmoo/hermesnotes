@@ -91,6 +91,17 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
     /// paper rather than as a sticky.
     var defaultFill: String? { self == .postIt ? "#fdf3b6" : nil }
 
+    /**
+     How heavy a line goes round it, before anybody says otherwise.
+
+     None, for a sticky. Every other shape here is an outline — a line round the
+     outside, which is what this canvas has meant by a shape since the start —
+     and a post-it is the one that is not: it is a piece of paper, and paper has
+     no stroke round its edge. Drawing one turned it into a line drawing of a
+     sticky note, which is exactly how it read beside Hermes' own.
+     */
+    var defaultStrokeWidth: CGFloat { self == .postIt ? 0 : 1.5 }
+
     /// How far the turned corner reaches, given a box.
     /// Fixed, not proportional.
     ///
@@ -1194,6 +1205,7 @@ final class CanvasModel: ObservableObject {
         // outside rather than permission to paint behind the words. A post-it
         // is the exception because the paper *is* the shape.
         item.fill = shape.defaultFill
+        item.strokeWidth = shape.defaultStrokeWidth
         items.append(item)
         clearSelection()
         draft = ""

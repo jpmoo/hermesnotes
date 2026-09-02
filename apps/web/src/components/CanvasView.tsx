@@ -91,6 +91,15 @@ export interface CanvasEdge {
   width?: number;
   color?: string;
   arrow?: "none" | "forward" | "back" | "both";
+  /**
+   * How far the middle of the line has been pulled off its natural path.
+   *
+   * An offset, not a place — the same shape Talaria stores, and for the same
+   * reason: move either end and a stored *point* stays behind, hanging off
+   * nothing, while a stored *pull* travels with what it connects.
+   */
+  bendX?: number;
+  bendY?: number;
   /** Live edges are real connections (surface in the info block); ephemeral
    * ones are canvas-only decoration. Absent = live (pre-flag edges). */
   live?: boolean;
@@ -1737,14 +1746,63 @@ export function CanvasView({
     const a = anchor(fr, fromSide);
     const b = anchor(tr, toSide);
     const ext = 46;
-    const c1 = { x: a.x + OUT[fromSide].x * ext, y: a.y + OUT[fromSide].y * ext };
-    const c2 = { x: b.x + OUT[toSide].x * ext, y: b.y + OUT[toSide].y * ext };
+    /**
+     * The bend, solved backwards so the curve passes through the handle.
+     *
+     * A cubic at its halfway mark sits at (a + 3·c1 + 3·c2 + b)/8. Shifting
+     * both control points by δ therefore moves that point by ¾δ — so to move
+     * the middle of the line by exactly the bend somebody dragged, the controls
+     * move by four thirds of it. Putting the bend straight on the controls
+     * would leave the line lagging behind the grip, which reads as the drag not
+     * quite working.
+     */
+    const push = 4 / 3;
+    const bx = (e.bendX ?? 0) * push;
+    const by = (e.bendY ?? 0) * push;
+    const c1 = { x: a.x + OUT[fromSide].x * ext + bx, y: a.y + OUT[fromSide].y * ext + by };
+    const c2 = { x: b.x + OUT[toSide].x * ext + bx, y: b.y + OUT[toSide].y * ext + by };
     return {
       d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,
-      mid: { x: (a.x + b.x) / 2 + (c1.x + c2.x - a.x - b.x) * 0.19, y: (a.y + b.y) / 2 + (c1.y + c2.y - a.y - b.y) * 0.19 },
+      // The real halfway point rather than an approximation of it, because the
+      // grip is drawn here and a grip beside its line is a grip you miss.
+      mid: { x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8, y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8 },
     };
   };
   const dashOf = (e: CanvasEdge) => (e.dash === "dashed" ? "9 6" : e.dash === "dotted" ? "2 6" : undefined);
+
+  /**
+   * Which line is showing its grip, and which one is being pulled.
+   *
+   * Hover rather than selection, because an edge here has no selected state to
+   * hang it off — clicking one opens its menu. A grip on every line at once
+   * would be a canvas of dots.
+   */
+  const [hoverEdge, setHoverEdge] = useState<string | null>(null);
+  const bendDrag = useRef<{ id: string; sx: number; sy: number; bx: number; by: number } | null>(null);
+
+  const startBend = (e: CanvasEdge, ev: React.PointerEvent) => {
+    if (locked) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    (ev.target as Element).setPointerCapture?.(ev.pointerId);
+    bendDrag.current = { id: e.id, sx: ev.clientX, sy: ev.clientY, bx: e.bendX ?? 0, by: e.bendY ?? 0 };
+  };
+  const moveBend = (ev: React.PointerEvent) => {
+    const d = bendDrag.current;
+    if (!d) return;
+    // Divided by the zoom, so a pull of an inch on the glass is an inch on the
+    // canvas whatever it is scaled to.
+    const nx = d.bx + (ev.clientX - d.sx) / view.z;
+    const ny = d.by + (ev.clientY - d.sy) / view.z;
+    // Near enough to straight is straight. A line dragged out and pushed back
+    // never quite returns, and a canvas slowly fills with connections that are
+    // two points off straight and look like a mistake.
+    const snap = Math.hypot(nx, ny) < 6 / view.z;
+    patchEdge(d.id, { bendX: snap ? 0 : nx, bendY: snap ? 0 : ny });
+  };
+  const endBend = () => {
+    bendDrag.current = null;
+  };
 
   const patchEdge = (id: string, patch: Partial<CanvasEdge>) =>
     saveEdges(edges.map((e) => (e.id === id ? { ...e, ...patch } : e)));
@@ -1958,6 +2016,8 @@ export function CanvasView({
                     setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY });
                   }}
                   onClick={(ev) => !locked && setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY })}
+                  onPointerEnter={() => setHoverEdge(e.id)}
+                  onPointerLeave={() => setHoverEdge((h) => (h === e.id ? null : h))}
                 />
                 <path
                   d={p.d}
@@ -1972,6 +2032,31 @@ export function CanvasView({
                   <text className="cv-edge-label" x={p.mid.x} y={p.mid.y}>
                     {e.label}
                   </text>
+                )}
+                {/* The grip. Drawn small and aimed at large: the hit circle is
+                    three times the visible one, because this is the one control
+                    caught on a curve rather than on a box, and the drawn size
+                    is set by what looks right on a line. */}
+                {!locked && (hoverEdge === e.id || bendDrag.current?.id === e.id) && (
+                  <>
+                    <circle
+                      className="cv-bend"
+                      cx={p.mid.x}
+                      cy={p.mid.y}
+                      r={5 / view.z}
+                    />
+                    <circle
+                      cx={p.mid.x}
+                      cy={p.mid.y}
+                      r={15 / view.z}
+                      fill="transparent"
+                      style={{ cursor: "grab" }}
+                      onPointerDown={(ev) => startBend(e, ev)}
+                      onPointerMove={moveBend}
+                      onPointerUp={endBend}
+                      onDoubleClick={() => patchEdge(e.id, { bendX: 0, bendY: 0 })}
+                    />
+                  </>
                 )}
               </g>
             );

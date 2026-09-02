@@ -8074,3 +8074,14 @@ body:has(.embed-scratchpad) #root {
 .cv-node.cv-shaped[data-shape="postIt"]::after {
   display: block;
 }
+
+/* The bend grip: the same white-disc-with-an-accent-ring the rest of the app
+   uses for a thing you drag, sized in canvas units so it stays the same on the
+   glass at any zoom (the radius is divided by the scale where it is drawn). */
+.cv-bend {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}

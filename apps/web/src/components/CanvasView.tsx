@@ -496,7 +496,17 @@ export function CanvasView({
     const l = local[id];
     if (l) return l;
     const m = members.find((x) => x.id === id);
-    return m ? ctxOf(m) : null;
+    if (m) return ctxOf(m);
+    /**
+     * A region has a box too, and everything that draws a line asks for one.
+     *
+     * Last, deliberately. A region's id and a block's cannot collide, but a
+     * region is a *derived* box — the extent of what it holds — and asking for
+     * it first would mean recomputing a rectangle from its members every time
+     * anything looked up a node.
+     */
+    const rg = regions.find((r) => r.id === id);
+    return rg ? regionRect(rg) : null;
   };
   /**
    * Alignment while dragging or resizing: a node's edges and centers look for
@@ -1116,9 +1126,15 @@ export function CanvasView({
     const dyc = sa.y - (tr.y + tr.h / 2);
     const toSide: Side =
       Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
-    // A live link needs two real blocks — anything touching an ephemeral note is
-    // forced ephemeral (dotted).
-    const eph = link.from.startsWith("n:") || target.startsWith("n:");
+    // A live link needs two real blocks — anything touching an ephemeral note
+    // or a region is forced ephemeral (dotted).
+    //
+    // A region is not a block: it is a box drawn round some, with no id anything
+    // outside this canvas can address. Filing a relation to one would be filing
+    // a relation to nothing, and the relation would outlive the region.
+    const isRegion = (id: string) => regions.some((r) => r.id === id);
+    const eph =
+      link.from.startsWith("n:") || target.startsWith("n:") || isRegion(link.from) || isRegion(target);
     // A live link whose target type matches a relation field on the source sets
     // that relation (and reveals it as a toggleable "existing connection")
     // instead of drawing a standalone edge that would linger after the relation
@@ -1943,6 +1959,10 @@ export function CanvasView({
           return (
             <div
               key={rg.id}
+              // The same attribute a node carries, because `finishLink` finds
+              // what a line was dropped on by looking for it. A region without
+              // one is a thing you can aim at and never hit.
+              data-block-id={rg.id}
               className="cv-region"
               style={{ left: rr.x, top: rr.y, width: rr.w, height: rr.h, background: rg.color ?? REGION_COLORS[0] }}
               onPointerDown={(e) => startRegionDrag(rg.id, e)}
@@ -1957,6 +1977,28 @@ export function CanvasView({
                 {rg.title || "Region"}
                 {rg.linkedCollectionId && <span title="Synced to a collection"> ⟲</span>}
               </div>
+              {/* The same four handles a node has, so a region is a place a
+                  line can start as well as one it can land on. Without these it
+                  could only ever be the far end of a connection somebody drew
+                  from a node, which is half a feature. */}
+              {!locked &&
+                (["n", "s", "e", "w"] as const).map((sd) => (
+                  <span
+                    key={sd}
+                    className={`cv-handle cv-h-${sd}`}
+                    title="Drag to connect"
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      e.preventDefault();
+                      // Stopped, or the region's own drag takes the gesture and
+                      // the whole group moves instead of a line being drawn.
+                      e.stopPropagation();
+                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                      const p = toCanvas(e.clientX, e.clientY);
+                      setLinking({ from: rg.id, side: sd, x: p.x, y: p.y });
+                    }}
+                  />
+                ))}
             </div>
           );
         })}

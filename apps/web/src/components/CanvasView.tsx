@@ -2087,6 +2087,15 @@ export function CanvasView({
    */
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const bendDrag = useRef<{ id: string; sx: number; sy: number; bx: number; by: number } | null>(null);
+  /**
+   * The edge being bent, as state.
+   *
+   * The ref above carries the drag's arithmetic and cannot decide what is
+   * drawn: changing it re-renders nothing, so a grip whose visibility depended
+   * on it was reading a stale answer. This keeps the grip on screen for as long
+   * as it is being held.
+   */
+  const [bending, setBending] = useState<string | null>(null);
 
   const startBend = (e: CanvasEdge, ev: React.PointerEvent) => {
     if (locked) return;
@@ -2094,6 +2103,7 @@ export function CanvasView({
     ev.stopPropagation();
     (ev.target as Element).setPointerCapture?.(ev.pointerId);
     bendDrag.current = { id: e.id, sx: ev.clientX, sy: ev.clientY, bx: e.bendX ?? 0, by: e.bendY ?? 0 };
+    setBending(e.id);
   };
   const moveBend = (ev: React.PointerEvent) => {
     const d = bendDrag.current;
@@ -2110,6 +2120,7 @@ export function CanvasView({
   };
   const endBend = () => {
     bendDrag.current = null;
+    setBending(null);
   };
 
   const patchEdge = (id: string, patch: Partial<CanvasEdge>) =>
@@ -2428,7 +2439,14 @@ export function CanvasView({
             if (!p) return null;
             const arrow = e.arrow ?? "forward";
             return (
-              <g key={e.id}>
+              <g
+                key={e.id}
+                // On the group rather than on the line. Moving from the line
+                // onto its own grip is leaving the line, so a hover kept there
+                // unmounted the grip at the moment somebody reached for it.
+                onPointerEnter={() => setHoverEdge(e.id)}
+                onPointerLeave={() => setHoverEdge((h) => (h === e.id ? null : h))}
+              >
                 <path
                   d={p.d}
                   className="cv-edge-hit"
@@ -2438,8 +2456,6 @@ export function CanvasView({
                     setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY });
                   }}
                   onClick={(ev) => !locked && setEdgeMenu({ id: e.id, x: ev.clientX, y: ev.clientY })}
-                  onPointerEnter={() => setHoverEdge(e.id)}
-                  onPointerLeave={() => setHoverEdge((h) => (h === e.id ? null : h))}
                 />
                 <path
                   d={p.d}
@@ -2459,7 +2475,7 @@ export function CanvasView({
                     three times the visible one, because this is the one control
                     caught on a curve rather than on a box, and the drawn size
                     is set by what looks right on a line. */}
-                {!locked && (hoverEdge === e.id || bendDrag.current?.id === e.id) && (
+                {!locked && (hoverEdge === e.id || bending === e.id) && (
                   <>
                     <circle
                       className="cv-bend"
@@ -2468,11 +2484,10 @@ export function CanvasView({
                       r={5 / view.z}
                     />
                     <circle
+                      className="cv-bend-hit"
                       cx={p.mid.x}
                       cy={p.mid.y}
                       r={15 / view.z}
-                      fill="transparent"
-                      style={{ cursor: "grab" }}
                       onPointerDown={(ev) => startBend(e, ev)}
                       onPointerMove={moveBend}
                       onPointerUp={endBend}

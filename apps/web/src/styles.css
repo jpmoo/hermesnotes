@@ -8171,6 +8171,20 @@ body:has(.embed-scratchpad) #root {
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
+/* The part you actually grab.
+
+   `.cv-svg` is `pointer-events: none` so the edge layer does not swallow clicks
+   meant for the cards under it, and every child that wants a pointer has to say
+   so — `.cv-edge-hit` does. This did not, so the grip was drawn, hovered, and
+   entirely unclickable: the drag was never wrong, it never started. */
+.cv-bend-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: grab;
+}
+.cv-bend-hit:active {
+  cursor: grabbing;
+}
 
 /* A menu row that carries an icon has to lay it beside the words rather than
    above them: `.menu-item` is `display: block`, which stacks an svg and a span.

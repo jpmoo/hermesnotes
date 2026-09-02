@@ -768,17 +768,32 @@ final class CanvasModel: ObservableObject {
      on top of it — two lines between the same two boxes are indistinguishable
      on screen, and the second is a line nobody can select or remove.
      */
-    func link(from: UUID, to: UUID) {
-        guard from != to else { return }
+    /**
+     Drop one thing on another: connect them, or take the connection off.
+
+     A toggle, because the gesture already reads as one. Dropping A on B when
+     they were joined used to re-point the same line at itself — a drag that
+     travelled, landed, and changed nothing visible, which is indistinguishable
+     from a drag that missed. The way to undo a connection was to find it, click
+     it, and press its delete button; the way to make one was a gesture. Undoing
+     something should not be harder to reach than doing it.
+
+     Answers what it did, so a caller can say so.
+     */
+    @discardableResult
+    func link(from: UUID, to: UUID) -> Bool {
+        guard from != to else { return false }
         if let at = links.firstIndex(where: {
             ($0.from == from && $0.to == to) || ($0.from == to && $0.to == from)
         }) {
-            links[at].from = from
-            links[at].to = to
-        } else {
-            links.append(CanvasLink(id: UUID(), from: from, to: to))
+            links.remove(at: at)
+            if case .link = selection { clearSelection() }
+            persist()
+            return false
         }
+        links.append(CanvasLink(id: UUID(), from: from, to: to))
         persist()
+        return true
     }
 
     /**
@@ -3845,7 +3860,12 @@ struct CanvasSurface: View {
                 .fill(Color(nsColor: .windowBackgroundColor))
                 .overlay(Circle().strokeBorder(Theme.accent, lineWidth: 1.5))
                 .frame(width: 11, height: 11)
-                .contentShape(Circle().inset(by: -7))
+                // Eleven points drawn, thirty-nine to aim at. The grip is the
+                // one control here that must be caught on a curve rather than
+                // on a box, and the drawn size is set by what looks right on a
+                // line — which is much smaller than what a pointer can be
+                // expected to hit, especially while the line is moving.
+                .contentShape(Circle().inset(by: -14))
                 .chrome($overChrome)
                 .position(at)
                 .gesture(

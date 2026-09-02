@@ -5539,7 +5539,7 @@ input.matrix-axis-y::placeholder {
 
    Offset out, so it reads as a mark around the note rather than as its edge. */
 .cv-node.cv-note {
-  outline: 1px dashed color-mix(in srgb, var(--border-strong) 55%, transparent);
+  outline: 2px dashed color-mix(in srgb, var(--border-strong) 75%, transparent);
   outline-offset: 3px;
   border-radius: 3px;
 }
@@ -8106,8 +8106,17 @@ body:has(.embed-scratchpad) #root {
   inset: 0;
   overflow: hidden;
   background: var(--cv-fill, var(--surface));
-  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
+/* The square is the one shape whose sheet is not clipped, so it wears a real
+   border and gets every style for free. The clipped ones are outlined by the
+   drawn path instead — an inset ring here would have followed the rectangle the
+   clip cut from, not the shape, showing as arcs that stop where the clip does. */
+.cv-node[data-shape="rectangle"] .cv-paper {
+  border: 1px solid var(--border-strong);
+  box-sizing: border-box;
+}
+/* Square is not clipped. `inset(0)` cuts exactly at the edge, which halves a
+   border drawn there — and a square needs no clip to be square. */
 .cv-node[data-shape="rectangle"] .cv-paper { border-radius: 0; }
 .cv-node[data-shape="ellipse"] .cv-paper {
   border-radius: 50%;
@@ -8226,4 +8235,25 @@ body:has(.embed-scratchpad) #root {
 .cv-border-swatch[data-style="double"]::after {
   border-top-width: 3px;
   border-top-style: double;
+}
+
+/* Only a post-it has a folded corner.
+
+   `.cv-note .cv-paper::after` draws the fold for every ephemeral note, which
+   was right when ephemeral *meant* post-it and is wrong now that a note can be
+   any shape. The clip a shape sets already overrides the note's; this turns off
+   the fold that was drawn under it. */
+.cv-node[data-shape]:not([data-shape="postIt"]) .cv-paper::after {
+  content: none;
+}
+
+/* The drawn outline of a clipped shape. Sits over the sheet and under the
+   handles, and catches nothing: it is a picture of a border, and the things
+   that answer a pointer are the frame's. */
+.cv-outline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
 }

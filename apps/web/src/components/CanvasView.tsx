@@ -81,10 +81,47 @@ interface NodeCtx extends Rect {
   strokeStyle?: string | null;
 }
 
+/**
+ * The outline of a shape, in the node's own pixels.
+ *
+ * Drawn rather than bordered, for the shapes that are clipped. A CSS border on
+ * a clipped element is cut off with everything else — the same reason clipping
+ * the node ate the resize corners — so on an ellipse or a triangle a border
+ * simply did not appear, and every width and style looked identical because all
+ * of them were invisible.
+ *
+ * In real units rather than percentages so the sticky's fold stays the fixed
+ * 14px it has always been: a fold that scaled with the node would be a
+ * different sticky at every size.
+ */
+const OUTLINE_FOLD = 14;
+const outlinePath = (shape: string | null | undefined, w: number, h: number): string | null => {
+  const f = Math.min(OUTLINE_FOLD, w / 2, h / 2);
+  switch (shape) {
+    case "ellipse":
+      return `M ${w / 2} 0 A ${w / 2} ${h / 2} 0 1 0 ${w / 2} ${h} A ${w / 2} ${h / 2} 0 1 0 ${w / 2} 0 Z`;
+    case "triangle":
+      return `M ${w / 2} 0 L ${w} ${h} L 0 ${h} Z`;
+    case "postIt":
+      return `M 0 0 L ${w} 0 L ${w} ${h - f} L ${w - f} ${h} L 0 ${h} Z`;
+    default:
+      // Rounded and square are not clipped, so their border is a real border
+      // and draws itself.
+      return null;
+  }
+};
+
 /** What a border can be. Talaria's three, so the two canvases agree. */
 const BORDER_STYLES = ["solid", "dashed", "double"] as const;
 /** Off, hairline, and two weights you can see. More is a slider nobody wants. */
 const BORDER_WIDTHS = [0, 1, 2, 4] as const;
+/** The drawn equivalents of the three border styles. `double` is two strokes
+ *  rather than a dash pattern, so it is handled where the outline is drawn. */
+const OUTLINE_DASH: Record<string, string | undefined> = {
+  solid: undefined,
+  dashed: "7 5",
+  double: undefined,
+};
 
 /**
  * The outlines a node can wear, as clip paths.
@@ -2187,6 +2224,39 @@ export function CanvasView({
         </div>
         <div className="cv-body">{shown}</div>
       </div>
+      {/* The outline of a clipped shape, drawn rather than bordered. A sibling
+          of the paper, so the clip that cuts the sheet does not cut this —
+          which is exactly why a CSS border on an ellipse never appeared, and
+          why every width and style looked the same: all of them invisible. */}
+      {(() => {
+        const d = outlinePath(r.shape, r.w, r.h);
+        const width = r.strokeWidth ?? 1;
+        if (!d || width === 0) return null;
+        const color = r.stroke ?? "var(--border-strong)";
+        const style = r.strokeStyle ?? "solid";
+        return (
+          <svg className="cv-outline" viewBox={`0 0 ${r.w} ${r.h}`} width={r.w} height={r.h}>
+            <path d={d} fill="none" stroke={color} strokeWidth={width} strokeDasharray={OUTLINE_DASH[style]} />
+            {/* `double` is two lines with a gap between them, which is what the
+                CSS keyword draws and what no dash pattern can. The inner one is
+                shrunk by four times the stroke so the pair reads as one border
+                rather than as two rings. */}
+            {style === "double" && (
+              <path
+                d={d}
+                fill="none"
+                stroke={color}
+                strokeWidth={width}
+                transform={
+                  `translate(${r.w / 2} ${r.h / 2}) ` +
+                  `scale(${Math.max(0.1, (r.w - width * 4) / r.w)} ${Math.max(0.1, (r.h - width * 4) / r.h)}) ` +
+                  `translate(${-r.w / 2} ${-r.h / 2})`
+                }
+              />
+            )}
+          </svg>
+        );
+      })()}
       {(["nw", "ne", "sw", "se"] as const).map((c) => (
         <span key={c} className={`cv-corner cv-${c}`} onPointerDown={(e) => startResize(id, c, e)} />
       ))}

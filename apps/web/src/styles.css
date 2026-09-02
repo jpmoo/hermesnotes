@@ -8111,3 +8111,16 @@ body:has(.embed-scratchpad) #root {
   align-items: center;
   gap: 8px;
 }
+
+/* A node showing its picture instead of its fields. Contained rather than
+   cropped: the node is the size somebody dragged it to, and a photograph that
+   filled it by cropping would decide for them which half of the picture
+   mattered. */
+.cv-node-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}

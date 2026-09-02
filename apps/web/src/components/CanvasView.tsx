@@ -1,4 +1,4 @@
-import { Grid2x2, GripHorizontal, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
+import { Grid2x2, GripHorizontal, Image as ImageIcon, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readableOn } from "../lib/display.ts";
@@ -12,7 +12,16 @@ import {
   type ReactNode,
 } from "react";
 import { bodyFieldKey, type FilterGroup } from "@hermes/shared";
-import { api, type Block, type BlockSearchResult, type BlockType, type Collection, type Member } from "../api.ts";
+import {
+  api,
+  apiBase,
+  type Attachment,
+  type Block,
+  type BlockSearchResult,
+  type BlockType,
+  type Collection,
+  type Member,
+} from "../api.ts";
 import { oneLineText } from "../lib/display.ts";
 import { emptyGroup } from "../lib/filter.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -47,6 +56,14 @@ interface NodeCtx extends Rect {
   color?: string | null;
   /** See `SHAPES`. Absent means the rounded rectangle everything has always been. */
   shape?: string | null;
+  /**
+   * Show the block's picture instead of its fields.
+   *
+   * Furniture, beside the shape and the colour, because it is a fact about this
+   * node rather than about the block: the same task can be a card on one canvas
+   * and its photograph on another, and neither is the truth about the task.
+   */
+  showImage?: boolean;
 }
 
 /**
@@ -382,7 +399,15 @@ export function CanvasView({
   const ctxOf = (m: Member): NodeCtx | null => {
     const c = m.context as Partial<NodeCtx> | undefined;
     return typeof c?.x === "number" && typeof c?.y === "number"
-      ? { x: c.x, y: c.y, w: c.w ?? DEFAULT_W, h: c.h ?? DEFAULT_H, color: c.color ?? null, shape: c.shape ?? null }
+      ? {
+          x: c.x,
+          y: c.y,
+          w: c.w ?? DEFAULT_W,
+          h: c.h ?? DEFAULT_H,
+          color: c.color ?? null,
+          shape: c.shape ?? null,
+          showImage: c.showImage === true,
+        }
       : null;
   };
   // Local position overrides (during + after drags) layered over member context.
@@ -1577,6 +1602,37 @@ export function CanvasView({
    * canvas read by something that draws no shapes still gets every node in the
    * right place, and Talaria's already uses the same key.
    */
+  /**
+   * Which blocks have a picture, once anybody has asked.
+   *
+   * Asked when a node's menu opens rather than for every node on load: a canvas
+   * of forty cards would be forty requests to answer a question about one of
+   * them, and the answer is only needed where the toggle is drawn.
+   *
+   * A node already showing its picture asks on sight, because there it is not a
+   * menu item — it is the thing being drawn.
+   */
+  const [pictures, setPictures] = useState<Record<string, Attachment | null>>({});
+  const lookForPicture = (id: string) => {
+    if (id.startsWith("n:") || id in pictures) return;
+    setPictures((p) => ({ ...p, [id]: null })); // claimed, so a second look does not re-ask
+    void api
+      .get<Attachment[]>(`/blocks/${id}/attachments`)
+      .then((all) => {
+        const img = all.find((a) => a.mime.startsWith("image/")) ?? null;
+        setPictures((p) => ({ ...p, [id]: img }));
+      })
+      .catch(() => {});
+  };
+
+  const setShowImage = (id: string, showImage: boolean) => {
+    const r = rectOf(id) as NodeCtx | null;
+    if (!r) return;
+    const ctx = { ...r, showImage };
+    setLocal((p) => ({ ...p, [id]: ctx }));
+    persistMemberCtx(id, ctx);
+  };
+
   const setNodeShape = (id: string, shape: string | null) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.map((n) => (n.id === id ? { ...n, shape } : n)));
@@ -1889,7 +1945,22 @@ export function CanvasView({
     a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1,
   );
 
-  const nodeBox = (id: string, r: NodeCtx, body: ReactNode, isNote: boolean) => (
+  const nodeBox = (id: string, r: NodeCtx, body: ReactNode, isNote: boolean) => {
+    // A node told to show its picture asks for one on sight: here it is not a
+    // menu item that might be needed, it is the thing being drawn.
+    if (r.showImage) lookForPicture(id);
+    const pic = r.showImage ? pictures[id] : null;
+    const shown: ReactNode = pic ? (
+      <img
+        className="cv-node-image"
+        src={`${apiBase}/attachments/${pic.id}`}
+        alt={pic.filename}
+        draggable={false}
+      />
+    ) : (
+      body
+    );
+    return (
     <div
       key={id}
       data-block-id={id}
@@ -1940,6 +2011,9 @@ export function CanvasView({
         e.stopPropagation();
         // Taking over the right-click takes away the browser's own menu, so
         // note what was selected: the menu offers copy/cut/paste itself.
+        // Asked here, so the toggle knows whether to appear by the time the
+        // menu is drawn.
+        lookForPicture(id);
         setNodeMenu({ id, x: e.clientX, y: e.clientY, field: captureField(e.target) });
       }}
     >
@@ -1957,7 +2031,7 @@ export function CanvasView({
         <div className="cv-grab" onPointerDown={(e) => startNodeDrag(id, e)} title="Drag to move">
           <GripHorizontal size={13} />
         </div>
-        <div className="cv-body">{body}</div>
+        <div className="cv-body">{shown}</div>
       </div>
       {(["nw", "ne", "sw", "se"] as const).map((c) => (
         <span key={c} className={`cv-corner cv-${c}`} onPointerDown={(e) => startResize(id, c, e)} />
@@ -1981,7 +2055,8 @@ export function CanvasView({
         />
       ))}
     </div>
-  );
+    );
+  };
 
   return (
     <div
@@ -2473,6 +2548,26 @@ export function CanvasView({
                 />
               </label>
             </div>
+            {(() => {
+              const pic = pictures[nodeMenu.id];
+              if (!pic) return null;
+              const showing = (rectOf(nodeMenu.id) as NodeCtx | null)?.showImage === true;
+              return (
+                <>
+                  <div className="menu-sep" />
+                  <button
+                    className="menu-item menu-item-icon"
+                    onClick={() => {
+                      setShowImage(nodeMenu.id, !showing);
+                      setNodeMenu(null);
+                    }}
+                  >
+                    <ImageIcon size={14} />
+                    <span>{showing ? "Show text instead of image" : "Show image instead of text"}</span>
+                  </button>
+                </>
+              );
+            })()}
             <div className="menu-sep" />
             <div className="hint" style={{ padding: "4px 10px" }}>Shape</div>
             <div className="cv-menu-row">

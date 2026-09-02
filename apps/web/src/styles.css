@@ -5527,6 +5527,26 @@ input.matrix-axis-y::placeholder {
   box-shadow: none;
   filter: drop-shadow(1px 2px 5px var(--shadow-color));
 }
+/* An ephemeral note says so, now that the cut corner no longer can — the cut
+   belongs to the post-it shape, and a note may be any shape.
+
+   On the frame rather than the sheet, and an outline rather than a border. The
+   sheet is what a border style would belong to if nodes ever get one (Talaria
+   has solid/dashed/double already, and the parity work has been running in both
+   directions), so a dashed *border* here would be a signal a user could
+   overwrite by choosing a border. An outline is outside the border box, takes
+   no part in layout, and is not something anybody can set from the menu.
+
+   Offset out, so it reads as a mark around the note rather than as its edge. */
+.cv-node.cv-note {
+  outline: 1.5px dashed var(--border-strong);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+/* Selection overrides it, and is left to: `.cv-node.cv-sel` is the same
+   specificity and comes later, so a selected note wears the solid accent
+   outline every selected thing wears. A rule here to "fix" that would only have
+   made a selected note look unlike every other selected node. */
 .cv-paper {
   display: flex;
   flex-direction: column;

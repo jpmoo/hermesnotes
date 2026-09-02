@@ -87,10 +87,18 @@ enum CanvasShape: String, Codable, CaseIterable, Identifiable {
     /// The colour a shape wants when nobody has said. Only the sticky has an
     /// opinion: a post-it with no paper is a square, which is a shape we
     /// already had.
-    var defaultFill: String? { self == .postIt ? "#fdf3d8" : nil }
+    /// The same yellow Hermes uses. Paler than it was, which read as grey
+    /// paper rather than as a sticky.
+    var defaultFill: String? { self == .postIt ? "#fdf3b6" : nil }
 
     /// How far the turned corner reaches, given a box.
-    static func fold(in r: CGRect) -> CGFloat { min(26, min(r.width, r.height) / 3.5) }
+    /// Fixed, not proportional.
+    ///
+    /// It was up to 26 points and scaled with the note, which is what made a
+    /// large sticky look crude: a fold is a corner of paper turned over, and a
+    /// corner does not get bigger because the sheet did. Fourteen is what
+    /// Hermes turns, so the two look like the same object.
+    static func fold(in r: CGRect) -> CGFloat { min(14, min(r.width, r.height) / 3.5) }
 
     /// The outline, in a box.
     func path(in r: CGRect) -> Path {
@@ -2356,15 +2364,23 @@ private struct CanvasItemView: View {
                 // not half-covered by the thing it is drawn around.
                 if let fill = Hex.color(item.fill) {
                     item.shape.path(in: box).fill(fill)
-                    // The turned corner: the paper again, then shaded, so it
-                    // reads as the underside of a fold rather than as a notch
-                    // cut out of the note. Shaded rather than made transparent —
-                    // opacity over a light canvas *lightens*, which is the
-                    // wrong direction and made the fold nearly invisible. The
-                    // paper's own colour is kept so a pink sticky does not get
-                    // a yellow corner.
+                    // The turned corner: the paper again, then shaded across
+                    // rather than flat.
+                    //
+                    // A single dark wash reads as a triangle stuck on the
+                    // corner. Real paper lifted at a corner is darkest where it
+                    // curls away from the sheet and lightest at the crease, and
+                    // that gradient is the whole difference between a fold and
+                    // a patch. The paper's own colour underneath, so a pink
+                    // sticky does not grow a yellow corner.
                     item.shape.foldPath(in: box).fill(fill)
-                    item.shape.foldPath(in: box).fill(Color.black.opacity(0.16))
+                    item.shape.foldPath(in: box).fill(
+                        LinearGradient(
+                            colors: [Color.black.opacity(0.30), Color.black.opacity(0.08)],
+                            startPoint: .bottomTrailing,
+                            endPoint: .topLeading
+                        )
+                    )
                 }
                 if item.strokeWidth > 0 {
                     let color = Hex.color(item.stroke) ?? Color.primary.opacity(0.7)

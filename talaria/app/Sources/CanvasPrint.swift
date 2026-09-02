@@ -177,7 +177,13 @@ struct CanvasPrint: View {
                 if let fill = Hex.color(item.fill) {
                     item.shape.path(in: box).fill(fill)
                     item.shape.foldPath(in: box).fill(fill)
-                    item.shape.foldPath(in: box).fill(Color.black.opacity(0.16))
+                    item.shape.foldPath(in: box).fill(
+                        LinearGradient(
+                            colors: [Color.black.opacity(0.30), Color.black.opacity(0.08)],
+                            startPoint: .bottomTrailing,
+                            endPoint: .topLeading
+                        )
+                    )
                 }
                 if item.strokeWidth > 0 {
                     let color = Hex.color(item.stroke) ?? .black.opacity(0.7)

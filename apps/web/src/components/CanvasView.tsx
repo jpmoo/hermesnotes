@@ -127,6 +127,22 @@ interface CanvasNote extends Rect {
   color?: string | null;
   /** A sticky can wear an outline too — see `SHAPES`. */
   shape?: string | null;
+  /**
+   * A picture, before it belongs to anything.
+   *
+   * Held as a data URI on the collection, which is the one place there is: an
+   * attachment needs a block to hang off, and the point of an ephemeral note is
+   * that no block exists yet. Converting uploads it properly and this goes
+   * away.
+   *
+   * That is a real cost and the reason for the size cap where these are made. A
+   * canvas file is something a person can open and read, and a megabyte of
+   * base64 on one line is technically readable and never read again — the same
+   * argument Talaria's canvas made for keeping its pictures beside the document
+   * rather than in it. Here the bytes are passing through rather than living,
+   * so the trade is worth making once and undoing at conversion.
+   */
+  image?: { name: string; mime: string; data: string } | null;
 }
 interface CanvasRegion {
   id: string;
@@ -1795,6 +1811,49 @@ export function CanvasView({
       );
   });
 
+  /** Bigger than a sticky, because a picture in a sticky is a thumbnail. */
+  const IMAGE_W = 260;
+  const IMAGE_H = 200;
+  /**
+   * How large a picture may be before conversion.
+   *
+   * It rides on the collection until then, so this is a limit on how much of
+   * somebody's canvas file is base64 rather than canvas. Generous enough for a
+   * screenshot and a photograph, and short of the point where the document
+   * stops being one anybody can open.
+   */
+  const IMAGE_CAP = 4 * 1024 * 1024;
+
+  const addImageNote = async (file: File, at?: { x: number; y: number }) => {
+    if (!file.type.startsWith("image/")) return;
+    if (file.size > IMAGE_CAP) {
+      window.alert("That picture is too large to put on a canvas before it belongs to a block. Add it to a block first.");
+      return;
+    }
+    const data = await new Promise<string>((done, fail) => {
+      const r = new FileReader();
+      r.onload = () => done(String(r.result));
+      r.onerror = () => fail(r.error);
+      r.readAsDataURL(file);
+    });
+    const c = at ?? viewCenter();
+    const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, IMAGE_W, IMAGE_H, allRects());
+    saveNotes([
+      ...notes,
+      {
+        id: `n:${uid()}`,
+        ...spot,
+        w: IMAGE_W,
+        h: IMAGE_H,
+        text: "",
+        // No paper behind a picture: a sticky's colour would show as a border
+        // round it and read as a mount nobody asked for.
+        color: null,
+        image: { name: file.name || "image", mime: file.type, data },
+      },
+    ]);
+  };
+
   const addNote = (at?: { x: number; y: number }) => {
     const c = at ?? viewCenter();
     const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, NOTE_W, NOTE_H, allRects());
@@ -1806,7 +1865,11 @@ export function CanvasView({
   };
 
   const convertNote = async (note: CanvasNote, type: BlockType) => {
-    const text = note.text.trim();
+    // A picture has no words. Its filename is the only thing it brought with
+    // it, and a block called "Untitled" tells somebody less than one called
+    // "roof-damage.jpg" — which they can rename in the field that is now theirs
+    // to fill in.
+    const text = note.text.trim() || (note.image ? note.image.name.replace(/\.[^.]+$/, "") : "");
     const rawFirst = text.split("\n")[0] ?? "";
     // A note is markdown, so its first line may be a heading or a list item.
     // A title field holds plain text, so the marks come off — the body keeps
@@ -1835,9 +1898,37 @@ export function CanvasView({
           ...(rest && !key ? { content: rest } : {}),
         };
     const b = await api.post<Block>("/blocks", body);
+    /**
+     * The picture becomes a real attachment, now that there is something to
+     * attach it to.
+     *
+     * This is the whole point of converting an image note rather than leaving
+     * it: the bytes stop riding on the collection as base64 and become a file
+     * on the block, where they can be downloaded, replaced and deleted like any
+     * other. The node keeps showing the picture, because that is what it looked
+     * like a moment ago and a conversion that changed the drawing as well as
+     * the substance would read as having done something else.
+     *
+     * Awaited before the note is removed, and before the member is placed:
+     * failing here must leave the note where it was rather than half-converted
+     * with its picture nowhere.
+     */
+    if (note.image) {
+      const blob = await (await fetch(note.image.data)).blob();
+      const form = new FormData();
+      form.append("file", new File([blob], note.image.name, { type: note.image.mime }));
+      await api.upload<Attachment[]>(`/blocks/${b.id}/attachments`, form);
+    }
     await api.post(`/collections/${cid}/members`, {
       blockId: b.id,
-      context: { x: note.x, y: note.y, w: note.w, h: note.h, color: note.color ?? null },
+      context: {
+        x: note.x,
+        y: note.y,
+        w: note.w,
+        h: note.h,
+        color: note.color ?? null,
+        ...(note.image ? { showImage: true } : {}),
+      },
     });
     // Remap edges AND region memberships from the ephemeral id to the real
     // block — conversion must not eject the note from its region.
@@ -2062,6 +2153,29 @@ export function CanvasView({
     <div
       ref={wrapRef}
       className={`cv-wrap${locked ? " locked" : ""}${grid ? "" : " no-grid"}`}
+      // A picture arrives the way one arrives anywhere: pasted, or dropped. A
+      // drop lands where it was let go, because somebody dropping a photograph
+      // onto a canvas has chosen a place; a paste has no position and lands in
+      // the middle of the view, which is where they are looking.
+      onPaste={(e) => {
+        if (locked) return;
+        const file = Array.from(e.clipboardData?.files ?? []).find((f) => f.type.startsWith("image/"));
+        if (!file) return;
+        e.preventDefault();
+        // A paste has no position of its own, so it lands in the middle of
+        // what is on screen — which is where somebody pasting is looking.
+        void addImageNote(file);
+      }}
+      onDragOver={(e) => {
+        if (!locked && Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (locked) return;
+        const file = Array.from(e.dataTransfer.files ?? []).find((f) => f.type.startsWith("image/"));
+        if (!file) return;
+        e.preventDefault();
+        void addImageNote(file, toCanvas(e.clientX, e.clientY));
+      }}
       // The dot grid is paper, not a backdrop: it takes the view's offset and
       // zoom so it travels with what's drawn on it. Left fixed, panning felt
       // like sliding the cards over a stationary screen rather than moving
@@ -2379,13 +2493,20 @@ export function CanvasView({
           nodeBox(
             n.id,
             n,
+            n.image ? (
+              // Nothing to type into. An image note is the picture and a right
+              // click — its words arrive when it becomes a block, in the fields
+              // that block has.
+              <img className="cv-node-image" src={n.image.data} alt={n.image.name} draggable={false} />
+            ) : (
             <EphemeralNote
               text={n.text}
               placeholder="Ephemeral note — right-click to convert"
               autofocus={focusNote === n.id}
               onFocusChange={(f) => f && setEphSel(n.id)}
               onChange={(v) => saveNotes(notes.map((x) => (x.id === n.id ? { ...x, text: v } : x)))}
-            />,
+            />
+            ),
             true,
           ),
         )}

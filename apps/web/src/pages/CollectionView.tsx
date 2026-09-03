@@ -176,8 +176,11 @@ export function CollectionView() {
   // Canonical view state lives on the collection; embeds inherit it and fork
   // on their first change (see CollectionSection).
   const vsTimer = useRef<ReturnType<typeof setTimeout>>();
-  const { sorted, toolbar: sortBar, active: sortActive, renderList } = useBlockView(members, types, {
+  const { sorted, paged, pager, toolbar: sortBar, active: sortActive, renderList } = useBlockView(members, types, {
     enableView: format === "blocks",
+    // Its own remembered page size. Not `scope`, which would also offer manual
+    // ordering on a smart collection that cannot have one.
+    pageScope: `collection.${id}`,
     manual: isDynamic ? null : { onMove: moveMember },
     viewState: {
       initial: (collection?.properties.view_state as BlockViewState | undefined) ?? undefined,
@@ -475,9 +478,13 @@ export function CollectionView() {
         ))
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={sorted.map((m) => m.id)} strategy={verticalListSortingStrategy}>
+          {/* The page, not the whole list — this view renders its own rows
+              rather than calling renderList, so it has to do its own slicing.
+              Dragging reorders within what is on screen, which is the only
+              thing dragging could ever have meant. */}
+          <SortableContext items={paged.map((m) => m.id)} strategy={verticalListSortingStrategy}>
             <div className="list-items">
-              {sorted.map((m, i) => (
+              {paged.map((m, i) => (
                 <ListItem
                   key={m.id}
                   member={m}
@@ -496,6 +503,9 @@ export function CollectionView() {
           </SortableContext>
         </DndContext>
       )}
+      {/* The blocks format calls renderList, which brings its own pager. The
+          list and table formats render their own rows, so they need this. */}
+      {format !== "blocks" && pager}
 
       {finderOpen && (
         <FinderModal

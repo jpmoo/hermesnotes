@@ -1,3 +1,4 @@
+import { Pager, usePageSize } from "../components/Pager.tsx";
 import {
   DndContext,
   MouseSensor,
@@ -285,6 +286,16 @@ export function useBlockView<T extends Viewable>(
      *  items itself never calls renderList, so the headings would never appear. */
     enableGroup?: boolean;
     scope?: string;
+    /**
+     * Names this list for the page-size setting alone.
+     *
+     * Separate from `scope` because `scope` does more than name things: it also
+     * turns on manual ordering (a scope means there is somewhere to keep a hand
+     * -made order). A collection page wants its own remembered page size and
+     * emphatically does not want drag-ordering switched on for a smart
+     * collection, so it names itself here instead.
+     */
+    pageScope?: string;
     manual?: { onMove: (activeId: string, overId: string) => void } | null;
     /** Inherit/persist sort + view selections (collection pages and embeds). */
     viewState?: { initial?: BlockViewState; onChange?: (vs: BlockViewState) => void };
@@ -292,7 +303,13 @@ export function useBlockView<T extends Viewable>(
     toolbarExtra?: ReactNode;
   } = {},
 ): {
+  /** Everything, in order. Still the whole list — a caller that needs to know
+   *  what it has (a count, a copy, an id set) must not be handed one page. */
   sorted: T[];
+  /** The slice on show. What a caller renders. */
+  paged: T[];
+  /** The pager itself, or null when everything fits on one page. */
+  pager: ReactNode;
   active: boolean;
   viewMode: ViewMode;
   /** Everything this list has been arranged with, as it stands — for copying it
@@ -569,6 +586,44 @@ export function useBlockView<T extends Viewable>(
    * filled in yet is usually the pile you're looking for, not the one to scroll
    * past everything else to reach.
    */
+  // ── Paging ────────────────────────────────────────────────────────────────
+  // Applied to the sorted list before grouping, so "50 per page" means fifty
+  // things on the page rather than fifty per heading. The size is shared across
+  // the whole application; the page number is not — where you were in a list is
+  // a fact about a visit.
+  // Named by the same scope that already remembers this list's view mode and
+  // column count. A list with no scope falls back to the shared size.
+  const [pageSize, setPageSize] = usePageSize(opts.pageScope ?? opts.scope);
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  // A list that shortens under you — a filter typed, a block archived — can
+  // leave the page number past the end, which renders as an empty list with no
+  // hint that there is anything behind it.
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
+  const paged = useMemo(() => {
+    if (sorted.length <= pageSize) return sorted;
+    const start = (Math.min(page, pageCount) - 1) * pageSize;
+    return sorted.slice(start, start + pageSize);
+  }, [sorted, page, pageSize, pageCount]);
+  const pager =
+    sorted.length > pageSize ? (
+      <Pager
+        page={Math.min(page, pageCount)}
+        size={pageSize}
+        total={sorted.length}
+        onPage={setPage}
+        onSize={(n) => {
+          // Keep the first thing on screen on screen: changing the size is a
+          // change of magnification, not a jump somewhere else.
+          const firstIndex = (Math.min(page, pageCount) - 1) * pageSize;
+          setPageSize(n);
+          setPage(Math.floor(firstIndex / n) + 1);
+        }}
+      />
+    ) : null;
+
   const groups = useMemo(() => {
     if (!grouping || manualMode) return null;
     const of = (it: T): { key: string; label: string } => {
@@ -587,7 +642,7 @@ export function useBlockView<T extends Viewable>(
       };
     };
     const byKey = new Map<string, { key: string; label: string; items: T[] }>();
-    for (const it of sorted) {
+    for (const it of paged) {
       const g = of(it);
       const bucket = byKey.get(g.key) ?? { ...g, items: [] };
       bucket.items.push(it);
@@ -603,7 +658,7 @@ export function useBlockView<T extends Viewable>(
       const r = rank(a.key) - rank(b.key);
       return r !== 0 ? r : a.label.localeCompare(b.label);
     });
-  }, [grouping, groupField, groupProp?.part, manualMode, sorted, typeById]);
+  }, [grouping, groupField, groupProp?.part, manualMode, paged, typeById]);
 
   const applyLevels = (next: SortLevel[]) => {
     setLevels(next);
@@ -835,10 +890,16 @@ export function useBlockView<T extends Viewable>(
               {openGroups.isOpen(g.key) && <div className="bv-group-body">{renderItems(g.items, renderCard)}</div>}
             </section>
           ))}
+          {pager}
         </div>
       );
     }
-    return renderItems(sorted, renderCard);
+    return (
+      <>
+        {renderItems(paged, renderCard)}
+        {pager}
+      </>
+    );
   };
 
   const renderItems = (
@@ -930,6 +991,8 @@ export function useBlockView<T extends Viewable>(
 
   return {
     sorted,
+    paged,
+    pager,
     active: sortActive,
     viewMode: enableView ? viewMode : "block",
     state: { manual: manualMode, sort: levels, viewMode, groupBy, columns, chipCols, groupsShut: shut },

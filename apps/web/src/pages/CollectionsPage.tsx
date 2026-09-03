@@ -231,7 +231,7 @@ export function CollectionsPage() {
         message={
           withMembers
             ? `The collection and every block in it are archived together${memberCount && memberCount > 0 ? ` — ${memberCount} block${memberCount === 1 ? "" : "s"}` : ""}. They stay in the Archive and can be unarchived, one at a time.`
-            : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+            : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are, unless you choose below to archive them with it."
         }
         confirmLabel={
           withMembers

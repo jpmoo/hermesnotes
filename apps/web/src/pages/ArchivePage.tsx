@@ -269,7 +269,7 @@ export function ArchivePage() {
         message={
           restoreMembers
             ? "The collection comes back, and so does everything that went into the Archive with it."
-            : "The collection comes back. Blocks archived alongside it stay here."
+            : "The collection comes back. Blocks archived alongside it stay here, unless you choose below to bring them back too."
         }
         confirmLabel={restoreMembers ? "Unarchive it and its blocks" : "Unarchive"}
         danger={false}

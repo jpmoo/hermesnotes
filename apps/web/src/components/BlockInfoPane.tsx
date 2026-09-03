@@ -488,7 +488,7 @@ export function BlockInfoPane({
           confirming === "unarchive"
             ? withMembers
               ? "The collection comes back, and so does everything that went into the Archive with it."
-              : "The collection comes back. Blocks archived alongside it stay in the Archive."
+              : "The collection comes back. Blocks archived alongside it stay in the Archive, unless you choose below to bring them back too."
             : confirming === "delete"
             ? isCollection
               ? "This permanently removes the collection. Blocks that aren't in any other collection become Unattached. This can't be undone."
@@ -496,7 +496,7 @@ export function BlockInfoPane({
             : isCollection
               ? withMembers
                 ? "The collection and every block in it are archived together. They stay in the Archive and can be brought back together."
-                : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+                : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are, unless you choose below to archive them with it."
               : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
         }
         confirmLabel={

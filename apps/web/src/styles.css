@@ -8365,18 +8365,27 @@ body:has(.embed-scratchpad) #root {
   flex: none;
 }
 
-/* Paging. Sits under a list, quiet until somebody has enough things to need it
-   — a pager over eight items is furniture, so callers only render one when the
-   list is longer than a page. */
+/* Paging. Top and bottom of a list, quiet until somebody has enough things to
+   need it — a pager over eight items is furniture, so callers only render one
+   when the list is longer than a page.
+
+   Carries its own surface, like the sort bar above it. A rule and muted text
+   were legible on a plain page and nearly gone over a banner image, which is
+   the background half these lists actually sit on. */
 .pager {
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 10px 2px 2px;
-  margin-top: 6px;
-  border-top: 1px solid var(--border);
+  padding: 6px 10px;
+  margin: 10px 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
 }
+/* Against the list it belongs to, not floating between two of them. */
+.pager-top { margin-top: 0; }
+.pager-bottom { margin-bottom: 0; }
 .pager-nav {
   display: flex;
   align-items: center;

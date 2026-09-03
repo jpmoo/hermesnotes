@@ -72,18 +72,21 @@ export function Pager({
   total,
   onPage,
   onSize,
+  where = "bottom",
 }: {
   page: number;
   size: number;
   total: number;
   onPage: (p: number) => void;
   onSize: (n: number) => void;
+  /** Which end of the list this one is, for the margin against it. */
+  where?: "top" | "bottom";
 }) {
   const pages = Math.max(1, Math.ceil(total / size));
   const first = total === 0 ? 0 : (page - 1) * size + 1;
   const last = Math.min(page * size, total);
   return (
-    <div className="pager">
+    <div className={`pager pager-${where}`}>
       <span className="hint pager-range">
         {first}–{last} of {total}
       </span>

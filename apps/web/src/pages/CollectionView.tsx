@@ -176,7 +176,7 @@ export function CollectionView() {
   // Canonical view state lives on the collection; embeds inherit it and fork
   // on their first change (see CollectionSection).
   const vsTimer = useRef<ReturnType<typeof setTimeout>>();
-  const { sorted, paged, pager, toolbar: sortBar, active: sortActive, renderList } = useBlockView(members, types, {
+  const { sorted, paged, pager, pagerTop, toolbar: sortBar, active: sortActive, renderList } = useBlockView(members, types, {
     enableView: format === "blocks",
     // Its own remembered page size. Not `scope`, which would also offer manual
     // ordering on a smart collection that cannot have one.
@@ -396,6 +396,9 @@ export function CollectionView() {
 
       {!isDocument && !isMatrix && !isTable && !isCanvas && !isCalendar && !isRollup && members.length > 0 && sortBar}
 
+      {/* Above the rows for the formats that render their own — the blocks
+          format gets both ends from renderList. */}
+      {format !== "blocks" && pagerTop}
       {isRollup ? (
         <RollupView
           collection={collection}
@@ -503,7 +506,7 @@ export function CollectionView() {
           </SortableContext>
         </DndContext>
       )}
-      {/* The blocks format calls renderList, which brings its own pager. The
+      {/* The blocks format calls renderList, which brings its own pagers. The
           list and table formats render their own rows, so they need this. */}
       {format !== "blocks" && pager}
 

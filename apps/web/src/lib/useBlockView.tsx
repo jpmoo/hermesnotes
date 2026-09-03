@@ -308,8 +308,11 @@ export function useBlockView<T extends Viewable>(
   sorted: T[];
   /** The slice on show. What a caller renders. */
   paged: T[];
-  /** The pager itself, or null when everything fits on one page. */
+  /** The pager itself, or null when everything fits on one page. `pagerTop` is
+   *  the same control for the head of the list — callers that render their own
+   *  rows need both, since renderList is what normally places them. */
   pager: ReactNode;
+  pagerTop: ReactNode;
   active: boolean;
   viewMode: ViewMode;
   /** Everything this list has been arranged with, as it stands — for copying it
@@ -607,9 +610,13 @@ export function useBlockView<T extends Viewable>(
     const start = (Math.min(page, pageCount) - 1) * pageSize;
     return sorted.slice(start, start + pageSize);
   }, [sorted, page, pageSize, pageCount]);
-  const pager =
+  // Both ends of the list. A hundred cards is a lot of scrolling to reach a
+  // control, in either direction — and the top one is the only one somebody
+  // sees before deciding whether to read the page at all.
+  const makePager = (where: "top" | "bottom") =>
     sorted.length > pageSize ? (
       <Pager
+        where={where}
         page={Math.min(page, pageCount)}
         size={pageSize}
         total={sorted.length}
@@ -623,6 +630,8 @@ export function useBlockView<T extends Viewable>(
         }}
       />
     ) : null;
+  const pagerTop = makePager("top");
+  const pager = makePager("bottom");
 
   const groups = useMemo(() => {
     if (!grouping || manualMode) return null;
@@ -874,6 +883,7 @@ export function useBlockView<T extends Viewable>(
     if (groups) {
       return (
         <div className="bv-groups">
+          {pagerTop}
           {groups.map((g) => (
             <section className="bv-group" key={`g:${g.key}`}>
               <header className="bv-group-head">
@@ -896,6 +906,7 @@ export function useBlockView<T extends Viewable>(
     }
     return (
       <>
+        {pagerTop}
         {renderItems(paged, renderCard)}
         {pager}
       </>
@@ -993,6 +1004,7 @@ export function useBlockView<T extends Viewable>(
     sorted,
     paged,
     pager,
+    pagerTop,
     active: sortActive,
     viewMode: enableView ? viewMode : "block",
     state: { manual: manualMode, sort: levels, viewMode, groupBy, columns, chipCols, groupsShut: shut },

@@ -2027,13 +2027,67 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.post("/blocks/:id/unarchive", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    /**
+     * Bring the collection's members back too.
+     *
+     * The mirror of archiving with members, and it has to exist for that one to
+     * be honest: an archive somebody can perform in a single act and can only
+     * undo three hundred times is not reversible, it is slow to regret.
+     *
+     * Only members that are actually archived — a collection filed away on its
+     * own, then unarchived this way, leaves everything else where it is.
+     */
+    const { members: alsoMembers } = z
+      .object({ members: z.boolean().default(false) })
+      .parse(req.body ?? {});
+
+    let restoredMembers = 0;
+    if (alsoMembers) {
+      const [block] = await db
+        .select({ collectionKind: blocks.collectionKind, properties: blocks.properties })
+        .from(blocks)
+        .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+        .limit(1);
+      const mode = ((block?.properties ?? {}) as Record<string, unknown>).membership_mode;
+      if (block?.collectionKind && mode !== "smart") {
+        const rows = await db
+          .select({ blockId: memberships.blockId })
+          .from(memberships)
+          .innerJoin(blocks, eq(blocks.id, memberships.blockId))
+          .where(
+            and(
+              eq(memberships.collectionId, id),
+              eq(blocks.ownerId, userId),
+              sql`${blocks.archivedAt} IS NOT NULL`,
+              // A nested collection is left alone, the same way archiving left
+              // it alone: restoring it would be a decision about its members.
+              sql`${blocks.collectionKind} IS NULL`,
+            ),
+          );
+        if (rows.length) {
+          const res = await db
+            .update(blocks)
+            .set({ archivedAt: null, version: sql`${blocks.version} + 1` })
+            .where(
+              and(
+                eq(blocks.ownerId, userId),
+                inArray(blocks.id, rows.map((r) => r.blockId)),
+                sql`${blocks.archivedAt} IS NOT NULL`,
+              ),
+            )
+            .returning({ id: blocks.id });
+          restoredMembers = res.length;
+        }
+      }
+    }
+
     const [gone] = await db
       .update(blocks)
       .set({ archivedAt: null, version: sql`${blocks.version} + 1` })
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .returning({ id: blocks.id });
     if (!gone) throw notFound("block");
-    return { ok: true };
+    return { ok: true, restoredMembers };
   });
 
   /** Permanent delete. Only an already-archived block may be hard-deleted, so

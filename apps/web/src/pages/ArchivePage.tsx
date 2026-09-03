@@ -6,7 +6,7 @@ import { api, type Block, type BlockType, type Collection, type Settings } from 
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { BlockCard } from "../components/BlockCard.tsx";
 import { CollapsedRow } from "../components/CollapsedRow.tsx";
-import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
+import { ConfirmDialog, MembersChoice } from "../components/ConfirmDialog.tsx";
 import { CollapseAllButton, useCollapse } from "../components/CollapsibleCard.tsx";
 import { QueryBuilder } from "../components/QueryBuilder.tsx";
 import { useBlockDeleted } from "../lib/block-events.ts";
@@ -27,6 +27,11 @@ export function ArchivePage() {
   // one — so they get their own list with the same two actions.
   const [archivedCollections, setArchivedCollections] = useState<Collection[]>([]);
   const [pendingCollection, setPendingCollection] = useState<Collection | null>(null);
+  /** A collection being brought back, and whether its blocks come with it.
+   *  The Archive is where somebody undoes an import, so the choice belongs
+   *  here more than anywhere. */
+  const [restoring, setRestoring] = useState<Collection | null>(null);
+  const [restoreMembers, setRestoreMembers] = useState(false);
   const [search, setSearch] = useState("");
   // Similarity floor for the search box's semantic pass — matches global search.
   const [simFloor, setSimFloor] = useState(0.75);
@@ -193,14 +198,10 @@ export function ArchivePage() {
               </span>
               <button
                 className="ghost"
-                onClick={() =>
-                  void api
-                    .post(`/blocks/${c.id}/unarchive`, {})
-                    .then(() =>
-                      api.get<Collection[]>("/collections/archived").then(setArchivedCollections),
-                    )
-                    .catch(() => {})
-                }
+                onClick={() => {
+                  setRestoreMembers(false);
+                  setRestoring(c);
+                }}
               >
                 Unarchive
               </button>
@@ -261,6 +262,37 @@ export function ArchivePage() {
           );
         })
       )}
+
+      <ConfirmDialog
+        open={restoring !== null}
+        title={`Unarchive “${String(restoring?.properties?.title ?? "Untitled")}”?`}
+        message={
+          restoreMembers
+            ? "The collection comes back, and so does everything that went into the Archive with it."
+            : "The collection comes back. Blocks archived alongside it stay here."
+        }
+        confirmLabel={restoreMembers ? "Unarchive it and its blocks" : "Unarchive"}
+        danger={false}
+        onCancel={() => setRestoring(null)}
+        onConfirm={() => {
+          const c = restoring;
+          setRestoring(null);
+          if (!c) return;
+          void api
+            .post(`/blocks/${c.id}/unarchive`, { members: restoreMembers })
+            .then(() => api.get<Collection[]>("/collections/archived").then(setArchivedCollections))
+            .then(() => reload())
+            .catch(() => {});
+        }}
+      >
+        {restoring && restoring.properties?.membership_mode !== "smart" && (
+          <MembersChoice
+            action="unarchive"
+            checked={restoreMembers}
+            onChange={setRestoreMembers}
+          />
+        )}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={pendingCollection !== null}

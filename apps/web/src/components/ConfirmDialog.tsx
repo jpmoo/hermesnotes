@@ -100,3 +100,46 @@ export function ConfirmDialog({
     document.body,
   );
 }
+
+/**
+ * The choice that changes what a collection's archive means.
+ *
+ * One component because there are three doors to the same act — the Collections
+ * list, the info pane, the Archive — and a checkbox that appears at one of them
+ * is worse than none: it teaches that archiving a collection leaves its blocks
+ * alone, right up until the door where it doesn't.
+ *
+ * `count` is what is known, not what is required. It was once the condition for
+ * showing this at all, which meant a count that failed to arrive removed the
+ * option and said nothing. The server acts on what is actually in the
+ * collection; the number is only here to say what you are agreeing to.
+ */
+export function MembersChoice({
+  checked,
+  onChange,
+  count,
+  action,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  count?: number | null;
+  action: "archive" | "unarchive";
+}) {
+  const noun =
+    count == null
+      ? action === "archive"
+        ? "the blocks in it"
+        : "the blocks archived with it"
+      : `${count} block${count === 1 ? "" : "s"}`;
+  return (
+    <label className="modal-choice">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <span>
+        Also {action} {noun}
+        {action === "archive"
+          ? " — for a collection whose blocks arrived with it, like an import."
+          : " — whatever went into the Archive alongside it comes back too."}
+      </span>
+    </label>
+  );
+}

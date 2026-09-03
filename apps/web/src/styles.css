@@ -8344,3 +8344,23 @@ body:has(.embed-scratchpad) #root {
   color: var(--text-muted, var(--text));
 }
 .import-file { font-variant-numeric: tabular-nums; }
+
+/* A choice inside a confirmation. Reads as part of the dialog's own prose
+   rather than as a stray form control: the message is 13px muted text, and a
+   checkbox label at the page's base size and color looked like it had been
+   pasted in from somewhere else. */
+.modal-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -8px 0 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.modal-choice input[type="checkbox"] {
+  /* Line the box up with the first line of text, not the middle of the block. */
+  margin: 2px 0 0;
+  flex: none;
+}

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, type Collection } from "../api.ts";
 import { CollectionIcon } from "../lib/icons.tsx";
-import { ConfirmDialog } from "../components/ConfirmDialog.tsx";
+import { ConfirmDialog, MembersChoice } from "../components/ConfirmDialog.tsx";
 import { oneLineText } from "../lib/display.ts";
 import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -248,30 +248,13 @@ export function CollectionsPage() {
         onCancel={() => setDeleting(null)}
         onConfirm={() => deleting && void archive(deleting)}
       >
-        {/* Offered whenever the collection keeps its own members, whether or
-            not the count arrived. It used to appear only once a number came
-            back, so a count that never landed removed the option altogether and
-            said nothing — the checkbox and the failure looked identical, which
-            is the same silence this panel keeps being caught by. A smart
-            collection is the one real exception: its membership is a query, and
-            the server refuses. */}
         {deleting && !isSmartCollection(deleting) && (
-          <label className="row" style={{ gap: 8, alignItems: "flex-start", marginBottom: 4 }}>
-            <input
-              type="checkbox"
-              checked={withMembers}
-              onChange={(e) => setWithMembers(e.target.checked)}
-            />
-            <span>
-              Also archive the{" "}
-              {memberCount === null
-                ? "blocks in it (counting…)"
-                : memberCount < 0
-                  ? "blocks in it — the count couldn’t be read, but the server archives what is actually there"
-                  : `${memberCount} block${memberCount === 1 ? "" : "s"} in it`}{" "}
-              — for a collection whose blocks arrived with it, like an import.
-            </span>
-          </label>
+          <MembersChoice
+            action="archive"
+            checked={withMembers}
+            onChange={setWithMembers}
+            count={memberCount != null && memberCount >= 0 ? memberCount : null}
+          />
         )}
       </ConfirmDialog>
 

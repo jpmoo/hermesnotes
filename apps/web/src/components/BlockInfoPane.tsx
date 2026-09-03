@@ -9,7 +9,7 @@ import { emitBlockChange, emitBlockDeleted, useBlockChanged, useBlockOrigin, use
 import { useEditorMounted } from "../lib/editor-registry.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
-import { ConfirmDialog } from "./ConfirmDialog.tsx";
+import { ConfirmDialog, MembersChoice } from "./ConfirmDialog.tsx";
 import { LongTextField } from "./LongTextField.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
@@ -145,7 +145,10 @@ export function BlockInfoPane({
   const [types, setTypes] = useState<BlockType[]>([]);
   const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirming, setConfirming] = useState<null | "archive" | "delete">(null);
+  const [confirming, setConfirming] = useState<null | "archive" | "delete" | "unarchive">(null);
+  /** Whether a collection's blocks go with it. Reset whenever the dialog opens,
+   *  so a decision made once is never carried into the next one. */
+  const [withMembers, setWithMembers] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const nav = useNavigate();
@@ -175,6 +178,10 @@ export function BlockInfoPane({
   // Collection description lives here (not on the page) and is embedded with
   // the title, so semantic search finds the collection by purpose.
   const isCollection = Boolean(block?.collectionKind);
+  /** A smart collection's membership is a query, not a list — the server
+   *  refuses to archive "its blocks", so the choice is never offered. */
+  const isSmart =
+    (block?.properties as Record<string, unknown> | undefined)?.membership_mode === "smart";
 
   useEffect(() => {
     void api.get<BlockInfo>(`/blocks/${blockId}/info`).then(setInfo).catch(() => setInfo(null));
@@ -282,13 +289,13 @@ export function BlockInfoPane({
     if (pathname === fullPage) nav(isCollection ? "/collections" : "/blocks");
   };
   const archive = async () => {
-    await api.post(`/blocks/${blockId}/archive`, {});
+    await api.post(`/blocks/${blockId}/archive`, { members: withMembers });
     emitBlockDeleted(blockId);
     leaveIfShowing();
     void loadBlock();
   };
   const unarchive = async () => {
-    await api.post(`/blocks/${blockId}/unarchive`, {});
+    await api.post(`/blocks/${blockId}/unarchive`, { members: withMembers });
     emitBlockDeleted(blockId); // drops it from the Archive listing
     void loadBlock();
   };
@@ -338,7 +345,15 @@ export function BlockInfoPane({
                       className="menu-item"
                       onClick={() => {
                         setMenuOpen(false);
-                        void unarchive();
+                        // A block on its own has nothing to decide — restoring
+                        // it is what the menu item says. A collection might have
+                        // taken its blocks down with it, and that is a question.
+                        if (isCollection && !isSmart) {
+                          setWithMembers(false);
+                          setConfirming("unarchive");
+                        } else {
+                          void unarchive();
+                        }
                       }}
                     >
                       Unarchive
@@ -358,6 +373,7 @@ export function BlockInfoPane({
                     className="menu-item"
                     onClick={() => {
                       setMenuOpen(false);
+                      setWithMembers(false);
                       setConfirming("archive");
                     }}
                   >
@@ -462,29 +478,55 @@ export function BlockInfoPane({
             ? isCollection
               ? "Delete this collection?"
               : "Delete this block?"
-            : isCollection
-              ? "Archive this collection?"
-              : "Archive this block?"
+            : confirming === "unarchive"
+              ? "Unarchive this collection?"
+              : isCollection
+                ? "Archive this collection?"
+                : "Archive this block?"
         }
         message={
-          confirming === "delete"
+          confirming === "unarchive"
+            ? withMembers
+              ? "The collection comes back, and so does everything that went into the Archive with it."
+              : "The collection comes back. Blocks archived alongside it stay in the Archive."
+            : confirming === "delete"
             ? isCollection
               ? "This permanently removes the collection. Blocks that aren't in any other collection become Unattached. This can't be undone."
               : "This permanently removes the block and its embedding. This can't be undone."
             : isCollection
-              ? "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+              ? withMembers
+                ? "The collection and every block in it are archived together. They stay in the Archive and can be brought back together."
+                : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
               : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
         }
-        confirmLabel={confirming === "delete" ? "Delete" : "Archive"}
-        danger={confirming === "delete"}
+        confirmLabel={
+          confirming === "delete"
+            ? "Delete"
+            : confirming === "unarchive"
+              ? withMembers
+                ? "Unarchive it and its blocks"
+                : "Unarchive"
+              : withMembers
+                ? "Archive it and its blocks"
+                : "Archive"
+        }
+        danger={confirming === "delete" || (confirming === "archive" && withMembers)}
+        // Same bar as the Collections list: typing a word to file away one list
+        // would be theatre, typing it to file away everything in it is not.
+        requireText={confirming === "archive" && withMembers ? "archive" : undefined}
         onCancel={() => setConfirming(null)}
         onConfirm={() => {
           const action = confirming;
           setConfirming(null);
           if (action === "delete") void destroy();
           else if (action === "archive") void archive();
+          else if (action === "unarchive") void unarchive();
         }}
-      />
+      >
+        {(confirming === "archive" || confirming === "unarchive") && isCollection && !isSmart && (
+          <MembersChoice action={confirming} checked={withMembers} onChange={setWithMembers} />
+        )}
+      </ConfirmDialog>
 
       <div className="info-conns">
         <div className="panel-h">Connections</div>

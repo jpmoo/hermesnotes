@@ -1885,6 +1885,22 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.post("/blocks/:id/archive", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    /**
+     * Take the collection's members with it.
+     *
+     * Off by default, and it has to be: a collection is a view onto blocks that
+     * live in their own right, and filing the list away has never meant filing
+     * away what it listed. The case for the flag is the one where the list and
+     * its contents arrived together and are one act — an import — and undoing
+     * that by hand is three hundred clicks.
+     *
+     * Only explicit members. A smart collection's membership is a query, so
+     * "its blocks" is whatever matched this morning, and archiving that is a
+     * different and much worse thing than it looks.
+     */
+    const { members: alsoMembers } = z
+      .object({ members: z.boolean().default(false) })
+      .parse(req.body ?? {});
     const [block] = await db
       .select({
         collectionKind: blocks.collectionKind,
@@ -1915,11 +1931,45 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       if (!type?.propertySchema || !isComplete(type.propertySchema, props))
         throw badRequest("Finish the weekly review before archiving it.");
     }
+    let archivedMembers = 0;
+    if (alsoMembers && block.collectionKind) {
+      const mode = (props.membership_mode ?? "explicit") as string;
+      if (mode === "smart") throw badRequest("a smart collection's members are a query, not a list to archive");
+      const rows = await db
+        .select({ blockId: memberships.blockId })
+        .from(memberships)
+        .innerJoin(blocks, eq(blocks.id, memberships.blockId))
+        .where(
+          and(
+            eq(memberships.collectionId, id),
+            eq(blocks.ownerId, userId),
+            sql`${blocks.archivedAt} IS NULL`,
+            // A collection nested inside this one is left alone: archiving it
+            // would take its members too, and nothing here asked for that.
+            sql`${blocks.collectionKind} IS NULL`,
+          ),
+        );
+      if (rows.length) {
+        const res = await db
+          .update(blocks)
+          .set({ archivedAt: new Date(), version: sql`${blocks.version} + 1` })
+          .where(
+            and(
+              eq(blocks.ownerId, userId),
+              inArray(blocks.id, rows.map((r) => r.blockId)),
+              sql`${blocks.archivedAt} IS NULL`,
+            ),
+          )
+          .returning({ id: blocks.id });
+        archivedMembers = res.length;
+      }
+    }
+
     await db
       .update(blocks)
       .set({ archivedAt: new Date(), version: sql`${blocks.version} + 1` })
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
-    return { ok: true };
+    return { ok: true, archivedMembers };
   });
 
   /** Restore an archived block — it reappears everywhere it was (memberships and

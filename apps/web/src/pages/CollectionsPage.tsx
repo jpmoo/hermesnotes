@@ -55,11 +55,30 @@ export function CollectionsPage() {
 
   // Archive, not delete: a collection now follows the same path as a block —
   // out of sight but recoverable, with permanent deletion only from the Archive.
+  const [withMembers, setWithMembers] = useState(false);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
+
   const archive = async (c: Collection) => {
-    await api.post(`/blocks/${c.id}/archive`, {});
+    await api.post(`/blocks/${c.id}/archive`, { members: withMembers });
     setDeleting(null);
+    setWithMembers(false);
     void load();
   };
+
+  // How many blocks would go with it, asked only when the dialog opens. A
+  // number is the whole point of the confirmation: "its blocks too" means
+  // nothing until you know it means three hundred and seven.
+  useEffect(() => {
+    setWithMembers(false);
+    setMemberCount(null);
+    if (!deleting) return;
+    let live = true;
+    void api
+      .get<{ members?: unknown[] }>(`/collections/${deleting.id}`)
+      .then((c) => live && setMemberCount(c.members?.length ?? 0))
+      .catch(() => live && setMemberCount(null));
+    return () => { live = false; };
+  }, [deleting]);
 
   const toggleKind = (k: string) =>
     setKinds((prev) => {
@@ -205,12 +224,34 @@ export function CollectionsPage() {
       <ConfirmDialog
         open={deleting !== null}
         title={`Archive “${deleting ? title(deleting) : ""}”?`}
-        message="It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
-        confirmLabel="Archive"
-        danger={false}
+        message={
+          withMembers
+            ? `The collection and every block in it are archived together — ${memberCount ?? 0} block${memberCount === 1 ? "" : "s"}. They stay in the Archive and can be unarchived, one at a time.`
+            : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
+        }
+        confirmLabel={withMembers ? `Archive it and ${memberCount ?? 0} blocks` : "Archive"}
+        danger={withMembers}
+        // Only when it means more than the collection. Typing a word to file
+        // away one list would be theatre; typing it to file away three hundred
+        // blocks is the hand stopping, which is the point.
+        requireText={withMembers ? "archive" : undefined}
         onCancel={() => setDeleting(null)}
         onConfirm={() => deleting && void archive(deleting)}
-      />
+      >
+        {memberCount !== null && memberCount > 0 && (
+          <label className="row" style={{ gap: 8, alignItems: "flex-start", marginBottom: 4 }}>
+            <input
+              type="checkbox"
+              checked={withMembers}
+              onChange={(e) => setWithMembers(e.target.checked)}
+            />
+            <span>
+              Also archive the {memberCount} block{memberCount === 1 ? "" : "s"} in it — for a
+              collection whose blocks arrived with it, like an import.
+            </span>
+          </label>
+        )}
+      </ConfirmDialog>
 
     </>
   );

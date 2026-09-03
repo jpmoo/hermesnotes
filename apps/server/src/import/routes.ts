@@ -23,6 +23,18 @@ import { syncTextTags } from "../blocks/routes.js";
  */
 
 const bodySchema = z.object({
+  /**
+   * A list collection standing for this run.
+   *
+   * Every note created here joins it, which is what makes an import a thing
+   * with edges rather than three hundred loose notes indistinguishable from
+   * everything else. Undoing one is then archiving its members, and archiving
+   * is reversible — the difference between an import being safe to try and
+   * being a decision.
+   *
+   * Optional, because the marker should never be the reason an import fails.
+   */
+  collectionId: z.string().uuid().optional(),
   notes: z
     .array(z.object({ id: z.string().uuid(), content: z.string() }))
     .min(1)
@@ -37,7 +49,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/import/obsidian", async (req, reply) => {
     const userId = requireUser(req);
-    const { notes } = bodySchema.parse(req.body);
+    const { notes, collectionId } = bodySchema.parse(req.body);
 
     let created = 0;
     const failed: { id: string; error: string }[] = [];
@@ -60,6 +72,20 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       // per note, this calls the very function the edit path calls, so there is
       // one rule about what counts as a tag and not two.
       await syncTextTags(userId, n.id, [n.content]);
+
+      // Joining the run's collection, through the collection's own handler.
+      // Best-effort on purpose: a note that is in the library but not in the
+      // list is a smaller problem than an import that stops halfway because
+      // its bookkeeping failed.
+      if (collectionId) {
+        await app.inject({
+          method: "POST",
+          url: `${mount}/collections/${collectionId}/members`,
+          headers: { authorization: req.headers.authorization ?? "" },
+          cookies: (req.cookies ?? {}) as Record<string, string>,
+          payload: { blockId: n.id },
+        });
+      }
     }
 
     return reply.send({ created, failed });

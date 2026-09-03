@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type React from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -14,6 +15,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   danger = true,
   requireText,
+  children,
   onConfirm,
   onCancel,
 }: {
@@ -29,6 +31,12 @@ export function ConfirmDialog({
    * to make the hand stop, not to ask twice.
    */
   requireText?: string;
+  /**
+   * Anything the decision itself needs — a choice that changes what confirming
+   * means. Sits between the message and the typed confirmation, so a box ticked
+   * here is read before the word is typed.
+   */
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -64,6 +72,7 @@ export function ConfirmDialog({
       >
         <h2 className="modal-title">{title}</h2>
         {message && <p className="modal-message">{message}</p>}
+        {children}
         {requireText && (
           <label className="field">
             <span>

@@ -35,6 +35,17 @@ const relPath = (f: File) => {
 
 const IMG = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
 
+/**
+ * The line in a run collection's description saying what it is.
+ *
+ * Each import makes a list holding everything it created. That list *is* the
+ * undo: archiving a collection offers to take its blocks with it, so an import
+ * needs no undo of its own — and the general feature is the better one, because
+ * "these arrived together" is true of more than imports.
+ */
+const RUN_MARK = "Imported from Obsidian";
+
+
 export function ImportSettings() {
   const [picked, setPicked] = useState<Picked>(new Map());
   const [vaultName, setVaultName] = useState("");
@@ -117,6 +128,18 @@ export function ImportSettings() {
       const ids: Record<string, string> = {};
       for (const n of plan.notes) ids[n.key] = crypto.randomUUID();
 
+      // The run's handle, made before anything joins it. Best-effort: a marker
+      // that cannot be created is not a reason to refuse an import, it just
+      // means this one has no undo.
+      const when = new Date().toLocaleString();
+      const run = await api
+        .post<{ id: string }>("/collections", {
+          kind: "list",
+          title: `Obsidian import — ${folder || "vault root"} — ${when}`,
+          description: `${RUN_MARK}: ${folder || "vault root"}, ${when}. Archiving these puts the whole import back.`,
+        })
+        .catch(() => null);
+
       // Batched by bytes, because a vault is several megabytes and Fastify
       // takes one. The count cap is the server's, and this stays under it.
       const pending = plan.notes.map((n) => ({ id: ids[n.key]!, content: resolveLinks(n.body, ids) }));
@@ -133,7 +156,7 @@ export function ImportSettings() {
         setProgress(`Creating notes ${i} of ${pending.length}…`);
         const res = await api.post<{ created: number; failed: { id: string; error: string }[] }>(
           "/import/obsidian",
-          { notes: batch },
+          { notes: batch, ...(run ? { collectionId: run.id } : {}) },
         );
         createdTotal += res.created;
         failures.push(...res.failed);
@@ -207,6 +230,10 @@ export function ImportSettings() {
         shown where they appear. Pick the <strong>whole vault</strong> — a note often embeds a file
         from another folder, and a bare <code>[[name]]</code> is resolved against every file there
         is. Then choose which folder becomes notes.
+      </p>
+      <p className="hint">
+        Each run makes a list collection holding everything it created — that is the undo. Archiving
+        a collection offers to archive its blocks with it, under <strong>Collections</strong>.
       </p>
 
       <div className="row" style={{ alignItems: "center", gap: 12 }}>

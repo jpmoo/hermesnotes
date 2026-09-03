@@ -13,6 +13,7 @@ import { UserManagement } from "../components/UserManagement.tsx";
 import { WeeklyReviewSettings } from "../components/WeeklyReviewSettings.tsx";
 import { ExportSettings } from "../components/ExportSettings.tsx";
 import { ImportSettings } from "../components/ImportSettings.tsx";
+import { TagMaintenance } from "../components/TagMaintenance.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -519,6 +520,7 @@ export function SettingsPage() {
       )}
 
       {tab === "general" && (
+      <>
       <div className="card">
         <label className="field">
           <span>Default similarity threshold — {similarity.toFixed(2)}</span>
@@ -595,6 +597,8 @@ export function SettingsPage() {
           </button>
         </div>
       </div>
+      <TagMaintenance />
+      </>
       )}
 
       {tab === "review" && <WeeklyReviewSettings />}

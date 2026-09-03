@@ -1771,11 +1771,53 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
   // ── Tags ─────────────────────────────────────────────────────
   app.get("/tags", async (req) => {
     const userId = requireUser(req);
+    // `count` is how many blocks wear it, archived ones included — archiving is
+    // not deleting, and a tag on a filed-away note is still in use. A zero here
+    // therefore means nothing at all wears it, which is what the sweep needs
+    // and what makes the number safe to act on.
     return db
+      .select({
+        id: tags.id,
+        name: tags.name,
+        count: sql<number>`count(${blockTags.blockId})::int`,
+      })
+      .from(tags)
+      .leftJoin(blockTags, eq(blockTags.tagId, tags.id))
+      .where(eq(tags.ownerId, userId))
+      .groupBy(tags.id, tags.name)
+      .orderBy(tags.name);
+  });
+
+  /**
+   * Delete every tag nothing wears.
+   *
+   * Invoked, never automatic — which is the whole design. `POST /tags` creates
+   * a tag before anything wears it, deliberately, so an unworn tag is not
+   * always a leftover and a cascade on block delete would take the one somebody
+   * just made. The same reason `/archive/empty` is a button rather than a rule.
+   *
+   * Cheap to be wrong about in one direction only: an unworn tag is a name and
+   * nothing else, and typing `#name` again brings it back. That is not true of
+   * a worn one, which is why this touches none.
+   *
+   * Browser sessions only, like every other hard delete here: an API key is an
+   * agent, and an agent can be talked into things.
+   */
+  app.post("/tags/sweep", async (req) => {
+    const userId = requireUser(req);
+    if (req.authKind !== "cookie") throw forbidden("hard delete requires a browser session");
+    const doomed = await db
       .select({ id: tags.id, name: tags.name })
       .from(tags)
-      .where(eq(tags.ownerId, userId))
-      .orderBy(tags.name);
+      .where(
+        and(
+          eq(tags.ownerId, userId),
+          sql`NOT EXISTS (SELECT 1 FROM ${blockTags} bt WHERE bt.tag_id = ${tags.id})`,
+        ),
+      );
+    if (!doomed.length) return { deleted: 0, names: [] as string[] };
+    await db.delete(tags).where(inArray(tags.id, doomed.map((t) => t.id)));
+    return { deleted: doomed.length, names: doomed.map((t) => t.name) };
   });
 
   /** Rename a tag everywhere: the tag row itself (merging into an existing

@@ -9,6 +9,10 @@ import { Banner, BannerAddButton, type BannerValue } from "../components/Banner.
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 
+/** Smart membership is a query, so "its blocks" is whatever matched this
+ *  morning — the one collection kind that can't hand its members to an archive. */
+const isSmartCollection = (c: Collection) => c.properties.membership_mode === "smart";
+
 function title(c: Collection): string {
   return oneLineText(c.properties) || "Untitled";
 }
@@ -76,7 +80,7 @@ export function CollectionsPage() {
     void api
       .get<{ members?: unknown[] }>(`/collections/${deleting.id}`)
       .then((c) => live && setMemberCount(c.members?.length ?? 0))
-      .catch(() => live && setMemberCount(null));
+      .catch(() => live && setMemberCount(-1));
     return () => { live = false; };
   }, [deleting]);
 
@@ -226,10 +230,16 @@ export function CollectionsPage() {
         title={`Archive “${deleting ? title(deleting) : ""}”?`}
         message={
           withMembers
-            ? `The collection and every block in it are archived together — ${memberCount ?? 0} block${memberCount === 1 ? "" : "s"}. They stay in the Archive and can be unarchived, one at a time.`
+            ? `The collection and every block in it are archived together${memberCount && memberCount > 0 ? ` — ${memberCount} block${memberCount === 1 ? "" : "s"}` : ""}. They stay in the Archive and can be unarchived, one at a time.`
             : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it. Its blocks stay where they are."
         }
-        confirmLabel={withMembers ? `Archive it and ${memberCount ?? 0} blocks` : "Archive"}
+        confirmLabel={
+          withMembers
+            ? memberCount && memberCount > 0
+              ? `Archive it and ${memberCount} blocks`
+              : "Archive it and its blocks"
+            : "Archive"
+        }
         danger={withMembers}
         // Only when it means more than the collection. Typing a word to file
         // away one list would be theatre; typing it to file away three hundred
@@ -238,7 +248,14 @@ export function CollectionsPage() {
         onCancel={() => setDeleting(null)}
         onConfirm={() => deleting && void archive(deleting)}
       >
-        {memberCount !== null && memberCount > 0 && (
+        {/* Offered whenever the collection keeps its own members, whether or
+            not the count arrived. It used to appear only once a number came
+            back, so a count that never landed removed the option altogether and
+            said nothing — the checkbox and the failure looked identical, which
+            is the same silence this panel keeps being caught by. A smart
+            collection is the one real exception: its membership is a query, and
+            the server refuses. */}
+        {deleting && !isSmartCollection(deleting) && (
           <label className="row" style={{ gap: 8, alignItems: "flex-start", marginBottom: 4 }}>
             <input
               type="checkbox"
@@ -246,8 +263,13 @@ export function CollectionsPage() {
               onChange={(e) => setWithMembers(e.target.checked)}
             />
             <span>
-              Also archive the {memberCount} block{memberCount === 1 ? "" : "s"} in it — for a
-              collection whose blocks arrived with it, like an import.
+              Also archive the{" "}
+              {memberCount === null
+                ? "blocks in it (counting…)"
+                : memberCount < 0
+                  ? "blocks in it — the count couldn’t be read, but the server archives what is actually there"
+                  : `${memberCount} block${memberCount === 1 ? "" : "s"} in it`}{" "}
+              — for a collection whose blocks arrived with it, like an import.
             </span>
           </label>
         )}

@@ -108,15 +108,39 @@ export function ImportSettings() {
     setError(null);
     setDone(null);
     try {
-      setProgress(`Creating ${plan.notes.length} notes…`);
-      const res = await api.post<{ ids: Record<string, string>; created: number; failed: { key: string; error: string }[] }>(
-        "/import/obsidian",
-        { notes: plan.notes.map(({ key, kind, title, body }) => ({ key, kind, title, body })) },
-      );
-      const ids = res.ids;
+      // Every id first, before a single note is written. Notes link to each
+      // other, so a link can only be written once both ends have an id — and
+      // once they all do, the import can be cut into as many requests as the
+      // body limit needs without a link crossing a batch and landing on
+      // nothing. The server takes these as given; `POST /blocks` has accepted a
+      // caller-supplied id since it was written.
+      const ids: Record<string, string> = {};
+      for (const n of plan.notes) ids[n.key] = crypto.randomUUID();
+
+      // Batched by bytes, because a vault is several megabytes and Fastify
+      // takes one. The count cap is the server's, and this stays under it.
+      const pending = plan.notes.map((n) => ({ id: ids[n.key]!, content: resolveLinks(n.body, ids) }));
+      let createdTotal = 0;
+      const failures: { id: string; error: string }[] = [];
+      for (let i = 0; i < pending.length; ) {
+        const batch: typeof pending = [];
+        let bytes = 0;
+        while (i < pending.length && batch.length < 50 && bytes < 400_000) {
+          bytes += pending[i]!.content.length;
+          batch.push(pending[i]!);
+          i++;
+        }
+        setProgress(`Creating notes ${i} of ${pending.length}…`);
+        const res = await api.post<{ created: number; failed: { id: string; error: string }[] }>(
+          "/import/obsidian",
+          { notes: batch },
+        );
+        createdTotal += res.created;
+        failures.push(...res.failed);
+      }
 
       // Upload once per file, to whichever note owns its bytes, and remember
-      // the id every body will point at.
+      // the URL every body will point at.
       const urls = new Map<string, string>();
       let n = 0;
       for (const f of plan.files) {
@@ -137,36 +161,32 @@ export function ImportSettings() {
         if (saved[0]) urls.set(f.path, `${apiBase}/attachments/${saved[0].id}`);
       }
 
-      // Now the markers can become links. Only the notes that carry one are
-      // rewritten, and a file that failed to upload leaves its words behind
-      // rather than a link to nothing.
+      // Only now can a marker become a link, so the notes carrying one are
+      // written a second time. A file that failed to upload leaves the words
+      // that introduced it rather than a link to nothing.
       const needsUrls = plan.notes.filter((p) => p.body.includes("](attach:"));
       let m = 0;
       for (const p of needsUrls) {
         setProgress(`Linking files ${++m} of ${needsUrls.length}…`);
         const id = ids[p.key];
         if (!id) continue;
-        const body = p.body.replace(
+        const body = resolveLinks(p.body, ids).replace(
           /(!?)\[([^\]]*)\]\(attach:([^)]+)\)/g,
           (_w, bang: string, label: string, path: string) => {
             const url = urls.get(path);
-            // A file that failed to upload leaves the words that introduced it,
-            // not a link to nowhere.
             return url ? `${bang}[${label}](${url})` : label;
           },
         );
         const current = await api.get<{ version: number }>(`/blocks/${id}`).catch(() => null);
         if (!current) continue;
-        await api
-          .patch(`/blocks/${id}`, { version: current.version, content: resolveLinks(body, ids) })
-          .catch(() => {});
+        await api.patch(`/blocks/${id}`, { version: current.version, content: body }).catch(() => {});
       }
 
       setDone(
-        `Imported ${res.created} of ${plan.notes.length} notes` +
-          (plan.files.length ? `, ${urls.size} files` : "") +
+        `Imported ${createdTotal} of ${plan.notes.length} notes` +
+          (plan.files.length ? `, ${urls.size} of ${plan.files.length} files` : "") +
           (plan.tags.length ? `, ${plan.tags.length} tags` : "") +
-          (res.failed.length ? ` — ${res.failed.length} failed` : "."),
+          (failures.length ? ` — ${failures.length} failed.` : "."),
       );
       setPlan(null);
     } catch (e) {

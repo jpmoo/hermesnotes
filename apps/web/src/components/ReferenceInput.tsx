@@ -149,6 +149,43 @@ export function ReferenceInput({
   };
 
   const available = results.filter((r) => !ids.includes(r.id));
+  /**
+   * Which row Enter takes, counting the "Create …" row as the last one.
+   *
+   * Starts at nought and returns there whenever the list changes, which is what
+   * makes Enter mean "the first match" without anybody having pressed an arrow
+   * first — the thing you actually want after typing three letters.
+   */
+  const canCreate = available.length === 0 && Boolean(query.trim());
+  const rows = available.length + (canCreate ? 1 : 0);
+  const [active, setActive] = useState(0);
+  useEffect(() => setActive(0), [query, available.length]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open) {
+      // Down opens a closed list rather than moving a cursor nobody can see.
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        setOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      setActive((i) => (rows ? (i + 1) % rows : 0));
+      e.preventDefault();
+    } else if (e.key === "ArrowUp") {
+      setActive((i) => (rows ? (i - 1 + rows) % rows : 0));
+      e.preventDefault();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const o = available[active];
+      if (o) add(o);
+      else if (canCreate) void createAndAdd();
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      e.preventDefault();
+    }
+  };
 
   return (
     <div className="ref-combo ref-multi" ref={ref}>
@@ -183,6 +220,7 @@ export function ReferenceInput({
           data-lpignore="true"
           onFocus={() => setOpen(true)}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
         />
       </div>
       {/* Out to the body: "fixed" is measured against the nearest transformed
@@ -205,15 +243,29 @@ export function ReferenceInput({
             right: "auto",
           }}
         >
-          {available.map((o) => (
-            <button key={o.id} className="menu-item type-item" onClick={() => add(o)}>
+          {available.map((o, i) => (
+            <button
+              key={o.id}
+              className={`menu-item type-item${i === active ? " active" : ""}`}
+              // Keeping the keyboard's row on screen. `nearest` so arrowing down
+              // a long list scrolls by a row rather than jumping it to the
+              // middle every time.
+              ref={i === active ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+              onClick={() => add(o)}
+              // The pointer moves the selection too, so Enter never takes a row
+              // other than the one under the highlight.
+              onMouseEnter={() => setActive(i)}
+            >
               <BlockIcon iconKey={refType?.iconKey} color={refType?.iconColor} size={15} />
               <span className="li-md" dangerouslySetInnerHTML={{ __html: firstLineHtml(o.label) }} />
             </button>
           ))}
           {available.length === 0 &&
             (query.trim() ? (
-              <button className="menu-item" onClick={() => void createAndAdd()}>
+              <button
+                className={`menu-item${active === available.length ? " active" : ""}`}
+                onClick={() => void createAndAdd()}
+              >
                 Create “{query.trim()}”
               </button>
             ) : (

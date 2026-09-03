@@ -8389,3 +8389,10 @@ body:has(.embed-scratchpad) #root {
   gap: 6px;
 }
 .pager-size select { padding: 2px 4px; }
+
+/* The row the keyboard is on, in the finder. Same weight as a menu's — being
+   on a row by arrow and being on it by pointer are the same fact. */
+.finder-row.active {
+  background: var(--surface-2);
+  border-radius: 6px;
+}

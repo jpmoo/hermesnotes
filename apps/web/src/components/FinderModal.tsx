@@ -19,6 +19,14 @@ export function FinderModal({
   const [results, setResults] = useState<BlockSearchResult[]>([]);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const typeById = new Map(types.map((t) => [t.id, t]));
+  /**
+   * The row Enter adds. Back to the first whenever the results change, so that
+   * typing and pressing Enter takes the best match — this modal stays open
+   * after an add, which makes "search, Enter, search, Enter" the way somebody
+   * actually fills a collection.
+   */
+  const [active, setActive] = useState(0);
+  useEffect(() => setActive(0), [q, results.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -57,6 +65,23 @@ export function FinderModal({
           value={q}
           autoFocus
           onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (!results.length) return;
+            if (e.key === "ArrowDown") {
+              setActive((i) => (i + 1) % results.length);
+              e.preventDefault();
+            } else if (e.key === "ArrowUp") {
+              setActive((i) => (i - 1 + results.length) % results.length);
+              e.preventDefault();
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              const r = results[active];
+              // Adding the same block twice is not an error, but it is not an
+              // action either — leave the key doing nothing rather than
+              // pretending.
+              if (r && !added.has(r.id)) void add(r);
+            }
+          }}
           style={{ marginBottom: 12 }}
         />
         <div className="finder-results">
@@ -65,10 +90,15 @@ export function FinderModal({
               No matching blocks.
             </div>
           ) : (
-            results.map((r) => {
+            results.map((r, i) => {
               const type = r.blockTypeId ? typeById.get(r.blockTypeId) : undefined;
               return (
-                <div className="finder-row" key={r.id}>
+                <div
+                  className={`finder-row${i === active ? " active" : ""}`}
+                  key={r.id}
+                  ref={i === active ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                  onMouseEnter={() => setActive(i)}
+                >
                   <BlockIcon
                     iconKey={type ? (type.isText ? "type" : type.iconKey) : "type"}
                     color={type?.iconColor}

@@ -610,11 +610,16 @@ export function useBlockView<T extends Viewable>(
     const start = (Math.min(page, pageCount) - 1) * pageSize;
     return sorted.slice(start, start + pageSize);
   }, [sorted, page, pageSize, pageCount]);
-  // Both ends of the list. A hundred cards is a lot of scrolling to reach a
-  // control, in either direction — and the top one is the only one somebody
-  // sees before deciding whether to read the page at all.
+  // Shown even when everything fits, because the pager is where the size lives
+  // and a list of thirty is exactly where somebody wants to say "show a
+  // hundred". Only an empty list has none: a pager over nothing is furniture.
+  //
+  // Both ends once there is more than a page — a hundred cards is a long way to
+  // reach a control in either direction. On a single page the foot is dropped
+  // and the head kept, since what remains is a control rather than navigation,
+  // and controls belong with the other controls.
   const makePager = (where: "top" | "bottom") =>
-    sorted.length > pageSize ? (
+    sorted.length > 0 && (where === "top" || sorted.length > pageSize) ? (
       <Pager
         where={where}
         page={Math.min(page, pageCount)}

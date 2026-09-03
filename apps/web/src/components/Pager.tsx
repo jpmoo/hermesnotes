@@ -85,6 +85,26 @@ export function Pager({
   const pages = Math.max(1, Math.ceil(total / size));
   const first = total === 0 ? 0 : (page - 1) * size + 1;
   const last = Math.min(page * size, total);
+
+  /**
+   * The page box holds what is being typed, not the page.
+   *
+   * A field bound straight to the page number cannot be cleared — deleting the
+   * "1" to type "12" reads as 0, clamps back to 1, and puts the caret behind a
+   * digit that reappeared under it. So it keeps its own text, and only commits
+   * when that text is a page.
+   */
+  const [typed, setTyped] = useState(String(page));
+  useEffect(() => setTyped(String(page)), [page]);
+  const commit = (raw: string) => {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || raw.trim() === "") {
+      setTyped(String(page));
+      return;
+    }
+    onPage(Math.min(pages, Math.max(1, Math.floor(n))));
+  };
+
   return (
     <div className={`pager pager-${where}`}>
       <span className="hint pager-range">
@@ -100,9 +120,25 @@ export function Pager({
         >
           <ChevronLeft size={15} />
         </button>
-        <span className="hint">
-          {page} of {pages}
-        </span>
+        <label className="hint pager-jump">
+          <input
+            type="number"
+            min={1}
+            max={pages}
+            value={typed}
+            aria-label="Page number"
+            onChange={(e) => setTyped(e.target.value)}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commit((e.target as HTMLInputElement).value);
+                e.preventDefault();
+              }
+            }}
+            disabled={pages <= 1}
+          />
+          of {pages}
+        </label>
         <button
           className="icon-btn"
           onClick={() => onPage(page + 1)}

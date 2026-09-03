@@ -8405,3 +8405,16 @@ body:has(.embed-scratchpad) #root {
   background: var(--surface-2);
   border-radius: 6px;
 }
+/* Type a page rather than clicking to it. Narrow, because four digits is more
+   pages than this application will ever hold. */
+.pager-jump {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pager-jump input {
+  width: 4.5ch;
+  padding: 2px 4px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

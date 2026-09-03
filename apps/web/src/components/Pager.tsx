@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 /**
  * How many of a list to show at once, and which slice.
  *
- * Per list, with the last choice as the default for lists nobody has set. A
- * single global size meant deciding once for a page of three hundred imported
- * notes and a rollup of four; a purely per-list one meant setting it again
- * everywhere. This is both: change it on a list and that list remembers, and
- * every list you have never touched follows whatever you last picked.
+ * Per list, and only per list: a size set here changes this list and no other.
+ * It briefly also wrote a shared default, so that lists nobody had set followed
+ * whatever was picked last — which sounds helpful and is not. The Types page
+ * shows eight of these at once, and setting one made seven others move on the
+ * next load. A setting that changes things you did not set is not a
+ * convenience, it is a list you cannot trust to stay where you put it.
  *
  * Stored in `localStorage` under the same scope key the view mode and column
  * counts already use — how a particular list is arranged has always lived
@@ -23,7 +24,6 @@ import { useEffect, useState } from "react";
 
 export const PAGE_SIZES = [10, 20, 50, 100] as const;
 export const DEFAULT_PAGE_SIZE = 20;
-/** The size for lists that have never been set — the last one chosen anywhere. */
 export const PAGE_SIZE_KEY = "hn.blockview.pagesize";
 
 const clean = (v: string | null): number | null => {
@@ -32,17 +32,19 @@ const clean = (v: string | null): number | null => {
 };
 
 /**
- * The size this list should use, and a setter that pins it here.
+ * The size this list should use, and a setter that pins it here and nowhere
+ * else.
  *
- * `scope` names the list. Without one there is nothing to remember a choice
- * against, so it reads and writes the shared default — which is right: an
- * unnamed list is not a place, and a size set on it is just the size.
+ * `scope` names the list. Lists that name themselves keep their own size;
+ * everything unnamed shares one, which is the closest thing to a right answer
+ * for a list with no identity to hang a preference on. A list nobody has set
+ * shows the default and keeps showing it until somebody sets *that* list.
  */
 export function usePageSize(scope?: string): [number, (n: number) => void] {
   const key = scope ? `${PAGE_SIZE_KEY}.${scope}` : PAGE_SIZE_KEY;
   const read = () => {
     try {
-      return clean(localStorage.getItem(key)) ?? clean(localStorage.getItem(PAGE_SIZE_KEY)) ?? DEFAULT_PAGE_SIZE;
+      return clean(localStorage.getItem(key)) ?? DEFAULT_PAGE_SIZE;
     } catch {
       return DEFAULT_PAGE_SIZE;
     }
@@ -57,8 +59,6 @@ export function usePageSize(scope?: string): [number, (n: number) => void] {
       setSize(n);
       try {
         localStorage.setItem(key, String(n));
-        // Also the default, so the next list nobody has set follows this one.
-        localStorage.setItem(PAGE_SIZE_KEY, String(n));
       } catch {
         /* a browser refusing storage still gets the size for this session */
       }

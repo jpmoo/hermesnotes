@@ -179,6 +179,7 @@ export function ImportSettings() {
       // takes one. The count cap is the server's, and this stays under it.
       const pending = plan.notes.map((n) => ({ id: ids[n.key]!, content: resolveLinks(n.body, ids) }));
       let createdTotal = 0;
+      let taggedTotal = 0;
       const failures: { id: string; error: string }[] = [];
       for (let i = 0; i < pending.length; ) {
         const batch: typeof pending = [];
@@ -189,11 +190,12 @@ export function ImportSettings() {
           i++;
         }
         setProgress(`Creating notes ${i} of ${pending.length}…`);
-        const res = await api.post<{ created: number; failed: { id: string; error: string }[] }>(
+        const res = await api.post<{ created: number; tagged: number; failed: { id: string; error: string }[] }>(
           "/import/obsidian",
           { notes: batch, ...(run ? { collectionId: run.id } : {}) },
         );
         createdTotal += res.created;
+        taggedTotal += res.tagged;
         failures.push(...res.failed);
       }
 
@@ -240,10 +242,16 @@ export function ImportSettings() {
         await api.patch(`/blocks/${id}`, { version: current.version, content: body }).catch(() => {});
       }
 
+      // What went wrong, not just how often. The first run of this reported
+      // "307 failed" and nothing else — the reason was sitting in `failures`
+      // the whole time, thrown away one line before it could be read.
+      if (failures.length) {
+        setError(`${failures.length} note${failures.length === 1 ? "" : "s"} were refused. The first said: ${failures[0]!.error}`);
+      }
       setDone(
         `Imported ${createdTotal} of ${plan.notes.length} notes` +
           (plan.files.length ? `, ${urls.size} of ${plan.files.length} files` : "") +
-          (plan.tags.length ? `, ${plan.tags.length} tags` : "") +
+          (taggedTotal ? `, ${taggedTotal} of them tagged` : "") +
           (failures.length ? ` — ${failures.length} failed.` : "."),
       );
       setPlan(null);

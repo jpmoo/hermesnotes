@@ -52,6 +52,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
     const { notes, collectionId } = bodySchema.parse(req.body);
 
     let created = 0;
+    let tagged = 0;
     const failed: { id: string; error: string }[] = [];
 
     for (const n of notes) {
@@ -71,7 +72,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       // does, and an import writes each note once. Rather than a second write
       // per note, this calls the very function the edit path calls, so there is
       // one rule about what counts as a tag and not two.
-      await syncTextTags(userId, n.id, [n.content]);
+      if (await syncTextTags(userId, n.id, [n.content])) tagged++;
 
       // Joining the run's collection, through the collection's own handler.
       // Best-effort on purpose: a note that is in the library but not in the
@@ -88,6 +89,9 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    return reply.send({ created, failed });
+    // `tagged` is counted rather than assumed. The first run of this reported
+    // the number of tags the *plan* carried, which read as a claim that they
+    // had been filed — while nothing had been written at all.
+    return reply.send({ created, tagged, failed });
   });
 }

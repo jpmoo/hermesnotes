@@ -299,11 +299,19 @@ async function spawnRecurrence(
 
 /** Resolve a block type for this owner, defaulting to the seeded `text` type. */
 async function resolveType(ownerId: string, blockTypeId?: string) {
+  // By the flag, never by the name. A type is a row the user owns and can
+  // rename, so `name = 'text'` is a guess about what somebody calls their notes
+  // — and it was the only place in this codebase still making it. Every other
+  // lookup (today, review, welcome, collections, search) already reads
+  // `is_text`, and this one silently disagreed with all of them the moment the
+  // type was renamed: every create without an explicit type answered 400 "text
+  // block type missing", including all three hundred and seven notes of an
+  // import.
   const where = blockTypeId
     ? and(eq(blockTypes.id, blockTypeId), eq(blockTypes.ownerId, ownerId))
-    : and(eq(blockTypes.ownerId, ownerId), eq(blockTypes.name, "text"));
+    : and(eq(blockTypes.ownerId, ownerId), eq(blockTypes.isText, true));
   const [row] = await db.select().from(blockTypes).where(where).limit(1);
-  if (!row) throw badRequest(blockTypeId ? "unknown block type" : "text block type missing");
+  if (!row) throw badRequest(blockTypeId ? "unknown block type" : "no text block type");
   return row;
 }
 

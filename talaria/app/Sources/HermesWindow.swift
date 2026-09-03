@@ -135,6 +135,15 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
         decisionHandler(.allow)
     }
 
+    func webView(
+        _ webView: WKWebView,
+        runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame _: WKFrameInfo,
+        completionHandler: @escaping ([URL]?) -> Void
+    ) {
+        runWebOpenPanel(for: webView, parameters: parameters, completionHandler: completionHandler)
+    }
+
     /// target="_blank" has no window to open; keep it in this one.
     func webView(
         _ webView: WKWebView,
@@ -232,4 +241,47 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
     @objc private func reload() { web?.reload() }
     @objc private func goBack() { web?.goBack() }
     @objc private func goForward() { web?.goForward() }
+}
+
+/**
+ A file picker, because a web view cannot open one for itself.
+
+ `<input type="file">` in a `WKWebView` does nothing at all unless the host
+ application implements `runOpenPanelWith` — no picker, no error, no console
+ message. The page has done everything right and the click lands nowhere, which
+ is a hard failure to read from the inside: Hermes' import button worked in
+ every browser and did nothing here.
+
+ `allowsDirectories` is what `webkitdirectory` becomes by the time it reaches
+ native code. Honoring it is what lets somebody hand over a vault rather than
+ nine hundred files one at a time — and when it is set, files are refused,
+ because a picker that lets you choose either is a picker you can get wrong.
+
+ WebKit walks the chosen directory itself and gives the page each file with its
+ `webkitRelativePath` intact, which is the whole basis on which an import
+ resolves a link from one folder to a file in another.
+ */
+func runWebOpenPanel(
+    for webView: WKWebView,
+    parameters: WKOpenPanelParameters,
+    completionHandler: @escaping ([URL]?) -> Void
+) {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+    panel.canChooseDirectories = parameters.allowsDirectories
+    panel.canChooseFiles = !parameters.allowsDirectories
+    panel.canCreateDirectories = false
+    panel.message = parameters.allowsDirectories
+        ? "Choose a folder — everything inside it is handed to the page."
+        : "Choose a file."
+    // Exactly once, on either outcome: a completion handler WebKit never hears
+    // back from leaves the page's file input wedged for the rest of the session.
+    let finish: (NSApplication.ModalResponse) -> Void = { response in
+        completionHandler(response == .OK ? panel.urls : nil)
+    }
+    if let window = webView.window {
+        panel.beginSheetModal(for: window, completionHandler: finish)
+    } else {
+        panel.begin(completionHandler: finish)
+    }
 }

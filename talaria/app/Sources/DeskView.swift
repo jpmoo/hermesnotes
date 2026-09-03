@@ -143,8 +143,20 @@ private struct HermesEmbed: NSViewRepresentable {
     /// Bumped every time the desk opens. See `updateNSView`.
     let generation: Int
 
-    final class Coordinator {
+    /// Also the web view's UI delegate, which is how a file input on the desk
+    /// gets a picker. Without one it does nothing and says nothing — the same
+    /// silence the Hermes window had.
+    final class Coordinator: NSObject, WKUIDelegate {
         var loaded: Int = -1
+
+        func webView(
+            _ webView: WKWebView,
+            runOpenPanelWith parameters: WKOpenPanelParameters,
+            initiatedByFrame _: WKFrameInfo,
+            completionHandler: @escaping ([URL]?) -> Void
+        ) {
+            runWebOpenPanel(for: webView, parameters: parameters, completionHandler: completionHandler)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -155,6 +167,7 @@ private struct HermesEmbed: NSViewRepresentable {
         // rather than a login form in the corner of the desk.
         config.websiteDataStore = .default()
         let view = WKWebView(frame: .zero, configuration: config)
+        view.uiDelegate = context.coordinator
         view.setValue(false, forKey: "drawsBackground")
         view.load(URLRequest(url: url))
         return view

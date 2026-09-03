@@ -28,6 +28,7 @@ import { assistantRoutes } from "./assistant/routes.js";
 import { setupRoutes } from "./setup/routes.js";
 import { backupRoutes } from "./backup/routes.js";
 import { exportRoutes } from "./export/routes.js";
+import { importRoutes } from "./import/routes.js";
 import { adminRoutes } from "./admin/routes.js";
 import { eventRoutes } from "./events/routes.js";
 import { syncRoutes } from "./sync/routes.js";
@@ -151,6 +152,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(interchangeRoutes, { prefix: "/api" });
   await app.register(backupRoutes, { prefix: "/api" });
   await app.register(exportRoutes, { prefix: "/api" });
+  await app.register(importRoutes, { prefix: "/api" });
   await app.register(adminRoutes, { prefix: "/api" });
   await app.register(eventRoutes, { prefix: "/api" });
   await app.register(syncRoutes, { prefix: "/api" });

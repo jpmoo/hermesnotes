@@ -27,6 +27,10 @@ const SEED_TYPES: SeedType[] = [
     propertySchema: {
       fields: [
         { key: "description", label: "Body", type: "longtext", order: 0, includeEmbed: true, locked: true },
+        // Files were always attachable — they hang off block_id, not off a
+        // property — but with no field on the type there was nowhere in the
+        // editor to put one. Unlocked: removable by anyone who doesn't want it.
+        { key: "attachments", label: "Attachments", type: "attachments", order: 1, includeEmbed: false },
       ],
     },
   },

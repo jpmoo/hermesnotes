@@ -12,6 +12,7 @@ import { CalendarFeedsSettings } from "../components/CalendarFeedsSettings.tsx";
 import { UserManagement } from "../components/UserManagement.tsx";
 import { WeeklyReviewSettings } from "../components/WeeklyReviewSettings.tsx";
 import { ExportSettings } from "../components/ExportSettings.tsx";
+import { ImportSettings } from "../components/ImportSettings.tsx";
 
 interface BackupSettings {
   enabled: boolean;
@@ -278,7 +279,7 @@ export function SettingsPage() {
     { key: "appearance", label: "Appearance", Icon: Palette },
     { key: "calendar", label: "Calendar", Icon: CalendarDays },
     { key: "access", label: "Access Keys", Icon: KeyRound },
-    { key: "export", label: "Export", Icon: Download },
+    { key: "export", label: "Import & Export", Icon: Download },
     ...(isAdmin ? [{ key: "admin" as const, label: "Admin", Icon: ShieldAlert, admin: true }] : []),
   ];
 
@@ -611,7 +612,12 @@ export function SettingsPage() {
       {tab === "calendar" && <CalendarFeedsSettings />}
       {tab === "access" && <AccessKeys />}
 
-      {tab === "export" && <ExportSettings />}
+      {tab === "export" && (
+        <>
+          <ExportSettings />
+          <ImportSettings />
+        </>
+      )}
 
       {status && <div className="hint" style={{ marginTop: 10 }}>{status}</div>}
       {error && <div className="error" style={{ marginTop: 10 }}>{error}</div>}

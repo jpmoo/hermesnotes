@@ -164,7 +164,7 @@ async function propagateTitleRename(
  * mention from the text does NOT remove the tag (that stays a manual action),
  * which avoids provenance edge cases. Returns whether anything was added.
  */
-async function syncTextTags(
+export async function syncTextTags(
   userId: string,
   blockId: string,
   texts: string[],

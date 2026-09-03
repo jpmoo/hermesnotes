@@ -8294,3 +8294,53 @@ body:has(.embed-scratchpad) #root {
   pointer-events: none;
   overflow: visible;
 }
+
+/* ── Obsidian import: the confirmation ────────────────────────────────────
+   One decision, made about a list. The scroller is what makes that possible:
+   a batch of three hundred notes has to be reviewable without becoming a page
+   nobody reaches the bottom of, so the list keeps its own bounds and the
+   Import button stays where it can be seen. */
+.import-preview {
+  margin-top: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2, var(--surface));
+}
+.import-note {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.import-note:last-child { border-bottom: none; }
+.import-note-h { display: flex; align-items: baseline; gap: 8px; }
+.import-note-title { font-weight: 600; }
+.import-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted, var(--text));
+}
+.import-note-excerpt {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted, var(--text));
+  /* Two lines. An excerpt is there to say "yes, that is the note I meant" —
+     more than that and three hundred of them stop being scannable. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.import-note-meta {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--text-muted, var(--text));
+}
+.import-file { font-variant-numeric: tabular-nums; }

@@ -28,8 +28,13 @@ export function TagMaintenance() {
 
   const load = () =>
     void api
-      .get<{ name: string; count: number }[]>("/tags")
-      .then(setTags)
+      .get<{ name: string; count: number | string }[]>("/tags")
+      // `count` is coerced rather than trusted. A count that arrived as the
+      // string "0" would be truthy, every orphan would read as in use, and the
+      // panel would say "7 tags" — which is exactly what it says when all seven
+      // really are in use. Two different states, one screen, and no way to tell
+      // them apart: the reason this panel now prints both numbers.
+      .then((ts) => setTags(ts.map((t) => ({ name: t.name, count: Number(t.count) || 0 }))))
       .catch(() => {});
   useEffect(load, []);
 
@@ -53,8 +58,18 @@ export function TagMaintenance() {
     <div className="card">
       <div className="panel-h" style={{ marginTop: 0 }}>Tags</div>
       <p className="hint" style={{ marginTop: 0 }}>
-        {tags.length} tag{tags.length === 1 ? "" : "s"}
-        {unused.length > 0 && <> — {unused.length} worn by nothing</>}.
+        {/* Both numbers, always. "7 tags" alone reads as "7 unused" to anyone
+            who came here to remove some, and it looked identical whether the
+            sweep had just worked or had never seen the orphans at all. */}
+        <strong>{tags.length}</strong> tag{tags.length === 1 ? "" : "s"} —{" "}
+        {unused.length === 0 ? (
+          <>all of them in use, nothing to sweep.</>
+        ) : (
+          <>
+            <strong>{tags.length - unused.length}</strong> in use,{" "}
+            <strong>{unused.length}</strong> worn by nothing.
+          </>
+        )}{" "}
         A tag outlives the blocks that carried it, so deleting notes leaves its tags behind. Tags on
         archived notes are still in use and aren’t touched.
       </p>
@@ -66,7 +81,12 @@ export function TagMaintenance() {
       )}
       <div className="row" style={{ marginTop: 10, alignItems: "center", gap: 12 }}>
         <button className="ghost" onClick={() => setConfirming(true)} disabled={busy || !unused.length}>
-          <Tags size={15} /> {busy ? "Removing…" : `Remove ${unused.length || "unused"} tag${unused.length === 1 ? "" : "s"}`}
+          <Tags size={15} />{" "}
+          {busy
+            ? "Removing…"
+            : unused.length
+              ? `Remove ${unused.length} unused tag${unused.length === 1 ? "" : "s"}`
+              : "Nothing to remove"}
         </button>
         {done && <span className="hint">{done}</span>}
       </div>

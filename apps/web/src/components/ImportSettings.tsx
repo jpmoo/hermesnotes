@@ -1,5 +1,5 @@
 import { FolderOpen, Upload } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, apiBase, CLIENT_ID } from "../api.ts";
 import {
   buildIndex,
@@ -57,6 +57,28 @@ export function ImportSettings() {
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
+  /**
+   * Turn the input into a folder picker, and find out whether that worked.
+   *
+   * `webkitdirectory` is not in React's prop types, so it was being spread in
+   * as a string attribute and trusted. Set as a property it is unambiguous —
+   * and reading it back says whether this browser does directory picking at
+   * all, which is the difference between "nothing happened" and "your browser
+   * cannot do this", two things that looked the same.
+   */
+  const [canPickFolders, setCanPickFolders] = useState(true);
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    const supported = "webkitdirectory" in el;
+    setCanPickFolders(supported);
+    if (supported) {
+      (el as HTMLInputElement & { webkitdirectory: boolean }).webkitdirectory = true;
+      el.setAttribute("webkitdirectory", "");
+      el.setAttribute("directory", "");
+    }
+  }, []);
+
   /** Top-level folders that actually contain notes — the only ones worth offering. */
   const folders = useMemo(() => {
     const seen = new Map<string, number>();
@@ -69,13 +91,26 @@ export function ImportSettings() {
   }, [picked]);
 
   const choose = (files: FileList | null) => {
-    if (!files?.length) return;
+    // Cancelling is not an error; getting files and keeping none of them is.
+    if (!files) return;
+    if (!files.length) {
+      setError("That folder came back empty. If it lives in iCloud Drive, open it in Finder once so the files are downloaded, then try again.");
+      return;
+    }
     const map: Picked = new Map();
     for (const f of Array.from(files)) {
       const rel = relPath(f);
       if (rel && !rel.split("/").some((s) => s.startsWith("."))) map.set(rel, f);
     }
     const first = (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath ?? "";
+    if (!map.size) {
+      setError(
+        first
+          ? "Nothing in that folder could be read — every file was hidden or in a dot-folder."
+          : "That looks like a single file rather than a folder. Choose the vault's folder itself.",
+      );
+      return;
+    }
     setVaultName(first.split("/")[0] ?? "");
     setPicked(map);
     setPlan(null);
@@ -245,13 +280,18 @@ export function ImportSettings() {
             {vaultName} — {picked.size.toLocaleString()} files
           </span>
         )}
+        {!canPickFolders && (
+          <span className="hint">This browser can’t choose a folder — try Chrome, Edge or Safari.</span>
+        )}
         <input
           ref={input}
           type="file"
-          hidden
           multiple
-          // Not in the React types; it is what makes this a folder picker.
-          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+          // Off-screen rather than `hidden`. A file input at `display: none`
+          // cannot always be opened by a scripted click — the browser has
+          // nothing to attach the picker to — and the failure is silent, which
+          // is exactly what this looked like.
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
           onChange={(e) => choose(e.target.files)}
         />
       </div>

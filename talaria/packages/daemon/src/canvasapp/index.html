@@ -10,8 +10,8 @@
   and neither is a copy of the other.
 
   Here now: nodes, text, links with draggable bends, regions, pictures, an
-  inspector, and a view you can move and scale. Still in the app only: snapping
-  guides, linked-block badges, and printing.
+  inspector, a view you can move and scale, and snapping. Still in the app only:
+  linked-block badges and printing.
 
   Deliberately no build step and no framework. The daemon runs from source with
   tsx; a page that needs bundling would be the first thing here that cannot be
@@ -29,6 +29,13 @@
      their parent is none. The origin is the top-left so that scale and
      translate compose the way the arithmetic below assumes. */
   #world { position: absolute; inset: 0; transform-origin: 0 0; }
+  /* The dotted grid, drawn on the surface rather than in the view so it does
+     not have to be redrawn as the canvas moves. Twenty-four points, the app's
+     spacing, which is also what a drag snaps to when it is on. */
+  #surface.grid {
+    background-image: radial-gradient(circle, rgba(128,128,128,.35) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
   #hint {
     position: absolute; right: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
     background: rgba(0,0,0,.06); opacity: .8;
@@ -115,6 +122,15 @@
   #edges .hit, #edges .grip { pointer-events: all; }
   #edges .hit { cursor: pointer; }
   #edges .grip { fill: #fff; stroke: #5fa4b5; stroke-width: 1.5; cursor: grab; }
+
+  /* Snap guides, coloured by what they mean. Alignment is the accent because it
+     is the common one; spacing and size are told apart on purpose — "these are
+     evenly spaced" and "these edges line up" are different claims, and a guide
+     that cannot say which is a guide you have to work out. */
+  #edges .guide { stroke: #5fa4b5; }
+  #edges .guide-spacing { stroke: #b5525f; }
+  #edges .guide-size { stroke: #b5525f; }
+  #edges .guide-grid { stroke: rgba(128,128,128,.55); }
   @media (prefers-color-scheme: dark) { #edges .grip { fill: #1c1c1e; } }
   #status {
     position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
@@ -158,5 +174,5 @@
   <div data-for="vAlign" class="row" id="i-vAlign"></div>
 </div>
 <div id="status">loading…</div>
-<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · paste or drop a picture · ⌘0 life size · ⌘1 fit · ⌫ to remove</div>
+<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · paste or drop a picture · ⌘0 life size · ⌘1 fit · ' grid · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

@@ -5,15 +5,17 @@
  * page has no idea it is talking to a Unix socket, and the same file works
  * unchanged behind WebKitGTK on Linux.
  *
- * Nodes, text, links with draggable bends, regions, pictures, an inspector, and
- * a view you can move and scale. Snapping guides, linked-block badges and
- * printing are still the app's alone.
+ * Nodes, text, links with draggable bends, regions, pictures, an inspector, a
+ * view you can move and scale, and snapping. Linked-block badges and printing
+ * are still the app's alone.
  *
  * The rule under all of it: what this page does not understand, it does not
  * destroy. The document is held as it arrived and only `items`, `links` and
  * `regions` are ever touched, so a canvas edited here goes back with its
  * unknown keys and per-item extras intact.
  */
+
+import { REACH, snapMove } from "./snap.js";
 
 const surface = document.getElementById("surface");
 const world = document.getElementById("world");
@@ -97,6 +99,7 @@ const regionEls = new Map(); // region id → element
 const handleEl = document.getElementById("handle");
 const marqueeEl = document.getElementById("marquee");
 const inspectorEl = document.getElementById("inspector");
+const guideEls = [];
 
 /** A node's own coordinates. Kept as a name because it reads better than
  *  reaching into the item at eleven call sites. */
@@ -944,13 +947,43 @@ surface.addEventListener("pointermove", (e) => {
   // being steady, not about the document.
   if (!drag.moved && Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) < 3) return;
   drag.moved = true;
+  // Where it wants to be, then where it should be.
+  //
+  // The whole moving set is snapped as one box and the answer applied to all of
+  // them, rather than each node snapping to its own neighbour: nine boxes each
+  // finding a different edge would pull the group apart, which is the opposite
+  // of what dragging nine things at once means.
+  const moving = new Set(drag.from.map((m) => m.id));
+  const wanted = drag.from.map((m) => ({ ...find(m.id), x: m.ox + dx, y: m.oy + dy })).filter(Boolean);
+  let shift = { x: 0, y: 0 };
+  let guides = [];
+  if (wanted.length) {
+    const x0 = Math.min(...wanted.map((i) => i.x));
+    const y0 = Math.min(...wanted.map((i) => i.y));
+    const hull = {
+      x: x0,
+      y: y0,
+      w: Math.max(...wanted.map((i) => i.x + i.w)) - x0,
+      h: Math.max(...wanted.map((i) => i.y + i.h)) - y0,
+    };
+    const snapped = snapMove(
+      hull,
+      doc.items.filter((i) => !moving.has(i.id)),
+      // Converted from screen pixels, so a snap feels the same at every scale
+      // rather than becoming a magnet at 4x and unreachable at 0.2x.
+      { grid: gridOn ? 24 : null, tolerance: REACH / zoom },
+    );
+    shift = { x: snapped.rect.x - hull.x, y: snapped.rect.y - hull.y };
+    guides = snapped.guides;
+  }
   for (const m of drag.from) {
     const item = find(m.id);
     if (!item) continue;
-    item.x = Math.round(m.ox + dx);
-    item.y = Math.round(m.oy + dy);
+    item.x = Math.round(m.ox + dx + shift.x);
+    item.y = Math.round(m.oy + dy + shift.y);
     place(nodes.get(m.id), item);
   }
+  drawGuides(guides);
   // A region has no position of its own — it is wherever its members are — so
   // moving anything inside one redraws it.
   drawRegions();
@@ -990,6 +1023,7 @@ surface.addEventListener("pointerup", (e) => {
     // crossing the screen is a hundred writes of the same fact.
     save();
   }
+  drawGuides([]);
   drag = null;
 });
 
@@ -1048,6 +1082,13 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
+  if (e.key === "'" || e.key === "\"") {
+    gridOn = !gridOn;
+    surface.classList.toggle("grid", gridOn);
+    say(gridOn ? "grid on" : "grid off");
+    e.preventDefault();
+    return;
+  }
   if (!selected) return;
   if (e.key === "Backspace" || e.key === "Delete") {
     // Removing a region takes the box away and leaves what was in it; removing
@@ -1062,6 +1103,38 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
   }
 });
+
+// ── Guides ─────────────────────────────────────────────────────────────────
+
+/** Whether the dotted grid is one of the things a drag can land on. */
+let gridOn = false;
+
+/**
+ * The lines shown while a snap is holding.
+ *
+ * Drawn in the same layer as the links and cleared the moment a drag ends: a
+ * guide is a statement about what is happening now, and one left behind is a
+ * claim that something aligns when nothing is moving.
+ */
+function drawGuides(guides) {
+  for (const el of guideEls) el.remove();
+  guideEls.length = 0;
+  for (const g of guides) {
+    const line = svg("line", {
+      x1: g.from.x,
+      y1: g.from.y,
+      x2: g.to.x,
+      y2: g.to.y,
+      // Thin at any zoom, like every other piece of chrome drawn inside the
+      // view.
+      "stroke-width": 1 / zoom,
+      "stroke-dasharray": `${4 / zoom} ${3 / zoom}`,
+    });
+    line.classList.add("guide", `guide-${g.reason}`);
+    edges.append(line);
+    guideEls.push(line);
+  }
+}
 
 // ── The view ───────────────────────────────────────────────────────────────
 

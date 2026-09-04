@@ -848,11 +848,32 @@ function local(e) {
  */
 let lastPoint = { x: 200, y: 160 };
 
+/**
+ * What a drop has landed on: a node, or a region, but never the thing in hand.
+ *
+ * The pointer, not the box. A box being dragged overlaps whatever it happens to
+ * cross, and half of that is the diagram it is being carried across; the pointer
+ * is the one part of the gesture that is unambiguously aimed.
+ */
+function dropTarget(p, moving = []) {
+  const node = nodeAt(p, moving);
+  if (node) return node.id;
+  // Regions come second: a node inside one is the more specific answer, and a
+  // drop on a node that happens to sit in a group means the node.
+  for (const r of doc.regions) {
+    if (moving.includes(r.id)) continue;
+    const b = regionBox(r);
+    if (b && p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return r.id;
+  }
+  return null;
+}
+
 /** The node under a point, for deciding where a dragged line has landed. */
-function nodeAt(p) {
+function nodeAt(p, skip = []) {
   // Last first: later items are drawn on top, so the topmost is the one meant.
   for (let i = doc.items.length - 1; i >= 0; i--) {
     const it = doc.items[i];
+    if (skip.includes(it.id)) continue;
     const { x, y } = at(it);
     if (p.x >= x && p.x <= x + it.w && p.y >= y && p.y <= y + it.h) return it;
   }
@@ -1093,6 +1114,36 @@ surface.addEventListener("pointerup", (e) => {
   } else if (drag?.what === "marquee") {
     marqueeEl.hidden = true;
     // Nothing to save: picking things changes nothing about the document.
+  } else if (drag?.moved && drag.from?.length === 1 && dropTarget(local(e), [drag.from[0].id])) {
+    /*
+     * Dropped on something.
+     *
+     * The gesture said "this one goes with that one", not "this one goes here",
+     * so the box goes back where it came from and a line is what is left
+     * behind. Leaving it where it landed would mean every connection also
+     * rearranged the diagram — which is the app's rule, and the reason it is
+     * worth putting a node back somebody has just carried across the screen.
+     *
+     * Holding a modifier over a region means "into the box" instead: the card
+     * stays where it was let go and the region grows to take it in, which it
+     * does by itself, because a region is the extent of what it holds.
+     */
+    const onto = dropTarget(local(e), [drag.from[0].id]);
+    const me = drag.from[0];
+    const region = doc.regions.find((r) => r.id === onto);
+    if (region && (e.metaKey || e.ctrlKey)) {
+      if (!region.members.includes(me.id)) region.members.push(me.id);
+    } else {
+      const item = find(me.id);
+      if (item) {
+        item.x = me.ox;
+        item.y = me.oy;
+      }
+      link(me.id, onto);
+    }
+    selected = null;
+    draw();
+    save();
   } else if (drag?.moved) {
     // Saved on release, not on every frame: a canvas written a hundred times
     // crossing the screen is a hundred writes of the same fact.
@@ -1339,6 +1390,17 @@ surface.addEventListener(
 /** Put the whole document on screen, or return to life size. */
 function fit(all = true) {
   const box = surface.getBoundingClientRect();
+  // Nothing has been laid out yet.
+  //
+  // `fit` runs as the module does, before the browser has given the surface a
+  // size, and a width of zero made `min(0/w, 0/h, 1)` zero — clamped up to the
+  // minimum, so the whole canvas drew at a fifth of life size. Which then made
+  // borders a third of a pixel and multiplied every drag by five, and read as
+  // three unrelated faults. Wait for a frame and try again.
+  if (box.width < 1 || box.height < 1) {
+    requestAnimationFrame(() => fit(all));
+    return;
+  }
   if (!all || !doc.items.length) {
     zoom = 1;
     pan = { x: -40, y: -40 };

@@ -21,6 +21,9 @@ final class CanvasWebWindow: NSObject, NSWindowDelegate, WKNavigationDelegate {
 
     private var window: NSWindow?
     private var web: WKWebView?
+    /// Kept, because the window has to be able to tell it to let go of anything
+    /// still in flight before the view it would answer disappears.
+    private var scheme: DaemonScheme?
 
     func show() {
         if let window {
@@ -35,7 +38,10 @@ final class CanvasWebWindow: NSObject, NSWindowDelegate, WKNavigationDelegate {
         }
 
         let config = WKWebViewConfiguration()
-        let home = config.servedByDaemon(socketPath: Daemon.socketPath)
+        let handler = DaemonScheme(socketPath: Daemon.socketPath)
+        config.setURLSchemeHandler(handler, forURLScheme: DaemonScheme.scheme)
+        scheme = handler
+        let home = URL(string: DaemonScheme.origin + "/canvas/app/index.html")!
         // Developer tools on. This page is being written; being unable to open
         // a console on it would mean debugging a canvas by screenshot.
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
@@ -96,6 +102,12 @@ final class CanvasWebWindow: NSObject, NSWindowDelegate, WKNavigationDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        // Before the view goes, not after. A request still on the socket comes
+        // back to a task whose web view has been released, and messaging that
+        // is a segmentation fault inside `objc_release` rather than an error
+        // anybody can catch.
+        scheme?.cancelAll()
+        scheme = nil
         window = nil
         web = nil
         // Back to a menu-bar tool when nothing is open, the same rule the

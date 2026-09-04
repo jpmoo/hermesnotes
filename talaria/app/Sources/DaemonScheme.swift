@@ -25,10 +25,35 @@ final class DaemonScheme: NSObject, WKURLSchemeHandler {
     static let origin = "\(scheme)://daemon"
 
     private let socketPath: String
-    /// Tasks still wanted. Messaging a stopped `WKURLSchemeTask` is a crash, not
-    /// an error, and a slow request outliving the view it was for is ordinary.
-    private var live = Set<ObjectIdentifier>()
+    /**
+     Tasks still wanted, held strongly.
+
+     Messaging a stopped or abandoned `WKURLSchemeTask` is a crash rather than an
+     error — a segfault inside `objc_release` while the autorelease pool drains,
+     which names nothing and points at nobody.
+
+     Two things went wrong with keeping only identifiers. `ObjectIdentifier` is
+     an address and does not retain, so a task could be deallocated and a new one
+     land on the same address, and a stopped task would read as live. And
+     closing the window released the web view while requests were still in
+     flight: WebKit does not promise a `stop` for those, so the completion came
+     back on the main queue, found nothing to tell it otherwise, and messaged a
+     task whose owner was gone.
+
+     Holding the task fixes both — an object this dictionary owns cannot be
+     deallocated underneath it, and `cancelAll` is what the window calls before
+     letting go of the view.
+     */
+    private var live: [ObjectIdentifier: any WKURLSchemeTask] = [:]
     private let lock = NSLock()
+
+    /// Forget every outstanding task. Called when the view they belong to is
+    /// going away, so nothing that comes back later tries to speak to it.
+    func cancelAll() {
+        lock.lock()
+        live.removeAll()
+        lock.unlock()
+    }
 
     init(socketPath: String) {
         self.socketPath = socketPath
@@ -36,11 +61,11 @@ final class DaemonScheme: NSObject, WKURLSchemeHandler {
 
     private func isLive(_ task: WKURLSchemeTask) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        return live.contains(ObjectIdentifier(task))
+        return live[ObjectIdentifier(task)] != nil
     }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
-        lock.lock(); live.insert(ObjectIdentifier(task)); lock.unlock()
+        lock.lock(); live[ObjectIdentifier(task)] = task; lock.unlock()
 
         guard let url = task.request.url else {
             finish(task, error: URLError(.badURL))
@@ -85,7 +110,7 @@ final class DaemonScheme: NSObject, WKURLSchemeHandler {
     }
 
     private func forget(_ task: WKURLSchemeTask) {
-        lock.lock(); live.remove(ObjectIdentifier(task)); lock.unlock()
+        lock.lock(); live[ObjectIdentifier(task)] = nil; lock.unlock()
     }
 
     private func finish(_ task: WKURLSchemeTask, error: Error) {

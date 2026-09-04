@@ -77,15 +77,16 @@ function num(v: unknown): number | null {
 /**
  * Where the canvas page lives: beside whatever is running.
  *
- * Two answers, because there are two ways this runs. From source under `tsx`
- * it is `packages/daemon/src/canvasapp`, edited in place and reloaded. Installed,
- * the daemon is a single bundled `daemon.mjs` in Application Support and the
- * page is a directory beside it, put there by `app/build.sh` — esbuild emits one
- * JavaScript file and copies nothing else, so a build that forgets it serves
- * 404s and opens a blank window saying nothing.
+ * Only the Linux build puts one there. macOS draws its canvas in AppKit and
+ * ships no page, so this resolves to a directory that does not exist and every
+ * route under `/canvas/app` answers 404 — which is the honest answer on a
+ * platform with no web canvas, rather than a fault.
  *
- * Resolving it from the running module rather than from a fixed path is what
- * makes both work without either knowing about the other.
+ * Resolved from the running module rather than a fixed path because there are
+ * two ways this runs: from source under `tsx`, and as a single bundled
+ * `daemon.mjs` with the page in a directory beside it. esbuild emits one
+ * JavaScript file and copies nothing else, so whichever build wants the page
+ * has to carry it across itself.
  */
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "canvasapp");
 

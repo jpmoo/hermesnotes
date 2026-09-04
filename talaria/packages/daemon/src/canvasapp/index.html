@@ -4,12 +4,14 @@
 <!--
   The canvas, drawn in a web view.
 
-  Stage two of moving the renderer out of Swift: this page exists to prove the
-  road, not to be the destination. It loads over a custom URL scheme the app
-  proxies into the daemon's Unix socket, fetches the real document, and draws
-  what it finds. Everything the AppKit surface does — editing, dragging,
-  snapping, regions, bends, the inspector — comes after, on top of a transport
-  that is already known to work.
+  The renderer moving out of Swift, a slice at a time. It loads over a custom
+  URL scheme the app proxies into the daemon's Unix socket, and reads and writes
+  the same `canvas.json` the AppKit surface does — so the two draw one document
+  and neither is a copy of the other.
+
+  Here now: nodes, text, links with draggable bends, regions, pictures, and an
+  inspector. Still in the app only: snapping guides, zoom and pan, linked-block
+  badges, and printing.
 
   Deliberately no build step and no framework. The daemon runs from source with
   tsx; a page that needs bundling would be the first thing here that cannot be
@@ -150,5 +152,5 @@
   <div data-for="vAlign" class="row" id="i-vAlign"></div>
 </div>
 <div id="status">loading…</div>
-<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · ⌫ to remove</div>
+<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · paste or drop a picture · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

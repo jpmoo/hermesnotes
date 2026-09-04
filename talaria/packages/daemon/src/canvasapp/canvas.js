@@ -515,10 +515,17 @@ function remove(id) {
   // A line with only one end left cannot be drawn and must not be kept — it
   // would be written back out and outlive any chance of meaning anything.
   doc.links = doc.links.filter((l) => l.from !== id && l.to !== id);
-  // A region keeps the members still here; one holding nothing is over.
+  // A region keeps the members still here; one holding nothing is over. And a
+  // region that has just ended takes its own lines with it — the app does this
+  // and the first version here did not, which left a line tied to a group that
+  // no longer existed: invisible, saved, and waiting.
+  const emptied = doc.regions
+    .filter((r) => (r.members ?? []).every((m) => m === id))
+    .map((r) => r.id);
   doc.regions = doc.regions
     .map((r) => ({ ...r, members: (r.members ?? []).filter((m) => m !== id) }))
     .filter((r) => (r.members ?? []).length > 0);
+  doc.links = doc.links.filter((l) => !emptied.includes(l.from) && !emptied.includes(l.to));
   nodes.get(id)?.remove();
   nodes.delete(id);
   if (selected?.kind === "items") {
@@ -734,6 +741,15 @@ function local(e) {
   return { x: e.clientX - box.left, y: e.clientY - box.top };
 }
 
+/**
+ * The last place the canvas was touched.
+ *
+ * A paste has no position of its own, and putting the picture in the middle of
+ * the view is a guess about where somebody is looking. Where they last pressed
+ * is not a guess.
+ */
+let lastPoint = { x: 200, y: 160 };
+
 /** The node under a point, for deciding where a dragged line has landed. */
 function nodeAt(p) {
   // Last first: later items are drawn on top, so the topmost is the one meant.
@@ -748,6 +764,7 @@ function nodeAt(p) {
 surface.addEventListener("pointerdown", (e) => {
   if (editing) return;
   const p = local(e);
+  lastPoint = p;
 
   // The grip, before anything else: it sits over the canvas and is small, so a
   // node happening to be underneath must not win the press.
@@ -995,6 +1012,103 @@ window.addEventListener("keydown", (e) => {
     group();
     e.preventDefault();
   }
+});
+
+// ── Pictures ───────────────────────────────────────────────────────────────
+
+/**
+ * How big a picture arrives.
+ *
+ * Scaled down to fit a long edge and never up: a screenshot dropped on a canvas
+ * should be readable, and a thumbnail blown up to match it would be a blurred
+ * rectangle. The app's own number, so a picture is the same size in both.
+ */
+const IMAGE_LONG_EDGE = 380;
+
+function imageSize(w, h) {
+  const longest = Math.max(w, h, 1);
+  const scale = Math.min(1, IMAGE_LONG_EDGE / longest);
+  return { w: Math.max(Math.round(w * scale), 24), h: Math.max(Math.round(h * scale), 24) };
+}
+
+/** The picture's own dimensions, which only the browser can measure. */
+const measure = (blob) =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ w: img.naturalWidth, h: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
+
+async function addImage(blob, where) {
+  const dims = await measure(blob);
+  if (!dims) {
+    say("that file isn't a picture this can read");
+    return;
+  }
+  let name;
+  try {
+    const res = await fetch("/canvas/image", {
+      method: "POST",
+      headers: { "content-type": blob.type },
+      body: blob,
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? res.status);
+    ({ name } = await res.json());
+  } catch (err) {
+    say(`couldn't keep the picture — ${err.message}`);
+    return;
+  }
+  // Written only once the bytes are safely kept. A node pointing at a file that
+  // failed to save is a grey box on every future opening of this canvas.
+  const size = imageSize(dims.w, dims.h);
+  const item = {
+    id: newId(),
+    x: Math.round(where.x + pan.x - size.w / 2),
+    y: Math.round(where.y + pan.y - size.h / 2),
+    w: size.w,
+    h: size.h,
+    text: "",
+    shape: "plain",
+    image: name,
+  };
+  doc.items.push(item);
+  selected = { kind: "items", ids: [item.id] };
+  draw();
+  save();
+}
+
+const imagesIn = (list) =>
+  [...(list ?? [])].filter((f) => f && typeof f.type === "string" && f.type.startsWith("image/"));
+
+window.addEventListener("paste", (e) => {
+  if (editing) return;
+  const files = imagesIn([...(e.clipboardData?.items ?? [])].map((i) => i.getAsFile?.()));
+  if (!files.length) return;
+  e.preventDefault();
+  // Where the last press was, not the pointer: a paste has no position of its
+  // own, and the middle of the view is a guess about where somebody is looking.
+  for (const f of files) void addImage(f, lastPoint);
+});
+
+surface.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
+
+surface.addEventListener("drop", (e) => {
+  const files = imagesIn(e.dataTransfer?.files);
+  if (!files.length) return;
+  e.preventDefault();
+  const p = local(e);
+  for (const f of files) void addImage(f, p);
 });
 
 // ── Inspector wiring ───────────────────────────────────────────────────────

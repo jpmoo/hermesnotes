@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -95,6 +95,16 @@ export function buildServer(deps: {
   const { config, mirror, hermes, ix, sync } = deps;
   const queue = new Queue(ix, hermes, mirror);
   const app = Fastify({ logger: false });
+
+  // Pictures arrive as bytes, and Fastify parses JSON and nothing else unless
+  // told. The limit is the app's own for an attachment; the default megabyte is
+  // smaller than most screenshots, and a canvas that silently refuses a photo
+  // is worse than one that has no pictures at all.
+  app.addContentTypeParser(
+    /^image\//,
+    { parseAs: "buffer", bodyLimit: 25 * 1024 * 1024 },
+    (_req, body, done) => done(null, body),
+  );
 
   /**
    * The type a bare `add` should use.
@@ -1572,6 +1582,37 @@ export function buildServer(deps: {
       { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", heic: "image/heic", tiff: "image/tiff" }[ext] ??
       "application/octet-stream";
     return reply.type(mime).send(bytes);
+  });
+
+  /**
+   * Keep a picture, and say what it is called.
+   *
+   * Files beside the document rather than data URLs inside it, which is what
+   * the app has always done: a canvas with a dozen photographs in it would
+   * otherwise be a `canvas.json` nobody can open, diff, or hand to a language
+   * model.
+   *
+   * The name is minted here rather than taken from the upload. What a file was
+   * called on somebody's disk is not a fact this needs, and honoring it would
+   * mean two pictures called `Screenshot.png` being one picture.
+   */
+  app.post("/canvas/image", async (req, reply) => {
+    const type = String(req.headers["content-type"] ?? "").split(";")[0]?.trim();
+    const ext = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/tiff": "tiff" }[
+      type ?? ""
+    ];
+    if (!ext) return reply.code(415).send({ error: `can't keep a ${type || "file"} on the canvas` });
+    const bytes = req.body as Buffer;
+    if (!Buffer.isBuffer(bytes) || !bytes.length) return reply.code(400).send({ error: "no image" });
+    const dir = join(HOME, "canvas-images");
+    const name = `${randomUUID().toUpperCase()}.${ext}`;
+    try {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, name), bytes);
+    } catch (err) {
+      return reply.code(500).send({ error: `couldn't keep the image — ${(err as Error).message}` });
+    }
+    return reply.send({ name });
   });
 
   /**

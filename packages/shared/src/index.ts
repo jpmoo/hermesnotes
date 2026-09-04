@@ -33,3 +33,4 @@ export const DEFAULT_TYPE_ICONS: Record<string, string> = {
   text: "type",
 };
 export * from "./obsidian.js";
+export * from "./convert.js";

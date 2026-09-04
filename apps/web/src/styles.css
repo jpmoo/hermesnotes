@@ -8418,3 +8418,34 @@ body:has(.embed-scratchpad) #root {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* A heading inside a menu — "Convert to…" over the list of types. Not a button:
+   nothing happens if you click it, and it should not look as though it might. */
+.menu-label {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+/* What a conversion carries and what it drops, itemized. The list is the
+   confirmation: "you'll lose some information" is not something anybody can
+   answer, and a name with its value is. */
+.convert-plan {
+  margin: -8px 0 18px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.convert-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 2px 0;
+}
+.convert-row svg { flex: none; margin-top: 3px; }
+.convert-row.kept { color: var(--text-muted); }
+.convert-row.gone { color: var(--danger); }
+.convert-row .hint { color: var(--text-faint); }

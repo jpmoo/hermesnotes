@@ -1,5 +1,5 @@
 import { isPeriodicNote } from "@hermes/shared";
-import { CalendarDays, Copy, Maximize2, MoreHorizontal, Star, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Copy, Maximize2, MoreHorizontal, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
@@ -10,6 +10,7 @@ import { useEditorMounted } from "../lib/editor-registry.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { ConfirmDialog, MembersChoice } from "./ConfirmDialog.tsx";
+import { planConversion } from "@hermes/shared";
 import { LongTextField } from "./LongTextField.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
 import { TypedBlockCard } from "./TypedBlockCard.tsx";
@@ -145,7 +146,9 @@ export function BlockInfoPane({
   const [types, setTypes] = useState<BlockType[]>([]);
   const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirming, setConfirming] = useState<null | "archive" | "delete" | "unarchive">(null);
+  const [confirming, setConfirming] = useState<null | "archive" | "delete" | "unarchive" | "convert">(null);
+  /** The type a conversion is heading for, while the confirmation is up. */
+  const [convertTo, setConvertTo] = useState<BlockType | null>(null);
   /** Whether a collection's blocks go with it. Reset whenever the dialog opens,
    *  so a decision made once is never carried into the next one. */
   const [withMembers, setWithMembers] = useState(false);
@@ -178,6 +181,11 @@ export function BlockInfoPane({
   // Collection description lives here (not on the page) and is embedded with
   // the title, so semantic search finds the collection by purpose.
   const isCollection = Boolean(block?.collectionKind);
+  /** A daily note or a weekly reflection: resolved by marker from the page that
+   *  owns it, which would go looking for something that is no longer there. */
+  const isSystemNote =
+    (block?.properties as Record<string, unknown> | undefined)?.today_note != null ||
+    (block?.properties as Record<string, unknown> | undefined)?.review_reflection != null;
   /** A smart collection's membership is a query, not a list — the server
    *  refuses to archive "its blocks", so the choice is never offered. */
   const isSmart =
@@ -241,6 +249,31 @@ export function BlockInfoPane({
     pathname !== `/block/${blockId}` &&
     !editedInViewport;
   const editorType = block?.blockTypeId ? types.find((t) => t.id === block.blockTypeId) : undefined;
+  /**
+   * What converting would do, worked out here rather than asked of the server.
+   *
+   * The same function the server runs, from `@hermes/shared` — so the sentence
+   * somebody reads and the write that follows it cannot come apart. Asking the
+   * server for a preview would have been a second round trip and a second place
+   * for the answer to live.
+   */
+  const plan =
+    block && convertTo && editorType
+      ? planConversion(
+          { content: block.content ?? null, properties: block.properties ?? {} },
+          { isText: editorType.isText, schema: editorType.propertySchema },
+          { isText: convertTo.isText, schema: convertTo.propertySchema },
+        )
+      : null;
+  const convert = async () => {
+    if (!block || !convertTo) return;
+    await api.post(`/blocks/${block.id}/convert`, {
+      blockTypeId: convertTo.id,
+      version: block.version,
+    });
+    setConvertTo(null);
+    void loadBlock();
+  };
 
   const canvasConns = (info.canvasConnections ?? []).map((c) => ({
     ...c,
@@ -369,16 +402,49 @@ export function BlockInfoPane({
                     </button>
                   </>
                 ) : (
-                  <button
-                    className="menu-item"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setWithMembers(false);
-                      setConfirming("archive");
-                    }}
-                  >
-                    {isCollection ? "Archive collection" : "Archive"}
-                  </button>
+                  <>
+                    {/* Not offered for a collection (its kind is what it is), a
+                        daily note or a reflection (resolved by marker from the
+                        page that owns them) — the same refusals the server
+                        makes, said here so the option never appears and then
+                        fails. */}
+                    {!isCollection && !isSystemNote && types.length > 1 && (
+                      <>
+                        <div className="menu-label">Convert to…</div>
+                        {types
+                          .filter((t) => t.id !== block?.blockTypeId)
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              className="menu-item type-item"
+                              onClick={() => {
+                                setMenuOpen(false);
+                                setConvertTo(t);
+                                setConfirming("convert");
+                              }}
+                            >
+                              <BlockIcon
+                                iconKey={t.isText ? "type" : t.iconKey}
+                                color={t.iconColor}
+                                size={15}
+                              />
+                              <span style={{ textTransform: "capitalize" }}>{t.name}</span>
+                            </button>
+                          ))}
+                        <div className="menu-sep" />
+                      </>
+                    )}
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setWithMembers(false);
+                        setConfirming("archive");
+                      }}
+                    >
+                      {isCollection ? "Archive collection" : "Archive"}
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -474,7 +540,9 @@ export function BlockInfoPane({
       <ConfirmDialog
         open={confirming !== null}
         title={
-          confirming === "delete"
+          confirming === "convert"
+            ? `Convert to ${convertTo?.name ?? ""}?`
+            : confirming === "delete"
             ? isCollection
               ? "Delete this collection?"
               : "Delete this block?"
@@ -485,7 +553,11 @@ export function BlockInfoPane({
                 : "Archive this block?"
         }
         message={
-          confirming === "unarchive"
+          confirming === "convert"
+            ? plan?.lost.length
+              ? `${editorType?.name ?? "This"} and ${convertTo?.name ?? "the new type"} don't hold the same things. What can be carried across will be; the rest goes.`
+              : "Everything on this block has somewhere to go in the new type. Its links, tags, attachments and collections are untouched either way — it keeps its id."
+            : confirming === "unarchive"
             ? withMembers
               ? "The collection comes back, and so does everything that went into the Archive with it."
               : "The collection comes back. Blocks archived alongside it stay in the Archive, unless you choose below to bring them back too."
@@ -500,7 +572,9 @@ export function BlockInfoPane({
               : "It'll be hidden from every normal view but kept in the Archive — unarchive anytime to restore it where it was."
         }
         confirmLabel={
-          confirming === "delete"
+          confirming === "convert"
+            ? `Convert to ${convertTo?.name ?? ""}`
+            : confirming === "delete"
             ? "Delete"
             : confirming === "unarchive"
               ? withMembers
@@ -510,21 +584,57 @@ export function BlockInfoPane({
                 ? "Archive it and its blocks"
                 : "Archive"
         }
-        danger={confirming === "delete" || (confirming === "archive" && withMembers)}
+        danger={
+          confirming === "delete" ||
+          (confirming === "archive" && withMembers) ||
+          (confirming === "convert" && Boolean(plan?.lost.length))
+        }
         // Same bar as the Collections list: typing a word to file away one list
         // would be theatre, typing it to file away everything in it is not.
+        // No typed word for a conversion, even a lossy one: what it costs is
+        // itemized right there, and nothing else on this block moves. Reserving
+        // the typed confirmation for the two acts that are actually hard to
+        // undo is what keeps it meaning anything.
         requireText={confirming === "archive" && withMembers ? "archive" : undefined}
-        onCancel={() => setConfirming(null)}
+        onCancel={() => {
+          setConfirming(null);
+          setConvertTo(null);
+        }}
         onConfirm={() => {
           const action = confirming;
           setConfirming(null);
-          if (action === "delete") void destroy();
+          if (action === "convert") void convert();
+          else if (action === "delete") void destroy();
           else if (action === "archive") void archive();
           else if (action === "unarchive") void unarchive();
         }}
       >
         {(confirming === "archive" || confirming === "unarchive") && isCollection && !isSmart && (
           <MembersChoice action={confirming} checked={withMembers} onChange={setWithMembers} />
+        )}
+        {confirming === "convert" && plan && (
+          <div className="convert-plan">
+            {plan.carried.map((c) => (
+              <div className="convert-row kept" key={`k:${c.from}`}>
+                <ArrowRight size={13} />
+                <span>
+                  <b>{c.fromLabel}</b> becomes <b>{c.toLabel}</b>
+                  {/* Where a match was made on shape alone rather than on a name
+                      or a declared profile, say so. A guess that admits it is a
+                      guess can be corrected; one that does not becomes data. */}
+                  {c.how === "shape" && <span className="hint"> — matched by shape</span>}
+                </span>
+              </div>
+            ))}
+            {plan.lost.map((l) => (
+              <div className="convert-row gone" key={`l:${l.key}`}>
+                <X size={13} />
+                <span>
+                  <b>{l.label}</b> is lost{l.shown ? <span className="hint"> — {l.shown}</span> : null}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </ConfirmDialog>
 

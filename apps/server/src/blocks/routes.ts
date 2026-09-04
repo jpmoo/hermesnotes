@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { applyPatch, datedInRange, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, stripBlankDates, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
+import { applyPatch, datedInRange, planConversion, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, stripBlankDates, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
 import { attachments, blocks, blockTags, blockTypes, memberships, series, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { syncSeries } from "./series.js";
@@ -1932,6 +1932,86 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
   /** Archive a block: hide it from every normal view (still openable by id, and
    * reversible). Collections are never archivable. */
+  /**
+   * Turn a block into a different type, keeping its id.
+   *
+   * The id is the point. Tags, attachments, collection membership and every
+   * inbound `[Label](block:<id>)` link hang off it and survive untouched;
+   * creating a replacement and copying the words across loses all four, and the
+   * links are the ones nobody notices for weeks.
+   *
+   * The mapping lives in `@hermes/shared` and is run twice — once by the browser
+   * to show somebody what they are agreeing to, once here to do it. One
+   * function, so the confirmation and the write cannot disagree.
+   */
+  app.post("/blocks/:id/convert", async (req) => {
+    const userId = requireUser(req);
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const body = z
+      .object({ blockTypeId: z.string().uuid(), version: z.number().int() })
+      .parse(req.body);
+
+    const [block] = await db
+      .select({
+        content: blocks.content,
+        properties: blocks.properties,
+        blockTypeId: blocks.blockTypeId,
+        collectionKind: blocks.collectionKind,
+      })
+      .from(blocks)
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+      .limit(1);
+    if (!block) throw notFound("block");
+    // A collection is a block whose kind is the thing it is. Changing its type
+    // would leave a list that is no longer a list, still holding members.
+    if (block.collectionKind) throw badRequest("a collection can't be converted to a block type");
+    const props = (block.properties ?? {}) as Record<string, unknown>;
+    // The same refusal archiving makes, for the same reason: a daily note or a
+    // weekly reflection is resolved by marker from the page that owns it, and
+    // that page would go looking for a note that is now something else.
+    const periodic = periodicKindOf(props);
+    if (periodic) throw badRequest(`a ${periodic.kind.label} can't be converted`);
+    if (props.review_reflection != null) throw badRequest("a weekly reflection can't be converted");
+    if (block.blockTypeId === body.blockTypeId) throw badRequest("that is already its type");
+
+    const from = await resolveType(userId, block.blockTypeId ?? undefined);
+    const to = await resolveType(userId, body.blockTypeId);
+
+    const plan = planConversion(
+      { content: block.content, properties: props },
+      { isText: from.isText, schema: from.propertySchema },
+      { isText: to.isText, schema: to.propertySchema },
+    );
+
+    const embedSource = computeEmbedSource(to, {
+      content: plan.content,
+      properties: plan.properties,
+    });
+    const [updated] = await db
+      .update(blocks)
+      .set({
+        blockTypeId: to.id,
+        content: plan.content,
+        properties: plan.properties,
+        embedSource,
+        // Re-embedded from scratch: what this block says has changed shape, and
+        // a stale vector would keep answering searches with the old shape.
+        embedSourceHash: null,
+        blockTypeSchemaVersion: to.schemaVersion,
+        version: sql`${blocks.version} + 1`,
+      })
+      .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId), eq(blocks.version, body.version)))
+      .returning(blockView);
+    if (!updated) throw conflict("version conflict — reload and retry");
+    // Tags are add-only and keyed by block, so they survive the change; the new
+    // shape may put text where the old one did not, so read it again.
+    await syncTextTags(userId, id, [
+      plan.content ?? "",
+      ...Object.values(plan.properties).filter((v): v is string => typeof v === "string"),
+    ]);
+    return { ...updated, carried: plan.carried.length, lost: plan.lost.map((l) => l.label) };
+  });
+
   app.post("/blocks/:id/archive", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);

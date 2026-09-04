@@ -118,12 +118,23 @@ plutil -replace CFBundleIconName -string "$ICON_NAME" "$APP/Contents/Info.plist"
 plutil -replace CFBundleIconFile -string "$ICON_NAME" "$APP/Contents/Info.plist"
 
 echo "==> Compiling"
+# Every file in Sources/, rather than a list.
+#
+# The list was the bug: two new files were added and not named here, so the
+# compile failed with "cannot find CanvasWebWindow in scope" — and because the
+# daemon bundle and the page are written *before* this, everything else looked
+# like it had worked. The app binary was simply left as it was, and the running
+# app went on serving month-old routes.
+#
+# `ax/main.swift` is deliberately outside Sources/ and builds separately below,
+# which is what makes a glob here safe rather than a thing that quietly absorbs
+# a second entry point.
 xcrun swiftc \
   -O \
   -target arm64-apple-macos14.0 \
   -framework AppKit -framework WebKit -framework CoreSpotlight -framework UniformTypeIdentifiers -framework ApplicationServices \
   -o "$APP/Contents/MacOS/Talaria" \
-  "$HERE/Sources/Daemon.swift" "$HERE/Sources/Indexer.swift" "$HERE/Sources/Theme.swift" "$HERE/Sources/HermesWindow.swift" "$HERE/Sources/Hotkey.swift" "$HERE/Sources/MirrorWatch.swift" "$HERE/Sources/BoardView.swift" "$HERE/Sources/AgendaView.swift" "$HERE/Sources/GlanceView.swift" "$HERE/Sources/AssistantView.swift" "$HERE/Sources/ComposeView.swift" "$HERE/Sources/DeskView.swift" "$HERE/Sources/CanvasSurface.swift" "$HERE/Sources/CanvasSnap.swift" "$HERE/Sources/CanvasChat.swift" "$HERE/Sources/CanvasStyle.swift" "$HERE/Sources/CanvasText.swift" "$HERE/Sources/CanvasPrint.swift" "$HERE/Sources/Settings.swift" "$HERE/Sources/SettingsView.swift" "$HERE/Sources/main.swift"
+  "$HERE"/Sources/*.swift
 
 # A second, tiny binary rather than a function in the app.
 #

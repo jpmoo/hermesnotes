@@ -89,6 +89,14 @@ function num(v: unknown): number | null {
  */
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "canvasapp");
 
+/**
+ * The socket this process bound, by inode.
+ *
+ * Written by `listen`, read by the close hook, so that shutting down removes
+ * the file this daemon created and never one a successor has put in its place.
+ */
+let ourSocket: { ino: number; dev: number } | null = null;
+
 export function buildServer(deps: {
   config: Config;
   mirror: Mirror;
@@ -2139,8 +2147,32 @@ export function buildServer(deps: {
     ]);
   }
 
+  /**
+   * Take the socket away on the way out — but only if it is still ours.
+   *
+   * Unlinking the path unconditionally is how a healthy daemon gets killed by a
+   * dying one. Two overlap for a moment whenever this restarts: the new one
+   * unlinks the stale path and binds a fresh socket, and then the old one
+   * finishes shutting down and deletes the file that now belongs to its
+   * replacement. The replacement stays alive, still listening, on an inode
+   * nothing can reach — every client gets connection-refused forever, and the
+   * process list shows a daemon running perfectly well.
+   *
+   * That is exactly what happened here: a new daemon bound at 17:09:17 and the
+   * old one's five-second supervisor check fired at 17:09:20 and removed it.
+   *
+   * So the inode is remembered at bind time and checked before the unlink. A
+   * path that has been replaced is not ours to delete.
+   */
   app.addHook("onClose", async () => {
-    if (existsSync(deps.socketPath)) unlinkSync(deps.socketPath);
+    if (!ourSocket) return;
+    try {
+      const now = statSync(deps.socketPath);
+      if (now.ino !== ourSocket.ino || now.dev !== ourSocket.dev) return;
+      unlinkSync(deps.socketPath);
+    } catch {
+      // Already gone, which is the outcome this wanted anyway.
+    }
   });
 
   return app;
@@ -2163,6 +2195,13 @@ export async function listen(app: FastifyInstance, socketPath: string): Promise<
   }
   if (existsSync(socketPath)) unlinkSync(socketPath);
   await app.listen({ path: socketPath });
+  // Whose socket this is, recorded the moment it exists. See the close hook.
+  try {
+    const s = statSync(socketPath);
+    ourSocket = { ino: s.ino, dev: s.dev };
+  } catch {
+    ourSocket = null;
+  }
   // listen() can resolve without the socket existing — an over-long path is the
   // way that happens — and a daemon announcing that it is serving when nothing
   // is bound is the exact failure this whole project is trying not to have.

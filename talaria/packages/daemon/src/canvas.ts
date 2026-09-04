@@ -38,6 +38,8 @@ export interface CanvasItem {
   hAlign?: string;
   vAlign?: string;
   textColor?: string | null;
+  /** File name of a picture in `canvas-images/`, when this node is one. */
+  image?: string | null;
   blockId?: string | null;
 }
 export interface CanvasLink {
@@ -67,8 +69,29 @@ export interface CanvasDocument {
   regions: CanvasRegion[];
 }
 
-/** The shapes a node can wear. The same words the app stores. */
-export const SHAPES = ["plain", "rectangle", "roundedRectangle", "ellipse", "triangle"] as const;
+/**
+ * The shapes a node can wear. The same words the app stores.
+ *
+ * This list and the app's `CanvasShape` are one vocabulary in two places, and
+ * they had already drifted: `postIt` existed in the app and not here, so the
+ * chat could neither make a sticky note nor convert anything into one, and the
+ * zod enum refused the word if anybody tried.
+ */
+export const SHAPES = ["plain", "rectangle", "roundedRectangle", "ellipse", "triangle", "postIt"] as const;
+
+/**
+ * What a shape looks like before anybody says otherwise — the same defaults
+ * `addText` applies in the app.
+ *
+ * A post-it is paper: a color, and no line round the edge. Every other shape
+ * here *is* an outline. Writing `strokeWidth: 1.5` for all of them, which is
+ * what this did, turns a sticky into a line drawing of one.
+ */
+export function shapeDefaults(shape: string): { fill: string | null; strokeWidth: number } {
+  return shape === "postIt"
+    ? { fill: "#fdf3b6", strokeWidth: 0 }
+    : { fill: null, strokeWidth: 1.5 };
+}
 
 const EMPTY: CanvasDocument = { items: [], links: [], regions: [] };
 

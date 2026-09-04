@@ -5,6 +5,7 @@ import {
   freeSpot,
   newId,
   readCanvas,
+  shapeDefaults,
   SHAPES,
   writeCanvas,
   type CanvasDocument,
@@ -113,7 +114,7 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
     {
       name: "canvas_read",
       description:
-        "What is on the canvas now: every node with its words, shape and colour, every connection, every region. Call this first if you need to change something that is already there.",
+        "What is on the canvas now: every node with its words, shape and color, every connection, every region. Call this first if you need to change something that is already there.",
       parameters: params({}),
       schema: z.object({}),
       run: () => {
@@ -121,7 +122,7 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
         if (!d.items.length && !d.regions.length) return "The canvas is empty.";
         const nodes = d.items.map(
           (i) =>
-            `- ${i.text?.trim() || "(no words)"} [${i.id}]${i.shape && i.shape !== "plain" ? ` ${i.shape}` : ""}${i.fill ? ` ${i.fill}` : ""}${i.blockId ? " (linked to a Hermes block)" : ""}`,
+            `- ${i.text?.trim() || (i.image ? "(a picture)" : "(no words)")} [${i.id}]${i.shape && i.shape !== "plain" ? ` ${i.shape}` : ""}${i.fill ? ` ${i.fill}` : ""}${i.image ? " (image)" : ""}${i.blockId ? " (linked to a Hermes block)" : ""}`,
         );
         const lines = d.links.map((l) => `- ${l.from} → ${l.to}`);
         const groups = d.regions.map((r) => `- ${r.title || "(untitled)"} holding ${r.members.length}`);
@@ -164,8 +165,10 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
             h: args.h,
             text,
             shape: args.shape,
-            fill: args.fill ?? null,
-            strokeWidth: 1.5,
+            // The shape's own defaults, not one weight for everything: a
+            // post-it made here otherwise arrived with a line round it.
+            fill: args.fill ?? shapeDefaults(args.shape).fill,
+            strokeWidth: shapeDefaults(args.shape).strokeWidth,
             strokeStyle: "solid",
             hAlign: "center",
             vAlign: "middle",
@@ -214,8 +217,10 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
             h: args.h,
             text: "",
             shape: args.shape,
-            fill: args.fill ?? null,
-            strokeWidth: 1.5,
+            // The shape's own defaults, not one weight for everything: a
+            // post-it made here otherwise arrived with a line round it.
+            fill: args.fill ?? shapeDefaults(args.shape).fill,
+            strokeWidth: shapeDefaults(args.shape).strokeWidth,
             strokeStyle: "solid",
             hAlign: "center",
             vAlign: "middle",

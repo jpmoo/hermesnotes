@@ -10,8 +10,8 @@
   and neither is a copy of the other.
 
   Here now: nodes, text, links with draggable bends, regions, pictures, an
-  inspector, a view you can move and scale, and snapping. Still in the app only:
-  linked-block badges and printing.
+  inspector, a view you can move and scale, snapping, and the Hermes blocks a
+  node can stand for. Still in the app only: printing.
 
   Deliberately no build step and no framework. The daemon runs from source with
   tsx; a page that needs bundling would be the first thing here that cannot be
@@ -104,6 +104,27 @@
      cuts the join, so saying which node is under the pointer is the difference
      between connecting on purpose and disconnecting by accident. */
   .node.target { outline: 2px dashed #5fa4b5; outline-offset: 4px; }
+
+  /* A node standing for a Hermes block says so along its bottom edge. */
+  .badge {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; gap: 5px; padding: 2px 5px;
+    font-size: 10px; background: rgba(128,128,128,.12); pointer-events: all;
+  }
+  .badge-type { text-transform: capitalize; opacity: .7; overflow: hidden; white-space: nowrap; }
+  .badge .done, .badge .open {
+    border: none; background: none; padding: 0; cursor: pointer;
+    color: inherit; font-size: 12px; line-height: 1; text-decoration: none;
+  }
+  .badge.gone { background: rgba(181,82,95,.18); color: #b5525f; }
+  .badge.archived { background: rgba(200,144,26,.18); }
+  /* A block that is finished, and one that is no longer in Hermes. Struck
+     through rather than hidden: the node is still on somebody's canvas and
+     removing it is their decision, not ours. */
+  .node.done { opacity: .62; }
+  .node.done { text-decoration: line-through; }
+  .node.gone { outline: 2px dashed #b5525f; outline-offset: 2px; }
+  .node.archived { opacity: .78; }
 
   /* The connector, on the selected node. A ring rather than a dot, and larger
      than it looks: `.grab` is the part drawn, the element is the part aimed at,

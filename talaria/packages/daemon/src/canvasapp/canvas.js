@@ -6,8 +6,8 @@
  * unchanged behind WebKitGTK on Linux.
  *
  * Nodes, text, links with draggable bends, regions, pictures, an inspector, a
- * view you can move and scale, and snapping. Linked-block badges and printing
- * are still the app's alone.
+ * view you can move and scale, snapping, and the Hermes blocks a node can
+ * stand for. Printing is still the app's alone.
  *
  * The rule under all of it: what this page does not understand, it does not
  * destroy. The document is held as it arrived and only `items`, `links` and
@@ -153,6 +153,7 @@ function summarize() {
       count(doc.links.length, "link"),
       count(doc.regions.length, "region"),
       ...(pictures ? [count(pictures, "picture")] : []),
+      ...(linkTrouble ? [`linked blocks unread — ${linkTrouble}`] : []),
     ].join(" · "),
   );
 }
@@ -370,6 +371,66 @@ function style(el, item) {
       : "";
 }
 
+/**
+ * The strip along the bottom of a node that stands for a Hermes block.
+ *
+ * Three separate facts, and it matters that they stay separate. Whether it can
+ * be finished — only a type with a task profile gets a box. Whether it *is*.
+ * And whether the block is still there at all, which is where a node stops
+ * being about styling and starts being about trust: a block that has been
+ * archived still exists, a block that has been deleted does not, and a node
+ * that showed them the same way would be telling somebody their work was gone.
+ */
+function badge(el, item) {
+  const block = linked.get(item.blockId);
+  const strip = document.createElement("div");
+  strip.className = "badge";
+
+  if (!block) {
+    strip.classList.add("unknown");
+    strip.textContent = "…";
+    el.append(strip);
+    return;
+  }
+  if (block.missing) {
+    el.classList.add("gone");
+    strip.classList.add("gone");
+    strip.textContent = "deleted in Hermes";
+    el.append(strip);
+    return;
+  }
+  if (block.archived) {
+    el.classList.add("archived");
+    strip.classList.add("archived");
+  }
+
+  const type = block.typeId ? types.get(block.typeId) : null;
+  if (type?.statusKey) {
+    const box = document.createElement("button");
+    box.className = "done";
+    box.dataset.done = item.id;
+    box.textContent = isDone(block) ? "☑" : "☐";
+    box.title = isDone(block) ? "Mark not done" : "Mark done";
+    strip.append(box);
+    if (isDone(block)) el.classList.add("done");
+  }
+
+  const name = document.createElement("span");
+  name.className = "badge-type";
+  name.textContent = block.archived ? `${type?.name ?? "block"} · archived` : (type?.name ?? "block");
+  strip.append(name);
+
+  if (block.url) {
+    const open = document.createElement("a");
+    open.className = "open";
+    open.href = block.url;
+    open.textContent = "↗";
+    open.title = "Open in Hermes";
+    strip.append(open);
+  }
+  el.append(strip);
+}
+
 function node(item) {
   const el = document.createElement("div");
   el.className = "node";
@@ -383,8 +444,13 @@ function node(item) {
     img.draggable = false;
     el.append(img);
   } else {
-    el.textContent = item.text ?? "";
+    // A linked node wears its block's title as of now — a task renamed in
+    // Hermes should not still read as its old name here. Falling back to the
+    // words it was made with when Hermes cannot be reached.
+    const block = item.blockId ? linked.get(item.blockId) : null;
+    el.textContent = block && !block.missing ? block.title : (item.text ?? "");
   }
+  if (item.blockId) badge(el, item);
   world.append(el);
   nodes.set(item.id, el);
   return el;
@@ -795,6 +861,15 @@ function nodeAt(p) {
 
 surface.addEventListener("pointerdown", (e) => {
   if (editing) return;
+  // The badge is a control, not part of the box: pressing a checkbox should
+  // tick it, not begin dragging the node it sits on.
+  const done = e.target.dataset?.done;
+  if (done) {
+    const item = find(done);
+    if (item) void toggleDone(item);
+    return;
+  }
+  if (e.target.className === "open") return;
   const p = local(e);
   lastPoint = p;
 
@@ -1104,6 +1179,92 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// ── Blocks this canvas points at ───────────────────────────────────────────
+
+/**
+ * What Hermes says about the blocks on this canvas, by id.
+ *
+ * A linked node shows the block's title rather than its own words, and shows it
+ * as of now: a task renamed in Hermes should not still read as its old name
+ * here. The words in the document are left exactly as they were — this is a
+ * view of somebody else's data, and writing their title into our file would
+ * make the canvas the second place it lives.
+ */
+const linked = new Map();
+/** Why the last ask failed, if it did. Shown rather than swallowed. */
+let linkTrouble = null;
+/** Types, for the icon and for how a type says a thing is done. */
+let types = new Map();
+
+async function loadLinked() {
+  linkTrouble = null;
+  const ids = [...new Set(doc.items.map((i) => i.blockId).filter(Boolean))];
+  if (!ids.length) {
+    linked.clear();
+    return;
+  }
+  try {
+    if (!types.size) {
+      const t = await fetch("/types").then((r) => r.json());
+      types = new Map((t.data ?? []).map((x) => [x.id, x]));
+    }
+    const res = await fetch("/linked", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+    for (const b of (await res.json()).data ?? []) linked.set(b.id, b);
+  } catch (err) {
+    // Offline, or a daemon that cannot reach Hermes. A linked node then shows
+    // the words it was made with, which is what it had before anybody asked —
+    // not an error, and not an empty box.
+    //
+    // But it is said out loud. Swallowed entirely, "Hermes is unreachable" and
+    // "these nodes point at nothing" look identical, and the first is temporary
+    // while the second means somebody's blocks are gone.
+    linkTrouble = err.message || "couldn't reach Hermes";
+  }
+}
+
+/** Whether a linked block is finished, by its own type's account. */
+function isDone(block) {
+  const type = block.typeId ? types.get(block.typeId) : null;
+  // Never by looking for a field called "status": what makes a field a status
+  // is the profile pointing at it, and a type is a row the user renames.
+  return Boolean(type?.completeValues?.length && block.status && type.completeValues.includes(block.status));
+}
+
+/**
+ * Mark a linked block done, or not done.
+ *
+ * Written through the daemon's own `complete`, which knows what a type means by
+ * finished. Sending a literal value from here would be this canvas deciding
+ * that "done" is spelled the way it happens to be spelled on one account.
+ */
+async function toggleDone(item) {
+  const block = linked.get(item.blockId);
+  if (!block) return;
+  const type = block.typeId ? types.get(block.typeId) : null;
+  const values = type?.statusOptions ?? [];
+  const undone = values.find((v) => !type?.completeValues?.includes(v));
+  try {
+    await fetch("/write", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind: "complete",
+        blockId: item.blockId,
+        ...(isDone(block) && undone ? { status: undone } : {}),
+      }),
+    });
+    await loadLinked();
+    draw();
+  } catch (err) {
+    say(`couldn't write that to Hermes — ${err.message}`);
+  }
+}
+
 // ── Guides ─────────────────────────────────────────────────────────────────
 
 /** Whether the dotted grid is one of the things a drag can land on. */
@@ -1324,6 +1485,10 @@ async function load() {
     // Opening on a canvas whose contents are somewhere off to the left is
     // opening on an empty page, so the first view is whatever shows all of it.
     fit();
+    // After the first draw rather than before it: the canvas should be on
+    // screen while Hermes is being asked, not after.
+    await loadLinked();
+    draw();
   } catch (err) {
     say(`couldn't read the canvas — ${err.message}`);
   }

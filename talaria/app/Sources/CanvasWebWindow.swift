@@ -16,7 +16,7 @@ import WebKit
  frame around a page.
  */
 @MainActor
-final class CanvasWebWindow: NSObject, NSWindowDelegate {
+final class CanvasWebWindow: NSObject, NSWindowDelegate, WKNavigationDelegate {
     static let shared = CanvasWebWindow()
 
     private var window: NSWindow?
@@ -41,6 +41,7 @@ final class CanvasWebWindow: NSObject, NSWindowDelegate {
         config.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
         let view = WKWebView(frame: .zero, configuration: config)
+        view.navigationDelegate = self
         view.load(URLRequest(url: home))
 
         let win = NSWindow(
@@ -66,6 +67,32 @@ final class CanvasWebWindow: NSObject, NSWindowDelegate {
 
     func reload() {
         web?.reload()
+    }
+
+    /**
+     A link on a node goes to Hermes, not over the canvas.
+
+     A block's badge carries its address, and following it in place would
+     replace the drawing with a web page and leave no way back — the window has
+     no address bar and no Back button, because until now it had one page. So
+     anything that is not the canvas itself is handed on: Hermes to the window
+     that knows what a Hermes link means, everything else to the browser.
+     */
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        if url.scheme == DaemonScheme.scheme {
+            decisionHandler(.allow)
+            return
+        }
+        decisionHandler(.cancel)
+        Opener.open(url)
     }
 
     func windowWillClose(_ notification: Notification) {

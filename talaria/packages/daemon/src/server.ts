@@ -1640,6 +1640,44 @@ export function buildServer(deps: {
     return reply.type(mime).send(bytes);
   });
 
+  /**
+   * Several linked blocks at once.
+   *
+   * The canvas asks about every node carrying a `blockId` each time it opens,
+   * and the app reaches this socket by spawning a `curl` per request — twenty
+   * linked nodes being twenty processes. One question, one answer.
+   *
+   * A block the mirror has never heard of comes back as `missing` rather than
+   * being left out. That distinction is the whole point: a node pointing at a
+   * deleted block and a node pointing at an archived one are different facts,
+   * and an answer that simply omitted both would make them the same.
+   */
+  app.post("/linked", async (req) => {
+    const { ids } = z.object({ ids: z.array(z.string().uuid()).max(500) }).parse(req.body);
+    return envelope(
+      ids.map((id) => {
+        const raw = mirror.rawBlock(id);
+        if (!raw) return { id, missing: true };
+        const block = JSON.parse(raw) as InterchangeObject & { url?: string };
+        const type = block.type ? types().get(block.type) : undefined;
+        const statusKey = type?.profiles?.task?.status;
+        const props = (block.properties ?? {}) as Record<string, unknown>;
+        return {
+          id,
+          missing: false,
+          title: canon([raw])[0]?.title ?? "Untitled",
+          typeId: block.type ?? null,
+          status:
+            typeof statusKey === "string" && typeof props[statusKey] === "string"
+              ? (props[statusKey] as string)
+              : null,
+          url: block.url ?? null,
+          archived: block.archived === true,
+        };
+      }),
+    );
+  });
+
   app.get("/types", async () =>
     envelope(
       [...types().values()].map((t) => ({

@@ -5,15 +5,18 @@
  * page has no idea it is talking to a Unix socket, and the same file works
  * unchanged behind WebKitGTK on Linux.
  *
- * Stage three, first slice: nodes. Making one, moving it, writing in it,
- * removing it, and having all of that still be there next time. Links draw and
- * follow what moves but cannot yet be made here; regions, images, the
- * inspector, snapping and bends come in later slices. Everything the document
- * holds is preserved on write whether this page understands it or not — a
- * canvas edited here must not come back to the app with its regions gone.
+ * Nodes, text, links with draggable bends, regions, pictures, an inspector, and
+ * a view you can move and scale. Snapping guides, linked-block badges and
+ * printing are still the app's alone.
+ *
+ * The rule under all of it: what this page does not understand, it does not
+ * destroy. The document is held as it arrived and only `items`, `links` and
+ * `regions` are ever touched, so a canvas edited here goes back with its
+ * unknown keys and per-item extras intact.
  */
 
 const surface = document.getElementById("surface");
+const world = document.getElementById("world");
 const edges = document.getElementById("edges");
 const status = document.getElementById("status");
 
@@ -48,11 +51,35 @@ const NEW_SIZE = { w: 140, h: 70 };
 /** The document exactly as the daemon gave it, keys this page never reads and all. */
 let doc = { items: [], links: [], regions: [] };
 /**
- * Where the document's origin sits on screen. Fixed at load rather than derived
- * from the items each time: recomputing it would mean dragging the leftmost
- * node moved everything else, which reads as the canvas coming apart.
+ * The view: which point of the document sits at the top-left, and how big.
+ *
+ * Everything else in this file works in document coordinates and nothing
+ * subtracts a pan — one transform on `#world` carries the whole view, so
+ * scrolling and zooming move one element rather than three hundred.
  */
 let pan = { x: 0, y: 0 };
+let zoom = 1;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 4;
+
+function applyView() {
+  world.style.transform = `scale(${zoom}) translate(${-pan.x}px, ${-pan.y}px)`;
+  // Grips and rings are drawn inside the view but must not grow with it: a
+  // handle twice the size at 2× is a handle that covers what it points at.
+  // Divided by the scale where they are drawn, so they stay the same on the
+  // glass — which is also why they are re-drawn on every view change.
+  drawLinks();
+  showHandle();
+}
+
+/** Screen point (client coordinates) → document coordinates. */
+function toWorld(clientX, clientY) {
+  const box = surface.getBoundingClientRect();
+  return { x: (clientX - box.left) / zoom + pan.x, y: (clientY - box.top) / zoom + pan.y };
+}
+
+/** Document point → the surface's own pixels, for chrome that lives outside the view. */
+const toScreen = (p) => ({ x: (p.x - pan.x) * zoom, y: (p.y - pan.y) * zoom });
 /**
  * What is picked, or nothing.
  *
@@ -71,8 +98,9 @@ const handleEl = document.getElementById("handle");
 const marqueeEl = document.getElementById("marquee");
 const inspectorEl = document.getElementById("inspector");
 
-const at = (i) => ({ x: i.x - pan.x, y: i.y - pan.y });
-const centre = (i) => ({ x: i.x - pan.x + i.w / 2, y: i.y - pan.y + i.h / 2 });
+/** A node's own coordinates. Kept as a name because it reads better than
+ *  reaching into the item at eleven call sites. */
+const at = (i) => ({ x: i.x, y: i.y });
 
 // ── Writing ────────────────────────────────────────────────────────────────
 
@@ -158,7 +186,7 @@ const nearestSide = (r, p) =>
  */
 function boxOf(id) {
   const item = doc.items.find((i) => i.id === id);
-  if (item) return { x: item.x - pan.x, y: item.y - pan.y, w: item.w, h: item.h };
+  if (item) return { x: item.x, y: item.y, w: item.w, h: item.h };
   const region = doc.regions.find((r) => r.id === id);
   return region ? regionBox(region) : null;
 }
@@ -188,8 +216,8 @@ function regionBox(region) {
     y1 = Math.max(y1, m.y + m.h);
   }
   return {
-    x: x0 - pan.x - REGION_PAD,
-    y: y0 - pan.y - REGION_PAD,
+    x: x0 - REGION_PAD,
+    y: y0 - REGION_PAD,
     w: x1 - x0 + REGION_PAD * 2,
     h: y1 - y0 + REGION_PAD * 2,
   };
@@ -260,7 +288,7 @@ function drawLinks() {
     // A line is a few pixels wide and a target has to be bigger than the thing
     // it stands for. An invisible fat copy underneath is what makes one
     // clickable without drawing a fat line.
-    const hit = svg("path", { d, fill: "none", stroke: "transparent", "stroke-width": 14 });
+    const hit = svg("path", { d, fill: "none", stroke: "transparent", "stroke-width": 14 / zoom });
     hit.classList.add("hit");
     hit.dataset.link = link.id;
     edges.append(hit);
@@ -305,7 +333,7 @@ function drawLinks() {
       // The grip sits where the curve passes, which is the midpoint plus the
       // bend — not the control point, which is twice as far out and not on the
       // line at all.
-      const grip = svg("circle", { cx: g.handle.x, cy: g.handle.y, r: 6 });
+      const grip = svg("circle", { cx: g.handle.x, cy: g.handle.y, r: 6 / zoom });
       grip.classList.add("grip");
       grip.dataset.grip = link.id;
       edges.append(grip);
@@ -354,7 +382,7 @@ function node(item) {
   } else {
     el.textContent = item.text ?? "";
   }
-  surface.append(el);
+  world.append(el);
   nodes.set(item.id, el);
   return el;
 }
@@ -395,7 +423,7 @@ function drawRegions() {
       region.hAlign === "center" ? "center" : region.hAlign === "trailing" ? "right" : "left";
     el.append(title);
     // Before the SVG, so lines and nodes both sit over it.
-    surface.prepend(el);
+    world.prepend(el);
     regionEls.set(region.id, el);
   }
 }
@@ -438,9 +466,11 @@ function showHandle() {
   if (!id) return;
   const item = find(id);
   if (!item) return;
-  const { x, y } = at(item);
-  handleEl.style.left = `${x + item.w}px`;
-  handleEl.style.top = `${y + item.h / 2}px`;
+  // Outside the view, so it keeps its size at any zoom — the ring is a thing
+  // you aim at, and a target that shrinks to a dot at 30% is not one.
+  const p = toScreen({ x: item.x + item.w, y: item.y + item.h / 2 });
+  handleEl.style.left = `${p.x}px`;
+  handleEl.style.top = `${p.y}px`;
   handleEl.hidden = false;
 }
 
@@ -492,8 +522,8 @@ function edit(id) {
 function create(x, y) {
   const item = {
     id: newId(),
-    x: Math.round(x + pan.x - NEW_SIZE.w / 2),
-    y: Math.round(y + pan.y - NEW_SIZE.h / 2),
+    x: Math.round(x - NEW_SIZE.w / 2),
+    y: Math.round(y - NEW_SIZE.h / 2),
     w: NEW_SIZE.w,
     h: NEW_SIZE.h,
     text: "",
@@ -737,8 +767,7 @@ let ghost = null;
 
 /** Where the pointer is, in the surface's own coordinates. */
 function local(e) {
-  const box = surface.getBoundingClientRect();
-  return { x: e.clientX - box.left, y: e.clientY - box.top };
+  return toWorld(e.clientX, e.clientY);
 }
 
 /**
@@ -889,11 +918,13 @@ surface.addEventListener("pointermove", (e) => {
     drag.moved = true;
     drag.to = p;
     const box = marqueeBox(drag);
+    const a = toScreen(box);
+    const b = toScreen({ x: box.x + box.w, y: box.y + box.h });
     Object.assign(marqueeEl.style, {
-      left: `${box.x}px`,
-      top: `${box.y}px`,
-      width: `${box.w}px`,
-      height: `${box.h}px`,
+      left: `${a.x}px`,
+      top: `${a.y}px`,
+      width: `${b.x - a.x}px`,
+      height: `${b.y - a.y}px`,
     });
     marqueeEl.hidden = false;
     // Live, so the rectangle shows what it has rather than what it will have.
@@ -902,9 +933,16 @@ surface.addEventListener("pointermove", (e) => {
     return;
   }
 
-  const dx = e.clientX - drag.startX;
-  const dy = e.clientY - drag.startY;
-  if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
+  // Divided by the scale. The pointer moves in screen pixels and the document
+  // is in its own units, and applying one as the other means a node travelling
+  // twice as far as the hand at 2× and half as far at 0.5× — it slides out from
+  // under the pointer, which reads as the canvas being broken rather than as an
+  // arithmetic slip.
+  const dx = (e.clientX - drag.startX) / zoom;
+  const dy = (e.clientY - drag.startY) / zoom;
+  // The three-pixel threshold stays in screen pixels: it is about the hand
+  // being steady, not about the document.
+  if (!drag.moved && Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) < 3) return;
   drag.moved = true;
   for (const m of drag.from) {
     const item = find(m.id);
@@ -959,7 +997,7 @@ surface.addEventListener("pointerup", (e) => {
 function drawGhost(d) {
   const from = find(d.from);
   if (!from) return;
-  const a = nearestSide({ x: from.x - pan.x, y: from.y - pan.y, w: from.w, h: from.h }, d.to);
+  const a = nearestSide({ x: from.x, y: from.y, w: from.w, h: from.h }, d.to);
   if (!ghost) {
     ghost = svg("path", { fill: "none", stroke: "#5fa4b5", "stroke-width": 1.5, "stroke-dasharray": "5 4" });
     edges.append(ghost);
@@ -999,6 +1037,17 @@ window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") (nodes.get(editing) ?? regionEls.get(editing)?.firstChild)?.blur();
     return;
   }
+  // The view, which is not about what is picked and must work when nothing is.
+  if (e.key === "0" && (e.metaKey || e.ctrlKey)) {
+    fit(false);
+    e.preventDefault();
+    return;
+  }
+  if (e.key === "1" && (e.metaKey || e.ctrlKey)) {
+    fit(true);
+    e.preventDefault();
+    return;
+  }
   if (!selected) return;
   if (e.key === "Backspace" || e.key === "Delete") {
     // Removing a region takes the box away and leaves what was in it; removing
@@ -1013,6 +1062,62 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
   }
 });
+
+// ── The view ───────────────────────────────────────────────────────────────
+
+/**
+ * Scroll to pan, pinch or ⌘-scroll to zoom.
+ *
+ * A trackpad pinch arrives as a wheel event with `ctrlKey` set, which is a
+ * browser convention rather than anything to do with the control key — and it
+ * is why the two live in one handler. Zoom is anchored on the pointer, so the
+ * thing under it stays under it; anchoring on the centre makes zooming feel
+ * like the canvas is running away.
+ */
+surface.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    if (e.ctrlKey || e.metaKey) {
+      const before = toWorld(e.clientX, e.clientY);
+      // Exponential, so a step feels the same size at every scale — a fixed
+      // increment is a crawl at 4× and a leap at 0.2×.
+      zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * Math.exp(-e.deltaY / 300)));
+      const after = toWorld(e.clientX, e.clientY);
+      pan.x += before.x - after.x;
+      pan.y += before.y - after.y;
+    } else {
+      // In document units, so a scroll moves the same distance on the glass
+      // whatever the zoom.
+      pan.x += e.deltaX / zoom;
+      pan.y += e.deltaY / zoom;
+    }
+    applyView();
+  },
+  { passive: false },
+);
+
+/** Put the whole document on screen, or return to life size. */
+function fit(all = true) {
+  const box = surface.getBoundingClientRect();
+  if (!all || !doc.items.length) {
+    zoom = 1;
+    pan = { x: -40, y: -40 };
+    applyView();
+    return;
+  }
+  const xs = doc.items.flatMap((i) => [i.x, i.x + i.w]);
+  const ys = doc.items.flatMap((i) => [i.y, i.y + i.h]);
+  const x0 = Math.min(...xs) - 40;
+  const y0 = Math.min(...ys) - 40;
+  const w = Math.max(...xs) - x0 + 40;
+  const h = Math.max(...ys) - y0 + 40;
+  // Never magnified to fill the window: a canvas with two nodes on it blown up
+  // to 4× is not "fitted", it is a different drawing.
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(box.width / w, box.height / h, 1)));
+  pan = { x: x0, y: y0 };
+  applyView();
+}
 
 // ── Pictures ───────────────────────────────────────────────────────────────
 
@@ -1071,8 +1176,8 @@ async function addImage(blob, where) {
   const size = imageSize(dims.w, dims.h);
   const item = {
     id: newId(),
-    x: Math.round(where.x + pan.x - size.w / 2),
-    y: Math.round(where.y + pan.y - size.h / 2),
+    x: Math.round(where.x - size.w / 2),
+    y: Math.round(where.y - size.h / 2),
     w: size.w,
     h: size.h,
     text: "",
@@ -1142,10 +1247,10 @@ async function load() {
     doc.items ??= [];
     doc.links ??= [];
     doc.regions ??= [];
-    const xs = doc.items.map((i) => i.x);
-    const ys = doc.items.map((i) => i.y);
-    pan = { x: xs.length ? Math.min(...xs) - 40 : 0, y: ys.length ? Math.min(...ys) - 40 : 0 };
     draw();
+    // Opening on a canvas whose contents are somewhere off to the left is
+    // opening on an empty page, so the first view is whatever shows all of it.
+    fit();
   } catch (err) {
     say(`couldn't read the canvas — ${err.message}`);
   }

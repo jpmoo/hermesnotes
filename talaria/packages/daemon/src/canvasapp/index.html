@@ -36,13 +36,36 @@
      box's size and shift the words inside it every time something was picked. */
   .node.selected { outline: 2px solid #5fa4b5; outline-offset: 2px; }
   .node[contenteditable="plaintext-only"] { outline: 2px solid #5fa4b5; outline-offset: 2px; cursor: text; }
+  /* What a dragged line would land on. Dropping on something already joined
+     cuts the join, so saying which node is under the pointer is the difference
+     between connecting on purpose and disconnecting by accident. */
+  .node.target { outline: 2px dashed #5fa4b5; outline-offset: 4px; }
+
+  /* The connector, on the selected node. A ring rather than a dot, and larger
+     than it looks: `.grab` is the part drawn, the element is the part aimed at,
+     and a target the size of the thing it stands for is a target you miss. */
+  #handle {
+    position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px;
+    border-radius: 50%; cursor: crosshair; z-index: 3;
+    background: radial-gradient(circle at center, #5fa4b5 0 4.5px, transparent 5px),
+                radial-gradient(circle at center, transparent 0 5.5px, rgba(95,164,181,.25) 6px 8px, transparent 8.5px);
+  }
+  #handle[hidden] { display: none; }
+
+  /* The bend grip. `.hit` is the invisible fat copy of a line that makes it
+     clickable; both re-enable pointing, which the layer above them turns off so
+     that a node underneath can still be reached. */
+  #edges .hit, #edges .grip { pointer-events: all; }
+  #edges .hit { cursor: pointer; }
+  #edges .grip { fill: #fff; stroke: #5fa4b5; stroke-width: 1.5; cursor: grab; }
+  @media (prefers-color-scheme: dark) { #edges .grip { fill: #1c1c1e; } }
   #status {
     position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
     background: rgba(0,0,0,.06); font-variant-numeric: tabular-nums;
   }
   @media (prefers-color-scheme: dark) { #status { background: rgba(255,255,255,.1); } }
 </style>
-<div id="surface"><svg id="edges"></svg></div>
+<div id="surface"><svg id="edges"></svg><div id="handle" hidden></div></div>
 <div id="status">loading…</div>
-<div id="hint">double-click to add · drag to move · ⌫ to remove</div>
+<div id="hint">double-click to add · drag the ring to join · drop on a joined node to cut · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

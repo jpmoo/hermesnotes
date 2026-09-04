@@ -33,9 +33,11 @@ let doc = { items: [], links: [], regions: [] };
  * node moved everything else, which reads as the canvas coming apart.
  */
 let pan = { x: 0, y: 0 };
+/** What is picked: `{ kind: "item" | "link", id }`, or nothing. */
 let selected = null;
 let editing = null;
 const nodes = new Map(); // item id → element
+const handleEl = document.getElementById("handle");
 
 const at = (i) => ({ x: i.x - pan.x, y: i.y - pan.y });
 const centre = (i) => ({ x: i.x - pan.x + i.w / 2, y: i.y - pan.y + i.h / 2 });
@@ -78,37 +80,151 @@ function say(text) {
   status.textContent = text;
 }
 
+const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 function summarize() {
   const pictures = doc.items.filter((i) => i.image).length;
   say(
-    `${doc.items.length} nodes · ${doc.links.length} links · ${doc.regions.length} regions` +
-      (pictures ? ` · ${pictures} picture${pictures === 1 ? "" : "s"}` : ""),
+    [
+      count(doc.items.length, "node"),
+      count(doc.links.length, "link"),
+      count(doc.regions.length, "region"),
+      ...(pictures ? [count(pictures, "picture")] : []),
+    ].join(" · "),
   );
 }
 
 // ── Drawing ────────────────────────────────────────────────────────────────
 
+/**
+ * Where a line starts, ends, and bends — ported from the app's `LinkGeometry`
+ * so that a curve bent here is the same curve there.
+ *
+ * A line touches a box at the middle of one of its four sides and nowhere else,
+ * and which side is chosen by which side-centre is nearest the point the line
+ * is heading for. Both ends aim at the same point, so each picks the side
+ * facing the other.
+ */
+const sideCentres = (r) => [
+  { x: r.x + r.w / 2, y: r.y },
+  { x: r.x + r.w / 2, y: r.y + r.h },
+  { x: r.x, y: r.y + r.h / 2 },
+  { x: r.x + r.w, y: r.y + r.h / 2 },
+];
+
+const nearestSide = (r, p) =>
+  sideCentres(r).reduce((best, c) =>
+    Math.hypot(c.x - p.x, c.y - p.y) < Math.hypot(best.x - p.x, best.y - p.y) ? c : best,
+  );
+
+function geometry(link) {
+  const from = doc.items.find((i) => i.id === link.from);
+  const to = doc.items.find((i) => i.id === link.to);
+  if (!from || !to) return null;
+  const A = { x: from.x - pan.x, y: from.y - pan.y, w: from.w, h: from.h };
+  const B = { x: to.x - pan.x, y: to.y - pan.y, w: to.w, h: to.h };
+  const bx = link.bendX ?? 0;
+  const by = link.bendY ?? 0;
+  const aim = {
+    x: (A.x + A.w / 2 + B.x + B.w / 2) / 2 + bx,
+    y: (A.y + A.h / 2 + B.y + B.h / 2) / 2 + by,
+  };
+  const a = nearestSide(A, aim);
+  const b = nearestSide(B, aim);
+  // Solved from the anchors, not the centres. The midpoint of two centres is
+  // the midpoint of two anchors only when the boxes match; a region is the size
+  // of everything in it, and solving from centres put the control past the far
+  // anchor — the line bulged inward and touched the border from the wrong side.
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  return {
+    start: a,
+    end: b,
+    // Where the maths wants it…
+    control: { x: mid.x + 2 * bx, y: mid.y + 2 * by },
+    // …and where the curve actually passes, which is where the grip goes.
+    handle: { x: mid.x + bx, y: mid.y + by },
+    mid,
+  };
+}
+
+const pointAt = (g, t) => {
+  const u = 1 - t;
+  return {
+    x: u * u * g.start.x + 2 * u * t * g.control.x + t * t * g.end.x,
+    y: u * u * g.start.y + 2 * u * t * g.control.y + t * t * g.end.y,
+  };
+};
+
+/** Sampled rather than solved: a click test finer than anybody can aim. */
+function distanceToLink(g, p) {
+  let best = Infinity;
+  for (let i = 0; i <= 24; i++) {
+    const q = pointAt(g, i / 24);
+    best = Math.min(best, Math.hypot(q.x - p.x, q.y - p.y));
+  }
+  return best;
+}
+
+const svg = (tag, attrs) => {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+};
+
 function drawLinks() {
   edges.innerHTML = "";
-  const byId = new Map(doc.items.map((i) => [i.id, i]));
   for (const link of doc.links) {
-    const a = byId.get(link.from);
-    const b = byId.get(link.to);
-    if (!a || !b) continue;
-    const p = centre(a);
-    const q = centre(b);
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    // The bend is an offset from the midpoint, and a quadratic whose control
-    // sits there passes through it — the curve the app draws.
-    const mx = (p.x + q.x) / 2 + (link.bendX ?? 0);
-    const my = (p.y + q.y) / 2 + (link.bendY ?? 0);
-    line.setAttribute("d", `M ${p.x} ${p.y} Q ${mx} ${my} ${q.x} ${q.y}`);
-    line.setAttribute("fill", "none");
-    line.setAttribute("stroke", link.color ?? "currentColor");
-    line.setAttribute("stroke-width", String(link.width ?? 1.5));
+    const g = geometry(link);
+    if (!g) continue;
+    const on = selected?.kind === "link" && selected.id === link.id;
+    const color = link.color ?? "currentColor";
+    const width = link.width ?? 1.5;
+    const d = `M ${g.start.x} ${g.start.y} Q ${g.control.x} ${g.control.y} ${g.end.x} ${g.end.y}`;
+
+    // A line is a few pixels wide and a target has to be bigger than the thing
+    // it stands for. An invisible fat copy underneath is what makes one
+    // clickable without drawing a fat line.
+    const hit = svg("path", { d, fill: "none", stroke: "transparent", "stroke-width": 14 });
+    hit.classList.add("hit");
+    hit.dataset.link = link.id;
+    edges.append(hit);
+
+    const line = svg("path", {
+      d,
+      fill: "none",
+      stroke: on ? "#5fa4b5" : color,
+      "stroke-width": on ? Math.max(width, 2) : width,
+    });
     if (link.style === "dashed") line.setAttribute("stroke-dasharray", "6 4");
     if (link.style === "dotted") line.setAttribute("stroke-dasharray", "1 4");
     edges.append(line);
+
+    // The arrowhead, pointing the way the curve arrives.
+    const dx = 2 * (g.end.x - g.control.x);
+    const dy = 2 * (g.end.y - g.control.y);
+    const len = Math.max(Math.hypot(dx, dy), 0.0001);
+    const ux = dx / len;
+    const uy = dy / len;
+    const size = 7 + width;
+    edges.append(
+      svg("path", {
+        d:
+          `M ${g.end.x} ${g.end.y} ` +
+          `L ${g.end.x - size * ux + (size / 2.4) * uy} ${g.end.y - size * uy - (size / 2.4) * ux} ` +
+          `L ${g.end.x - size * ux - (size / 2.4) * uy} ${g.end.y - size * uy + (size / 2.4) * ux} Z`,
+        fill: on ? "#5fa4b5" : color,
+      }),
+    );
+
+    if (on) {
+      // The grip sits where the curve passes, which is the midpoint plus the
+      // bend — not the control point, which is twice as far out and not on the
+      // line at all.
+      const grip = svg("circle", { cx: g.handle.x, cy: g.handle.y, r: 6 });
+      grip.classList.add("grip");
+      grip.dataset.grip = link.id;
+      edges.append(grip);
+    }
   }
 }
 
@@ -168,7 +284,31 @@ function draw() {
 }
 
 function showSelection() {
-  for (const [id, el] of nodes) el.classList.toggle("selected", id === selected);
+  for (const [id, el] of nodes)
+    el.classList.toggle("selected", selected?.kind === "item" && selected.id === id);
+  // Lines are redrawn rather than restyled: which one is picked changes its
+  // color, its weight, and whether it carries a grip, and rebuilding four
+  // shapes is less code than keeping three of them in step.
+  drawLinks();
+  showHandle();
+}
+
+/**
+ * The connector, on the selected node.
+ *
+ * One handle rather than four. Which side a line actually leaves from is
+ * decided by the geometry once both ends are known, so a handle per side would
+ * be offering a choice that is not taken.
+ */
+function showHandle() {
+  handleEl.hidden = true;
+  if (selected?.kind !== "item") return;
+  const item = find(selected.id);
+  if (!item) return;
+  const { x, y } = at(item);
+  handleEl.style.left = `${x + item.w}px`;
+  handleEl.style.top = `${y + item.h / 2}px`;
+  handleEl.hidden = false;
 }
 
 // ── Editing ────────────────────────────────────────────────────────────────
@@ -232,7 +372,7 @@ function create(x, y) {
   };
   doc.items.push(item);
   node(item);
-  selected = item.id;
+  selected = { kind: "item", id: item.id };
   showSelection();
   edit(item.id);
 }
@@ -248,34 +388,156 @@ function remove(id) {
     .filter((r) => (r.members ?? []).length > 0);
   nodes.get(id)?.remove();
   nodes.delete(id);
-  if (selected === id) selected = null;
-  drawLinks();
+  if (selected?.kind === "item" && selected.id === id) selected = null;
+  showSelection();
+  save();
+  summarize();
+}
+
+// ── Linking ────────────────────────────────────────────────────────────────
+
+/**
+ * Tie two nodes together, or cut them apart.
+ *
+ * One gesture does both, which is the app's rule: dropping on something already
+ * connected is how you disconnect it. There is no separate cut and nothing to
+ * aim at to perform one — which matters most for the line you can barely see,
+ * because the thing you can always hit is the node at its end.
+ */
+function link(fromId, toId) {
+  if (fromId === toId) return;
+  const existing = doc.links.find(
+    (l) => (l.from === fromId && l.to === toId) || (l.from === toId && l.to === fromId),
+  );
+  if (existing) {
+    doc.links = doc.links.filter((l) => l.id !== existing.id);
+    if (selected?.kind === "link" && selected.id === existing.id) selected = null;
+  } else {
+    doc.links.push({
+      id: newId(),
+      from: fromId,
+      to: toId,
+      bendX: 0,
+      bendY: 0,
+      width: 1.5,
+      style: "solid",
+    });
+  }
+  showSelection();
+  save();
+  summarize();
+}
+
+function removeLink(id) {
+  doc.links = doc.links.filter((l) => l.id !== id);
+  selected = null;
+  showSelection();
   save();
   summarize();
 }
 
 // ── Pointing ───────────────────────────────────────────────────────────────
 
+/** A move, a bend, or a line being drawn — whichever the hand is doing. */
 let drag = null;
+/** The line drawn while connecting, which is not in the document yet. */
+let ghost = null;
+
+/** Where the pointer is, in the surface's own coordinates. */
+function local(e) {
+  const box = surface.getBoundingClientRect();
+  return { x: e.clientX - box.left, y: e.clientY - box.top };
+}
+
+/** The node under a point, for deciding where a dragged line has landed. */
+function nodeAt(p) {
+  // Last first: later items are drawn on top, so the topmost is the one meant.
+  for (let i = doc.items.length - 1; i >= 0; i--) {
+    const it = doc.items[i];
+    const { x, y } = at(it);
+    if (p.x >= x && p.x <= x + it.w && p.y >= y && p.y <= y + it.h) return it;
+  }
+  return null;
+}
 
 surface.addEventListener("pointerdown", (e) => {
   if (editing) return;
-  const el = e.target.closest(".node");
-  if (!el) {
-    selected = null;
-    showSelection();
+  const p = local(e);
+
+  // The grip, before anything else: it sits over the canvas and is small, so a
+  // node happening to be underneath must not win the press.
+  const grip = e.target.dataset?.grip;
+  if (grip) {
+    const g = geometry(doc.links.find((l) => l.id === grip));
+    if (g) {
+      drag = { what: "bend", id: grip, mid: g.mid, moved: false };
+      surface.setPointerCapture?.(e.pointerId);
+      return;
+    }
+  }
+
+  // The connector on the selected node starts a line rather than a move. The
+  // selection is checked rather than assumed: the handle is hidden when there
+  // is nothing to draw from, and "hidden" is a weaker promise than "absent".
+  if (e.target === handleEl && selected?.kind === "item") {
+    drag = { what: "connect", from: selected.id, to: p, moved: false };
+    surface.setPointerCapture?.(e.pointerId);
     return;
   }
-  selected = el.dataset.id;
+
+  const el = e.target.closest?.(".node");
+  if (el) {
+    selected = { kind: "item", id: el.dataset.id };
+    showSelection();
+    const item = find(el.dataset.id);
+    if (!item) return;
+    drag = { what: "move", id: item.id, startX: e.clientX, startY: e.clientY, ox: item.x, oy: item.y, moved: false };
+    el.setPointerCapture(e.pointerId);
+    return;
+  }
+
+  // Empty canvas — unless a line runs through it. Lines are hit by distance
+  // rather than by what the pointer landed on, because the thing drawn is a few
+  // pixels wide and the thing aimed at should not have to be.
+  let nearest = null;
+  let best = 10;
+  for (const l of doc.links) {
+    const g = geometry(l);
+    if (!g) continue;
+    const d = distanceToLink(g, p);
+    if (d < best) {
+      best = d;
+      nearest = l;
+    }
+  }
+  selected = nearest ? { kind: "link", id: nearest.id } : null;
   showSelection();
-  const item = find(selected);
-  if (!item) return;
-  drag = { id: selected, startX: e.clientX, startY: e.clientY, ox: item.x, oy: item.y, moved: false };
-  el.setPointerCapture(e.pointerId);
 });
 
 surface.addEventListener("pointermove", (e) => {
   if (!drag) return;
+  const p = local(e);
+
+  if (drag.what === "connect") {
+    drag.moved = true;
+    drag.to = p;
+    drawGhost(drag);
+    return;
+  }
+
+  if (drag.what === "bend") {
+    drag.moved = true;
+    const l = doc.links.find((x) => x.id === drag.id);
+    if (!l) return;
+    // The grip sits at midpoint + bend, so the bend *is* the distance from the
+    // midpoint to where the hand is. The control point is twice that, which is
+    // what makes the curve pass under the grip rather than beside it.
+    l.bendX = Math.round(p.x - drag.mid.x);
+    l.bendY = Math.round(p.y - drag.mid.y);
+    drawLinks();
+    return;
+  }
+
   const dx = e.clientX - drag.startX;
   const dy = e.clientY - drag.startY;
   if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
@@ -288,14 +550,44 @@ surface.addEventListener("pointermove", (e) => {
   // Lines follow what they are tied to while it moves, rather than snapping
   // into place when the hand comes off.
   drawLinks();
+  showHandle();
 });
 
-surface.addEventListener("pointerup", () => {
-  // Saved on release, not on every frame of the drag: a canvas written a
-  // hundred times crossing the screen is a hundred writes of the same fact.
-  if (drag?.moved) save();
+surface.addEventListener("pointerup", (e) => {
+  if (drag?.what === "connect") {
+    clearGhost();
+    const target = nodeAt(local(e));
+    if (target) link(drag.from, target.id);
+  } else if (drag?.moved) {
+    // Saved on release, not on every frame: a canvas written a hundred times
+    // crossing the screen is a hundred writes of the same fact.
+    save();
+  }
   drag = null;
 });
+
+/** The line being drawn, before there is anything to draw it from. */
+function drawGhost(d) {
+  const from = find(d.from);
+  if (!from) return;
+  const a = nearestSide({ x: from.x - pan.x, y: from.y - pan.y, w: from.w, h: from.h }, d.to);
+  if (!ghost) {
+    ghost = svg("path", { fill: "none", stroke: "#5fa4b5", "stroke-width": 1.5, "stroke-dasharray": "5 4" });
+    edges.append(ghost);
+  }
+  ghost.setAttribute("d", `M ${a.x} ${a.y} L ${d.to.x} ${d.to.y}`);
+  // What it would land on, said before it lands. Dropping on something already
+  // connected disconnects it, and that is worth knowing beforehand rather than
+  // discovering.
+  const over = nodeAt(d.to);
+  for (const [id, el] of nodes) el.classList.toggle("target", !!over && over.id === id && id !== d.from);
+}
+
+function clearGhost() {
+  ghost?.remove();
+  ghost = null;
+  for (const el of nodes.values()) el.classList.remove("target");
+}
 
 surface.addEventListener("dblclick", (e) => {
   const el = e.target.closest(".node");
@@ -314,7 +606,8 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if ((e.key === "Backspace" || e.key === "Delete") && selected) {
-    remove(selected);
+    if (selected.kind === "link") removeLink(selected.id);
+    else remove(selected.id);
     e.preventDefault();
   }
 });

@@ -33,11 +33,22 @@ let doc = { items: [], links: [], regions: [] };
  * node moved everything else, which reads as the canvas coming apart.
  */
 let pan = { x: 0, y: 0 };
-/** What is picked: `{ kind: "item" | "link", id }`, or nothing. */
+/**
+ * What is picked, or nothing.
+ *
+ * `{ kind: "items", ids: [...] }` — one or many, because a group of nodes is
+ * how a region gets made and a special case for "exactly one" would be a second
+ * selection to keep in step.
+ * `{ kind: "link", id }` · `{ kind: "region", id }`
+ */
 let selected = null;
+const pickedItems = () => (selected?.kind === "items" ? selected.ids : []);
+const onlyItem = () => (pickedItems().length === 1 ? pickedItems()[0] : null);
 let editing = null;
 const nodes = new Map(); // item id → element
+const regionEls = new Map(); // region id → element
 const handleEl = document.getElementById("handle");
+const marqueeEl = document.getElementById("marquee");
 
 const at = (i) => ({ x: i.x - pan.x, y: i.y - pan.y });
 const centre = (i) => ({ x: i.x - pan.x + i.w / 2, y: i.y - pan.y + i.h / 2 });
@@ -117,12 +128,56 @@ const nearestSide = (r, p) =>
     Math.hypot(c.x - p.x, c.y - p.y) < Math.hypot(best.x - p.x, best.y - p.y) ? c : best,
   );
 
+/**
+ * The box an id names — a node's, or a region's.
+ *
+ * Either end of a line may be a region, which is the whole reason this is not
+ * simply a lookup in `items`. A line to a region that resolved to nothing was
+ * a line that silently disappeared.
+ */
+function boxOf(id) {
+  const item = doc.items.find((i) => i.id === id);
+  if (item) return { x: item.x - pan.x, y: item.y - pan.y, w: item.w, h: item.h };
+  const region = doc.regions.find((r) => r.id === id);
+  return region ? regionBox(region) : null;
+}
+
+/**
+ * A region is the extent of what it holds, and a margin.
+ *
+ * Only the padding: the name is written above the box rather than inside it, so
+ * the box is the things and nothing else.
+ */
+const REGION_PAD = 18;
+const REGION_TITLE_H = 18;
+
+function regionBox(region) {
+  const members = (region.members ?? [])
+    .map((id) => doc.items.find((i) => i.id === id))
+    .filter(Boolean);
+  if (!members.length) return null;
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const m of members) {
+    x0 = Math.min(x0, m.x);
+    y0 = Math.min(y0, m.y);
+    x1 = Math.max(x1, m.x + m.w);
+    y1 = Math.max(y1, m.y + m.h);
+  }
+  return {
+    x: x0 - pan.x - REGION_PAD,
+    y: y0 - pan.y - REGION_PAD,
+    w: x1 - x0 + REGION_PAD * 2,
+    h: y1 - y0 + REGION_PAD * 2,
+  };
+}
+
 function geometry(link) {
-  const from = doc.items.find((i) => i.id === link.from);
-  const to = doc.items.find((i) => i.id === link.to);
-  if (!from || !to) return null;
-  const A = { x: from.x - pan.x, y: from.y - pan.y, w: from.w, h: from.h };
-  const B = { x: to.x - pan.x, y: to.y - pan.y, w: to.w, h: to.h };
+  const A = boxOf(link.from);
+  const B = boxOf(link.to);
+  if (!A || !B) return null;
   const bx = link.bendX ?? 0;
   const by = link.bendY ?? 0;
   const aim = {
@@ -274,18 +329,62 @@ function node(item) {
   return el;
 }
 
+/**
+ * The boxes drawn round groups of nodes.
+ *
+ * Redrawn rather than moved, because a region has no position of its own — it
+ * is wherever its members are, so anything that moves a member moves it.
+ * Behind the nodes, since it is the ground they stand on.
+ */
+function drawRegions() {
+  for (const el of regionEls.values()) el.remove();
+  regionEls.clear();
+  for (const region of doc.regions) {
+    const box = regionBox(region);
+    if (!box) continue;
+    const el = document.createElement("div");
+    el.className = "region";
+    el.dataset.region = region.id;
+    if (selected?.kind === "region" && selected.id === region.id) el.classList.add("selected");
+    Object.assign(el.style, {
+      left: `${box.x}px`,
+      top: `${box.y}px`,
+      width: `${box.w}px`,
+      height: `${box.h}px`,
+      background: region.fill ?? "transparent",
+      borderColor: region.stroke ?? "currentColor",
+      borderWidth: `${region.strokeWidth ?? 1.5}px`,
+      borderStyle: region.strokeStyle ?? "dashed",
+    });
+    const title = document.createElement("div");
+    title.className = "region-title";
+    title.dataset.regionTitle = region.id;
+    title.textContent = region.title ?? "";
+    title.style.color = region.textColor ?? "inherit";
+    title.style.textAlign =
+      region.hAlign === "center" ? "center" : region.hAlign === "trailing" ? "right" : "left";
+    el.append(title);
+    // Before the SVG, so lines and nodes both sit over it.
+    surface.prepend(el);
+    regionEls.set(region.id, el);
+  }
+}
+
 function draw() {
   for (const el of nodes.values()) el.remove();
   nodes.clear();
   for (const item of doc.items) node(item);
+  drawRegions();
   drawLinks();
   showSelection();
   summarize();
 }
 
 function showSelection() {
-  for (const [id, el] of nodes)
-    el.classList.toggle("selected", selected?.kind === "item" && selected.id === id);
+  const picked = pickedItems();
+  for (const [id, el] of nodes) el.classList.toggle("selected", picked.includes(id));
+  for (const [id, el] of regionEls)
+    el.classList.toggle("selected", selected?.kind === "region" && selected.id === id);
   // Lines are redrawn rather than restyled: which one is picked changes its
   // color, its weight, and whether it carries a grip, and rebuilding four
   // shapes is less code than keeping three of them in step.
@@ -302,8 +401,11 @@ function showSelection() {
  */
 function showHandle() {
   handleEl.hidden = true;
-  if (selected?.kind !== "item") return;
-  const item = find(selected.id);
+  // One node only. With several picked there is no single thing a line would
+  // leave from, and offering a ring that means "whichever" is offering a guess.
+  const id = onlyItem();
+  if (!id) return;
+  const item = find(id);
   if (!item) return;
   const { x, y } = at(item);
   handleEl.style.left = `${x + item.w}px`;
@@ -372,7 +474,7 @@ function create(x, y) {
   };
   doc.items.push(item);
   node(item);
-  selected = { kind: "item", id: item.id };
+  selected = { kind: "items", ids: [item.id] };
   showSelection();
   edit(item.id);
 }
@@ -388,7 +490,10 @@ function remove(id) {
     .filter((r) => (r.members ?? []).length > 0);
   nodes.get(id)?.remove();
   nodes.delete(id);
-  if (selected?.kind === "item" && selected.id === id) selected = null;
+  if (selected?.kind === "items") {
+    const left = selected.ids.filter((x) => x !== id);
+    selected = left.length ? { kind: "items", ids: left } : null;
+  }
   showSelection();
   save();
   summarize();
@@ -436,6 +541,61 @@ function removeLink(id) {
   summarize();
 }
 
+// ── Regions ────────────────────────────────────────────────────────────────
+
+/** Draw a box round what is picked. Two or more: one node is not a group. */
+function group() {
+  const ids = pickedItems();
+  if (ids.length < 2) return;
+  const region = {
+    id: newId(),
+    members: [...ids],
+    title: "",
+    hAlign: "leading",
+    strokeWidth: 1.5,
+    strokeStyle: "dashed",
+  };
+  doc.regions.push(region);
+  selected = { kind: "region", id: region.id };
+  draw();
+  save();
+}
+
+/**
+ * Take the box away, and leave what was in it.
+ *
+ * A region is a way of saying some things belong together; removing it is
+ * unsaying that, not deleting them. Deleting the members is what backspace on
+ * the members does.
+ */
+function ungroup(id) {
+  doc.regions = doc.regions.filter((r) => r.id !== id);
+  // A line tied to the region has lost its end and cannot be drawn.
+  doc.links = doc.links.filter((l) => l.from !== id && l.to !== id);
+  selected = null;
+  draw();
+  save();
+}
+
+function retitle(id) {
+  const el = regionEls.get(id)?.firstChild;
+  const region = doc.regions.find((r) => r.id === id);
+  if (!el || !region) return;
+  editing = id;
+  el.contentEditable = "plaintext-only";
+  el.focus();
+  const done = () => {
+    el.contentEditable = "false";
+    el.removeEventListener("blur", done);
+    editing = null;
+    const text = el.textContent ?? "";
+    if (text === region.title) return;
+    region.title = text;
+    save();
+  };
+  el.addEventListener("blur", done);
+}
+
 // ── Pointing ───────────────────────────────────────────────────────────────
 
 /** A move, a bend, or a line being drawn — whichever the hand is doing. */
@@ -479,20 +639,56 @@ surface.addEventListener("pointerdown", (e) => {
   // The connector on the selected node starts a line rather than a move. The
   // selection is checked rather than assumed: the handle is hidden when there
   // is nothing to draw from, and "hidden" is a weaker promise than "absent".
-  if (e.target === handleEl && selected?.kind === "item") {
-    drag = { what: "connect", from: selected.id, to: p, moved: false };
+  if (e.target === handleEl && onlyItem()) {
+    drag = { what: "connect", from: onlyItem(), to: p, moved: false };
     surface.setPointerCapture?.(e.pointerId);
     return;
   }
 
   const el = e.target.closest?.(".node");
   if (el) {
-    selected = { kind: "item", id: el.dataset.id };
+    const id = el.dataset.id;
+    // Shift adds to what is picked rather than replacing it — the way a group
+    // is assembled when a rectangle round them would catch something else too.
+    if (e.shiftKey && selected?.kind === "items") {
+      selected = {
+        kind: "items",
+        ids: selected.ids.includes(id) ? selected.ids.filter((x) => x !== id) : [...selected.ids, id],
+      };
+    } else if (!pickedItems().includes(id)) {
+      selected = { kind: "items", ids: [id] };
+    }
     showSelection();
-    const item = find(el.dataset.id);
-    if (!item) return;
-    drag = { what: "move", id: item.id, startX: e.clientX, startY: e.clientY, ox: item.x, oy: item.y, moved: false };
+    // Every picked node moves, not just the one under the hand.
+    const moving = pickedItems();
+    drag = {
+      what: "move",
+      startX: e.clientX,
+      startY: e.clientY,
+      from: moving.map((mid) => ({ id: mid, ox: find(mid).x, oy: find(mid).y })),
+      moved: false,
+    };
     el.setPointerCapture(e.pointerId);
+    return;
+  }
+
+  // A region's own box, which moves everything it holds.
+  const rid = e.target.dataset?.region ?? e.target.dataset?.regionTitle;
+  if (rid) {
+    selected = { kind: "region", id: rid };
+    showSelection();
+    const region = doc.regions.find((r) => r.id === rid);
+    drag = {
+      what: "move",
+      startX: e.clientX,
+      startY: e.clientY,
+      from: (region?.members ?? [])
+        .map((mid) => find(mid))
+        .filter(Boolean)
+        .map((m) => ({ id: m.id, ox: m.x, oy: m.y })),
+      moved: false,
+    };
+    surface.setPointerCapture?.(e.pointerId);
     return;
   }
 
@@ -510,8 +706,17 @@ surface.addEventListener("pointerdown", (e) => {
       nearest = l;
     }
   }
-  selected = nearest ? { kind: "link", id: nearest.id } : null;
+  if (nearest) {
+    selected = { kind: "link", id: nearest.id };
+    showSelection();
+    return;
+  }
+  // Nothing under the pointer: a rectangle, which is how several things get
+  // picked at once and therefore how a region gets made.
+  selected = null;
   showSelection();
+  drag = { what: "marquee", from: p, to: p, moved: false };
+  surface.setPointerCapture?.(e.pointerId);
 });
 
 surface.addEventListener("pointermove", (e) => {
@@ -538,26 +743,68 @@ surface.addEventListener("pointermove", (e) => {
     return;
   }
 
+  if (drag.what === "marquee") {
+    drag.moved = true;
+    drag.to = p;
+    const box = marqueeBox(drag);
+    Object.assign(marqueeEl.style, {
+      left: `${box.x}px`,
+      top: `${box.y}px`,
+      width: `${box.w}px`,
+      height: `${box.h}px`,
+    });
+    marqueeEl.hidden = false;
+    // Live, so the rectangle shows what it has rather than what it will have.
+    selected = { kind: "items", ids: itemsIn(box) };
+    showSelection();
+    return;
+  }
+
   const dx = e.clientX - drag.startX;
   const dy = e.clientY - drag.startY;
   if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
   drag.moved = true;
-  const item = find(drag.id);
-  if (!item) return;
-  item.x = Math.round(drag.ox + dx);
-  item.y = Math.round(drag.oy + dy);
-  place(nodes.get(drag.id), item);
+  for (const m of drag.from) {
+    const item = find(m.id);
+    if (!item) continue;
+    item.x = Math.round(m.ox + dx);
+    item.y = Math.round(m.oy + dy);
+    place(nodes.get(m.id), item);
+  }
+  // A region has no position of its own — it is wherever its members are — so
+  // moving anything inside one redraws it.
+  drawRegions();
   // Lines follow what they are tied to while it moves, rather than snapping
   // into place when the hand comes off.
   drawLinks();
   showHandle();
 });
 
+const marqueeBox = (d) => ({
+  x: Math.min(d.from.x, d.to.x),
+  y: Math.min(d.from.y, d.to.y),
+  w: Math.abs(d.to.x - d.from.x),
+  h: Math.abs(d.to.y - d.from.y),
+});
+
+/** Everything the rectangle touches — overlap, not containment. */
+function itemsIn(box) {
+  return doc.items
+    .filter((i) => {
+      const { x, y } = at(i);
+      return x < box.x + box.w && x + i.w > box.x && y < box.y + box.h && y + i.h > box.y;
+    })
+    .map((i) => i.id);
+}
+
 surface.addEventListener("pointerup", (e) => {
   if (drag?.what === "connect") {
     clearGhost();
     const target = nodeAt(local(e));
     if (target) link(drag.from, target.id);
+  } else if (drag?.what === "marquee") {
+    marqueeEl.hidden = true;
+    // Nothing to save: picking things changes nothing about the document.
   } else if (drag?.moved) {
     // Saved on release, not on every frame: a canvas written a hundred times
     // crossing the screen is a hundred writes of the same fact.
@@ -590,9 +837,14 @@ function clearGhost() {
 }
 
 surface.addEventListener("dblclick", (e) => {
-  const el = e.target.closest(".node");
+  const el = e.target.closest?.(".node");
   if (el) {
     edit(el.dataset.id);
+    return;
+  }
+  const rid = e.target.dataset?.regionTitle ?? e.target.dataset?.region;
+  if (rid) {
+    retitle(rid);
     return;
   }
   const box = surface.getBoundingClientRect();
@@ -601,13 +853,21 @@ surface.addEventListener("dblclick", (e) => {
 
 window.addEventListener("keydown", (e) => {
   if (editing) {
-    // Escape gives the node back its focus-out, which is what commits.
-    if (e.key === "Escape") nodes.get(editing)?.blur();
+    // Escape gives whatever is being written in its focus-out, which commits.
+    if (e.key === "Escape") (nodes.get(editing) ?? regionEls.get(editing)?.firstChild)?.blur();
     return;
   }
-  if ((e.key === "Backspace" || e.key === "Delete") && selected) {
+  if (!selected) return;
+  if (e.key === "Backspace" || e.key === "Delete") {
+    // Removing a region takes the box away and leaves what was in it; removing
+    // nodes removes the nodes. Backspace means both, and which one it means is
+    // decided by what is picked — the box, or the things.
     if (selected.kind === "link") removeLink(selected.id);
-    else remove(selected.id);
+    else if (selected.kind === "region") ungroup(selected.id);
+    else for (const id of [...pickedItems()]) remove(id);
+    e.preventDefault();
+  } else if ((e.key === "g" || e.key === "G") && selected.kind === "items") {
+    group();
     e.preventDefault();
   }
 });

@@ -27,6 +27,24 @@
   }
   @media (prefers-color-scheme: dark) { #hint { background: rgba(255,255,255,.1); } }
   #edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+
+  /* A region: the extent of what it holds, and a margin. Its name is written
+     above the box rather than inside it, so the box is the things and nothing
+     else — which is why the padding is the only inset. */
+  .region { position: absolute; box-sizing: border-box; border-radius: 10px; }
+  .region.selected { outline: 2px solid #5fa4b5; outline-offset: 3px; }
+  .region-title {
+    position: absolute; left: 0; right: 0; top: -20px; height: 18px;
+    font-weight: 600; white-space: pre; overflow: hidden; cursor: text;
+  }
+  .region-title:empty::before { content: "untitled"; opacity: .45; }
+
+  /* The rectangle drawn while picking several things at once. */
+  #marquee {
+    position: absolute; border: 1px solid #5fa4b5;
+    background: rgba(95,164,181,.12); pointer-events: none; z-index: 4;
+  }
+  #marquee[hidden] { display: none; }
   .node {
     position: absolute; box-sizing: border-box; display: flex; padding: 6px;
     white-space: pre-wrap; overflow: hidden; border-radius: 2px;
@@ -65,7 +83,7 @@
   }
   @media (prefers-color-scheme: dark) { #status { background: rgba(255,255,255,.1); } }
 </style>
-<div id="surface"><svg id="edges"></svg><div id="handle" hidden></div></div>
+<div id="surface"><svg id="edges"></svg><div id="handle" hidden></div><div id="marquee" hidden></div></div>
 <div id="status">loading…</div>
-<div id="hint">double-click to add · drag the ring to join · drop on a joined node to cut · ⌫ to remove</div>
+<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

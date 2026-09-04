@@ -1,0 +1,81 @@
+import AppKit
+import WebKit
+
+/**
+ The canvas, drawn in a web view.
+
+ Stage three of moving the renderer out of AppKit, and deliberately a *second*
+ window rather than a replacement. `CanvasSurface` is six thousand lines of
+ working software somebody uses; swapping it out before the new one can do what
+ it does would be trading a finished thing for a partial one. The two run side
+ by side until the web one is at parity, and then the Swift one goes.
+
+ Everything it needs arrives over `DaemonScheme`, which carries the page's
+ ordinary-looking requests into the daemon's Unix socket. There is no server,
+ no port, and nothing for the window itself to know about the canvas — it is a
+ frame around a page.
+ */
+@MainActor
+final class CanvasWebWindow: NSObject, NSWindowDelegate {
+    static let shared = CanvasWebWindow()
+
+    private var window: NSWindow?
+    private var web: WKWebView?
+
+    func show() {
+        if let window {
+            // Already open: bring it forward and re-read, because the document
+            // may have been changed by the desk's canvas or by Canvas Chat
+            // while this was behind something.
+            reload()
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let config = WKWebViewConfiguration()
+        let home = config.servedByDaemon(socketPath: Daemon.socketPath)
+        // Developer tools on. This page is being written; being unable to open
+        // a console on it would mean debugging a canvas by screenshot.
+        config.preferences.setValue(true, forKey: "developerExtrasEnabled")
+
+        let view = WKWebView(frame: .zero, configuration: config)
+        view.load(URLRequest(url: home))
+
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 780),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        win.title = "Canvas"
+        win.contentView = view
+        win.delegate = self
+        win.center()
+        // Named, so macOS restores it where it was left rather than centered
+        // over whatever is underneath.
+        win.setFrameAutosaveName("TalariaCanvasWeb")
+
+        window = win
+        web = view
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        win.makeKeyAndOrderFront(nil)
+    }
+
+    func reload() {
+        web?.reload()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        window = nil
+        web = nil
+        // Back to a menu-bar tool when nothing is open, the same rule the
+        // Hermes window follows: an app with no windows sitting in the Dock is
+        // a puzzle for whoever finds it there.
+        if NSApp.windows.allSatisfy({ !$0.isVisible || $0 is NSPanel }) {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+}

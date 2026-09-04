@@ -20,13 +20,22 @@
   html, body { margin: 0; height: 100%; overflow: hidden; font: 12px -apple-system, system-ui, sans-serif; }
   body { background: #f2f2f4; }
   @media (prefers-color-scheme: dark) { body { background: #1c1c1e; color: #eee; } }
-  #surface { position: relative; width: 100%; height: 100%; }
+  #surface { position: relative; width: 100%; height: 100%; cursor: default; }
+  #hint {
+    position: absolute; right: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
+    background: rgba(0,0,0,.06); opacity: .8;
+  }
+  @media (prefers-color-scheme: dark) { #hint { background: rgba(255,255,255,.1); } }
   #edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
   .node {
     position: absolute; box-sizing: border-box; display: flex; padding: 6px;
     white-space: pre-wrap; overflow: hidden; border-radius: 2px;
   }
   .node img { width: 100%; height: 100%; object-fit: contain; }
+  /* Selection is an outline rather than a border: a border would change the
+     box's size and shift the words inside it every time something was picked. */
+  .node.selected { outline: 2px solid #5fa4b5; outline-offset: 2px; }
+  .node[contenteditable="plaintext-only"] { outline: 2px solid #5fa4b5; outline-offset: 2px; cursor: text; }
   #status {
     position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
     background: rgba(0,0,0,.06); font-variant-numeric: tabular-nums;
@@ -35,4 +44,5 @@
 </style>
 <div id="surface"><svg id="edges"></svg></div>
 <div id="status">loading…</div>
+<div id="hint">double-click to add · drag to move · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

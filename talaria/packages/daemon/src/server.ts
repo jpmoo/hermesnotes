@@ -1533,6 +1533,12 @@ export function buildServer(deps: {
         links: z.array(z.record(z.unknown())).default([]),
         regions: z.array(z.record(z.unknown())).default([]),
       })
+      // Passthrough, and it matters: zod strips unknown keys by default, so a
+      // document written by an editor that predates a field — or by one that
+      // has not learned it yet — would come back with that field silently
+      // removed. The web canvas is careful to carry what it does not
+      // understand; this is where that care would have been undone.
+      .passthrough()
       .parse(req.body);
     writeCanvas(doc as unknown as CanvasDocument);
     return reply.send({ ok: true });

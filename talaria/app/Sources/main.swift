@@ -1294,6 +1294,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ask = menu.addItem(withTitle: "Ask Hermes Notes", action: #selector(showAssistant), keyEquivalent: "")
             ask.target = self
             ask.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right", accessibilityDescription: nil)
+            let webCanvas = menu.addItem(withTitle: "Canvas (web preview)", action: #selector(showWebCanvas), keyEquivalent: "")
+            webCanvas.target = self
             let coll = menu.addItem(withTitle: "Hermes Notes Collections", action: #selector(showBoard), keyEquivalent: "")
             coll.target = self
             coll.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)
@@ -1366,6 +1368,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showCompose() { toggleComposeWindow() }
 
     @objc private func showHermes() { HermesWindow.shared.show() }
+
+    /// The canvas as a web view — alongside the desk's own, not instead of it,
+    /// until it can do what that one does.
+    @objc private func showWebCanvas() { CanvasWebWindow.shared.show() }
 
     /// The menu's Refresh, which means the same thing the board's own does:
     /// read the library again, then draw it. Both called `load()` before, which

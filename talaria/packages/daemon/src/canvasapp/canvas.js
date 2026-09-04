@@ -16,17 +16,12 @@
  */
 
 import { REACH, snapMove } from "./snap.js";
+import { foldPath, shapePath } from "./shapes.js";
 
 const surface = document.getElementById("surface");
 const world = document.getElementById("world");
 const edges = document.getElementById("edges");
 const status = document.getElementById("status");
-
-const CLIP = {
-  ellipse: "ellipse(50% 50% at 50% 50%)",
-  triangle: "polygon(50% 0%, 100% 100%, 0% 100%)",
-  postIt: "polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%)",
-};
 
 /**
  * What a shape looks like before anybody says otherwise.
@@ -353,23 +348,84 @@ function place(el, item) {
   el.style.height = `${item.h}px`;
 }
 
+/**
+ * Paint a node: the shape drawn beneath, the words laid out over it.
+ *
+ * The shape is an SVG path rather than a CSS box, because the app draws paths.
+ * Clipping a box to an ellipse and letting its background show through works
+ * for a rectangle and fails for everything else — with no fill and no border
+ * there is nothing to see, which is exactly what an ellipse and a triangle
+ * were. And a clip cannot carry an outline, so those shapes could not have a
+ * line round them at all.
+ */
 function style(el, item) {
   const weight = item.strokeWidth ?? 1.5;
-  el.style.background = item.fill ?? DEFAULT_FILL[item.shape] ?? "transparent";
+  const fill = item.fill ?? DEFAULT_FILL[item.shape] ?? null;
+  const d = shapePath(item.shape, item.w, item.h);
+
   el.style.color = item.textColor ?? "inherit";
   el.style.justifyContent = { leading: "flex-start", trailing: "flex-end" }[item.hAlign] ?? "center";
   el.style.alignItems = { top: "flex-start", bottom: "flex-end" }[item.vAlign] ?? "center";
   el.style.textAlign = item.hAlign === "leading" ? "left" : item.hAlign === "trailing" ? "right" : "center";
-  el.style.clipPath = CLIP[item.shape] ?? "";
-  el.style.borderRadius = item.shape === "roundedRectangle" ? "14px" : "2px";
-  // A clipped shape cannot also carry a border — the clip cuts it off. Faithful
-  // outlines for those are a later slice; this is honest about which shapes
-  // currently get one rather than drawing a wrong line on the rest.
-  el.style.border =
-    weight > 0 && !CLIP[item.shape] && item.shape && item.shape !== "plain"
-      ? `${weight}px ${item.strokeStyle === "solid" || !item.strokeStyle ? "solid" : item.strokeStyle} ${item.stroke ?? "currentColor"}`
-      : "";
+
+  let art = el.querySelector?.(".art");
+  if (!d) {
+    art?.remove();
+    return;
+  }
+  if (!art) {
+    art = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    art.setAttribute("class", "art");
+    el.prepend(art);
+  }
+  art.setAttribute("viewBox", `0 0 ${item.w} ${item.h}`);
+  art.innerHTML = "";
+
+  // Fill first, then the outline over it, so a thick border is not half-covered
+  // by the thing it is drawn around.
+  if (fill) {
+    art.append(svgIn(art, "path", { d, fill }));
+    // The turned corner: the paper again, then shaded across rather than flat.
+    // A single dark wash reads as a triangle stuck on the corner; real paper
+    // lifted at a corner is darkest where it curls away and lightest at the
+    // crease, and that gradient is the whole difference between a fold and a
+    // patch.
+    if (item.shape === "postIt") {
+      const f = foldPath(item.w, item.h);
+      art.append(svgIn(art, "path", { d: f, fill }));
+      art.append(svgIn(art, "path", { d: f, fill: "url(#fold)" }));
+    }
+  }
+  if (weight > 0) {
+    art.append(
+      svgIn(art, "path", {
+        d,
+        fill: "none",
+        stroke: item.stroke ?? "currentColor",
+        "stroke-width": weight,
+        ...(dashFor(item.strokeStyle, weight) ? { "stroke-dasharray": dashFor(item.strokeStyle, weight) } : {}),
+      }),
+    );
+    // A double line is two lines: a second, tighter copy, which is what the app
+    // draws rather than one thick stroke with a gap down the middle.
+    if (item.strokeStyle === "double") {
+      art.append(
+        svgIn(art, "path", {
+          d,
+          fill: "none",
+          stroke: item.stroke ?? "currentColor",
+          "stroke-width": Math.max(weight / 3, 0.5),
+        }),
+      );
+    }
+  }
 }
+
+const svgIn = (_parent, tag, attrs) => {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
+  return el;
+};
 
 /**
  * The strip along the bottom of a node that stands for a Hermes block.
@@ -448,7 +504,14 @@ function node(item) {
     // Hermes should not still read as its old name here. Falling back to the
     // words it was made with when Hermes cannot be reached.
     const block = item.blockId ? linked.get(item.blockId) : null;
-    el.textContent = block && !block.missing ? block.title : (item.text ?? "");
+    // Their own element, and this is not tidiness. Assigning `textContent` on
+    // the node removes every child it has, so setting the words after drawing
+    // the shape deleted the shape — which is what made an ellipse and a
+    // triangle invisible a second time, by a different route than the first.
+    const words = document.createElement("div");
+    words.className = "words";
+    words.textContent = block && !block.missing ? block.title : (item.text ?? "");
+    el.append(words);
   }
   if (item.blockId) badge(el, item);
   world.append(el);
@@ -552,7 +615,8 @@ const newId = () =>
   (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).toUpperCase();
 
 function edit(id) {
-  const el = nodes.get(id);
+  const node = nodes.get(id);
+  const el = node?.querySelector?.(".words");
   const item = find(id);
   if (!el || !item || item.image) return;
   editing = id;
@@ -578,7 +642,7 @@ function edit(id) {
     // same rule the app applies when a new label is left empty.
     if (!text.trim() && !item.image) {
       doc.items = doc.items.filter((i) => i.id !== id);
-      el.remove();
+      node.remove();
       nodes.delete(id);
       drawLinks();
     }
@@ -1194,7 +1258,7 @@ surface.addEventListener("dblclick", (e) => {
 window.addEventListener("keydown", (e) => {
   if (editing) {
     // Escape gives whatever is being written in its focus-out, which commits.
-    if (e.key === "Escape") (nodes.get(editing) ?? regionEls.get(editing)?.firstChild)?.blur();
+    if (e.key === "Escape") (nodes.get(editing)?.querySelector(".words") ?? regionEls.get(editing)?.firstChild)?.blur();
     return;
   }
   // The view, which is not about what is picked and must work when nothing is.

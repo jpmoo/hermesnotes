@@ -91,15 +91,18 @@
     background: rgba(95,164,181,.12); pointer-events: none; z-index: 4;
   }
   #marquee[hidden] { display: none; }
-  .node {
-    position: absolute; box-sizing: border-box; display: flex; padding: 6px;
-    white-space: pre-wrap; overflow: hidden; border-radius: 2px;
-  }
+  .node { position: absolute; box-sizing: border-box; display: flex; overflow: visible; }
+  /* The words, in their own element. Setting text on the node itself would
+     remove the shape drawn under it — every child goes. */
+  .words { position: relative; flex: 1; padding: 6px; white-space: pre-wrap; overflow: hidden; }
+  /* The shape itself, drawn under the words. `overflow: visible` on the node so
+     a stroke sitting on the edge is not sliced in half by its own box. */
+  .node .art { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
   .node img { width: 100%; height: 100%; object-fit: contain; }
   /* Selection is an outline rather than a border: a border would change the
      box's size and shift the words inside it every time something was picked. */
   .node.selected { outline: 2px solid #5fa4b5; outline-offset: 2px; }
-  .node[contenteditable="plaintext-only"] { outline: 2px solid #5fa4b5; outline-offset: 2px; cursor: text; }
+  .words[contenteditable="plaintext-only"] { outline: 2px solid #5fa4b5; outline-offset: 2px; cursor: text; }
   /* What a dragged line would land on. Dropping on something already joined
      cuts the join, so saying which node is under the pointer is the difference
      between connecting on purpose and disconnecting by accident. */
@@ -178,6 +181,14 @@
     .region-title:empty::before { content: ""; }
   }
 </style>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <!-- The shading across a turned corner: darkest where the paper curls away
+       from the sheet, lightest at the crease. -->
+  <linearGradient id="fold" x1="1" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#000" stop-opacity="0.30"/>
+    <stop offset="1" stop-color="#000" stop-opacity="0.08"/>
+  </linearGradient>
+</defs></svg>
 <div id="surface"><div id="world"><svg id="edges"></svg></div><div id="handle" hidden></div><div id="marquee" hidden></div></div>
 <div id="inspector" hidden>
   <div class="what" id="i-what"></div>

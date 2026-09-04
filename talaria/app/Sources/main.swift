@@ -1367,22 +1367,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showHermes() { HermesWindow.shared.show() }
 
-    /**
-     The canvas as a web view. Not reachable from anywhere at the moment.
-
-     Talaria began crashing today — a segmentation fault in `objc_release` as
-     the main run loop drained its autorelease pool, minutes after launch, over
-     and over. It names nothing and points at nobody, and the only Talaria frame
-     in the report is `main`. What I can say is that it started on the day this
-     window did, and that it is a person's daily tool.
-
-     So the door is closed while the cause is found, rather than left open on a
-     guess. Nothing here is deleted: the code still compiles and every route and
-     page it talks to is still served, so re-opening it is one line. If the
-     crashes continue with this unreachable, they were never this — which is the
-     other reason to take the door off rather than to keep changing the room.
-     */
-    @objc private func showWebCanvas() { CanvasWebWindow.shared.show() }
 
     /// The menu's Refresh, which means the same thing the board's own does:
     /// read the library again, then draw it. Both called `load()` before, which

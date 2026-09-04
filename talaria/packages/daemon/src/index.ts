@@ -1,3 +1,4 @@
+import { readCanvas, sweepImages } from "./canvas.js";
 import { ConfigError, loadConfig, MIRROR_PATH, SOCKET_PATH } from "./config.js";
 import { Hermes } from "./hermes.js";
 import { Interchange } from "./interchange.js";
@@ -86,6 +87,31 @@ async function main(): Promise<void> {
   };
 
   let timer: NodeJS.Timeout = setTimeout(() => void tick(), 0);
+
+  /**
+   * Throw away canvas pictures nothing points at any more.
+   *
+   * Here rather than on the route that writes the canvas, because that route is
+   * not the only writer. The Mac app saves `canvas.json` itself, straight to
+   * disk, and never forgets an image — so sweeping only when the web canvas
+   * saves left every picture the app ever removed sitting there for good, which
+   * is the case that actually exists today.
+   *
+   * On the way up and then every ten minutes. A file is only taken once nothing
+   * in the live canvas or in `canvas-replaced.json` refers to it and it has sat
+   * untouched for a minute, so a sweep landing in the middle of somebody
+   * dropping a photograph on the canvas cannot take it.
+   */
+  const sweep = () => {
+    try {
+      const gone = sweepImages(readCanvas());
+      if (gone) log(`swept ${gone} canvas image(s) nothing refers to`);
+    } catch {
+      // Untidy is not worth a crash.
+    }
+  };
+  sweep();
+  setInterval(sweep, 10 * 60 * 1000).unref();
 
   const shutdown = async (signal: string) => {
     if (stopping) return;

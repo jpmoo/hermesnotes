@@ -49,6 +49,19 @@ ESBUILD="$(find "$REPO_ROOT/../node_modules/.pnpm" -maxdepth 6 -path '*esbuild@*
   --banner:js="import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);" \
   --outfile="$(dirname "$APP")/daemon.mjs"
 
+# The canvas page, beside the bundle it is served by.
+#
+# esbuild emits one JavaScript file and copies nothing else, so the page the
+# daemon serves has to be carried across by hand — without this, every route
+# under /canvas/app answers 404 and the canvas window opens blank with no
+# indication why.
+#
+# Mirrored rather than copied over: a file deleted from the repo must go from
+# here too, or the daemon keeps serving a page nobody can find the source of.
+echo "==> Canvas page"
+rm -rf "$(dirname "$APP")/canvasapp"
+cp -R "$HERE/../packages/daemon/src/canvasapp" "$(dirname "$APP")/canvasapp"
+
 echo "==> Icon"
 # Needs Pillow. A build-time dependency on this machine only — nothing the
 # daemon or the app depends on at runtime.

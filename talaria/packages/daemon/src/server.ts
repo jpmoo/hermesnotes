@@ -75,12 +75,17 @@ function num(v: unknown): number | null {
 }
 
 /**
- * Where the canvas web app lives, beside the compiled daemon.
+ * Where the canvas page lives: beside whatever is running.
  *
- * Not under `HOME`: this is program, not data. A user's Application Support
- * folder is theirs, and putting code somebody can edit into the same directory
- * as their canvas is how the two get backed up, synced and restored as one
- * thing when they are not one thing.
+ * Two answers, because there are two ways this runs. From source under `tsx`
+ * it is `packages/daemon/src/canvasapp`, edited in place and reloaded. Installed,
+ * the daemon is a single bundled `daemon.mjs` in Application Support and the
+ * page is a directory beside it, put there by `app/build.sh` — esbuild emits one
+ * JavaScript file and copies nothing else, so a build that forgets it serves
+ * 404s and opens a blank window saying nothing.
+ *
+ * Resolving it from the running module rather than from a fixed path is what
+ * makes both work without either knowing about the other.
  */
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "canvasapp");
 

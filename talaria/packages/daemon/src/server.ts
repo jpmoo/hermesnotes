@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -17,7 +17,7 @@ import {
   type InterchangeType,
 } from "@talaria/canonical";
 import { HOME, type Config } from "./config.js";
-import { readCanvas, writeCanvas, type CanvasDocument } from "./canvas.js";
+import { readCanvas, sweepImages, writeCanvas, type CanvasDocument } from "./canvas.js";
 import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, workspaces } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
@@ -1551,7 +1551,8 @@ export function buildServer(deps: {
       .passthrough()
       .parse(req.body);
     writeCanvas(doc as unknown as CanvasDocument);
-    return reply.send({ ok: true });
+    const swept = sweepImages(doc as unknown as CanvasDocument);
+    return reply.send({ ok: true, ...(swept ? { swept } : {}) });
   });
 
   /**

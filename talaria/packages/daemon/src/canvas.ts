@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { HOME } from "./config.js";
 
@@ -164,4 +164,64 @@ export function findRegion(doc: CanvasDocument, nameOrId: string): CanvasRegion 
     doc.regions.find((r) => r.id === s || r.id === s.toUpperCase()) ??
     doc.regions.find((r) => (r.title ?? "").trim().toLowerCase() === s.toLowerCase())
   );
+}
+
+/**
+ * How long a picture is left alone before it counts as unreferenced.
+ *
+ * A file is uploaded, and only then does a document arrive naming it. Those two
+ * are milliseconds apart, but they are two requests, and a sweep landing
+ * between them would delete the picture somebody had just dropped. A minute is
+ * far longer than that gap and far shorter than anybody would notice.
+ */
+const IMAGE_GRACE_MS = 60_000;
+
+/**
+ * Throw away pictures nothing points at any more.
+ *
+ * The app leaves them: it only forgets an image when a whole canvas is
+ * replaced, so removing a node leaves its picture on disk for good. That is a
+ * folder that only grows, holding things no longer reachable by any means.
+ *
+ * Swept against the live canvas *and* `canvas-replaced.json`, the copy the app
+ * puts aside before a destructive load. That archive is the only way back from
+ * loading over a canvas, and a way back that has lost its pictures is not one.
+ * Worth knowing: the app undermines its own archive here — it writes the copy
+ * and then forgets the images the copy refers to — so this is more careful with
+ * it than the thing that made it.
+ *
+ * Best-effort throughout. Failing to delete a file is untidy; failing to save a
+ * canvas because a file could not be deleted is not a trade worth making.
+ */
+export function sweepImages(live: CanvasDocument): number {
+  const dir = join(HOME, "canvas-images");
+  const keep = new Set<string>();
+  const note = (d: CanvasDocument | null) => {
+    for (const item of d?.items ?? []) {
+      if (typeof item.image === "string" && item.image) keep.add(item.image);
+    }
+  };
+  note(live);
+  try {
+    note(JSON.parse(readFileSync(join(HOME, "canvas-replaced.json"), "utf8")) as CanvasDocument);
+  } catch {
+    // No archive, or one that will not parse. Neither is a reason to stop.
+  }
+  let gone = 0;
+  const cutoff = Date.now() - IMAGE_GRACE_MS;
+  try {
+    for (const name of readdirSync(dir)) {
+      if (keep.has(name) || name.startsWith(".")) continue;
+      try {
+        if (statSync(join(dir, name)).mtimeMs > cutoff) continue;
+        unlinkSync(join(dir, name));
+        gone += 1;
+      } catch {
+        /* a file that will not go is left where it is */
+      }
+    }
+  } catch {
+    // No folder yet, which means no pictures and nothing to sweep.
+  }
+  return gone;
 }

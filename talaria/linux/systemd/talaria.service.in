@@ -1,0 +1,57 @@
+# The Talaria daemon, as a systemd user unit.
+#
+# Not installed by copying: `__NODE__` and `__ROOT__` are substituted by
+# `linux/install.sh`, because systemd requires an absolute ExecStart and there is
+# no machine-independent absolute path to node. That is the same problem the
+# LaunchAgent has — a supervisor's PATH is not your shell's — answered at
+# install time here rather than by hardcoding one person's Homebrew.
+#
+# This unit supervises properly, which the LaunchAgent deliberately does not.
+# The plist points at an app bundle so that Login Items and Spotlight have
+# something to name, and the process it spawns hands off to LaunchServices and
+# exits within a second, leaving launchd nothing to watch. There is no bundle
+# and no LaunchServices here, so ExecStart is the daemon itself and a crash
+# genuinely brings it back.
+
+[Unit]
+Description=Talaria daemon
+Documentation=file://__ROOT__/DESIGN.md
+
+[Service]
+Type=simple
+ExecStart=__NODE__ __ROOT__/packages/daemon/node_modules/tsx/dist/cli.mjs __ROOT__/packages/daemon/src/index.ts
+
+# Twenty seconds, matching the plist's ThrottleInterval and for its reason: the
+# default of 100ms turns a bad start into an unreadable log, and a minute makes
+# every restart during development look like a failure to come up.
+Restart=on-failure
+RestartSec=20
+
+# The one thing systemd can do that launchd could not.
+#
+# The daemon exits 78 (EX_CONFIG) when the config is missing or unfillable, and
+# the plist's own comment names respawning forever on that as the cost it was
+# accepting. It is not a cost here: 78 means a person has to do something, and
+# restarting until they do just buries the message that tells them what.
+#
+# The unit stops in `failed` after this, so recovery is deliberate:
+#   systemctl --user start talaria
+RestartPreventExitStatus=78
+
+# A user unit inherits almost no PATH, and the daemon shells out to things that
+# live in all of these — ollama, and the clipboard tools the CLI uses.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+# No WorkingDirectory, for the plist's reason restated: every path the daemon
+# needs it resolves absolutely, so pointing this anywhere is a way to fail in a
+# directory rather than a way to find anything.
+
+# Logs go to the journal rather than to a file. `journalctl --user -u talaria`
+# gets rotation, timestamps and a filter for free, none of which
+# ~/Library/Logs/talaria.log has.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=talaria
+
+[Install]
+WantedBy=default.target

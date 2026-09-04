@@ -88,6 +88,19 @@ export const TRANSIENT = [
  * This is a floor, not a fence. Anything genuinely sensitive should also be in
  * the user's own `contextExclude`.
  */
+/**
+ * Whether the two things that answer "what is in front" can exist here.
+ *
+ * `lsappinfo` and AeroSpace are both macOS, and both are polled on a timer, so
+ * off macOS they are not a failure to handle but a question not to ask. What
+ * replaces them is KWin, which is compositor work and is not this change.
+ *
+ * Named for the sources rather than for the platform because that is the fact
+ * being tested. When KWin lands, this constant does not become wrong — it stops
+ * being the only thing consulted, and the flag beside it says so.
+ */
+const MACOS_WINDOW_SOURCES = process.platform === "darwin";
+
 export const TITLE_BLIND = [
   "com.1password.1password",
   "com.agilebits.onepassword7",
@@ -261,6 +274,15 @@ export interface ContextInput {
  * rather than an error, and the caller carries on with whatever it last knew.
  */
 export async function frontmostApp(): Promise<{ app: string; title: string | null } | undefined> {
+  // Launch Services is macOS, and there is no equivalent here yet — the Linux
+  // answer is KWin, and it belongs with the rest of the compositor work rather
+  // than smuggled in under a function named after a macOS database.
+  //
+  // Guarded at the source rather than left to fail. `execFile` on a path that
+  // does not exist is a spawn, an error and a rejected promise, and this runs
+  // every two seconds forever: precisely the shape this codebase already
+  // learned to stop doing with the AeroSpace candidate list below.
+  if (!MACOS_WINDOW_SOURCES) return undefined;
   const { execFile } = await import("node:child_process");
   const run = (args: string[]): Promise<string> =>
     new Promise((resolve) =>
@@ -321,14 +343,9 @@ export async function frontmostApp(): Promise<{ app: string; title: string | nul
 export async function frontmostFromAerospace(cliPath?: string): Promise<
   { app: string; title: string | null; workspace: string | null } | undefined
 > {
+  if (!MACOS_WINDOW_SOURCES) return undefined;
   const { execFile } = await import("node:child_process");
-  const candidates = cliPath
-    ? [cliPath]
-    : [
-        "/opt/homebrew/bin/aerospace",
-        "/usr/local/bin/aerospace",
-        `${process.env.HOME}/.local/bin/aerospace`,
-      ];
+  const candidates = aerospaceCandidates(cliPath);
 
   const run = (bin: string, args: string[]): Promise<string> =>
     new Promise((resolve) =>
@@ -649,9 +666,17 @@ export class FrontmostWatcher {
  *
  * Shared with `frontmostFromAerospace`, which had this list inline first. A
  * second copy would have been a second thing to update the day somebody
- * installs it somewhere new.
+ * installs it somewhere new — and the copy had in fact already drifted out of
+ * reach of this comment, so `frontmostFromAerospace` now calls this rather than
+ * repeating it.
+ *
+ * Empty off macOS, which makes every loop over it a loop that does not run.
+ * AeroSpace is a macOS tiling manager; an explicit `aerospaceCli` pointing at
+ * something on a Linux box would be a person configuring a binary that cannot
+ * be there, so the override does not rescue it either.
  */
 export function aerospaceCandidates(cliPath?: string): string[] {
+  if (!MACOS_WINDOW_SOURCES) return [];
   return cliPath
     ? [cliPath]
     : [

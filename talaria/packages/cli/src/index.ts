@@ -527,11 +527,17 @@ async function main(argv: string[]): Promise<number> {
 
       const out = render(hit, style);
       if (flags.has("copy")) {
-        const { spawn } = await import("node:child_process");
-        const pb = spawn("/usr/bin/pbcopy");
-        pb.stdin.end(out);
-        await new Promise((r) => pb.on("close", r));
-        console.error(dim(`copied: ${out}`));
+        const { copyToClipboard } = await import("./clipboard.js");
+        const via = await copyToClipboard(out);
+        if (via) {
+          console.error(dim(`copied: ${out}`));
+        } else {
+          // Print it anyway. The link is what was asked for and it is built;
+          // swallowing it because the machine has no clipboard tool would lose
+          // work over a missing package.
+          console.log(out);
+          console.error(dim("no clipboard tool found — install wl-clipboard or xclip"));
+        }
       } else {
         console.log(out);
       }

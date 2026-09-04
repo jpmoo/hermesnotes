@@ -392,10 +392,16 @@ export function buildServer(deps: {
       // Written by the app, because only the app can say. Absent means it has
       // not run since this was added rather than that it is denied — the two
       // are different and reporting them as one is how a diagnostic starts
-      // lying.
+      // lying. On Linux it is absent permanently and for a third reason: there
+      // is no single grant to report, because the equivalent capabilities are
+      // portals and AT-SPI, probed one at a time where they are used.
+      //
+      // Read from HOME rather than a hand-built path. The literal string here
+      // was the same directory by a different route, which meant TALARIA_HOME
+      // moved every other file and silently left this one behind.
       accessibility: (() => {
         try {
-          const raw = readFileSync(`${process.env.HOME}/Library/Application Support/Talaria/accessibility.json`, "utf8");
+          const raw = readFileSync(join(HOME, "accessibility.json"), "utf8");
           return JSON.parse(raw) as { granted: boolean; at: string };
         } catch {
           return null;
@@ -454,12 +460,20 @@ export function buildServer(deps: {
       const rows = context.recent(1);
       const last = rows[0] ? new Date(rows[0].at) : null;
       const mins = last ? Math.round((Date.now() - last.getTime()) / 60000) : null;
+      // A gap and a fault are different things, and reporting them the same way
+      // is how a diagnostic starts lying. On Linux nothing here is broken:
+      // `lsappinfo` and AeroSpace are macOS, KWin is what replaces them, and it
+      // is not built yet. Saying so is more useful than a FAIL that invites
+      // somebody to go looking for a binary that cannot exist.
+      const noWindowSource = process.platform !== "darwin";
       add(
         "context",
-        Boolean(front),
+        Boolean(front) || noWindowSource,
         front
           ? `watching — ${front.app}` + (mins === null ? ", nothing recorded yet" : `, last row ${mins}m ago`)
-          : "lsappinfo told us nothing — the frontmost poll is doing nothing at all",
+          : noWindowSource
+            ? "no window source on this platform yet — KWin is the Linux answer and is not built"
+            : "lsappinfo told us nothing — the frontmost poll is doing nothing at all",
       );
 
       /**
@@ -474,10 +488,12 @@ export function buildServer(deps: {
       const withWorkspace = context.recent(1).some((r) => r.workspace);
       add(
         "workspace",
-        withWorkspace,
+        withWorkspace || noWindowSource,
         withWorkspace
           ? "arriving from the window manager"
-          : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
+          : noWindowSource
+            ? "no window manager wired up yet — KDE virtual desktops are the Linux analogue"
+            : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
       );
     }
 

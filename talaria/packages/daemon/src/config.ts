@@ -4,10 +4,27 @@ import { join } from "node:path";
 import { z } from "zod";
 
 /**
- * Where Talaria keeps its things. One directory, under the user's own Library,
- * so nothing here needs elevated anything.
+ * Where Talaria keeps its things. One directory, under whatever the platform
+ * calls the user's own data directory, so nothing here needs elevated anything.
+ *
+ * `TALARIA_HOME` still wins everywhere, and macOS still answers exactly what it
+ * always did: moving a working install's directory to satisfy a tidier rule
+ * would be a migration nobody asked for, on the machine least able to absorb
+ * one.
  */
-export const HOME = process.env.TALARIA_HOME ?? join(homedir(), "Library", "Application Support", "Talaria");
+function defaultHome(): string {
+  if (process.platform === "darwin") {
+    return join(homedir(), "Library", "Application Support", "Talaria");
+  }
+  // Unset and empty are the same thing here, which is not a defensive flourish:
+  // the XDG spec says an unset *or* empty value falls back, and a KDE session
+  // exports it empty rather than not at all. Reading it literally puts the
+  // mirror in `/talaria`.
+  const xdg = process.env.XDG_DATA_HOME?.trim();
+  return join(xdg || join(homedir(), ".local", "share"), "talaria");
+}
+
+export const HOME = process.env.TALARIA_HOME ?? defaultHome();
 export const CONFIG_PATH = join(HOME, "config.json");
 export const MIRROR_PATH = join(HOME, "mirror.sqlite");
 export const SOCKET_PATH = process.env.TALARIA_SOCKET ?? join(HOME, "talaria.sock");
@@ -103,10 +120,18 @@ export function loadConfig(): Config {
   } catch {
     throw new ConfigError(
       `No config at ${CONFIG_PATH}.\n` +
-        `Open Talaria's menu bar icon (right-click) → Settings…, or run:\n` +
-        `  open talaria://settings\n` +
-        `You will need a Hermes address and an access key, minted under Settings → Access keys.\n` +
-        `The panel writes this file; editing it by hand still works if you would rather.`,
+        // Two platforms, two true answers. macOS has a settings panel that
+        // writes this file, and telling somebody to compose JSON by hand when a
+        // panel exists is worse advice. Linux has no panel yet, and pointing at
+        // a menu bar icon that is not there is the kind of instruction that
+        // makes a person doubt they have the right software.
+        (process.platform === "darwin"
+          ? `Open Talaria's menu bar icon (right-click) → Settings…, or run:\n` +
+            `  open talaria://settings\n`
+          : `Write it yourself — there is no settings panel on this platform yet:\n` +
+            `  mkdir -p ${HOME} && cp talaria/config.example.json ${CONFIG_PATH}\n` +
+            `then put your address and key in it.\n`) +
+        `You will need a Hermes address and an access key, minted under Settings → Access keys.`,
     );
   }
   let parsed: unknown;
@@ -121,8 +146,8 @@ export function loadConfig(): Config {
   if ((parsed as { accessKey?: unknown })?.accessKey === "PASTE_YOUR_ACCESS_KEY") {
     throw new ConfigError(
       `${CONFIG_PATH} still has the placeholder access key in it.\n` +
-        `Mint a real one in Hermes under Settings → Access keys, then put it in via\n` +
-        `  open talaria://settings`,
+        `Mint a real one in Hermes under Settings → Access keys, then put it in` +
+        (process.platform === "darwin" ? ` via\n  open talaria://settings` : `.`),
     );
   }
   const result = configSchema.safeParse(parsed);

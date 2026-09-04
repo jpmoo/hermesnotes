@@ -132,6 +132,11 @@ export function styleFor(bundleId: string | undefined): LinkStyle {
  * failing a command whose real job is to produce a string.
  */
 export async function frontmostBundleId(): Promise<string | undefined> {
+  // Off macOS there is nothing to ask yet, and the styles this picks between are
+  // keyed by bundle id anyway — so even a perfect Linux answer would be a window
+  // class that `BY_APP` has never heard of. Returning undefined lands on
+  // `DEFAULT_STYLE`, which is where that lookup would have landed regardless.
+  if (process.platform !== "darwin") return undefined;
   const { execFile } = await import("node:child_process");
   return new Promise((resolve) => {
     execFile(

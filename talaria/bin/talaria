@@ -12,7 +12,25 @@
 # It names tsx's JavaScript entry point, not the `.bin/tsx` wrapper: that
 # wrapper is a shell script, and handing it to node produces a syntax error
 # rather than anything that looks like a missing runtime.
-NODE="/opt/homebrew/bin/node"
+# Absolute paths first, then PATH. The reason for hardcoding one at all is that
+# a LaunchAgent's PATH is not your shell's — and a systemd user unit's is
+# shorter still, so the problem did not go away by changing platform. But a
+# single hardcoded path is wrong on every machine that is not the author's, so
+# the list is tried in order and $TALARIA_NODE overrides the lot.
+for candidate in \
+  "$TALARIA_NODE" \
+  /opt/homebrew/bin/node \
+  /usr/local/bin/node \
+  "$HOME/.local/bin/node" \
+  /usr/bin/node
+do
+  [ -n "$candidate" ] && [ -x "$candidate" ] && NODE="$candidate" && break
+done
+# Last resort, and it will work from an interactive shell even when nothing
+# above does. Left last rather than first precisely because the callers that
+# matter here — a hotkey, a systemd unit, KRunner — are the ones without it.
+[ -n "$NODE" ] || NODE="$(command -v node)"
+[ -n "$NODE" ] || { echo "talaria: no node found (set \$TALARIA_NODE)" >&2; exit 1; }
 
 # Follow symlinks to find where this script actually lives. The intended install
 # is a symlink from somewhere on PATH, so $0 is usually the link and not the

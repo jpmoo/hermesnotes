@@ -113,11 +113,26 @@ export interface Embedder {
   embed(text: string): Promise<Float32Array>;
 }
 
-/** Where `ollama` might be, in the order worth trying. */
+/**
+ * Where `ollama` might be, in the order worth trying.
+ *
+ * Both platforms in one list rather than two lists behind a branch: these are
+ * absolute paths that either exist or do not, the check is a spawn that fails
+ * cheaply, and a machine has at most one of them. A branch here would be
+ * ceremony around a question the filesystem already answers.
+ *
+ * The Linux entries matter less than they look. Ollama on Linux installs a
+ * systemd unit and is normally already listening, so the waking below is a
+ * macOS problem that Linux mostly does not have — but a person who installed
+ * it by unpacking a tarball into `~/.local/bin` has no unit, and that is
+ * exactly the case worth catching.
+ */
 const OLLAMA_BINS = [
   "/usr/local/bin/ollama",
   "/opt/homebrew/bin/ollama",
   "/Applications/Ollama.app/Contents/Resources/ollama",
+  "/usr/bin/ollama",
+  `${process.env.HOME}/.local/bin/ollama`,
 ];
 
 /** Don't try to start it more than this often — a closed door twice is still closed. */

@@ -1,7 +1,9 @@
 # Talaria on Linux
 
-Orientation for a coding agent picking this up on a KDE desktop. Nothing here
-exists yet except the reference material — this is the brief, not the report.
+Orientation for a coding agent picking this up on a KDE desktop. This is still
+mostly the brief rather than the report: **step 1 is done and steps 2 to 5 are
+not.** The daemon runs here, under systemd, answering its socket. Everything
+that is a front end is unwritten.
 
 Read `../../CLAUDE.md` first (the repo's own orientation), then `../DESIGN.md`
 for what Talaria is and why. This file covers only what changes when the
@@ -39,9 +41,9 @@ genuinely hard.
 In this order. Each step is usable on its own, which is the point — nothing here
 needs the step after it to be worth having.
 
-1. **Get the daemon running.** Everything else talks to it, and it is a handful
-   of constants (see *Making the daemon run here*). Prove it with
-   `curl --unix-socket … http://talaria/health`, not by looking at `ps`.
+1. ~~**Get the daemon running.**~~ **Done.** `linux/install.sh` writes the user
+   unit and finishes by asking `/health` over the socket. It was a handful of
+   constants and one thing that was not — see *Making the daemon run here*.
 2. **Fork Hermes' canvas.** This is the first real piece of UI and the decision
    is already made — see below. It is also the safest: the component is mature,
    the adapter is the only new code, and Canvas Chat keeps working throughout
@@ -117,18 +119,44 @@ have quietly undone it.
 owner, and the reason `packages/canonical` exists. When the format cannot say
 something, say so and ask — do not reach around it.
 
-## Making the daemon run here
+## Making the daemon run here — done, and what it cost
 
-Small, and mostly one constant each:
+Run `linux/install.sh`. It needs Node 22+ and a `pnpm install` at the repo root,
+checks for both before it writes anything, and ends on `talaria doctor`.
 
-- `packages/daemon/src/config.ts` — `HOME` is `~/Library/Application Support/
-  Talaria`. `TALARIA_HOME` and `TALARIA_SOCKET` already override it, so the
-  author anticipated this. Use `$XDG_DATA_HOME/talaria`.
-- `packages/cli/src/index.ts` — `pbcopy` → `wl-copy` (or `xclip`).
-- `packages/cli/src/link.ts` and `daemon/src/context.ts` — `osascript`.
-- `daemon/src/glance.ts` — a hardcoded `/Applications/Ollama.app` path.
-- `daemon/src/server.ts` — one hand-built `~/Library/Application Support` path.
-- `../launchd/dev.talaria.daemon.plist` → a systemd user unit.
+The list was accurate and each item was about one constant, with one exception
+noted below:
+
+- `daemon/src/config.ts` — `HOME` is XDG off macOS, `~/Library` on it. **Unset
+  and empty are both fallbacks**: a KDE session exports `XDG_DATA_HOME` as an
+  empty string, and reading it literally puts the mirror in `/talaria`.
+- `packages/cli/src/clipboard.ts` — new. `pbcopy`, then `wl-copy`/`xclip`/`xsel`
+  ordered by session type but all tried, because XWayland. Returns which one
+  took it, so `--copy` with no tool installed still prints the link instead of
+  losing it.
+- `cli/src/link.ts` — `osascript` guarded. Even a perfect Linux answer would be
+  a window class, and the style table it feeds is keyed by bundle id.
+- `daemon/src/glance.ts` — Linux ollama paths added to the same list.
+- `daemon/src/server.ts` — the hand-built path now reads `HOME`. It was the same
+  directory by a different route, so `TALARIA_HOME` moved every other file and
+  silently left that one behind.
+- `linux/systemd/talaria.service.in` — replaces the plist, and **supervises**,
+  which the plist deliberately does not. It also stops rather than respawning on
+  exit 78, which the plist's own comment names as a cost it was accepting.
+
+**The exception, and it is the one worth knowing about.** `daemon/src/context.ts`
+is not one constant. It reads the frontmost window through `lsappinfo` and
+workspaces through `aerospace` — both macOS, both polled every two seconds. They
+are guarded behind `MACOS_WINDOW_SOURCES` and return nothing here, so `/context`
+degrades instead of spawning doomed processes forever. **That means the context
+record is empty on Linux**, and it is a gap rather than a fault: `talaria doctor`
+says so in those words. KWin is what fills it, and that is step 4.
+
+One duplication was found rather than introduced: `cli/src/client.ts` keeps its
+own copy of the socket path, because the CLI depends only on `@talaria/canonical`
+and importing the daemon's config would drag fastify in to learn one string. The
+copy had already drifted — the first Linux run brought the daemon up and then
+reported it down. **Change one, change the other.**
 
 Note the daemon is bundled by esbuild into a single file. **esbuild copies no
 static assets**; whatever build ships the web UI has to carry the directory
@@ -172,6 +200,12 @@ side effect.
 
 ## What is in this directory
 
+- `install.sh` — writes the user unit and proves the daemon came up by asking
+  the socket. Everything that can fail is checked before anything is installed,
+  which is the `build.sh` lesson below restated.
+- `systemd/talaria.service.in` — a template, not a unit. `ExecStart` must be an
+  absolute path and there is no machine-independent absolute path to node, so
+  the installer substitutes one rather than hardcoding somebody's.
 - `reference/DaemonScheme.swift` — a `WKURLSchemeHandler` proxying a custom URL
   scheme into the daemon's Unix socket, so a web view can talk to it with no TCP
   port open. WebKitGTK has the same mechanism; this is the design worked out

@@ -6,8 +6,8 @@
  * unchanged behind WebKitGTK on Linux.
  *
  * Nodes, text, links with draggable bends, regions, pictures, an inspector, a
- * view you can move and scale, snapping, and the Hermes blocks a node can
- * stand for. Printing is still the app's alone.
+ * view you can move and scale, snapping, the Hermes blocks a node can stand
+ * for, and printing.
  *
  * The rule under all of it: what this page does not understand, it does not
  * destroy. The document is held as it arrived and only `items`, `links` and
@@ -1157,6 +1157,11 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     return;
   }
+  if (e.key === "p" && (e.metaKey || e.ctrlKey)) {
+    print();
+    e.preventDefault();
+    return;
+  }
   if (e.key === "'" || e.key === "\"") {
     gridOn = !gridOn;
     surface.classList.toggle("grid", gridOn);
@@ -1351,6 +1356,81 @@ function fit(all = true) {
   zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(box.width / w, box.height / h, 1)));
   pan = { x: x0, y: y0 };
   applyView();
+}
+
+// ── Printing ───────────────────────────────────────────────────────────────
+
+/**
+ * The canvas on paper, with nothing on it that only exists to be clicked.
+ *
+ * The app keeps a second renderer for this, and says why: the surface draws for
+ * somebody who is about to do something — grips, guides, a marquee, a selection
+ * outline — and an export has none of that. Reusing the interactive view there
+ * would have meant threading a "pretend nobody is here" flag through every
+ * layer, which is the flag that gets forgotten in one branch and puts a
+ * selection outline in a PDF.
+ *
+ * A page has that separation already: `@media print` is the flag, applied by
+ * the browser to everything at once, and it cannot be forgotten in a branch.
+ * What is *not* duplicated is the part that could drift — where a line runs,
+ * which sides it leaves from, what box a region occupies — because it is the
+ * same drawing, laid out by the same code, with the chrome taken off. There is
+ * no second renderer to disagree with the first.
+ *
+ * At one to one and positioned from the top-left of everything, because an
+ * export is not a screenshot of a viewport, it is the thing itself.
+ */
+let viewBeforePrint = null;
+
+function extent() {
+  const boxes = doc.items.map((i) => ({ x: i.x, y: i.y, w: i.w, h: i.h }));
+  for (const r of doc.regions) {
+    const b = regionBox(r);
+    // A region's name is written above its box and has to be inside the page.
+    if (b) boxes.push({ ...b, y: b.y - REGION_TITLE_H, h: b.h + REGION_TITLE_H });
+  }
+  if (!boxes.length) return null;
+  const x = Math.min(...boxes.map((b) => b.x));
+  const y = Math.min(...boxes.map((b) => b.y));
+  return {
+    x,
+    y,
+    w: Math.max(...boxes.map((b) => b.x + b.w)) - x,
+    h: Math.max(...boxes.map((b) => b.y + b.h)) - y,
+  };
+}
+
+const PRINT_MARGIN = 40;
+
+window.addEventListener("beforeprint", () => {
+  const box = extent();
+  if (!box) return;
+  // Put back afterwards: printing must not be a thing that moves somebody's
+  // view. They were looking at something.
+  viewBeforePrint = { pan: { ...pan }, zoom, selected };
+  selected = null;
+  pan = { x: box.x - PRINT_MARGIN, y: box.y - PRINT_MARGIN };
+  zoom = 1;
+  showSelection();
+  applyView();
+});
+
+window.addEventListener("afterprint", () => {
+  if (!viewBeforePrint) return;
+  ({ pan, zoom, selected } = viewBeforePrint);
+  viewBeforePrint = null;
+  showSelection();
+  applyView();
+});
+
+function print() {
+  // An empty canvas says so rather than producing a blank page somebody has to
+  // open to find out.
+  if (!extent()) {
+    say("nothing on the canvas to print");
+    return;
+  }
+  window.print();
 }
 
 // ── Pictures ───────────────────────────────────────────────────────────────

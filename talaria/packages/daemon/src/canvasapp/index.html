@@ -10,8 +10,8 @@
   and neither is a copy of the other.
 
   Here now: nodes, text, links with draggable bends, regions, pictures, an
-  inspector, a view you can move and scale, snapping, and the Hermes blocks a
-  node can stand for. Still in the app only: printing.
+  inspector, a view you can move and scale, snapping, the Hermes blocks a node
+  can stand for, and printing.
 
   Deliberately no build step and no framework. The daemon runs from source with
   tsx; a page that needs bundling would be the first thing here that cannot be
@@ -158,6 +158,25 @@
     background: rgba(0,0,0,.06); font-variant-numeric: tabular-nums;
   }
   @media (prefers-color-scheme: dark) { #status { background: rgba(255,255,255,.1); } }
+
+  /* On paper: the drawing and nothing that was only there to be clicked.
+     One rule applied by the browser to everything at once, rather than a flag
+     threaded through each layer — which is the flag that gets forgotten in one
+     branch and puts a selection outline in a PDF. */
+  @media print {
+    @page { margin: 0; }
+    html, body { background: #fff; color: #000; height: auto; overflow: visible; }
+    #surface { overflow: visible; background: none; }
+    #inspector, #status, #hint, #handle, #marquee { display: none !important; }
+    #edges .grip, #edges .hit, #edges .guide { display: none; }
+    /* Nothing is picked while printing — but belt and braces, because a
+       selection outline in an export is the exact failure this is here to
+       prevent. */
+    .node.selected, .node.target, .region.selected,
+    .node[contenteditable="plaintext-only"] { outline: none !important; }
+    /* An untitled group is untitled on paper, not the word "untitled". */
+    .region-title:empty::before { content: ""; }
+  }
 </style>
 <div id="surface"><div id="world"><svg id="edges"></svg></div><div id="handle" hidden></div><div id="marquee" hidden></div></div>
 <div id="inspector" hidden>
@@ -195,5 +214,5 @@
   <div data-for="vAlign" class="row" id="i-vAlign"></div>
 </div>
 <div id="status">loading…</div>
-<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · paste or drop a picture · ⌘0 life size · ⌘1 fit · ' grid · ⌫ to remove</div>
+<div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · paste or drop a picture · ⌘0 life size · ⌘1 fit · ' grid · ⌘P print · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

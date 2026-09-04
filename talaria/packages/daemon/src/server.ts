@@ -16,7 +16,8 @@ import {
   type InterchangeObject,
   type InterchangeType,
 } from "@talaria/canonical";
-import type { Config } from "./config.js";
+import { HOME, type Config } from "./config.js";
+import { readCanvas, writeCanvas, type CanvasDocument } from "./canvas.js";
 import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, workspaces } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
@@ -72,6 +73,16 @@ function orderOf(row: { order?: Order }): Order {
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
+
+/**
+ * Where the canvas web app lives, beside the compiled daemon.
+ *
+ * Not under `HOME`: this is program, not data. A user's Application Support
+ * folder is theirs, and putting code somebody can edit into the same directory
+ * as their canvas is how the two get backed up, synced and restored as one
+ * thing when they are not one thing.
+ */
+const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "canvasapp");
 
 export function buildServer(deps: {
   config: Config;
@@ -1491,6 +1502,94 @@ export function buildServer(deps: {
     } catch (err) {
       return reply.code(502).send({ error: (err as Error).message });
     }
+  });
+
+  /**
+   * The canvas, and the page that draws it.
+   *
+   * The renderer is moving out of Swift and into a web view, for two reasons
+   * that are true before Linux is mentioned: the document model already lives
+   * here — `canvas.ts` owns it, and Canvas Chat has only ever spoken through it
+   * — while the drawing lives in six thousand lines of AppKit that no other
+   * platform can run, and that arrangement is why `SHAPES` fell a shape behind
+   * without anybody noticing.
+   *
+   * Served over the same Unix socket as everything else. A web view cannot
+   * open one, so the app proxies a custom URL scheme into it — no TCP port
+   * opened, nothing else on the machine able to reach this, and no CORS to
+   * reason about. The alternative, a localhost listener, would have made every
+   * process on the machine a client.
+   */
+  app.get("/canvas/document", async () => envelope(readCanvas()));
+
+  app.put("/canvas/document", async (req, reply) => {
+    // Whole-document writes, deliberately. One file, one machine, one person:
+    // every distributed-document problem this project has met came from a
+    // canvas that was two documents, and a patch protocol would be the first
+    // step back towards that.
+    const doc = z
+      .object({
+        items: z.array(z.record(z.unknown())).default([]),
+        links: z.array(z.record(z.unknown())).default([]),
+        regions: z.array(z.record(z.unknown())).default([]),
+      })
+      .parse(req.body);
+    writeCanvas(doc as unknown as CanvasDocument);
+    return reply.send({ ok: true });
+  });
+
+  /**
+   * A picture on the canvas.
+   *
+   * Files rather than data URLs: a canvas with a dozen photographs in it would
+   * otherwise be a `canvas.json` nobody can open, and the app has always kept
+   * them beside it in `canvas-images/`.
+   *
+   * The name is checked rather than trusted. It arrives from a document that is
+   * edited by hand and by a language model, and `../../.ssh/id_rsa` is a file
+   * name until somebody says otherwise.
+   */
+  app.get("/canvas/image/:name", async (req, reply) => {
+    const { name } = z.object({ name: z.string().min(1).max(200) }).parse(req.params);
+    if (!/^[A-Za-z0-9._-]+$/.test(name) || name.startsWith(".")) {
+      return reply.code(400).send({ error: "bad image name" });
+    }
+    const file = join(HOME, "canvas-images", name);
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(file);
+    } catch {
+      return reply.code(404).send({ error: "no such image" });
+    }
+    const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+    const mime =
+      { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", heic: "image/heic", tiff: "image/tiff" }[ext] ??
+      "application/octet-stream";
+    return reply.type(mime).send(bytes);
+  });
+
+  /**
+   * The page itself.
+   *
+   * Read from disk on every request rather than held in memory: this is one
+   * person's machine, the file is small, and being able to edit it and reload
+   * is worth more here than a cache that would need invalidating.
+   */
+  app.get("/canvas/app/*", async (req, reply) => {
+    const rel = (req.params as Record<string, string>)["*"] || "index.html";
+    if (rel.includes("..")) return reply.code(400).send({ error: "bad path" });
+    const file = join(APP_DIR, rel);
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(file);
+    } catch {
+      return reply.code(404).send({ error: `no such asset: ${rel}` });
+    }
+    const ext = rel.slice(rel.lastIndexOf(".") + 1).toLowerCase();
+    const mime =
+      { html: "text/html; charset=utf-8", js: "text/javascript; charset=utf-8", css: "text/css; charset=utf-8", json: "application/json", svg: "image/svg+xml" }[ext] ??
+      "application/octet-stream";
+    return reply.type(mime).send(bytes);
   });
 
   app.get("/types", async () =>

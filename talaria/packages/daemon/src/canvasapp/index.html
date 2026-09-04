@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Canvas</title>
+<!--
+  The canvas, drawn in a web view.
+
+  Stage two of moving the renderer out of Swift: this page exists to prove the
+  road, not to be the destination. It loads over a custom URL scheme the app
+  proxies into the daemon's Unix socket, fetches the real document, and draws
+  what it finds. Everything the AppKit surface does — editing, dragging,
+  snapping, regions, bends, the inspector — comes after, on top of a transport
+  that is already known to work.
+
+  Deliberately no build step and no framework. The daemon runs from source with
+  tsx; a page that needs bundling would be the first thing here that cannot be
+  edited and reloaded.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 12px -apple-system, system-ui, sans-serif; }
+  body { background: #f2f2f4; }
+  @media (prefers-color-scheme: dark) { body { background: #1c1c1e; color: #eee; } }
+  #surface { position: relative; width: 100%; height: 100%; }
+  #edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .node {
+    position: absolute; box-sizing: border-box; display: flex; padding: 6px;
+    white-space: pre-wrap; overflow: hidden; border-radius: 2px;
+  }
+  .node img { width: 100%; height: 100%; object-fit: contain; }
+  #status {
+    position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 8px;
+    background: rgba(0,0,0,.06); font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-color-scheme: dark) { #status { background: rgba(255,255,255,.1); } }
+</style>
+<div id="surface"><svg id="edges"></svg></div>
+<div id="status">loading…</div>
+<script type="module" src="./canvas.js"></script>

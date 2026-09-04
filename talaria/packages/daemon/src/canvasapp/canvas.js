@@ -22,7 +22,27 @@ const CLIP = {
   triangle: "polygon(50% 0%, 100% 100%, 0% 100%)",
   postIt: "polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%)",
 };
+
+/**
+ * What a shape looks like before anybody says otherwise.
+ *
+ * A post-it is paper: a colour and no line round the edge. Every other shape
+ * here *is* an outline, which is why one default weight for all of them turns a
+ * sticky into a line drawing of one. Mirrors `shapeDefaults` in the daemon and
+ * `defaultFill`/`defaultStrokeWidth` in the app — three copies of one fact, and
+ * the reason the whole renderer is moving to where the model already lives.
+ */
+const SHAPE_DEFAULTS = (shape) =>
+  shape === "postIt" ? { fill: "#fdf3b6", strokeWidth: 0 } : { fill: null, strokeWidth: 1.5 };
 const DEFAULT_FILL = { postIt: "#fdf3b6" };
+
+/**
+ * The dash pattern, scaled to the weight, so a dashed hairline and a dashed
+ * thick line read as the same idea rather than two different ones. The app's
+ * own arithmetic.
+ */
+const dashFor = (style, w) =>
+  style === "dashed" ? `${Math.max(w * 2.5, 3)} ${Math.max(w * 2, 2.5)}` : "";
 const NEW_SIZE = { w: 140, h: 70 };
 
 /** The document exactly as the daemon gave it, keys this page never reads and all. */
@@ -49,6 +69,7 @@ const nodes = new Map(); // item id → element
 const regionEls = new Map(); // region id → element
 const handleEl = document.getElementById("handle");
 const marqueeEl = document.getElementById("marquee");
+const inspectorEl = document.getElementById("inspector");
 
 const at = (i) => ({ x: i.x - pan.x, y: i.y - pan.y });
 const centre = (i) => ({ x: i.x - pan.x + i.w / 2, y: i.y - pan.y + i.h / 2 });
@@ -250,9 +271,18 @@ function drawLinks() {
       stroke: on ? "#5fa4b5" : color,
       "stroke-width": on ? Math.max(width, 2) : width,
     });
-    if (link.style === "dashed") line.setAttribute("stroke-dasharray", "6 4");
-    if (link.style === "dotted") line.setAttribute("stroke-dasharray", "1 4");
+    const dash = dashFor(link.style, width);
+    if (dash) line.setAttribute("stroke-dasharray", dash);
     edges.append(line);
+    // A double line is two lines: the app draws a second, tighter copy rather
+    // than one thick stroke with a gap down the middle, and a canvas that
+    // disagreed about that would look wrong in whichever renderer it was not
+    // drawn in.
+    if (link.style === "double") {
+      edges.append(
+        svg("path", { d, fill: "none", stroke: on ? "#5fa4b5" : color, "stroke-width": Math.max(width / 3, 0.5) }),
+      );
+    }
 
     // The arrowhead, pointing the way the curve arrives.
     const dx = 2 * (g.end.x - g.control.x);
@@ -390,6 +420,7 @@ function showSelection() {
   // shapes is less code than keeping three of them in step.
   drawLinks();
   showHandle();
+  showInspector();
 }
 
 /**
@@ -539,6 +570,100 @@ function removeLink(id) {
   showSelection();
   save();
   summarize();
+}
+
+// ── The inspector ──────────────────────────────────────────────────────────
+
+/**
+ * What is picked, as things whose style can be changed.
+ *
+ * One list, whatever kind is selected, so every control below is written once
+ * and applies to one node or to nine without knowing which.
+ */
+function picked() {
+  if (!selected) return [];
+  if (selected.kind === "items") return pickedItems().map(find).filter(Boolean);
+  if (selected.kind === "link") return doc.links.filter((l) => l.id === selected.id);
+  if (selected.kind === "region") return doc.regions.filter((r) => r.id === selected.id);
+  return [];
+}
+
+/** Which controls make sense for what is picked. A line has no shape. */
+const FIELDS = {
+  items: ["shape", "fill", "textColor", "stroke", "strokeWidth", "strokeStyle", "hAlign", "vAlign"],
+  link: ["stroke", "strokeWidth", "strokeStyle"],
+  region: ["fill", "textColor", "stroke", "strokeWidth", "strokeStyle", "hAlign"],
+};
+
+const ALIGNS = {
+  hAlign: [["leading", "◧"], ["center", "▣"], ["trailing", "◨"]],
+  vAlign: [["top", "⌃"], ["middle", "•"], ["bottom", "⌄"]],
+};
+
+/** A line's colour and weight live under different names than a box's. */
+const nameFor = (kind, field) =>
+  kind === "link" ? { stroke: "color", strokeWidth: "width", strokeStyle: "style" }[field] : field;
+
+function apply(field, value) {
+  const kind = selected.kind;
+  for (const thing of picked()) {
+    const key = nameFor(kind, field);
+    if (field === "shape") {
+      // Changing shape carries the new shape's defaults, but only over values
+      // nobody has chosen — the app's own rule. A fill somebody picked is a
+      // decision and survives becoming a post-it.
+      const was = SHAPE_DEFAULTS(thing.shape);
+      const now = SHAPE_DEFAULTS(value);
+      if ((thing.fill ?? null) === was.fill) thing.fill = now.fill;
+      if ((thing.strokeWidth ?? 1.5) === was.strokeWidth) thing.strokeWidth = now.strokeWidth;
+    }
+    thing[key] = value;
+  }
+  draw();
+  save();
+}
+
+function showInspector() {
+  const kind = selected?.kind;
+  const things = picked();
+  if (!kind || !things.length) {
+    inspectorEl.hidden = true;
+    return;
+  }
+  inspectorEl.hidden = false;
+  document.getElementById("i-what").textContent =
+    kind === "link" ? "Line" : kind === "region" ? "Group" : count(things.length, "node");
+
+  const shown = FIELDS[kind] ?? [];
+  for (const el of inspectorEl.querySelectorAll("[data-for]")) {
+    el.hidden = !shown.includes(el.dataset.for);
+  }
+  // The first of what is picked fills the controls. With several selected they
+  // will not all agree; showing one of them and changing all of them is what
+  // every inspector does, and pretending otherwise needs a mixed state nobody
+  // asked for.
+  const first = things[0];
+  for (const field of ["shape", "fill", "textColor", "stroke", "strokeWidth", "strokeStyle"]) {
+    const input = document.getElementById(`i-${field}`);
+    if (!input) continue;
+    const v = first[nameFor(kind, field)];
+    if (input.type === "color") input.value = typeof v === "string" ? v : "#888888";
+    else if (input.type === "number") input.value = v ?? 1.5;
+    else input.value = v ?? (field === "shape" ? "plain" : "solid");
+  }
+  for (const [field, options] of Object.entries(ALIGNS)) {
+    const row = document.getElementById(`i-${field}`);
+    if (!row) continue;
+    row.innerHTML = "";
+    for (const [value, glyph] of options) {
+      const b = document.createElement("button");
+      b.textContent = glyph;
+      b.title = value;
+      if ((first[field] ?? (field === "hAlign" ? "center" : "middle")) === value) b.classList.add("on");
+      b.addEventListener("click", () => apply(field, value));
+      row.append(b);
+    }
+  }
 }
 
 // ── Regions ────────────────────────────────────────────────────────────────
@@ -871,6 +996,26 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
   }
 });
+
+// ── Inspector wiring ───────────────────────────────────────────────────────
+
+for (const field of ["shape", "fill", "textColor", "stroke", "strokeStyle"]) {
+  document.getElementById(`i-${field}`)?.addEventListener("change", (e) => apply(field, e.target.value));
+}
+// Weight on `input` rather than `change`: dragging a number up is a thing you
+// watch happen, and waiting for the field to be left to see it is not that.
+document.getElementById("i-strokeWidth")?.addEventListener("input", (e) => {
+  const n = Number(e.target.value);
+  if (Number.isFinite(n)) apply("strokeWidth", n);
+});
+for (const b of inspectorEl.querySelectorAll("[data-clear]")) {
+  // Null, not a colour. A colour input always has one, so "none" needs its own
+  // control — and a fill of none is how everything but a sticky starts.
+  b.addEventListener("click", () => apply(b.dataset.clear, null));
+}
+// The panel is over the canvas, and a press on the canvas clears the selection.
+// Without this, reaching for a control would deselect the thing it changes.
+inspectorEl.addEventListener("pointerdown", (e) => e.stopPropagation());
 
 // ── Reading ────────────────────────────────────────────────────────────────
 

@@ -39,6 +39,37 @@
   }
   .region-title:empty::before { content: "untitled"; opacity: .45; }
 
+  /* The inspector. In a corner rather than beside the selection: anchored to
+     what is picked it would sit over the next thing along about half the time,
+     and a panel you have to move things away from is worse than one that is
+     always in the same place. */
+  #inspector {
+    position: absolute; top: 10px; right: 10px; width: 208px; z-index: 5;
+    padding: 10px; border-radius: 11px; background: rgba(255,255,255,.92);
+    box-shadow: 0 2px 12px rgba(0,0,0,.14); backdrop-filter: blur(8px);
+    display: grid; gap: 7px;
+  }
+  @media (prefers-color-scheme: dark) {
+    #inspector { background: rgba(44,44,46,.92); box-shadow: 0 2px 12px rgba(0,0,0,.5); }
+  }
+  #inspector[hidden] { display: none; }
+  #inspector .what { font-weight: 600; opacity: .6; text-transform: uppercase; letter-spacing: .04em; font-size: 10px; }
+  #inspector label { display: grid; grid-template-columns: 62px 1fr auto; gap: 6px; align-items: center; }
+  #inspector select, #inspector input[type="number"] { width: 100%; }
+  #inspector input[type="color"] { width: 100%; height: 20px; padding: 0; border: none; background: none; }
+  /* Clearing a colour is a thing a colour input cannot say — it always has one.
+     The cross is how "none" gets expressed. */
+  #inspector .clear {
+    border: none; background: none; cursor: pointer; opacity: .5; font-size: 13px; line-height: 1;
+  }
+  #inspector .clear:hover { opacity: 1; }
+  #inspector .row { display: flex; gap: 4px; }
+  #inspector .row button {
+    flex: 1; padding: 3px 0; border-radius: 6px; border: 1px solid rgba(128,128,128,.35);
+    background: transparent; cursor: pointer; color: inherit;
+  }
+  #inspector .row button.on { background: #5fa4b5; border-color: #5fa4b5; color: #fff; }
+
   /* The rectangle drawn while picking several things at once. */
   #marquee {
     position: absolute; border: 1px solid #5fa4b5;
@@ -84,6 +115,40 @@
   @media (prefers-color-scheme: dark) { #status { background: rgba(255,255,255,.1); } }
 </style>
 <div id="surface"><svg id="edges"></svg><div id="handle" hidden></div><div id="marquee" hidden></div></div>
+<div id="inspector" hidden>
+  <div class="what" id="i-what"></div>
+  <label data-for="shape">Shape
+    <select id="i-shape">
+      <option value="plain">Label</option>
+      <option value="rectangle">Rectangle</option>
+      <option value="roundedRectangle">Rounded</option>
+      <option value="ellipse">Ellipse</option>
+      <option value="triangle">Triangle</option>
+      <option value="postIt">Post-it</option>
+    </select><span></span>
+  </label>
+  <label data-for="fill">Fill
+    <input type="color" id="i-fill"><button class="clear" data-clear="fill" title="No fill">✕</button>
+  </label>
+  <label data-for="textColor">Text
+    <input type="color" id="i-textColor"><button class="clear" data-clear="textColor" title="Default">✕</button>
+  </label>
+  <label data-for="stroke">Line
+    <input type="color" id="i-stroke"><button class="clear" data-clear="stroke" title="Default">✕</button>
+  </label>
+  <label data-for="strokeWidth">Weight
+    <input type="number" id="i-strokeWidth" min="0" max="20" step="0.5"><span></span>
+  </label>
+  <label data-for="strokeStyle">Style
+    <select id="i-strokeStyle">
+      <option value="solid">Solid</option>
+      <option value="dashed">Dashed</option>
+      <option value="double">Double</option>
+    </select><span></span>
+  </label>
+  <div data-for="hAlign" class="row" id="i-hAlign"></div>
+  <div data-for="vAlign" class="row" id="i-vAlign"></div>
+</div>
 <div id="status">loading…</div>
 <div id="hint">double-click to add · drag the ring to join · drag a box round several, then G to group · ⌫ to remove</div>
 <script type="module" src="./canvas.js"></script>

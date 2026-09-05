@@ -1,0 +1,1597 @@
+/*
+ * The canvas, styled — forked from `apps/web/src/styles.css`.
+ *
+ * The component is Hermes' and so are its class names, so its rules come with
+ * it: extracting them is the only way a fork of the markup looks like the thing
+ * it was forked from.
+ *
+ * **Taken by selector, whole.** A first pass kept only the rules whose classes
+ * appeared as string literals in the built bundle, which sounded careful and
+ * dropped seventy of them — every class the component builds by concatenation,
+ * including the one that positions a node. Nodes stacked in the corner and the
+ * canvas looked like a bug in the geometry rather than a missing rule. Anything
+ * named `cv-` comes across now, and the few neighbors these rules lean on.
+ *
+ * The `:root` blocks come too. They are Hermes' palette and spacing tokens and
+ * every rule below is written against them; the rules without the tokens are a
+ * canvas drawn in the browser's defaults.
+ *
+ * **This is a starting point, not the target.** The target is the Mac's canvas —
+ * `talaria/app/Sources/CanvasStyle.swift` and its neighbors — which is itself a
+ * port of this one, so the two are close and the differences are the work.
+ */
+
+:root[data-theme="dark"] .nav-row .nav-link.active {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .tag-chip {
+  background: rgba(111, 179, 196, 0.18);
+  color: var(--text);
+}
+
+:root[data-theme="dark"] .seg {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .card-collapse:hover {
+  background: rgba(20, 22, 24, 0.9);
+}
+
+.graph-zoom .icon-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-control);
+  line-height: 1;
+  font-size: 15px;
+}
+
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+/* ── Typed block card ─────────────────────────────────────────── */
+.typed-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+input.typed-title {
+  flex: 1;
+  height: auto;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 2px 0;
+}
+
+input.typed-title:focus {
+  box-shadow: none;
+  background: transparent;
+}
+
+/* Node titles read much smaller on the canvas than in a full card, and the
+   status icon aligns to the top of the (possibly wrapping) title. */
+.cv-node input.typed-title {
+  font-size: 11px;
+}
+
+.cv-node .typed-head {
+  align-items: flex-start;
+}
+
+.typed-fields {
+  display: grid;
+  /* auto-fit collapses empty tracks, so a lone field fills the whole width. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
+  padding: 8px 0 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+
+.typed-field {
+  margin-bottom: 4px;
+  /* Grid items refuse to go narrower than their content unless told. Without
+     this, one field that wants more room than the panel has widens the whole
+     card, and everything else goes off the right-hand edge with it. */
+  min-width: 0;
+}
+
+.typed-field > * {
+  max-width: 100%;
+}
+
+/* Text/url fields take the full row rather than tiling. */
+.typed-field.full {
+  grid-column: 1 / -1;
+}
+
+/* ── Markdown text block ──────────────────────────────────────── */
+.md-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  min-height: 24px;
+  padding: 0;
+}
+
+.note-editor {
+  font-family: var(--font-body);
+  line-height: 1.55;
+  min-height: 24px;
+  cursor: text;
+  outline: none;
+  /* No inset here: the gutter belongs to the lists that need it (below), so
+     paragraphs and headings stay flush with the note's left edge. */
+}
+
+.note-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Task list checkboxes (- [ ] in live preview) */
+/* Padding is left to the shared list rule below, so a checklist has the same
+   gutter (fold twisty + drag grip) and the same indent per level as any other
+   list; only the marker differs. */
+.note-editor ul[data-type="taskList"] {
+  list-style: none;
+  margin-top: 0;
+  margin-bottom: 0.55em;
+  /* Padding deliberately left to the shared list rule: a checklist indents exactly
+     like a bulleted or numbered list, its checkbox simply being a wider marker. */
+}
+
+.note-editor li ul[data-type="taskList"] {
+  margin-top: 0.15em;
+  margin-bottom: 0;
+}
+
+/* The checkbox is positioned out of flow rather than laid out with flex: a flex
+   container breaks the browser's native text selection across its children, so
+   flex rows couldn't be drag-selected the way bullet/ordered rows can. Keeping
+   the row as ordinary block content makes multi-row selection behave like every
+   other list. */
+.note-editor ul[data-type="taskList"] li {
+  position: relative;
+}
+
+.note-editor ul[data-type="taskList"] li > label {
+  /* The checkbox hangs in the list's padding, exactly like a bullet or number —
+     NOT inside the row. Indenting the row to make space for it would charge that
+     space again at every nesting level, which is what made checklists creep right
+     faster than other lists.
+
+     `right: 100%` parks it just left of the text whatever the checkbox's actual
+     width is, and the margin is the gap — pinning it with `left` instead left the
+     box touching the label. Top-aligned so it stays on the first line when the
+     text wraps. */
+  position: absolute;
+  right: 100%;
+  margin-right: 4px;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 1.55em;
+  user-select: none;
+}
+
+/* Sized so the checkbox and its gap fit the same marker column a bullet or number
+   uses — the column's width is what sets every list's indent. */
+.note-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+@media (pointer: coarse) {
+  .note-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.note-editor ul[data-type="taskList"] li > div {
+  min-width: 0;
+}
+
+.note-editor ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+
+.note-editor > *:first-child {
+  margin-top: 0;
+}
+
+.note-editor > *:last-child {
+  margin-bottom: 0;
+}
+
+.note-editor h1,
+.note-editor h2,
+.note-editor h3,
+.note-editor h4,
+.note-editor h5,
+.note-editor h6 {
+  font-family: var(--font-chrome);
+  line-height: 1.25;
+  margin: 0.7em 0 0.35em;
+  color: var(--accent-ink);
+}
+
+.note-editor h1 { font-size: 1.5em; }
+
+.note-editor h2 { font-size: 1.3em; }
+
+.note-editor h3 { font-size: 1.15em; }
+
+.note-editor h4 { font-size: 1.05em; }
+
+.note-editor p { margin: 0 0 0.55em; }
+
+/* One tight indent per level — enough for the row's own marker (bullet, number or
+   checkbox) and nothing more. A nested row's controls hang left into an ancestor's
+   indent, so they cost nothing per level. */
+/* NOTE: these paddings are mirrored by METRICS in lib/list-tools.ts, which offsets
+   each row's controls into the shared gutter column. Change them together. */
+.note-editor ul,
+.note-editor ol { margin-top: 0; margin-bottom: 0.55em; padding-left: 20px; }
+
+/* Only a TOP-LEVEL list reserves the control gutter — deeper rows put their
+   controls in that same column rather than indenting for their own. Kept on the
+   list rather than the editor so paragraphs and headings aren't pushed over. */
+.note-editor > ul,
+.note-editor > ol { padding-left: 48px; }
+
+.note-editor li { position: relative; margin: 0.15em 0; }
+
+/* Both sit left of the WIDEST marker — an ordered list's "10." at -1.8em — so one
+   set of offsets clears bullets, numbers and checkboxes without overlapping any. */
+/* Outline indentation: a heading and its section shift right one step per level.
+   Each step also publishes --outline-indent, which inherits into the section's
+   content so a list inside it can subtract the shift and keep its controls and row
+   banding aligned to the note's left edge rather than the section's. */
+.note-editor {
+  /* In px, NOT em: this value is both applied as a margin and subtracted again by
+     the list gutter, and `em` in a custom property resolves against whichever
+     element reads it — 21px on a paragraph, 18px on a 12px control — so the two
+     wouldn't cancel and the gutter drifted. */
+  --hi-step: 22px;
+}
+
+.note-editor .hi-1 { margin-left: var(--hi-step); --outline-indent: var(--hi-step); }
+
+.note-editor .hi-2 { margin-left: calc(var(--hi-step) * 2); --outline-indent: calc(var(--hi-step) * 2); }
+
+.note-editor .hi-3 { margin-left: calc(var(--hi-step) * 3); --outline-indent: calc(var(--hi-step) * 3); }
+
+.note-editor .hi-4 { margin-left: calc(var(--hi-step) * 4); --outline-indent: calc(var(--hi-step) * 4); }
+
+.note-editor .hi-5 { margin-left: calc(var(--hi-step) * 5); --outline-indent: calc(var(--hi-step) * 5); }
+
+.note-editor .hi-6 { margin-left: calc(var(--hi-step) * 6); --outline-indent: calc(var(--hi-step) * 6); }
+
+/* Each row is tagged with its nesting level (li-lvl-N) by the plugin; the indent
+   that level implies is declared here once, and both the control offsets and the
+   banding reach are derived from it. Keeping this in CSS rather than writing
+   pixel values onto the elements matters: those writes land inside the
+   contenteditable, and ProseMirror reads attribute changes there as foreign edits
+   and re-syncs, which collapses a drag-selection in progress. */
+.note-editor li.li-lvl-1 { --row-indent: 48px; }
+
+.note-editor li.li-lvl-2 { --row-indent: 68px; }
+
+.note-editor li.li-lvl-3 { --row-indent: 88px; }
+
+.note-editor li.li-lvl-4 { --row-indent: 108px; }
+
+.note-editor li.li-lvl-5 { --row-indent: 128px; }
+
+.note-editor li.li-lvl-6 { --row-indent: 148px; }
+
+.note-editor li.li-lvl-7 { --row-indent: 168px; }
+
+.note-editor li.li-lvl-8 { --row-indent: 188px; }
+
+/* The row picked up by its grip — shows exactly what a drag will move, including
+   anything nested inside it. (.li-dragging is the touch path, which marks the row
+   with a class instead of selecting it, to keep the keyboard down.) */
+.note-editor li.li-dragging { opacity: 0.75; }
+
+.note-editor li.li-dragging,
+.note-editor li.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.note-editor a { color: var(--accent); }
+
+.note-editor code {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.note-editor pre {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+.note-editor pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+/* Active-line raw source (Obsidian-style): the block under the cursor shows its
+   editable markdown. Styled to blend into the body, not look like a code block. */
+.note-editor pre.source-line {
+  background: var(--surface-1);
+  border: none;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
+  padding: 0 0 0 10px;
+  /* Longhand, so an outline indent (.hi-N) on this line isn't canceled — the raw
+     line would otherwise jump to the margin the moment the caret entered it. */
+  margin-top: 0;
+  margin-bottom: 0.55em;
+  overflow-x: visible;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: var(--text-muted);
+}
+
+.note-editor pre.source-line code {
+  font-family: inherit;
+  font-size: inherit;
+  white-space: inherit;
+}
+
+.note-editor blockquote {
+  margin: 0 0 0.55em;
+  padding-left: 12px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+.note-editor hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+.panel-editor .typed-fields,
+.cv-node .typed-fields {
+  grid-template-columns: 1fr;
+}
+
+.cv-node input,
+.cv-node select,
+.cv-node textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dtp-quick .ghost {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+
+.dtp-spin .icon-btn {
+  height: 18px;
+  width: 34px;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.info-nav .icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── Long-text field (paragraph markdown editor) ──────────────── */
+.longtext {
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-2);
+  padding: 8px 11px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.longtext:focus-within {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(95, 164, 181, 0.15);
+}
+
+.longtext .note-editor {
+  min-height: 56px;
+}
+
+.longtext .md-input {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-height: 56px;
+  border-radius: 0;
+}
+
+.longtext .md-input:focus {
+  box-shadow: none;
+}
+
+.longtext-toggle {
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* Links inside the markdown editor. */
+.note-editor a {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Variant: the typed-card title (mirrors input.typed-title). */
+.mention-input.typed-title {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 2px 0;
+}
+
+.info-actions .icon-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.info-actions .icon-btn:hover {
+  background: transparent;
+  color: var(--accent-ink);
+}
+
+.tv-truncate .tv-cell .longtext {
+  max-height: 40px;
+  overflow: hidden;
+}
+
+/* ── Infinite canvas collection ────────────────────────────────── */
+/* Nothing on a canvas is draggable in the browser's own sense — every drag
+   here is ours. Saying so matters in a webview (an Electron/Nativefier wrapper,
+   say), which starts a native drag more readily than a browser does and takes
+   the pointer stream with it when it does: the line being drawn then goes dead
+   mid-gesture with nothing to show for it. */
+.cv-wrap,
+.cv-wrap * {
+  -webkit-user-drag: none;
+}
+
+.cv-wrap {
+  position: relative;
+  height: calc(100vh - 230px);
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  /* The grid moves and scales with the view (--cv-x/y/z, set by the canvas), so
+     the dots read as the surface the cards sit on rather than as a screen the
+     cards slide over. The dot itself stays a pixel at any zoom — spacing is what
+     carries the scale; a dot that grew with it would turn to blobs. */
+  background:
+    radial-gradient(circle, var(--border) 1px, transparent 1px) var(--cv-x, 0px) var(--cv-y, 0px) /
+      calc(26px * var(--cv-z, 1)) calc(26px * var(--cv-z, 1)),
+    var(--surface-2);
+  touch-action: none;
+  cursor: grab;
+}
+
+/* Grid off: the same surface, without the paper. */
+.cv-wrap.no-grid {
+  background: var(--surface-2);
+}
+
+.cv-grid-toggle.on {
+  color: var(--accent);
+}
+
+.cv-wrap:active {
+  cursor: grabbing;
+}
+
+.cv-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.cv-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.cv-edge {
+  fill: none;
+  pointer-events: none;
+}
+
+/* Derived "existing connection" overlay arrows — non-interactive, slightly soft. */
+.cv-edge-link {
+  opacity: 0.8;
+}
+
+.cv-showlinks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.cv-showlinks input {
+  width: auto;
+}
+
+.cv-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.cv-edge-label {
+  font-size: 11px;
+  fill: var(--text-muted);
+  paint-order: stroke;
+  stroke: var(--surface-2);
+  stroke-width: 4px;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* The measure between two cards, while one of them is being moved: a bar
+   across the gap with its width on it. Shown only when the gap has been made
+   equal to another, which is the moment the number is worth reading. */
+.cv-space {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger);
+}
+
+.cv-space-h {
+  height: 0;
+  border-top: 1px dashed currentColor;
+}
+
+.cv-space-v {
+  width: 0;
+  border-left: 1px dashed currentColor;
+}
+
+/* End caps, so a gap reads as a measured span rather than a stray line. */
+.cv-space::before,
+.cv-space::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+}
+
+.cv-space-h::before,
+.cv-space-h::after {
+  width: 1px;
+  height: 7px;
+  top: -3px;
+}
+
+.cv-space-h::before {
+  left: 0;
+}
+
+.cv-space-h::after {
+  right: 0;
+}
+
+.cv-space-v::before,
+.cv-space-v::after {
+  height: 1px;
+  width: 7px;
+  left: -3px;
+}
+
+.cv-space-v::before {
+  top: 0;
+}
+
+.cv-space-v::after {
+  bottom: 0;
+}
+
+.cv-space-label {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Alignment guides, shown only while something is being moved or resized. In
+   the canvas layer, so they sit in canvas coordinates like everything else; a
+   hairline that stays hairline-thin whatever the zoom would need to be drawn
+   outside it, and at this size the difference isn't worth the complication. */
+.cv-guide {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.cv-guide-v {
+  width: 1px;
+}
+
+.cv-guide-h {
+  height: 1px;
+}
+
+.cv-node {
+  position: absolute;
+  border: 1px solid var(--border-strong);
+  border-radius: 15px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  cursor: default;
+}
+
+.cv-grab {
+  user-select: none;
+  flex: none;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: grab;
+  border-radius: 10px 10px 0 0;
+}
+
+.cv-grab:active {
+  cursor: grabbing;
+}
+
+.cv-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 6px 6px;
+  /* Reaching the end of a note ends the scroll — it doesn't hand the rest of
+     the gesture to whatever is behind it. */
+  overscroll-behavior: contain;
+}
+
+.cv-body .md-input,
+.cv-body .longtext {
+  overscroll-behavior: contain;
+}
+
+/* Canvas is placement-only: no block deletion from a node (info panel owns
+   that), and the created/edited footer is noise at node scale. */
+.cv-node .block-meta {
+  display: none;
+}
+
+/* Editor surfaces inside a node inherit the node's shade. */
+.cv-node .longtext,
+.cv-node .note-editor,
+.cv-node .md-input {
+  background: transparent;
+}
+
+/* The status control sits bare on the node — no chrome, no tint, any shade. */
+.cv-node .status-btn,
+.cv-node.cv-shaded .status-btn,
+.cv-node .status-btn:hover,
+.cv-node.cv-shaded .status-btn:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+/* A shaded node's color is a light pastel, so force dark text tokens locally
+   (descendants use var(--text)/--text-muted/--accent-ink) — otherwise dark
+   theme's light text is illegible on the light shade. */
+.cv-node.cv-shaded {
+  --text: #26282b;
+  --text-muted: #565b60;
+  --text-faint: #7a7f84;
+  --accent-ink: #3d4247;
+  --border: rgba(0, 0, 0, 0.16);
+  --border-strong: rgba(0, 0, 0, 0.24);
+}
+
+/* Shaded node: interactive surfaces read as a more transparent version of
+   the node's color — translucent white lets the shade through, like matrix
+   region cards. Popups (calendar, menus) opt back out for readability. */
+.cv-node.cv-shaded input,
+.cv-node.cv-shaded select,
+.cv-node.cv-shaded textarea,
+.cv-node.cv-shaded .icon-btn,
+.cv-node.cv-shaded button.ghost,
+.cv-node.cv-shaded .dtp-trigger,
+.cv-node.cv-shaded .mention-input.field-text,
+.cv-node.cv-shaded .ref-chips,
+.cv-node.cv-shaded .ref-chip,
+.cv-node.cv-shaded .tag-chip,
+.cv-node.cv-shaded .seg {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.cv-node.cv-shaded .seg.active {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.cv-node.cv-shaded :is(.dtp-pop, .menu, .mention-menu),
+.cv-node.cv-shaded :is(.dtp-pop, .menu, .mention-menu) :is(input, select, textarea, button, .icon-btn) {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+/* Part of a multi-selection: the node is a thing you're arranging, not a note
+   you're writing in. Its contents stop taking the pointer, so a press anywhere
+   on it grabs the whole group (the grips and handles sit outside .cv-body). */
+.cv-node.cv-group .cv-body {
+  pointer-events: none;
+}
+
+.cv-node.cv-group .cv-paper {
+  cursor: move;
+}
+
+/* An ephemeral note writes on the same markdown surface as a longtext field,
+   but the paper IS the note — so the field's box, its focus ring and its own
+   background all come off, leaving the sticky's color and nothing else.
+   Blocks on the canvas keep their fields looking like fields. */
+.cv-note .longtext,
+.cv-note .longtext:focus-within {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.cv-note .longtext .note-editor,
+.cv-note .longtext .md-input {
+  min-height: 0;
+}
+
+.cv-note .md-editor {
+  font-size: 13px;
+}
+
+/* Ephemeral notes look like what they are: a post-it with a turned corner.
+   Same construction as Brigid's canvas notes, for the same reason: the note is
+   only a frame — it positions things and carries the connect handles and resize
+   grips, which sit outside its box — while the paper inside it is what gets
+   cut. Clipping the note itself would take those with it.
+
+   The shadow is a drop-shadow filter rather than a box-shadow, so it follows
+   the cut corner instead of outlining a rectangle that isn't there. */
+/* A sticky's paper is pale in both themes, so its ink is dark in both. Without
+   this the text is var(--text), which in the dark theme is nearly white and
+   vanishes on the note. A note given a color of its own overrides this
+   inline, with the ink chosen for that color. */
+.cv-note .cv-paper {
+  color: #1f2328;
+}
+
+/* And everything written on the paper inherits it.
+
+   Setting a color on the paper alone was not enough: .md-input names
+   var(--text) explicitly, which beats anything inherited, so in the dark theme
+   the note's text stayed nearly white on pale paper. The editors inside a note
+   take the paper's ink instead — the note is the one place in the app whose
+   background is not the theme's. */
+.cv-note .cv-paper .md-input,
+.cv-note .cv-paper .md-editor,
+.cv-note .cv-paper .note-editor,
+.cv-note .cv-paper .note-editor * {
+  color: inherit;
+}
+
+/* The placeholder too, at a weight that reads as a hint rather than as text —
+   var(--text-faint) is built for the theme's background, not for a sticky. */
+.cv-note .cv-paper .note-editor p.is-editor-empty:first-child::before {
+  color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.cv-note {
+  --fold: 14px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(1px 2px 5px var(--shadow-color));
+}
+
+/* An ephemeral note says so, now that the cut corner no longer can — the cut
+   belongs to the post-it shape, and a note may be any shape.
+
+   On the frame rather than the sheet, and an outline rather than a border. The
+   sheet is what a border style would belong to if nodes ever get one (Talaria
+   has solid/dashed/double already, and the parity work has been running in both
+   directions), so a dashed *border* here would be a signal a user could
+   overwrite by choosing a border. An outline is outside the border box, takes
+   no part in layout, and is not something anybody can set from the menu.
+
+   Offset out, so it reads as a mark around the note rather than as its edge. */
+.cv-node.cv-note {
+  outline: 2px dashed color-mix(in srgb, var(--border-strong) 75%, transparent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+/* Selection overrides it, and is left to: `.cv-node.cv-sel` is the same
+   specificity and comes later, so a selected note wears the solid accent
+   outline every selected thing wears. A rule here to "fix" that would only have
+   made a selected note look unlike every other selected node. */
+.cv-paper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  /* The sheet takes the frame's corner. Without this a border set by hand drew
+     a square inside a rounded node — the border was on the sheet and the radius
+     was on the frame, and they disagreed at every corner. Shapes override it. */
+  border-radius: inherit;
+}
+
+.cv-note .cv-paper {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  /* The turned corner, cut from the sheet rather than drawn on it. */
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--fold)),
+    calc(100% - var(--fold)) 100%,
+    0 100%
+  );
+}
+
+/* The underside of the turned corner. A square, which the clip above cuts into
+   the triangle — so the fold and the cut can't disagree about where they are. */
+.cv-note .cv-paper::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--fold);
+  height: var(--fold);
+  background: linear-gradient(
+    315deg,
+    color-mix(in srgb, var(--postit) 70%, #000) 0%,
+    color-mix(in srgb, var(--postit) 92%, #000) 100%
+  );
+  pointer-events: none;
+}
+
+/* The embedded card sheds its chrome — the node box is the chrome. */
+.cv-node .card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 2px 6px 6px;
+}
+
+.cv-corner {
+  user-select: none;
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  z-index: 3;
+}
+
+.cv-nw { top: -4px; left: -4px; cursor: nwse-resize; }
+
+.cv-ne { top: -4px; right: -4px; cursor: nesw-resize; }
+
+.cv-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+
+.cv-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+.cv-handle {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 4;
+  cursor: crosshair;
+}
+
+.cv-node:hover .cv-handle {
+  opacity: 1;
+}
+
+.cv-h-n { top: -6px; left: calc(50% - 6px); }
+
+.cv-h-s { bottom: -6px; left: calc(50% - 6px); }
+
+.cv-h-w { left: -6px; top: calc(50% - 6px); }
+
+.cv-h-e { right: -6px; top: calc(50% - 6px); }
+
+.cv-toolbar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 4; /* above the canvas layer, below dropdown menus (z 5) */
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-soft);
+}
+
+/* input.* so the global input:not([type]) width/height rules don't win. */
+input.cv-zoom {
+  width: 54px;
+  height: 26px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 12px;
+  padding: 2px;
+}
+
+.cv-tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.cv-toolbar .ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cv-menu {
+  min-width: 190px;
+}
+
+.cv-menu-row {
+  display: flex;
+  gap: 4px;
+  padding: 5px 8px;
+  flex-wrap: wrap;
+}
+
+.cv-menu-row .seg {
+  font-size: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.cv-menu-row .seg.active {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+/* The custom-color swatch: the same square, but it opens the system picker.
+   The input itself is invisible and fills the square, so the click lands on it
+   — a button that then tries to open a color input can't, since the system
+   picker only opens from a real user gesture on the input. */
+.cv-swatch-custom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background:
+    conic-gradient(from 0deg, #e6584d, #f5a623, #3fb950, #22b8cf, #6b7cff, #a970ff, #e6584d);
+  cursor: pointer;
+}
+
+.cv-swatch-custom svg {
+  position: relative;
+  z-index: 1;
+  color: #26282b;
+}
+
+.cv-swatch-custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.cv-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  padding: 0;
+}
+
+.cv-edge-label-input {
+  margin: 6px 8px 2px;
+  width: calc(100% - 16px);
+  font-size: 12px;
+  padding: 5px 8px;
+}
+
+/* Canvas regions, marquee select, node selection */
+.cv-region {
+  position: absolute;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 14px;
+  cursor: grab;
+}
+
+.cv-region:active {
+  cursor: grabbing;
+}
+
+.cv-region-title {
+  padding: 8px 14px;
+  font-family: var(--font-chrome);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.cv-marquee {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: rgba(95, 164, 181, 0.08);
+  pointer-events: none;
+}
+
+.cv-node.cv-sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cv-make-region {
+  position: absolute;
+  z-index: 6;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  box-shadow: var(--shadow-lift);
+}
+
+/* Keep the accent pill on hover — the global button hover washed it out
+   under white text. */
+.cv-make-region:hover {
+  background: var(--accent);
+  color: #fff;
+  filter: brightness(0.92);
+}
+
+/* Canvas toast: brief confirmation, bottom-center. */
+.cv-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 12;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 12.5px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-lift);
+  pointer-events: none;
+  animation: modalFade 0.15s ease;
+}
+
+/* Drag-time region membership boundary (pre-drag outline + grace). */
+.cv-region-limit {
+  position: absolute;
+  border: 2px dashed var(--accent);
+  border-radius: 18px;
+  pointer-events: none;
+  opacity: 0.65;
+}
+
+.cv-region-limit.leaving {
+  border-color: var(--danger);
+}
+
+.cv-region-limit-tag {
+  position: absolute;
+  top: -22px;
+  left: 12px;
+  font-size: 11px;
+  font-family: var(--font-chrome);
+  color: var(--accent-ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.cv-region-limit.leaving .cv-region-limit-tag {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Canvas inline add-search (top left). */
+.cv-add {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  width: 250px;
+}
+
+input.cv-add-input {
+  width: 100%;
+  height: 32px;
+  padding: 4px 11px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.cv-add-list {
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-lift);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.cv-add-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.cv-add-row:hover {
+  background: var(--surface-2);
+}
+
+.cv-add-row svg {
+  flex: none;
+}
+
+.cv-add-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cv-add-go {
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.cal-find .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
+.mobile-bar .icon-btn {
+  flex-shrink: 0;
+}
+
+/* Locked canvas: hide structural affordances (drag grip, resize corners,
+   connect handles). Block bodies stay fully interactive; pan/zoom/select stay. */
+.cv-wrap.locked .cv-grab,
+.cv-wrap.locked .cv-corner,
+.cv-wrap.locked .cv-handle {
+  display: none;
+}
+
+.cv-wrap.locked .cv-node {
+  cursor: default;
+}
+
+.cv-lock.on {
+  color: var(--accent);
+}
+
+.banner-tools .icon-btn {
+  border: none;
+  background: transparent;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+}
+
+.banner-tools .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.typed-head .head-banner-add {
+  margin-left: auto;
+}
+
+.app-shell.mobile .sort-bar .icon-btn {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+}
+
+.app-shell.mobile .sort-bar .ghost,
+.app-shell.mobile .sort-bar .bar-btn {
+  padding: 9px 14px;
+}
+
+:root[data-theme="dark"] mark[data-from]::before {
+  background: rgba(0, 0, 0, 0.28);
+}
+
+:root[data-list-stripes="1"] .li-stripe > pre.source-line::before,
+:root[data-list-stripes="1"] .li-stripe > div > pre.source-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--row-indent, 48px) + var(--outline-indent, 0px));
+  width: 2px;
+  background: var(--accent);
+}
+
+/* The template's caret mark, in live preview. The line keeps its place and
+   loses its glyph: transparent rather than removed, so the height holds, the
+   caret still lands there, and the first keystroke replaces it. Raw view shows
+   the slash, which is right — that's the source. */
+.note-editor .caret-slot {
+  color: transparent;
+}
+
+.note-editor .caret-slot::selection,
+.note-editor .caret-slot *::selection {
+  background: rgba(95, 164, 181, 0.25);
+}
+
+/* A shape swatch is a colour swatch that shows an outline instead of a colour:
+   the menu's other rows already teach that a small square in a row is a thing
+   you press, so the shape row borrows the target size and only changes what is
+   drawn inside it. */
+.cv-swatch.cv-shape-swatch {
+  background: var(--text-muted);
+  border-color: transparent;
+}
+
+.cv-swatch.cv-shape-swatch:hover {
+  background: var(--accent);
+}
+
+/* One geometry each, or they are not choices. A clip path alone left three of
+   these identical, because `.cv-swatch` rounds every corner and a clip cannot
+   unround one. */
+.cv-shape-swatch[data-shape="rounded"] { border-radius: 6px; }
+
+.cv-shape-swatch[data-shape="rectangle"] { border-radius: 0; }
+
+.cv-shape-swatch[data-shape="ellipse"] { border-radius: 50%; }
+
+.cv-shape-swatch[data-shape="triangle"] {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+/* The sticky reads by its cut corner, so the cut has to be big enough to see at
+   twenty pixels — deeper here than on the node itself, where the same
+   proportion would look like a chunk missing. */
+.cv-shape-swatch[data-shape="postIt"] {
+  border-radius: 2px;
+  clip-path: polygon(0 0, 100% 0, 100% 62%, 62% 100%, 0 100%);
+}
+
+/* A shape cuts the sheet, never the frame.
+
+   Clipping the node took the resize corners and the connect handles with it —
+   they sit at and outside its edges — and fought the border radius besides. The
+   ephemeral note has always cut `.cv-paper` instead and left the frame alone,
+   and every shape does that now.
+
+   Specificity does the rest: `.cv-node[data-shape=…] .cv-paper` outranks
+   `.cv-note .cv-paper`, so an ephemeral note explicitly given a circle is a
+   circle, and one left alone keeps the post-it it has always been. */
+.cv-node.cv-shaped .cv-paper {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--cv-fill, var(--surface));
+}
+
+/* The square is the one shape whose sheet is not clipped, so it wears a real
+   border and gets every style for free. The clipped ones are outlined by the
+   drawn path instead — an inset ring here would have followed the rectangle the
+   clip cut from, not the shape, showing as arcs that stop where the clip does. */
+.cv-node[data-shape="rectangle"] .cv-paper {
+  border: 1px solid var(--border-strong);
+  box-sizing: border-box;
+}
+
+/* Square is not clipped. `inset(0)` cuts exactly at the edge, which halves a
+   border drawn there — and a square needs no clip to be square. */
+.cv-node[data-shape="rectangle"] .cv-paper { border-radius: 0; }
+
+.cv-node[data-shape="ellipse"] .cv-paper {
+  border-radius: 50%;
+  clip-path: ellipse(50% 50% at 50% 50%);
+}
+
+.cv-node[data-shape="triangle"] .cv-paper {
+  border-radius: 0;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+/* The same construction the ephemeral note uses, because it is the same thing —
+   and because choosing "Post-it" should give back the post-it already on the
+   canvas rather than a second, differently cut one. */
+.cv-node[data-shape="postIt"] {
+  --fold: 14px;
+}
+
+.cv-node[data-shape="postIt"] .cv-paper {
+  border-radius: 2px;
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - var(--fold)),
+    calc(100% - var(--fold)) 100%,
+    0 100%
+  );
+}
+
+.cv-node[data-shape="postIt"] .cv-paper::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--fold);
+  height: var(--fold);
+  background: linear-gradient(
+    315deg,
+    color-mix(in srgb, var(--cv-fill, var(--postit)) 70%, #000) 0%,
+    color-mix(in srgb, var(--cv-fill, var(--postit)) 92%, #000) 100%
+  );
+  pointer-events: none;
+}
+
+/* The bend grip: the same white-disc-with-an-accent-ring the rest of the app
+   uses for a thing you drag, sized in canvas units so it stays the same on the
+   glass at any zoom (the radius is divided by the scale where it is drawn). */
+.cv-bend {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* The part you actually grab.
+
+   `.cv-svg` is `pointer-events: none` so the edge layer does not swallow clicks
+   meant for the cards under it, and every child that wants a pointer has to say
+   so — `.cv-edge-hit` does. This did not, so the grip was drawn, hovered, and
+   entirely unclickable: the drag was never wrong, it never started. */
+.cv-bend-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.cv-bend-hit:active {
+  cursor: grabbing;
+}
+
+/* A node showing its picture instead of its fields. Contained rather than
+   cropped: the node is the size somebody dragged it to, and a photograph that
+   filled it by cropping would decide for them which half of the picture
+   mattered. */
+.cv-node-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* The border row. A width swatch shows its own weight and a style swatch shows
+   its own dashes, so the row reads as a set of samples rather than a set of
+   labels — the same idea as the colour swatches above it. */
+.cv-swatch.cv-border-swatch {
+  background: transparent;
+  border: none;
+  position: relative;
+}
+
+.cv-border-swatch::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  border-top-color: var(--text-muted);
+  border-top-style: solid;
+}
+
+.cv-border-swatch:hover::after {
+  border-top-color: var(--accent);
+}
+
+/* Nothing is hard to draw: a slash says "none" where an empty box says "this
+   button does nothing". */
+.cv-border-swatch[data-w="0"]::after {
+  border-top-width: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom right,
+    transparent 46%,
+    var(--text-muted) 46%,
+    var(--text-muted) 54%,
+    transparent 54%
+  );
+}
+
+.cv-border-swatch[data-w="1"]::after { border-top-width: 1px; }
+
+.cv-border-swatch[data-w="2"]::after { border-top-width: 2px; }
+
+.cv-border-swatch[data-w="4"]::after { border-top-width: 4px; }
+
+/* A style swatch is a box, not a line.
+
+   Weights and styles were both drawn as short horizontal rules, so the row read
+   as seven of one control rather than two groups of a few. A border style is a
+   thing that goes *around* something, and showing it that way says which half
+   of the row it belongs to without a word of label. */
+.cv-border-swatch[data-style]::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  top: 3px;
+  border: 2px solid var(--text-muted);
+  border-radius: 3px;
+}
+
+.cv-border-swatch[data-style="dashed"]::after { border-style: dashed; }
+
+.cv-border-swatch[data-style="double"]::after { border-style: double; border-width: 3px; }
+
+.cv-border-swatch[data-style]:hover::after { border-color: var(--accent); }
+
+/* Which one is on. A row of choices with nothing marked is a row you press to
+   find out what you already chose. */
+.cv-border-swatch.is-on::after {
+  border-top-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.cv-border-swatch.is-on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 5px;
+}
+
+/* Only a post-it has a folded corner.
+
+   `.cv-note .cv-paper::after` draws the fold for every ephemeral note, which
+   was right when ephemeral *meant* post-it and is wrong now that a note can be
+   any shape. The clip a shape sets already overrides the note's; this turns off
+   the fold that was drawn under it. */
+.cv-node[data-shape]:not([data-shape="postIt"]) .cv-paper::after {
+  content: none;
+}
+
+/* The drawn outline of a clipped shape. Sits over the sheet and under the
+   handles, and catches nothing: it is a picture of a border, and the things
+   that answer a pointer are the frame's. */
+.cv-outline {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  overflow: visible;
+}

@@ -2,3 +2,6 @@ packages:
   - "packages/*"
   - "apps/*"
   - "talaria/packages/*"
+  # The canvas fork. A package rather than part of the web app, because it is
+  # a fork of Hermes' canvas and not a copy of it that has to stay in step.
+  - "talaria/linux/canvas"

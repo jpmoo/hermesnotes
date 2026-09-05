@@ -32,16 +32,15 @@
     </div>
 
     <div class="surface" data-name="Canvas">
-      <div class="waiting">
-        <h2>Canvas</h2>
-        <p>Not built yet — it is step 2 of the port, and the largest piece left.</p>
-        <p class="fine">
-          The plan is settled: a fork of Hermes' own canvas with the API module swapped
-          for one that speaks <code>canvas.json</code> over the daemon socket. It renders
-          here, in this surface, as a web view — which is why the desk was built with a
-          place for it rather than around it.
-        </p>
-      </div>
+      <!--
+        The canvas, as a web view — which is how the Mac holds its own.
+
+        A fork of Hermes' canvas, built to static files and served from `/ui/`
+        by the same scheme handler that serves this page. No server, no port:
+        the brief asked whether one was needed and the answer is that `/ui/` was
+        always a file server, and a bundle is more files in it.
+      -->
+      <iframe class="canvas-frame" src="/ui/canvas/index.html" title="Canvas"></iframe>
     </div>
 
     <div class="surface" data-name="Writing">

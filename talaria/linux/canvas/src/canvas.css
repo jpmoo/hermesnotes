@@ -1,0 +1,50 @@
+/* The canvas fills whatever it is put in, and paints nothing of its own behind
+ * itself — on the desk it sits on the frosted sheet. */
+html, body, #canvas-root { height: 100%; margin: 0; }
+body { background: transparent; color: CanvasText; font: 13px/1.5 system-ui, sans-serif; }
+.canvas-waiting {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  color: color-mix(in srgb, CanvasText 55%, transparent);
+}
+
+/*
+ * A placed block, Talaria's way.
+ *
+ * Hermes fills this space with a live editor against its API. Here it is what
+ * the Mac draws — a title, a type icon and a completion box, every fact of it
+ * out of the local mirror — so it has to carry its own card: the node around it
+ * is a frame, and Hermes' card was the thing with a background.
+ */
+.tal-node {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.tal-head { display: flex; gap: 7px; align-items: baseline; min-width: 0; }
+.tal-head input[type="checkbox"] { margin: 0; flex: none; }
+.tal-title {
+  min-width: 0;
+  /* Three lines, then an ellipsis. A node is a fixed box on a canvas and a
+   * title that overflows it lands on top of whatever is underneath. */
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 500;
+}
+.tal-done .tal-title { text-decoration: line-through; opacity: .6; }
+.tal-missing {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-style: italic;
+  color: color-mix(in srgb, CanvasText 45%, transparent);
+}
+
+/* The note editor placeholder — see `LongTextField.tsx`. */
+.longtext { height: 100%; }
+.longtext-area {
+  width: 100%; height: 100%; box-sizing: border-box;
+  border: 0; background: transparent; resize: none; color: inherit;
+  font: 13px/1.5 ui-monospace, "Noto Sans Mono", monospace;
+}
+.longtext-area:focus { outline: none; }

@@ -12,7 +12,7 @@
 </div>
 
 <script type="module">
-import { get, complain, el, typeLabel } from "/ui/api.js";
+import { get, post, complain, el, typeLabel } from "/ui/api.js";
 
 const body = document.getElementById("body");
 const source = document.getElementById("source");
@@ -72,28 +72,68 @@ function show(hits) {
     body.appendChild(el("div", "note", "Nothing in the library looks like this."));
     return;
   }
-  for (const hit of hits) {
-    const b = hit.block || {};
-    const card = el("div", "card" + (b.completion?.done ? " done" : ""));
+  for (const hit of hits) body.appendChild(card(hit));
+}
 
-    // The score is shown rather than hidden. The daemon's own settings panel
-    // tells you to "glance at a few and see where the useful ones stop", which
-    // is advice you can only follow if the numbers are on screen.
-    const score = el("span", "score", (hit.score ?? 0).toFixed(2));
-    score.title = "similarity";
-    card.appendChild(score);
+function card(hit) {
+  const b = hit.block || {};
+  const done = !!b.completion?.done;
+  const card = el("div", "card" + (done ? " done" : ""));
 
-    card.appendChild(el("span", "title", b.title || "(untitled)"));
-    if (b.schedule?.end?.value) card.appendChild(el("span", "meta", b.schedule.end.value));
-    const label = typeLabel(b) || b.kind || "";
-    if (label) card.appendChild(el("span", "meta", label));
+  // The score is shown rather than hidden. The daemon's own settings panel
+  // tells you to "glance at a few and see where the useful ones stop", which is
+  // advice you can only follow if the numbers are on screen.
+  const score = el("span", "score", (hit.score ?? 0).toFixed(2));
+  score.title = "similarity";
+  card.appendChild(score);
 
-    if (b.url) {
-      card.classList.add("opens");
-      card.title = "Open in Hermes Notes";
-      card.onclick = () => { window.location.href = b.url; };
-    }
-    body.appendChild(card);
+  /*
+   * Anything that can be finished can be finished from here.
+   *
+   * Read through the daemon's `completable` and `completion`, never by asking
+   * what the type is called — the repo's first invariant. A note and a person
+   * are not unfinished, they are simply not the kind of thing that finishes,
+   * and the daemon has already made that distinction.
+   */
+  if (b.completable) {
+    const tick = el("button", "tick", done ? "☑" : "☐");
+    tick.title = done ? "Completed — click to undo" : "Mark complete";
+    tick.onclick = async (e) => {
+      e.stopPropagation();
+      tick.disabled = true;
+      try {
+        await post("/write", { kind: "complete", blockId: b.id });
+        // Struck through here rather than by asking again. Glance is a lookup
+        // over a query that has already been answered; re-running it to learn
+        // one boolean would reorder the list under the pointer.
+        const nowDone = !card.classList.contains("done");
+        card.classList.toggle("done", nowDone);
+        tick.textContent = nowDone ? "☑" : "☐";
+        tick.title = nowDone ? "Completed — click to undo" : "Mark complete";
+      } catch (err) {
+        complain(body, err);
+      } finally {
+        tick.disabled = false;
+      }
+    };
+    card.appendChild(tick);
   }
+
+  card.appendChild(el("span", "title", b.title || "(untitled)"));
+  if (b.schedule?.end?.value) card.appendChild(el("span", "meta", b.schedule.end.value));
+  const label = typeLabel(b) || b.kind || "";
+  if (label) card.appendChild(el("span", "meta", label));
+
+  if (b.url) {
+    card.classList.add("opens");
+    card.title = "Open in Hermes Notes";
+    card.onclick = (e) => {
+      // A click on the box is about the box. Without this, ticking something
+      // off also navigated away from the results you were reading.
+      if (e.target.closest(".tick, button")) return;
+      window.location.href = b.url;
+    };
+  }
+  return card;
 }
 </script>

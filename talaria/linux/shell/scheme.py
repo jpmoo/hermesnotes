@@ -25,7 +25,7 @@ import mimetypes
 import os
 import traceback
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QRunnable, Qt, QThreadPool, QUrl, Signal
 import shiboken6
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestJob, QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
 
@@ -140,9 +140,17 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
 
     def requestStarted(self, job: QWebEngineUrlRequestJob) -> None:  # noqa: N802 — Qt's name
         url = job.requestUrl()
-        path = url.path() or "/"
+        # **Fully encoded, both halves.** `QUrl.path()` and `QUrl.query()`
+        # default to `PrettyDecoded`, which turns `%20` back into a space — and
+        # a space in an HTTP request line is not a URL, it is a syntax error.
+        # Glance was the first page to send a query with anything in it that
+        # needed escaping, and every request it made came back as "URL can't
+        # contain control characters" from a path the page had encoded
+        # perfectly well before handing it over.
+        fmt = QUrl.ComponentFormattingOption.FullyEncoded
+        path = url.path(fmt) or "/"
         if url.hasQuery():
-            path += "?" + url.query()
+            path += "?" + url.query(fmt)
 
         if path.startswith("/ui/") or path == "/":
             self._serve_file(job, "/ui/index.html" if path == "/" else path)

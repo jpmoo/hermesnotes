@@ -333,3 +333,13 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 .opens { cursor: pointer; }
 .opens:hover { border-color: color-mix(in srgb, AccentColor 55%, Canvas); }
 .node > .self.opens:hover { background: color-mix(in srgb, AccentColor 10%, Canvas); border-radius: 5px; }
+
+/* Glance. What was read, then what it matched. */
+.asked { margin-bottom: 14px; }
+.asked q { display: block; margin-top: 4px; font-style: italic; color: var(--muted); }
+.score {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px; color: var(--muted);
+  background: color-mix(in srgb, CanvasText 9%, Canvas);
+  border-radius: 5px; padding: 1px 5px; flex: none;
+}

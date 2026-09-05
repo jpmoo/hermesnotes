@@ -25,7 +25,9 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout, QWidget
 
 import daemon
+import glance
 import scheme
+from frontmost import Frontmost
 from shortcuts import Shortcuts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -41,6 +43,7 @@ PANELS = {
     # earns one here because on Linux this window is also where a `talaria://`
     # deep link would land.
     "hermes": ("Hermes Notes", None, "shift+alt+o"),
+    "glance": ("Glance", "glance.html", "shift+alt+g"),
 }
 
 
@@ -188,6 +191,12 @@ class Shell(QObject):
 
         self._listen()
 
+        # Started before the shortcuts: Glance is the one panel that needs to
+        # know what was in front *before* it opened, and the answer has to have
+        # arrived by the time a hotkey can fire.
+        self.frontmost = Frontmost()
+        self.frontmost.start()
+
         self.shortcuts = Shortcuts()
         # Queued because this Shell is a QObject on the main thread — see the
         # class note. Spelled out rather than left to AutoConnection so that
@@ -266,10 +275,7 @@ class Shell(QObject):
         menu.addSeparator()
         menu.addAction(self._act("Ask Hermes Notes", lambda: self.toggle("assistant")))
         menu.addAction(self._act("Hermes Notes Collections", lambda: self.toggle("board")))
-        glance = self._act("Glance", lambda: None)
-        glance.setEnabled(False)
-        glance.setToolTip("Not built on Linux yet — it is the last step of the port")
-        menu.addAction(glance)
+        menu.addAction(self._act("Glance", lambda: self.toggle("glance")))
         menu.addAction(self._act("New Block…", lambda: self.toggle("compose")))
 
         menu.addSeparator()
@@ -327,6 +333,36 @@ class Shell(QObject):
                 return
             self.panels[action] = panel
         panel.summon()
+        if action == "glance":
+            self._glance(panel)
+
+    def _glance(self, panel: Panel) -> None:
+        """
+        Read what is in front, then tell the panel about it.
+
+        Read *now* rather than when the page asks: showing the panel makes
+        Talaria the front window, and a moment later the only selection anywhere
+        is whatever is in this one. The Mac's compose panel carries the same
+        note for the same reason.
+
+        The rungs are subprocesses and an accessibility tree, so the shell
+        climbs the ladder and hands the answer down — through `runJavaScript`
+        rather than a URL, because the argument is the user's selected text.
+        """
+        import json
+
+        reading = glance.read(self.frontmost.current)
+        payload = json.dumps({"text": reading.text, "rung": reading.rung, "why": reading.why})
+
+        def ask() -> None:
+            panel.view.page().runJavaScript(f"window.glanceAsk && window.glanceAsk({payload})")
+
+        # The page may still be loading on the first summon; asking a blank
+        # document does nothing and leaves the panel saying it is waiting.
+        if panel.view.url().isEmpty():
+            panel.view.loadFinished.connect(lambda _ok: ask())
+        else:
+            ask()
 
     def _build(self, action: str) -> Panel | None:
         title, page, _hotkey = PANELS[action]
@@ -343,7 +379,15 @@ class Shell(QObject):
             # browser for them. Only somebody else's website is handed on.
             return Panel(title, QUrl(origin), QSize(1200, 850),
                          route=lambda url: self._opened(url, "hermes"), floating=False)
-        return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), QSize(980, 720),
+        # Sized to what each one is for, rather than one number for all of
+        # them. Glance is a narrow list you read down; the composer is a form;
+        # a board wants width for its columns.
+        size = {
+            "glance": QSize(560, 680),
+            "assistant": QSize(680, 760),
+            "compose": QSize(620, 720),
+        }.get(action, QSize(980, 720))
+        return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), size,
                      route=lambda url, a=action: self._opened(url, a))
 
     def _opened(self, url: QUrl, source: str) -> bool:

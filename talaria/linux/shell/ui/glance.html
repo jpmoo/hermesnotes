@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Glance</title>
+<link rel="stylesheet" href="/ui/panel.css">
+<div class="chat">
+  <header class="chat-head">
+    <span class="dot"></span>
+    <span class="who-title">Glance</span>
+    <span class="fine" id="source"></span>
+  </header>
+  <div class="pane" id="body"><div class="note">Waiting for something to look at…</div></div>
+</div>
+
+<script type="module">
+import { get, complain, el } from "/ui/api.js";
+
+const body = document.getElementById("body");
+const source = document.getElementById("source");
+
+/*
+ * Called by the shell rather than by anything on this page.
+ *
+ * The rungs are subprocesses and an accessibility tree — none of which a web
+ * page can reach — so the shell climbs the ladder and hands the result down.
+ * Passed in through `runJavaScript` rather than through the URL: the argument
+ * is whatever the user had selected a second ago, and a query string is a place
+ * things get logged.
+ */
+window.glanceAsk = async (reading) => {
+  source.textContent = reading.rung ? `via ${reading.rung}` : "";
+  body.innerHTML = "";
+
+  if (!reading.text) {
+    // The two failures are told apart on purpose. "We did not look" is a
+    // promise being kept and should read like one; "nothing was selected" is
+    // just a quiet moment.
+    const note = el("div", "placeholder");
+    note.appendChild(el("p", null, reading.why || "Nothing to look at."));
+    if (reading.rung === "blindlist") {
+      note.appendChild(el("p", "fine",
+        "Talaria does not read password managers or keyring windows. Not the text, " +
+        "not the title — the promise is that we did not look, rather than that we " +
+        "looked and discarded it."));
+    } else {
+      note.appendChild(el("p", "fine",
+        "Select some text in the window you are working in, then open Glance again."));
+    }
+    body.appendChild(note);
+    return;
+  }
+
+  const asked = el("div", "asked");
+  asked.appendChild(el("span", "fine", "Looking at"));
+  asked.appendChild(el("q", null, reading.text.slice(0, 180) + (reading.text.length > 180 ? "…" : "")));
+  body.appendChild(asked);
+
+  const waiting = el("div", "note", "Reading the library…");
+  body.appendChild(waiting);
+
+  try {
+    const hits = await get(`/glance?q=${encodeURIComponent(reading.text)}&k=12`);
+    waiting.remove();
+    show(hits);
+  } catch (err) {
+    waiting.remove();
+    complain(body, err);
+  }
+};
+
+function show(hits) {
+  if (!hits?.length) {
+    body.appendChild(el("div", "note", "Nothing in the library looks like this."));
+    return;
+  }
+  for (const hit of hits) {
+    const b = hit.block || {};
+    const card = el("div", "card" + (b.completion?.done ? " done" : ""));
+
+    // The score is shown rather than hidden. The daemon's own settings panel
+    // tells you to "glance at a few and see where the useful ones stop", which
+    // is advice you can only follow if the numbers are on screen.
+    const score = el("span", "score", (hit.score ?? 0).toFixed(2));
+    score.title = "similarity";
+    card.appendChild(score);
+
+    card.appendChild(el("span", "title", b.title || "(untitled)"));
+    if (b.schedule?.end?.value) card.appendChild(el("span", "meta", b.schedule.end.value));
+    card.appendChild(el("span", "meta", b.typeName || b.kind || ""));
+
+    if (b.url) {
+      card.classList.add("opens");
+      card.title = "Open in Hermes Notes";
+      card.onclick = () => { window.location.href = b.url; };
+    }
+    body.appendChild(card);
+  }
+}
+</script>

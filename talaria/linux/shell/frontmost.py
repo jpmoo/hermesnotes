@@ -1,0 +1,162 @@
+"""
+Who is in front, told to us by KWin.
+
+The Mac polls `lsappinfo` every two seconds. This is pushed instead, because
+KWin will say when it changes and there is nothing to gain from asking a
+question whose answer has not moved.
+
+**The blindlist is applied on arrival, not on use.** A window that must not be
+read has its caption dropped here, in the receiving callback, before anything
+else in the process can see it. That is what makes "we did not look" a true
+sentence rather than an intention: there is no moment at which a password
+manager's title is sitting in an attribute waiting for somebody to be careful
+about it.
+
+Nothing is written down. This holds one window in memory and replaces it when
+the next one arrives, which is the same promise Glance makes about the text it
+embeds.
+
+GDBus rather than QtDBus because `python3-pyside6.qtdbus` is not installed and
+this already keeps a GLib loop on a thread for the shortcuts portal; a second
+one is cheaper than another dependency.
+"""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import threading
+from dataclasses import dataclass
+
+from PySide6.QtCore import QObject, Signal
+
+import blindlist
+
+BUS_NAME = "dev.talaria.Shell"
+OBJECT_PATH = "/Window"
+INTERFACE = "dev.talaria.Window"
+
+INTROSPECTION = f"""
+<node>
+  <interface name='{INTERFACE}'>
+    <method name='Changed'>
+      <arg type='s' name='windowClass' direction='in'/>
+      <arg type='s' name='resourceName' direction='in'/>
+      <arg type='i' name='pid' direction='in'/>
+      <arg type='s' name='caption' direction='in'/>
+    </method>
+  </interface>
+</node>
+"""
+
+SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kwin", "talaria-window.js")
+
+
+@dataclass(frozen=True)
+class Window:
+    """One window, already judged."""
+
+    window_class: str
+    resource_name: str
+    pid: int
+    #: None when the blindlist refused it. Absent rather than emptied, so the
+    #: difference between "no title" and "not looked at" survives to the UI.
+    caption: str | None
+    blind: bool
+
+    @property
+    def name(self) -> str:
+        return self.resource_name or self.window_class or "something"
+
+
+class Frontmost(QObject):
+    """Emits `changed(Window)` when the focused window changes."""
+
+    changed = Signal(object)
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.current: Window | None = None
+        self.failure: str | None = None
+        self._thread: threading.Thread | None = None
+        self.changed.connect(self._remember)
+
+    def _remember(self, window: Window) -> None:
+        self.current = window
+
+    def start(self) -> None:
+        if self._thread:
+            return
+        self._thread = threading.Thread(target=self._run, name="talaria-frontmost", daemon=True)
+        self._thread.start()
+
+    # ------------------------------------------------------------------ thread
+
+    def _run(self) -> None:
+        try:
+            import gi
+
+            gi.require_version("Gio", "2.0")
+            gi.require_version("GLib", "2.0")
+            from gi.repository import Gio, GLib
+        except Exception as err:  # noqa: BLE001
+            self.failure = f"no GLib/Gio bindings, so no window source — {err}"
+            return
+
+        context = GLib.MainContext.new()
+        context.push_thread_default()
+
+        def on_call(_conn, _sender, _path, _iface, method, params, invocation):
+            if method != "Changed":
+                invocation.return_value(None)
+                return
+            window_class, resource_name, pid, caption = params.unpack()
+            # Here, and before anything else touches it.
+            blind = blindlist.is_blind(window_class or None, pid or None)
+            self.changed.emit(Window(
+                window_class=window_class,
+                resource_name=resource_name,
+                pid=pid,
+                caption=None if blind else (caption or None),
+                blind=blind,
+            ))
+            invocation.return_value(None)
+
+        try:
+            node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION)
+            conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            conn.register_object(OBJECT_PATH, node.interfaces[0], on_call, None, None)
+            Gio.bus_own_name_on_connection(
+                conn, BUS_NAME, Gio.BusNameOwnerFlags.REPLACE, None, None
+            )
+        except Exception as err:  # noqa: BLE001
+            self.failure = f"couldn't take {BUS_NAME} — {err}"
+            return
+
+        # The script is loaded after the name exists, or its first call lands on
+        # nothing and the current window is unknown until the next switch.
+        self._load_script()
+        GLib.MainLoop.new(context, False).run()
+
+    @staticmethod
+    def _load_script() -> None:
+        """
+        Ask KWin to run the reporter.
+
+        Reloaded on every start rather than installed once: this is a
+        development tree, the file changes, and a KWin holding an old copy of it
+        is a confusing thing to debug. `unloadScript` first because loading the
+        same path twice leaves two of them connected to `windowActivated`, and
+        every window change then arrives in duplicate.
+        """
+        for method, arg in (("unloadScript", SCRIPT), ("loadScript", SCRIPT)):
+            subprocess.run(
+                ["busctl", "--user", "call", "org.kde.KWin", "/Scripting",
+                 "org.kde.kwin.Scripting", method, "s", arg],
+                capture_output=True, timeout=5,
+            )
+        subprocess.run(
+            ["busctl", "--user", "call", "org.kde.KWin", "/Scripting",
+             "org.kde.kwin.Scripting", "start"],
+            capture_output=True, timeout=5,
+        )

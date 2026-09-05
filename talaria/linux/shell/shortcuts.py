@@ -179,8 +179,21 @@ class Shortcuts(QObject):
 
         # What the portal already holds for this session. On a second run these
         # come back bound and nothing is asked of the user again.
+        #
+        # **Listed is not the same as bound**, and reading it that way is what
+        # left four of five hotkeys dead. `ListShortcuts` returns every shortcut
+        # id the session knows, including ones the portal is holding with no
+        # trigger attached — `trigger_description` is empty for those. Treating
+        # a bare id as "already done" meant only the one genuinely new shortcut
+        # was ever requested, and the other four were skipped on every start
+        # while appearing, correctly, in the portal's own list.
         listed = ask("ListShortcuts", GLib.Variant("(oa{sv})", (session, {})))
-        already = {s[0] for s in listed[1].get("shortcuts", [])} if listed and listed[0] == 0 else set()
+        already = set()
+        if listed and listed[0] == 0:
+            for entry in listed[1].get("shortcuts", []):
+                trigger = (entry[1] or {}).get("trigger_description") or ""
+                if trigger.strip():
+                    already.add(entry[0])
 
         missing = [w for w in self._wanted if w[0] not in already]
         if missing or rebind:

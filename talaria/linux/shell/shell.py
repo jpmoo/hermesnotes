@@ -366,23 +366,39 @@ class Shell(QObject):
         if panel is not None and panel.isVisible():
             panel.hide()
             return
+
+        # **Read before showing anything.** Summoning a panel makes Talaria the
+        # front window, and from that moment the only window in front is this
+        # one — so a Glance that reads after it has opened is a Glance reading
+        # itself. `main.swift` carries the same note over its compose panel, for
+        # the same reason, and this had it the wrong way round: the selection
+        # was fetched a line after the window that destroyed it.
+        reading = glance.read(self.frontmost.current) if action == "glance" else None
+        if reading is not None:
+            # What it looked at and where it got it, but never the text itself:
+            # this is a log, and the text is the user's document.
+            front = self.frontmost.current
+            print(
+                f"talaria: glance — front={front.name if front else 'unknown'} "
+                f"rung={reading.rung} chars={len(reading.text or '')} why={reading.why}",
+                file=sys.stderr, flush=True,
+            )
+
         if panel is None:
             panel = self._build(action)
             if panel is None:
                 return
             self.panels[action] = panel
         panel.summon()
-        if action == "glance":
-            self._glance(panel)
+        if reading is not None:
+            self._glance(panel, reading)
 
-    def _glance(self, panel: Panel) -> None:
+    def _glance(self, panel: Panel, reading) -> None:
         """
-        Read what is in front, then tell the panel about it.
+        Tell the panel what was read.
 
-        Read *now* rather than when the page asks: showing the panel makes
-        Talaria the front window, and a moment later the only selection anywhere
-        is whatever is in this one. The Mac's compose panel carries the same
-        note for the same reason.
+        The reading is taken in `toggle`, before this panel exists on screen —
+        see the note there.
 
         The rungs are subprocesses and an accessibility tree, so the shell
         climbs the ladder and hands the answer down — through `runJavaScript`
@@ -390,7 +406,6 @@ class Shell(QObject):
         """
         import json
 
-        reading = glance.read(self.frontmost.current)
         payload = json.dumps({"text": reading.text, "rung": reading.rung, "why": reading.why})
 
         def ask() -> None:

@@ -36,6 +36,9 @@ BUS_NAME = "dev.talaria.Shell"
 OBJECT_PATH = "/Window"
 INTERFACE = "dev.talaria.Window"
 
+#: What KWin calls our own windows — `QApplication.setDesktopFileName`.
+OURS = "dev.talaria."
+
 INTROSPECTION = f"""
 <node>
   <interface name='{INTERFACE}'>
@@ -111,6 +114,16 @@ class Frontmost(QObject):
                 invocation.return_value(None)
                 return
             window_class, resource_name, pid, caption = params.unpack()
+
+            # Our own windows are not "what is in front" for any purpose here.
+            # Opening a panel would otherwise overwrite the thing the panel
+            # exists to look at, and pressing the hotkey a second time while it
+            # is open would read Talaria's own title. Reading is ordered to
+            # avoid this too, but a window source that answers "Talaria" to
+            # "what were you doing?" is wrong on its own account.
+            if pid == os.getpid() or (window_class or "").startswith(OURS):
+                return invocation.return_value(None)
+
             # Here, and before anything else touches it.
             blind = blindlist.is_blind(window_class or None, pid or None)
             self.changed.emit(Window(

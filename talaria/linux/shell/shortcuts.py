@@ -152,10 +152,22 @@ class Shortcuts(QObject):
             waiting.run()
             return replies.pop(handle, None)
 
-        token = uuid.uuid4().hex[:8]
+        # **The session token is stable, and that is not a shortcut taken.**
+        #
+        # KDE implements this portal on top of `kglobalaccel`, and when it
+        # cannot resolve an app id it names the component after this token. A
+        # random one per launch therefore means a brand new component every
+        # start: the bindings a person set in System Settings are left behind
+        # under the old name, the defaults come back, and the shortcut list
+        # grows another `token_talaria_…` section every time the shell runs.
+        #
+        # The spec wants `session_handle_token` unique only against *live*
+        # sessions, and the shell already refuses to be a second copy — so a
+        # constant is safe here and is what makes a customized hotkey survive a
+        # restart. `handle_token` stays unique because it identifies one request.
         created = ask("CreateSession", GLib.Variant("(a{sv})", ({
-            "handle_token": GLib.Variant("s", f"talaria_{token}"),
-            "session_handle_token": GLib.Variant("s", f"talaria_{token}"),
+            "handle_token": GLib.Variant("s", f"talaria_{uuid.uuid4().hex[:8]}"),
+            "session_handle_token": GLib.Variant("s", "talaria"),
         },)))
         if not created or created[0] != 0:
             self._give_up("the desktop's shortcut portal declined to open a session")

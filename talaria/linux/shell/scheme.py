@@ -46,7 +46,14 @@ def register_scheme() -> None:
     rather than a missing registration.
     """
     scheme = QWebEngineUrlScheme(SCHEME)
-    scheme.setSyntax(QWebEngineUrlScheme.Syntax.HostAndPort)
+    # `Host`, not `HostAndPort`. Qt refuses a HostAndPort scheme that declares
+    # no default port, and the refusal is a warning on stderr rather than an
+    # exception — so registration silently did nothing, `schemeByName` read back
+    # empty for every name, and the Fetch API rejected the scheme as unknown.
+    # That was diagnosed once as a broken PySide build and worked around with
+    # XMLHttpRequest; it was this line. There is no port here to speak of: the
+    # host is a word and the transport is a Unix socket.
+    scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
     scheme.setFlags(
         QWebEngineUrlScheme.Flag.SecureScheme
         | QWebEngineUrlScheme.Flag.LocalAccessAllowed

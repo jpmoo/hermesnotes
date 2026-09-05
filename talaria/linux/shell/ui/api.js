@@ -6,15 +6,22 @@
  * the point: these pages would work unchanged behind a real HTTP server, and
  * behind WebKitGTK's scheme handler if the shell ever changes toolkits.
  *
- * **XMLHttpRequest rather than fetch, and it is not nostalgia.** QtWebEngine
- * refuses the Fetch API on a custom scheme unless that scheme was registered
- * with `FetchApiAllowed` before the engine started — and in this PySide6 build
- * `registerScheme` does not stick at all: `schemeByName` reads back empty for
- * every name, including plain ones. The handler still serves navigation and
- * subresources, so the pages render perfectly and every request dies as "Failed
- * to fetch", which reads exactly like a dead daemon and is nowhere near it.
- * XHR is not gated the same way and reaches the handler. If a later Qt makes
- * registration work, this can go back to `fetch` and nothing above it changes.
+ * **XMLHttpRequest rather than fetch**, and the reason has changed since this
+ * was written. It was first blamed on PySide: `registerScheme` appeared not to
+ * stick, `schemeByName` read back empty for every name, and the Fetch API
+ * refused the scheme as unknown while the handler still served navigation and
+ * subresources — so pages rendered perfectly and every request died as "Failed
+ * to fetch", which reads exactly like a dead daemon and was nowhere near one.
+ *
+ * The real cause was ours: the scheme declared `HostAndPort` syntax and no
+ * default port, which Qt refuses — as a warning on stderr rather than an
+ * exception, so nothing failed loudly. `scheme.py` says `Host` now and
+ * registration takes, `fetch` included.
+ *
+ * XHR stays because it works, is proven against every panel here, and swapping
+ * it back would be churn in the one place where a mistake looks like a dead
+ * daemon. The note is kept so the next person does not re-diagnose a bug that
+ * no longer exists.
  */
 function send(method, path, payload) {
   return new Promise((resolve, reject) => {

@@ -7,7 +7,8 @@
   <div id="form"><div class="note">Loading types…</div></div>
 </div>
 <script type="module">
-import { get, post, complain, el } from "/ui/api.js";
+import { get, post, complain, el, typeLabel } from "/ui/api.js";
+import { blockIcon } from "/ui/icons.js";
 
 const host = document.getElementById("form");
 let types = [];
@@ -32,7 +33,104 @@ const WIDGETS = {
     for (const option of field.options || []) s.appendChild(el("option", null, option));
     return s;
   },
+  reference: (field) => referencePicker(field),
 };
+
+/*
+ * A relationship field: pick blocks of the type it points at.
+ *
+ * The candidates come from `/blocks?type=<targetType>`, which is the field's
+ * own answer to what belongs here — never a guess from the field's name. All
+ * three reference fields in this library are `many`, and the format allows
+ * either, so this honors the flag rather than assuming.
+ *
+ * The value is an array of block ids, which is how the producer stores it
+ * (`project: ["dfbb8488-…"]`) and therefore what a write has to send.
+ */
+function referencePicker(field) {
+  const box = el("div", "picker");
+  box.dataset.key = field.key;
+  box.dataset.kind = field.kind;
+  box.chosen = [];              // read by create(), in place of .value
+
+  const chips = el("div", "chips");
+  const search = el("input");
+  search.placeholder = field.many ? "Type to search — pick as many as you like" : "Type to search";
+  const list = el("div", "options");
+  list.hidden = true;
+  box.append(chips, search, list);
+
+  let candidates = [];
+  let loaded = false;
+
+  const redrawChips = () => {
+    chips.replaceChildren();
+    for (const c of box.chosen) {
+      const chip = el("span", "chip");
+      chip.appendChild(blockIcon(c.kind));
+      chip.appendChild(el("span", null, c.title || "(untitled)"));
+      const x = el("button", "x", "×");
+      x.title = "Remove";
+      x.onclick = () => {
+        box.chosen = box.chosen.filter((o) => o.id !== c.id);
+        redrawChips();
+      };
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    }
+  };
+
+  const show = (term) => {
+    const q = term.trim().toLowerCase();
+    const taken = new Set(box.chosen.map((c) => c.id));
+    const hits = candidates
+      .filter((c) => !taken.has(c.id))
+      .filter((c) => !q || (c.title || "").toLowerCase().includes(q))
+      .slice(0, 40);
+    list.replaceChildren();
+    if (!hits.length) {
+      list.appendChild(el("div", "empty", loaded ? "Nothing matches." : "Loading…"));
+    }
+    for (const c of hits) {
+      const row = el("button", "option");
+      row.type = "button";
+      row.appendChild(blockIcon(c.kind));
+      row.appendChild(el("span", "title", c.title || "(untitled)"));
+      const label = typeLabel(c);
+      if (label) row.appendChild(el("span", "meta", label));
+      row.onclick = () => {
+        // A field that takes one holds one. Replacing rather than refusing is
+        // the kinder reading of a second click.
+        box.chosen = field.many ? [...box.chosen, c] : [c];
+        search.value = "";
+        redrawChips();
+        show("");
+      };
+      list.appendChild(row);
+    }
+    list.hidden = false;
+  };
+
+  const load = async () => {
+    if (loaded) return;
+    try {
+      candidates = await get(`/blocks?type=${encodeURIComponent(field.targetType)}&limit=500`);
+      loaded = true;
+    } catch (err) {
+      list.replaceChildren(el("div", "error", String(err.message || err)));
+      return;
+    }
+    show(search.value);
+  };
+
+  search.addEventListener("focus", () => { load(); show(search.value); });
+  search.addEventListener("input", () => { load(); show(search.value); });
+  // Late enough for a click on an option to land first — hiding on blur alone
+  // dismisses the list before the thing you were reaching for gets the event.
+  search.addEventListener("blur", () => setTimeout(() => { list.hidden = true; }, 180));
+
+  return box;
+}
 
 async function load() {
   types = await get("/types");
@@ -86,6 +184,14 @@ async function create(typeId, go) {
   const properties = {};
   let content = "";
   for (const widget of document.querySelectorAll("#fields [data-key]")) {
+    if (widget.dataset.kind === "reference") {
+      // Ids, as an array, which is how the producer stores a relationship —
+      // and sent only when something was picked, because an empty array is a
+      // claim that the field is empty rather than that it was left alone.
+      const ids = (widget.chosen || []).map((c) => c.id);
+      if (ids.length) properties[widget.dataset.key] = ids;
+      continue;
+    }
     const value = widget.value?.trim();
     if (!value) continue;
     if (widget.dataset.kind === "richtext") content = value;
@@ -105,7 +211,10 @@ async function create(typeId, go) {
     // and this panel has been told one.
     const made = await post("/write", { kind: "create", blockTypeId: typeId, content, properties });
     said.textContent = `Created “${properties.title || content.slice(0, 40)}”.`;
-    for (const widget of document.querySelectorAll("#fields [data-key]")) widget.value = "";
+    for (const widget of document.querySelectorAll("#fields [data-key]")) {
+      if (widget.chosen) { widget.chosen = []; widget.querySelector(".chips").replaceChildren(); }
+      else widget.value = "";
+    }
     void made;
   } catch (err) {
     complain(said, err);

@@ -343,3 +343,33 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
   background: color-mix(in srgb, CanvasText 9%, Canvas);
   border-radius: 5px; padding: 1px 5px; flex: none;
 }
+
+/* Relationship fields. A search, what you picked, and what you could pick. */
+.picker { position: relative; }
+.picker .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.picker .chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; padding: 3px 6px 3px 8px; border-radius: 7px;
+  background: color-mix(in srgb, AccentColor 16%, Canvas);
+  border: 1px solid color-mix(in srgb, AccentColor 34%, Canvas);
+}
+.picker .chip .x {
+  background: none; border: 0; color: var(--muted);
+  font-size: 14px; line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.picker .chip .x:hover { color: var(--fg); }
+.picker .options {
+  position: absolute; left: 0; right: 0; z-index: 5;
+  max-height: 240px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
+}
+.picker .option {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 10px; border: 0; background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.picker .option:hover { background: color-mix(in srgb, AccentColor 14%, Canvas); }
+.picker .option .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon { flex: none; opacity: .75; }

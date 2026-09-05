@@ -623,11 +623,27 @@ class Shell(QObject):
                 10000,
             )
         elif self.shortcuts.bound:
-            named = ", ".join(
-                f"{PANELS[a][0]}: {t}" for a, t in self.shortcuts.bound.items() if a in PANELS and t
-            )
-            if named:
-                self.tray.showMessage("Talaria hotkeys", named, QSystemTrayIcon.MessageIcon.Information, 6000)
+            # One per line, and the key first.
+            #
+            # This was a single comma-joined sentence, which a Plasma
+            # notification elides — so the last entry lost its name and read as
+            # a bare keystroke belonging to nothing. A list is also simply
+            # easier to scan than prose when every item has the same shape.
+            #
+            # Ordered by PANELS rather than by whatever the portal happened to
+            # return, so the same list appears in the same order every start.
+            lines = [
+                f"{self.shortcuts.bound[a]}  —  {PANELS[a][0]}"
+                for a in PANELS
+                if self.shortcuts.bound.get(a)
+            ]
+            if lines:
+                self.tray.showMessage(
+                    "Talaria hotkeys",
+                    "\n".join(lines),
+                    QSystemTrayIcon.MessageIcon.Information,
+                    6000,
+                )
 
     def _complain(self, title: str, body: str) -> None:
         QMessageBox.warning(None, title, body)

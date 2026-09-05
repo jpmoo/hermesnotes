@@ -42,7 +42,7 @@ import type { Mirror } from "./mirror.js";
 // objects that moved and says nothing about a library that is now described
 // differently. A collection nobody edited is never re-read, so a board would
 // have kept its old region list forever.
-const SEAM_VERSION = "8-member-versions";
+const SEAM_VERSION = "9-collection-archived";
 const SEAM = "seam.version";
 
 const CURSOR = "sync.cursor";
@@ -196,20 +196,26 @@ export class Sync {
     const rows: InterchangeObject[] = [
       ...(env.objects ?? []),
       ...((env.collections ?? []).map((c) => ({
-        id: c.id,
+        // Everything the collection came with, then the two fields that need
+        // reshaping. This used to be a hand-written list of the keys worth
+        // keeping, and the comment on its last line named the hazard exactly:
+        // "it was exhaustive when it was written, and a key the format grows
+        // later goes nowhere and is missed by nothing."
+        //
+        // That is what happened, to `archived`. The spec is explicit that a
+        // collection carries it and explicit about why it matters more there
+        // than on an object — an archived board still exports its members, so a
+        // consumer that cannot see the flag "does not show one hidden thing, it
+        // shows a whole shelf of them." Which is what the collection picker did:
+        // every board the user had tidied away, listed as current.
+        //
+        // Spreading rather than listing also carries `placement` (a move has to
+        // be written as a region *name*, and this is the only place the names
+        // are said), `membership`, and `order` — all of which the old list did
+        // keep — plus whatever the format grows next, which it did not.
+        ...c,
         properties: { ...unprefixed(c.properties, env.producer), title: c.name },
         collectionKind: c.kind,
-        // Kept because a move has to be written as a region *name*, and this is
-        // the only place the names are said. Without it the mirror knows a card
-        // sits in region 2 and has nothing to call it.
-        placement: c.placement,
-        membership: c.membership,
-        // The collection's arrangement, which nothing here interprets — the
-        // board route reads it. Listed explicitly like the two above, and worth
-        // noticing that this list is the standing hazard: it was exhaustive
-        // when it was written, and a key the format grows later goes nowhere
-        // and is missed by nothing.
-        order: c.order,
       })) as InterchangeObject[]),
     ];
 

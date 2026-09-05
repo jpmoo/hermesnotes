@@ -358,6 +358,26 @@ export function buildServer(deps: {
           appOrigin: config.origin,
           collectionKind: row.collectionKind ?? null,
         });
+        // Archived is put away, and put away is not a search result.
+        //
+        // Filtered here rather than left to the index, because the index is a
+        // snapshot and archiving happens afterwards: a block indexed while it
+        // was live stays in the index once it is filed away, and comes back
+        // scoring as well as it ever did. Dropping it at query time is the only
+        // point that sees the mirror's current answer.
+        //
+        // Left in the *index* on purpose. Rebuilding vectors is hundreds of
+        // calls to a model, un-archiving is a thing people do, and a block that
+        // comes back should not have to be embedded again to be findable.
+        //
+        // The raw flag is checked as well as the canonical one, and it is the
+        // one that catches archived *collections*. `archivedAt` is derived as
+        // `archived ? (updated ?? null) : null`, and a collection carries no
+        // `updated` — so a board that is genuinely put away reports
+        // `archivedAt: null`, which is indistinguishable from not being
+        // archived at all. Anything filtering on that field alone is wrong for
+        // collections; `row.archived` is the fact.
+        if (row.archived || c.archivedAt) return [];
         return [{ score: Number(h.score.toFixed(4)), block: c }];
       });
       return envelope(results, { question: asked, source });

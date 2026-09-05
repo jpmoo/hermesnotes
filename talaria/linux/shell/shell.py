@@ -150,6 +150,16 @@ class Panel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
+        if floating:
+            # **The page must be transparent, or the corners are square.**
+            #
+            # A web view paints its own base color across the whole rectangle
+            # before the document draws anything, so a `border-radius` on `body`
+            # rounds the document and leaves white behind it in the corners. The
+            # radius is real; what was showing through it was the engine's own
+            # background.
+            self.view.page().setBackgroundColor(Qt.GlobalColor.transparent)
+            self.view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.view.load(url)
         QShortcut(QKeySequence("Escape"), self, activated=self.hide)
 

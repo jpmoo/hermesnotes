@@ -13,6 +13,9 @@
   --muted: color-mix(in srgb, CanvasText 55%, Canvas);
   --line: color-mix(in srgb, CanvasText 15%, Canvas);
   --raised: color-mix(in srgb, CanvasText 4%, Canvas);
+  /* The panel's own background. Overridden by the shell when translucency is
+     configured — see `--talaria-opacity` below. */
+  --surface: Canvas;
   --accent: color-mix(in srgb, AccentColor 90%, Canvas);
   --accent-fg: AccentColorText;
 }
@@ -394,12 +397,15 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 }
 .fold .card { margin-top: 8px; }
 
-/* The panel itself is a floating card: the window has no frame, so the page
- * draws the edge. Rounded, with a hairline so it separates from whatever it is
- * sitting over. */
-body { border-radius: 12px; overflow: hidden; }
-.chat, .frame, .pane:only-child {
+/* The panel is a floating card: the window has no frame, so the page draws the
+ * edge. The *page* is transparent — the shell tells the engine to paint nothing
+ * — and this element is the only thing with a background, which is what makes
+ * the rounded corners actually round rather than white. */
+html { background: transparent; }
+body {
+  background: var(--surface);
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, CanvasText 22%, Canvas);
-  background: var(--bg);
+  overflow: hidden;
 }
+.chat, .frame { border-radius: 12px; }

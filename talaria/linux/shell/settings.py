@@ -267,6 +267,31 @@ class SettingsWindow(QDialog):
             "person — are never filed here."
         ))
         rows.addRow("", self.glance_undated)
+
+        self.glance_placement = QComboBox()
+        for value, label in (
+            ("top-left", "Top left"), ("top-center", "Top centre"), ("top-right", "Top right"),
+            ("middle-left", "Middle left"), ("middle-center", "Middle"), ("middle-right", "Middle right"),
+            ("bottom-left", "Bottom left"), ("bottom-center", "Bottom centre"),
+            ("bottom-right", "Bottom right"),
+        ):
+            self.glance_placement.addItem(label, value)
+        rows.addRow("Appears", self.glance_placement)
+        self.overlay_opacity = QDoubleSpinBox(minimum=0.6, maximum=1.0, singleStep=0.05, decimals=2)
+        rows.addRow("Panel opacity", self.overlay_opacity)
+        rows.addRow(_hint(
+            "Applies to every summoned panel, not only Glance. This is plain translucency — what "
+            "is behind shows through, unblurred. Frosting would need a window to <i>ask</i> KWin "
+            "for blur, and that asking is a C++ API with no Python binding, so calling it frosted "
+            "would describe something the desktop is not doing. Clamped at 0.6: a panel nobody "
+            "can read is a panel nobody can dismiss."
+        ))
+        rows.addRow(_hint(
+            "Where the panel comes up. It arrives from the nearest edge, so it always reads as "
+            "coming in rather than crossing the screen. A client cannot place its own windows on "
+            "Wayland, so this is handed to a KWin script — which means it takes effect when the "
+            "shell next starts rather than immediately."
+        ))
         rows.addRow(_hint(
             "Off, a note or a person with no date sits in the main list — which is most of what you "
             "want while writing something. On, they move below the divider with the far-off ones, "
@@ -364,6 +389,10 @@ class SettingsWindow(QDialog):
         self.glance_threshold.setValue(float(threshold) if isinstance(threshold, (int, float)) else 0.0)
         self.glance_separate_done.setChecked(bool(c.get("glanceSeparateDone")))
         self.glance_undated.setChecked(bool(c.get("glanceUndatedFurtherOut")))
+        placed = self.glance_placement.findData(c.get("glancePlacement") or "bottom-center")
+        self.glance_placement.setCurrentIndex(placed if placed >= 0 else 7)
+        opacity = c.get("overlayOpacity")
+        self.overlay_opacity.setValue(float(opacity) if isinstance(opacity, (int, float)) else 1.0)
         self.board_hotkey.setText(s("boardHotkey"))
         self.assistant_hotkey.setText(s("assistantHotkey"))
         self.compose_hotkey.setText(s("composeHotkey"))
@@ -451,6 +480,13 @@ class SettingsWindow(QDialog):
                 obj[key] = True
             else:
                 obj.pop(key, None)
+        obj["glancePlacement"] = self.glance_placement.currentData()
+        # Written only when it is not the default, so a file nobody has changed
+        # stays the shape it was first written in.
+        if self.overlay_opacity.value() < 1.0:
+            obj["overlayOpacity"] = round(self.overlay_opacity.value(), 2)
+        else:
+            obj.pop("overlayOpacity", None)
         if self.glance_threshold.value() > 0:
             obj["glanceThreshold"] = round(self.glance_threshold.value(), 4)
         else:

@@ -93,13 +93,41 @@ function place(window) {
   var area = workspace.clientArea(KWin.MaximizeArea, window);
   var size = SIZES[String(window.caption)];
   if (!size) return;   // a Talaria window nobody has given a size — leave it be
-  var restX = area.x + Math.round((area.width - size.width) / 2);
-  var restY = area.y + area.height - size.height - MARGIN;
 
-  // Start below the edge and climb. `frameGeometry` is assigned whole rather
-  // than mutated: KWin's geometry objects are values, and setting `.y` on one
-  // that was read out of a window changes a copy and nothing else.
-  var startY = area.y + area.height;
+  // Nine positions, written by the shell into `__PLACEMENT__` from
+  // `glancePlacement` in config.json. A script cannot read that file, so the
+  // value is substituted when the script is generated — the same arrangement
+  // the systemd unit uses for the same reason.
+  // Translucency, written in the same way and for the same reason.
+  //
+  // **Opacity, not frosting.** KWin's blur effect is loaded, but a window has to
+  // *ask* for blur and the asking is `KWindowEffects` — a KF6 C++ API with no
+  // Python binding. So this is honest translucency: what is behind shows
+  // through, unblurred. Calling it frosted would be describing something the
+  // desktop is not doing.
+  var opacity = Number("__OPACITY__");
+  if (opacity > 0 && opacity < 1) window.opacity = opacity;
+
+  var place = String("__PLACEMENT__").split("-");
+  var vertical = place[0] || "bottom";
+  var horizontal = place[1] || "center";
+
+  var restX =
+    horizontal === "left" ? area.x + MARGIN
+    : horizontal === "right" ? area.x + area.width - size.width - MARGIN
+    : area.x + Math.round((area.width - size.width) / 2);
+
+  var restY =
+    vertical === "top" ? area.y + MARGIN
+    : vertical === "middle" ? area.y + Math.round((area.height - size.height) / 2)
+    : area.y + area.height - size.height - MARGIN;
+
+  // It arrives from the nearest edge, so the movement always reads as coming
+  // *in* rather than crossing the screen. A panel resting in the middle rises
+  // from the bottom, which is the least surprising of the choices there.
+  var startY =
+    vertical === "top" ? area.y - size.height
+    : area.y + area.height;
   var step = 0;
 
   var timer = new QTimer();

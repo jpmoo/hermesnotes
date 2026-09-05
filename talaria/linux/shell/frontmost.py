@@ -55,6 +55,13 @@ INTROSPECTION = f"""
 
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kwin", "talaria-window.js")
 
+#: Where the daemon keeps its things — `config.json` sits beside the socket.
+SOCKET_DIR = os.path.join(
+    (os.environ.get("XDG_DATA_HOME") or "").strip()
+    or os.path.join(os.path.expanduser("~"), ".local", "share"),
+    "talaria", "talaria.sock",
+)
+
 
 #: Our own tools, which are not windows anybody switched to.
 HELPERS = {"wl-paste", "wl-copy", "xclip", "xsel", "busctl", "curl"}
@@ -233,7 +240,8 @@ class Frontmost(QObject):
         same path twice leaves two of them connected to `windowActivated`, and
         every window change then arrives in duplicate.
         """
-        for method, arg in (("unloadScript", SCRIPT), ("loadScript", SCRIPT)):
+        script = _generated_script()
+        for method, arg in (("unloadScript", script), ("loadScript", script)):
             subprocess.run(
                 ["busctl", "--user", "call", "org.kde.KWin", "/Scripting",
                  "org.kde.kwin.Scripting", method, "s", arg],
@@ -244,3 +252,51 @@ class Frontmost(QObject):
              "org.kde.kwin.Scripting", "start"],
             capture_output=True, timeout=5,
         )
+
+
+PLACEMENTS = (
+    "top-left", "top-center", "top-right",
+    "middle-left", "middle-center", "middle-right",
+    "bottom-left", "bottom-center", "bottom-right",
+)
+
+
+def _generated_script() -> str:
+    """
+    The KWin script, with the placement written into it.
+
+    A KWin script has no filesystem and cannot read `config.json`, so the value
+    is substituted here and the result written beside the runtime state — a
+    rendering of the source rather than a second source, which is the same
+    arrangement `systemd/talaria.service.in` uses for `ExecStart`.
+    """
+    from PySide6.QtCore import QStandardPaths
+
+    placement, opacity = "bottom-center", 1.0
+    try:
+        import json
+
+        with open(os.path.join(os.path.dirname(SOCKET_DIR), "config.json"), encoding="utf8") as h:
+            raw = json.load(h)
+        if raw.get("glancePlacement") in PLACEMENTS:
+            placement = raw["glancePlacement"]
+        asked = float(raw.get("overlayOpacity") or 1.0)
+        # Clamped rather than trusted. A panel at 0.2 is unreadable and a panel
+        # somebody cannot find is a panel they cannot turn back up.
+        opacity = min(1.0, max(0.6, asked))
+    except Exception:  # noqa: BLE001
+        pass
+
+    with open(SCRIPT, encoding="utf8") as handle:
+        body = (
+            handle.read()
+            .replace("__PLACEMENT__", placement)
+            .replace("__OPACITY__", f"{opacity:.2f}")
+        )
+    out = os.path.join(
+        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation) or "/tmp",
+        "talaria-window.js",
+    )
+    with open(out, "w", encoding="utf8") as handle:
+        handle.write(body)
+    return out

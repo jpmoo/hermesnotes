@@ -104,8 +104,23 @@ class Panel(QWidget):
     scroll position, its half-typed message and its session every time.
     """
 
-    def __init__(self, title: str, url: QUrl, size: QSize, route=None) -> None:
-        super().__init__()
+    def __init__(self, title: str, url: QUrl, size: QSize, route=None, floating: bool = True) -> None:
+        # `Qt.Tool` is the analogue of the Mac's `NSPanel` with `.utilityWindow`
+        # and `isFloatingPanel`: a thinner frame, no entry in the task switcher,
+        # and it stays above the thing it was summoned over. These are things
+        # you call up over your work, look at, and dismiss — a full application
+        # window in the alt-tab list is the wrong shape for that, and is what
+        # made them feel like a different program rather than part of the
+        # desktop.
+        #
+        # The Hermes window is not one of these. It is a browser you work *in*,
+        # so it is an ordinary window that can be tiled, tabbed and left open.
+        super().__init__(None, Qt.WindowType.Tool if floating else Qt.WindowType.Window)
+        if floating:
+            # `hidesOnDeactivate = false` on the Mac, and the same intent here:
+            # stepping into another window to read something must not take the
+            # panel away, because reading something else is usually the point.
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setWindowTitle(f"Talaria — {title}")
         self.resize(size)
         self.view = QWebEngineView(self)
@@ -223,7 +238,10 @@ class Shell(QObject):
         svg = os.path.join(HERE, "..", "..", "app", "MenuBar.svg")
         if os.path.isfile(svg):
             icon = QIcon(svg)
-            if not icon.isNull() and icon.availableSizes():
+            # `isNull` only. A scalable icon reports *no* available sizes —
+            # that is what scalable means — so asking for one rejected the SVG
+            # every time and fell through to the drawn letter below.
+            if not icon.isNull():
                 return icon
         pixmap = QPixmap(22, 22)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -324,7 +342,7 @@ class Shell(QObject):
             # The Hermes window follows Hermes' own links itself — it *is* the
             # browser for them. Only somebody else's website is handed on.
             return Panel(title, QUrl(origin), QSize(1200, 850),
-                         route=lambda url: self._opened(url, "hermes"))
+                         route=lambda url: self._opened(url, "hermes"), floating=False)
         return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), QSize(980, 720),
                      route=lambda url, a=action: self._opened(url, a))
 
@@ -494,6 +512,13 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Talaria")
     app.setDesktopFileName("dev.talaria.shell")
+    # Without this every window gets the desktop's placeholder — the stray
+    # letter in the corner of each panel. `Icon=talaria` in the desktop entry
+    # only helps once an icon by that name is installed in a theme, which this
+    # is not, so the file is named directly.
+    icon = QIcon(os.path.join(HERE, "..", "..", "app", "glyph-1024.png"))
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     # The tray is the application; the last window closing is not the end of it.
     app.setQuitOnLastWindowClosed(False)
 

@@ -1,7 +1,14 @@
 /* The canvas fills whatever it is put in, and paints nothing of its own behind
  * itself — on the desk it sits on the frosted sheet. */
 html, body, #canvas-root { height: 100%; margin: 0; }
-body { background: transparent; color: CanvasText; font: 13px/1.5 system-ui, sans-serif; }
+/* Hermes' own body face, which is the brand's and the Mac's: "Body/content:
+ * Verdana. Interface chrome: Tahoma." The tokens come with the forked
+ * stylesheet, so this only has to name them. */
+body {
+  background: transparent;
+  color: var(--text, CanvasText);
+  font: 13px/1.5 var(--font-body, system-ui, sans-serif);
+}
 .canvas-waiting {
   height: 100%; display: flex; align-items: center; justify-content: center;
   color: color-mix(in srgb, CanvasText 55%, transparent);
@@ -42,9 +49,32 @@ body { background: transparent; color: CanvasText; font: 13px/1.5 system-ui, san
 
 /* The note editor placeholder — see `LongTextField.tsx`. */
 .longtext { height: 100%; }
-.longtext-area {
+/* Three classes deep on purpose. `.cv-node.cv-shaded textarea` in the forked
+ * stylesheet paints every field on a colored node with a translucent white
+ * wash — right for a card holding a form, wrong for words on paper, where it
+ * read as a panel laid over the sticky. Two classes lost to it; the paper in
+ * the middle wins. */
+.cv-node .cv-paper .longtext-area {
   width: 100%; height: 100%; box-sizing: border-box;
   border: 0; background: transparent; resize: none; color: inherit;
-  font: 13px/1.5 ui-monospace, "Noto Sans Mono", monospace;
+  /* The canvas's own body font, not a code font. The brand is explicit —
+   * "Body/content: Verdana" — and the Mac writes a note in the body face; a
+   * monospace note is a different object at a glance. */
+  font: inherit;
 }
-.longtext-area:focus { outline: none; }
+.cv-node .cv-paper .longtext-area:focus { outline: none; }
+
+/*
+ * Where the words sit in a node.
+ *
+ * The alignment is set inline on `.cv-body` (see `alignment` in the fork), and
+ * these are what let it take: a body that stretches cannot be positioned down
+ * the box, and an editor pinned to full height cannot either. Both size to their
+ * text instead, which is also how the Mac lays a node out — the words are placed
+ * in the box rather than filling it.
+ */
+.cv-body { display: flex; flex-direction: column; }
+.cv-body > .longtext { height: auto; }
+.cv-node .cv-paper .longtext-area { height: auto; min-height: 1.4em; overflow: hidden; text-align: inherit; }
+/* A block's card follows the same rule — its title sits where the node says. */
+.tal-node { height: auto; }

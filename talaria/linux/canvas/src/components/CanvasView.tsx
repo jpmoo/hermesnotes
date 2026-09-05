@@ -52,7 +52,7 @@ interface Rect {
   w: number;
   h: number;
 }
-interface NodeCtx extends Rect {
+interface NodeCtx extends Rect, TalariaInk {
   color?: string | null;
   /** See `SHAPES`. Absent means the rounded rectangle everything has always been. */
   shape?: string | null;
@@ -178,7 +178,7 @@ export interface CanvasEdge {
    * ones are canvas-only decoration. Absent = live (pre-flag edges). */
   live?: boolean;
 }
-interface CanvasNote extends Rect {
+interface CanvasNote extends Rect, TalariaInk {
   id: string; // "n:<uuid>"
   text: string;
   color?: string | null;
@@ -201,6 +201,30 @@ interface CanvasNote extends Rect {
    */
   image?: { name: string; mime: string; data: string } | null;
 }
+/*
+ * ---------------------------------------------------------------------------
+ * Talaria's additions, and they are additions rather than changes.
+ *
+ * The Mac's canvas lets a node say where its words sit across the box and down
+ * it, and what color the ink is — `CanvasStyle.swift` is largely the inspector
+ * for exactly those three. Hermes' canvas has no such concept: text is left
+ * aligned, top set, and the theme's color. Everything else about a node the two
+ * already agree on, because the Mac was built against this component's own CSS
+ * variables — its comments name `--cv-fill` and `--shadow-soft`.
+ *
+ * Declared here, applied in `nodeBox`, and kept to those three so the fork
+ * stays mergeable.
+ * ---------------------------------------------------------------------------
+ */
+interface TalariaInk {
+  /** Across the box: `leading` | `center` | `trailing`. The Mac's `TextAlign`. */
+  hAlign?: string | null;
+  /** And down it: `top` | `middle` | `bottom`. The Mac's `TextVAlign`. */
+  vAlign?: string | null;
+  /** The ink, when somebody has chosen one. */
+  textColor?: string | null;
+}
+
 interface CanvasRegion {
   id: string;
   title: string;
@@ -504,7 +528,17 @@ export function CanvasView({
     Array.isArray(props.canvas_notes)
       ? // Backfill a color on any note lacking one (e.g. an older AI-created
         // note) so it renders as a solid sticky, never transparent.
-        (props.canvas_notes as CanvasNote[]).map((n) => ({ ...n, color: n.color || NOTE_COLOR }))
+        /*
+         * No default color here, which is the Mac's rule rather than Hermes'.
+         *
+         * Hermes makes every ephemeral note a sticky — `NOTE_COLOR` — because
+         * on that canvas a note *is* a sticky. On this one a node's look comes
+         * from its shape: a post-it is paper, everything else is a line round
+         * the outside with the canvas showing through. Defaulting here painted
+         * a cream rectangle behind text that was supposed to have nothing
+         * behind it, before `paperFill` ever saw the node.
+         */
+        (props.canvas_notes as CanvasNote[]).map((n) => ({ ...n }))
       : [],
   );
   const [edges, setEdges] = useState<CanvasEdge[]>(() =>
@@ -2162,6 +2196,43 @@ export function CanvasView({
     a.isText === b.isText ? a.name.localeCompare(b.name) : a.isText ? -1 : 1,
   );
 
+  /**
+   * Where the words sit, as CSS.
+   *
+   * The paper is already a column flexbox — a grip, then the body — so down the
+   * box is `justify-content` on it and across the box is `text-align` on what is
+   * written. The Mac's vocabulary is kept verbatim (`leading`/`center`/
+   * `trailing`, `top`/`middle`/`bottom`) because it is what is in the file, and
+   * a canvas made on one machine is opened on the other.
+   */
+  /**
+   * What is painted behind the words, and usually nothing.
+   *
+   * The Mac's rule, in its own words: "the rule this canvas started from is that
+   * text has no background, and a shape is a line round the outside rather than
+   * permission to paint behind the words." So a color somebody chose is paper,
+   * a post-it is paper because a post-it *is* paper, and everything else is an
+   * outline with the canvas showing through.
+   *
+   * Hermes differs here and it is not an accident on its side either: an
+   * ephemeral note there is a sticky by definition and defaults to one. On this
+   * canvas a note's look comes from its shape, which is what `shapeDefaults` in
+   * the daemon says too — post-it yellow, everything else nothing.
+   */
+  const paperFill = (r: NodeCtx): string | undefined => {
+    if (r.color) return r.color;
+    const shape = r.shape ?? "plain";
+    return shape === "postIt" ? "var(--postit)" : "transparent";
+  };
+
+  const alignment = (r: NodeCtx): React.CSSProperties => {
+    const across = { leading: "left", center: "center", trailing: "right" } as const;
+    const down = { top: "flex-start", middle: "center", bottom: "flex-end" } as const;
+    const h = r.hAlign && across[r.hAlign as keyof typeof across];
+    const v = r.vAlign && down[r.vAlign as keyof typeof down];
+    return { ...(h ? { textAlign: h } : {}), ...(v ? { justifyContent: v } : {}) };
+  };
+
   const nodeBox = (id: string, r: NodeCtx, body: ReactNode, isNote: boolean) => {
     // A node told to show its picture asks for one on sight: here it is not a
     // menu item that might be needed, it is the thing being drawn.
@@ -2192,7 +2263,10 @@ export function CanvasView({
         height: r.h,
         // A note's color is on its paper (above), so the cut corner shows what's
         // behind the note rather than more note.
-        background: isNote ? "transparent" : r.color || "var(--surface)",
+        // The paper is painted on the sheet inside, never on the frame — see
+        // `paperFill`. The frame carried a background for blocks, which put a
+        // solid card behind every node whether or not anybody asked for one.
+        background: "transparent",
         // Handed to the sheet, which is what carries the colour once a shape
         // has taken it off the frame.
         ...(r.shape && SHAPES[r.shape] ? ({ "--cv-fill": r.color || "var(--surface)" } as React.CSSProperties) : {}),
@@ -2251,7 +2325,20 @@ export function CanvasView({
         // sticky, invisible. A note with no color of its own falls through to
         // the stylesheet, since its paper is light in both themes.
         style={{
-          ...(isNote ? { background: r.color || "var(--postit)", color: readableOn(r.color) } : {}),
+          background: paperFill(r),
+          ...(isNote && r.color ? { color: readableOn(r.color) } : {}),
+          /*
+           * The paper's own color, handed to the stylesheet.
+           *
+           * The turned corner is drawn from `--cv-fill`, and an ephemeral note
+           * never set it — so the fold read the default and a pink sticky grew
+           * a yellow corner. The Mac fixed the same thing in its own words: "the
+           * paper's own color underneath, so a pink sticky does not grow a
+           * yellow corner."
+           */
+          ...({ "--cv-fill": paperFill(r) } as React.CSSProperties),
+          // Where the words sit, and what color they are — see `TalariaInk`.
+          ...(r.textColor ? { color: r.textColor } : {}),
           // The user's own border, when they have set one. `border-box` keeps
           // the sheet where it was: it is absolutely positioned to the frame's
           // edges, and a border that grew inward would otherwise move the text.
@@ -2261,7 +2348,7 @@ export function CanvasView({
         <div className="cv-grab" onPointerDown={(e) => startNodeDrag(id, e)} title="Drag to move">
           <GripHorizontal size={13} />
         </div>
-        <div className="cv-body">{shown}</div>
+        <div className="cv-body" style={alignment(r)}>{shown}</div>
       </div>
       {/* The outline of a clipped shape, drawn rather than bordered. A sibling
           of the paper, so the clip that cuts the sheet does not cut this —

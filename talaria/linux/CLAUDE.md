@@ -209,6 +209,13 @@ that bindings live in the portal's store rather than System Settings;
   every name. Navigation and subresources still work, so the pages render
   perfectly and every request fails as "Failed to fetch", which looks exactly
   like a dead daemon. See the note in `ui/api.js`.
+- **A header cannot carry an em dash.** The request body rides in
+  `x-talaria-body` because `requestBody()` segfaults, and `setRequestHeader`
+  refuses anything outside Latin-1 — "String contains non ISO-8859-1 code
+  point". So every write containing a curly quote, an em dash or an emoji threw
+  *before it left the page*: the panel showed the text it had just failed to
+  save and said nothing. Both codebases escape above 127 to `\uXXXX` now, which
+  is still valid JSON, so nothing on the daemon's side changes.
 - **Nothing may be parented to a `QWebEngineUrlRequestJob` that outlives it.**
   The reply object was, so a worker thread emitted on freed memory — the same
   crash `DaemonScheme.swift` documents, in a different language.

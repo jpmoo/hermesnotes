@@ -190,7 +190,11 @@ export function toMembers(doc: CanvasDocument, linked: Linked[]): Member[] {
           y: item.y,
           w: item.w,
           h: item.h,
-          fill: item.fill ?? null,
+          // `color` is the component's name for it — see `notesOf`.
+          color: item.fill ?? null,
+          hAlign: item.hAlign,
+          vAlign: item.vAlign,
+          textColor: item.textColor ?? null,
           stroke: item.stroke ?? null,
           strokeWidth: item.strokeWidth,
           strokeStyle: item.strokeStyle,

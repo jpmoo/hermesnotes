@@ -5,6 +5,15 @@
  * it: extracting them is the only way a fork of the markup looks like the thing
  * it was forked from.
  *
+ * **Taken by selector, whole — and the selector is read past the comment above
+ * it.** Two passes got this wrong. The first kept only classes that appeared as
+ * string literals in the built bundle, which dropped seventy rules — every class
+ * the component builds by concatenation, including the one that positions a
+ * node. The second tested whether a block *started* with `:root` and found a
+ * copyright comment there instead, so every design token went missing and the
+ * canvas drew itself in the browser's defaults with `--postit`, `--surface` and
+ * `--accent` all empty.
+ *
  * **Taken by selector, whole.** A first pass kept only the rules whose classes
  * appeared as string literals in the built bundle, which sounded careful and
  * dropped seventy of them — every class the component builds by concatenation,
@@ -21,8 +30,89 @@
  * port of this one, so the two are close and the differences are the work.
  */
 
+/* Hermes Notes brand (design doc §12).
+   Body/content: Verdana. Interface chrome: Tahoma. Neutral monochrome surfaces,
+   hairline borders + soft shadow, rounded corners. Color is reserved for
+   per-type icon accents and small semantic pills. */
+
+:root {
+  /* Post-it paper and the shade of its folded corner. */
+  --postit: #fdf3b6;
+  --postit-edge: #d9c56a;
+  --panel-alpha: 1;
+  --font-body: Verdana, Geneva, sans-serif;
+  --font-chrome: Tahoma, Geneva, Verdana, sans-serif;
+
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #fbfbfc;
+  --text: #26282b;
+  --text-muted: #6b7076;
+  --text-faint: #9aa0a6;
+  --border: #e7e8ea;
+  --border-strong: #d9dbde;
+  --accent: #5fa4b5; /* logo teal */
+  --accent-ink: #3d4247; /* logo slate */
+  --danger: #b5525f;
+  --cal-today: #c8901a; /* today ring — deliberately not the accent, which marks a day that has a note */
+
+  --panel-blur: none; /* set from the panel-blur preference */
+  --radius-card: 12px;
+  --radius-control: 9px;
+  /* Cast down AND to the right, as if lit from the upper left, so anything
+     sitting on the page background reads as raised off it. */
+  --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.15);
+  --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.2);
+  /* Bare color, for the panels: each casts toward the content it floats over,
+     so the offset differs per edge and can't come from a ready-made token. */
+  --shadow-color: rgba(0, 0, 0, 0.15);
+}
+
+/* ── Dark theme ──────────────────────────────────────────────────
+   Applied via data-theme="dark" on <html> (set pre-paint in main.tsx and
+   synced through prefs). Overrides the core tokens; a few hardcoded light
+   spots get dark equivalents below. */
+:root[data-theme="dark"] {
+  /* Dimmer paper in the dark, so a wall of notes isn't a wall of light. */
+  --postit: #d9c983;
+  --postit-edge: #a8955a;
+  --bg: #16181b;
+  --surface: #1e2125;
+  --surface-2: #262a2f;
+  --text: #e6e8ea;
+  --text-muted: #a2a8af;
+  --text-faint: #6d747b;
+  --border: #31363b;
+  --border-strong: #454b52;
+  --accent: #6fb3c4;
+  --accent-ink: #d7dce1;
+  --danger: #d6707d;
+  --cal-today: #e0ae3d;
+  /* Deeper on a dark page, where a faint black shadow simply disappears. */
+  --shadow-soft: 2px 3px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lift: 3px 5px 14px rgba(0, 0, 0, 0.6);
+  --shadow-color: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+/* Nav active highlight (hardcoded light teal-tint → token). */
+:root[data-theme="dark"] .nav-link.active {
+  background: rgba(111, 179, 196, 0.16);
+}
+
 :root[data-theme="dark"] .nav-row .nav-link.active {
   background: transparent;
+}
+
+/* Page-title icons pass a hardcoded dark stroke inline; flip in dark. */
+:root[data-theme="dark"] .title-with-icon > svg {
+  stroke: var(--text);
+}
+
+/* Light teal-tint actives (#eef4f6) are illegible in dark — retint. */
+:root[data-theme="dark"] .seg.active {
+  background: rgba(111, 179, 196, 0.24);
+  color: var(--text);
 }
 
 :root[data-theme="dark"] .tag-chip {
@@ -35,8 +125,32 @@
   color: var(--text-muted);
 }
 
+/* The collapse pill is translucent-white in light; use a dark pill in dark. */
+:root[data-theme="dark"] .card-collapse {
+  background: rgba(20, 22, 24, 0.72);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
 :root[data-theme="dark"] .card-collapse:hover {
   background: rgba(20, 22, 24, 0.9);
+}
+
+/* Matrix/canvas readable surfaces are white-tinted for pastel regions; in dark
+   keep them light so text stays legible over the (still-pastel) region color. */
+:root[data-theme="dark"] .banner-slice .banner-img {
+  filter: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
 }
 
 .graph-zoom .icon-btn {
@@ -330,6 +444,55 @@ input.typed-title:focus {
 .note-editor li.li-lvl-7 { --row-indent: 168px; }
 
 .note-editor li.li-lvl-8 { --row-indent: 188px; }
+
+/* Touch: the same controls need real tap targets, and a wider gutter to sit in.
+   The per-level indent barely grows — only the one-off left inset does. */
+@media (pointer: coarse) {
+  .note-editor ul,
+  .note-editor ol { padding-left: 24px; }
+  .note-editor > ul,
+  .note-editor > ol { padding-left: 56px; }
+  /* Same scheme, wider steps to match the roomier list padding above. */
+  .note-editor li.li-lvl-1 { --row-indent: 56px; }
+  .note-editor li.li-lvl-2 { --row-indent: 80px; }
+  .note-editor li.li-lvl-3 { --row-indent: 104px; }
+  .note-editor li.li-lvl-4 { --row-indent: 128px; }
+  .note-editor li.li-lvl-5 { --row-indent: 152px; }
+  .note-editor li.li-lvl-6 { --row-indent: 176px; }
+  .note-editor li.li-lvl-7 { --row-indent: 200px; }
+  .note-editor li.li-lvl-8 { --row-indent: 224px; }
+  .li-drag,
+  .li-fold {
+    width: 15px;
+    height: 26px;
+    opacity: 0.8;
+  }
+  .li-drag { left: calc(2px - var(--row-indent, 56px) - var(--outline-indent, 0px)); font-size: 14px; }
+  .li-fold { left: calc(19px - var(--row-indent, 56px) - var(--outline-indent, 0px)); font-size: 13px; }
+}
+
+/* Alternating row shading, to keep the eye on one line across a long list. The
+   band goes on the row's OWN first line — not the <li>, which would tint that
+   row's nested children too — and reaches left under the marker so it reads as a
+   full row. Striping restarts within each nested list, since CSS can't count
+   rows across nesting levels. */
+/* Which rows are banded is decided in the plugin (see rowNumber), because the
+   alternation runs continuously down the note and CSS can't count across nesting
+   levels. `first-of-type`, NOT `first-child`: the drag grip is a widget <span>
+   injected as the row's first child, so the paragraph is never the first child —
+   and the band goes on that line alone, not the <li>, which would tint the row's
+   nested children too. */
+:root[data-list-stripes="1"] .li-stripe > p:first-of-type,
+:root[data-list-stripes="1"] .li-stripe > pre:first-of-type,
+:root[data-list-stripes="1"] .li-stripe > div > p:first-of-type,
+:root[data-list-stripes="1"] .li-stripe > div > pre:first-of-type {
+  background: color-mix(in srgb, var(--text) 11%, transparent);
+  /* Reach back out over the marker and the control gutter to the note's left edge,
+     using the same per-level indent the controls are placed with. The line already
+     runs to the right edge. */
+  margin-left: calc(-1 * (var(--row-indent, 48px) + var(--outline-indent, 0px)));
+  padding-left: calc(var(--row-indent, 48px) + var(--outline-indent, 0px));
+}
 
 /* The row picked up by its grip — shows exactly what a drag will move, including
    anything nested inside it. (.li-dragging is the touch path, which marks the row
@@ -888,8 +1051,16 @@ input.typed-title:focus {
    no part in layout, and is not something anybody can set from the menu.
 
    Offset out, so it reads as a mark around the note rather than as its edge. */
+/* **Talaria draws no such mark**, and that is the parity call rather than an
+   oversight. On Hermes a note is ephemeral *relative to* the real blocks around
+   it, and saying so is useful. On this canvas both are items in the same
+   document — the Mac tells them apart in a tooltip ("Make this a block in
+   Hermes Notes" against "Open in Hermes Notes") and nowhere else, so a node
+   with no outline of its own is words on the canvas, exactly as it is there.
+   The rule is kept, disabled, because the reasoning above it is worth reading
+   the next time somebody wonders where the mark went. */
 .cv-node.cv-note {
-  outline: 2px dashed color-mix(in srgb, var(--border-strong) 75%, transparent);
+  outline: none;
   outline-offset: 3px;
   border-radius: 3px;
 }
@@ -1326,6 +1497,20 @@ input.cv-add-input {
   background: rgba(0, 0, 0, 0.28);
 }
 
+/* The active line inside a striped list row.
+   A stripe reaches back over the marker and the control gutter to the note's
+   left edge so its background covers the whole row. The accent bar is a border,
+   so on those rows it was drawn at that pulled-out edge — out past the number,
+   instead of beside the text like every other active line. Draw it at the text
+   instead: the border goes transparent (keeping its width, so nothing shifts)
+   and the bar is placed where the padding ends. */
+:root[data-list-stripes="1"] .li-stripe > pre.source-line,
+:root[data-list-stripes="1"] .li-stripe > div > pre.source-line {
+  position: relative;
+  border-left-color: transparent;
+  padding-left: calc(var(--row-indent, 48px) + var(--outline-indent, 0px) + 10px);
+}
+
 :root[data-list-stripes="1"] .li-stripe > pre.source-line::before,
 :root[data-list-stripes="1"] .li-stripe > div > pre.source-line::before {
   content: "";
@@ -1348,6 +1533,23 @@ input.cv-add-input {
 .note-editor .caret-slot::selection,
 .note-editor .caret-slot *::selection {
   background: rgba(95, 164, 181, 0.25);
+}
+
+/* The page itself, out of the way.
+   
+   `body` carries the app's background, which is the right thing on every route
+   that is a page and the wrong thing on one that is a panel inside somebody
+   else's window. The card was made transparent first and the quadrant stayed
+   white, because what was white was never the card — it was the page behind it.
+   Talaria's web view draws no background of its own, so with these transparent
+   the frost comes through.
+   
+   Scoped with `:has()` rather than a body class, so it cannot leak onto a real
+   page even if the route is ever visited in a browser. */
+html:has(.embed-scratchpad),
+body:has(.embed-scratchpad),
+body:has(.embed-scratchpad) #root {
+  background: transparent;
 }
 
 /* A shape swatch is a colour swatch that shows an outline instead of a colour:

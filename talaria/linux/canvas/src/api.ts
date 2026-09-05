@@ -120,13 +120,34 @@ const ORIGIN = "talaria-app://daemon";
  */
 export const apiBase = ORIGIN;
 
+/**
+ * The body, as a header value a browser will accept.
+ *
+ * `setRequestHeader` refuses anything outside Latin-1, and the body travels in a
+ * header here because reading a real request body segfaults this PySide build.
+ * A canvas is full of somebody's prose — an em dash was enough — so every write
+ * containing one threw before it left the page: the note showed the text it had
+ * just failed to save, and nothing said so.
+ *
+ * Escaped rather than encoded, because JSON already has a way to say this. Above
+ * 127 becomes `\uXXXX`, which is still valid JSON, so the daemon parses what it
+ * always parsed. The shell's `ui/api.js` carries the same function for the same
+ * reason; the two are separate on purpose.
+ */
+function asHeader(body: unknown): string {
+  return JSON.stringify(body).replace(
+    /[\u007f-\uffff]/g,
+    (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"),
+  );
+}
+
 export function ask<T>(method: string, path: string, body?: unknown): Promise<T> {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
     x.open(method, ORIGIN + path, true);
     if (body !== undefined) {
       x.setRequestHeader("content-type", "application/json");
-      x.setRequestHeader("x-talaria-body", JSON.stringify(body));
+      x.setRequestHeader("x-talaria-body", asHeader(body));
     }
     x.onload = () => {
       let parsed: unknown;
@@ -212,26 +233,52 @@ export function flush() {
 }
 addEventListener("pagehide", () => void flush());
 
-/** Hermes' note shape, back into an item. */
-function itemFromNote(note: Record<string, unknown>): CanvasItem {
+/**
+ * Hermes' note shape, back into an item — **merged, never rebuilt.**
+ *
+ * Talaria's items carry more than Hermes' canvas can say: where the words sit
+ * across the box and down it, what color the ink is, and (for a note) an
+ * outline. The Mac draws all of it. Rebuilding an item from the note handed
+ * back would drop every one of them, so moving a sticky an inch would quietly
+ * flatten a canvas somebody arranged on the Mac.
+ *
+ * The item that is already there is the base and only the fields Hermes manages
+ * are laid over it. That is the repo's rule about unknown fields, applied to a
+ * renderer instead of an importer: what it does not understand, it must not
+ * destroy.
+ */
+function itemFromNote(note: Record<string, unknown>, was: CanvasItem | undefined): CanvasItem {
+  const id = noteIdOf(String(note.id));
+  const base: CanvasItem = was ?? { id, x: 0, y: 0, w: 200, h: 120 };
   return {
-    // Back out of the component's vocabulary: `n:<id>` is how it addresses a
-    // note, and the file stores the id itself.
-    id: noteIdOf(String(note.id)),
+    ...base,
+    id,
     x: Number(note.x) || 0,
     y: Number(note.y) || 0,
-    w: Number(note.w) || 160,
-    h: Number(note.h) || 80,
-    text: typeof note.text === "string" ? note.text : "",
-    shape: typeof note.shape === "string" ? note.shape : "plain",
-    fill: ((note.color ?? note.fill) as string) ?? null,
-    stroke: (note.stroke as string) ?? null,
-    strokeWidth: note.strokeWidth as number | undefined,
-    strokeStyle: note.strokeStyle as string | undefined,
-    hAlign: note.hAlign as string | undefined,
-    vAlign: note.vAlign as string | undefined,
-    textColor: (note.textColor as string) ?? null,
-    image: (note.image as string) ?? null,
+    w: Number(note.w) || base.w,
+    h: Number(note.h) || base.h,
+    text: typeof note.text === "string" ? note.text : base.text,
+    shape: typeof note.shape === "string" ? note.shape : base.shape,
+    // `color` on the way in, `fill` in the file — one of the three names that
+    // differ between the vocabularies.
+    fill: "color" in note ? ((note.color as string) ?? null) : base.fill,
+    stroke: "stroke" in note ? ((note.stroke as string) ?? null) : base.stroke,
+    strokeWidth: "strokeWidth" in note ? (note.strokeWidth as number) : base.strokeWidth,
+    strokeStyle: "strokeStyle" in note ? (note.strokeStyle as string) : base.strokeStyle,
+    hAlign: "hAlign" in note ? (note.hAlign as string) : base.hAlign,
+    vAlign: "vAlign" in note ? (note.vAlign as string) : base.vAlign,
+    textColor: "textColor" in note ? ((note.textColor as string) ?? null) : base.textColor,
+    /*
+     * The picture, which the two sides hold differently and which is therefore
+     * left alone.
+     *
+     * Talaria stores a file name in `canvas-images/`; Hermes' note carries the
+     * bytes as a data URI, "passing through rather than living" as its own
+     * comment puts it. Until that is wired up, a note's image is whatever the
+     * file already said — never overwritten with a shape this build has not
+     * taught the component to produce.
+     */
+    image: base.image,
   };
 }
 
@@ -259,7 +306,10 @@ function linkFromEdge(edge: Record<string, unknown>): CanvasLink {
 function patchProperties(props: Record<string, unknown>) {
   if (Array.isArray(props.canvas_notes)) {
     const blocks = held.items.filter((i) => i.blockId);
-    const notes = (props.canvas_notes as Record<string, unknown>[]).map(itemFromNote);
+    const was = new Map(held.items.filter((i) => !i.blockId).map((i) => [i.id, i]));
+    const notes = (props.canvas_notes as Record<string, unknown>[]).map((note) =>
+      itemFromNote(note, was.get(noteIdOf(String(note.id)))),
+    );
     held.items = [...blocks, ...notes];
   }
   if (Array.isArray(props.canvas_edges)) {
@@ -290,6 +340,11 @@ function patchMember(blockId: string, context: Record<string, unknown>) {
   if (typeof from.strokeWidth === "number") item.strokeWidth = from.strokeWidth;
   if (typeof from.strokeStyle === "string") item.strokeStyle = from.strokeStyle;
   if (typeof from.shape === "string") item.shape = from.shape;
+  // Only when said. A context that does not mention alignment is not a context
+  // that cleared it — see `itemFromNote`.
+  if (typeof from.hAlign === "string") item.hAlign = from.hAlign;
+  if (typeof from.vAlign === "string") item.vAlign = from.vAlign;
+  if ("textColor" in from) item.textColor = (from.textColor as string) ?? null;
   save();
 }
 

@@ -23,6 +23,28 @@
  * daemon. The note is kept so the next person does not re-diagnose a bug that
  * no longer exists.
  */
+/**
+ * The body, as a header value a browser will accept.
+ *
+ * `setRequestHeader` refuses anything outside Latin-1 — "String contains non
+ * ISO-8859-1 code point" — and the body rides in a header here because
+ * `requestBody()` segfaults this PySide build. So a note with an em dash in it,
+ * a curly quote, or an emoji could not be saved *at all*: the write threw before
+ * it left the page, and the panel showed the text it had failed to store.
+ *
+ * Escaped rather than encoded, because JSON already has a way to say this. Every
+ * character above 127 becomes a `\uXXXX` escape, which is still valid JSON — so
+ * the daemon parses exactly what it always parsed and nothing on the other side
+ * changes. Surrogate pairs escape as their two halves and `JSON.parse` puts them
+ * back together.
+ */
+function asHeader(payload) {
+  return JSON.stringify(payload).replace(
+    /[\u007f-\uffff]/g,
+    (ch) => "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0"),
+  );
+}
+
 function send(method, path, payload) {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
@@ -35,7 +57,7 @@ function send(method, path, payload) {
       // there is no way to read a real request body on the other side. Dragging
       // a card was the first thing that wrote anything, and it crashed the
       // application outright. See the note in `scheme.py`.
-      x.setRequestHeader("x-talaria-body", JSON.stringify(payload));
+      x.setRequestHeader("x-talaria-body", asHeader(payload));
     }
     x.onload = () => {
       let body;
@@ -89,7 +111,7 @@ export function stream(path, payload, onEvent) {
     const x = new XMLHttpRequest();
     x.open("POST", path, true);
     x.setRequestHeader("content-type", "application/json");
-    x.setRequestHeader("x-talaria-body", JSON.stringify(payload ?? {}));
+    x.setRequestHeader("x-talaria-body", asHeader(payload ?? {}));
     x.setRequestHeader("x-talaria-stream", "1");
 
     // How far into `responseText` has already been handed over. The text only

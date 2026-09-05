@@ -482,9 +482,22 @@ html, body { background: transparent; }
 /* --- The desk -------------------------------------------------------------
  * Full screen, and the one surface the other panels sit on top of.
  */
-/* Nothing of its own is painted here — the desk *is* the blurred field, and
- * every solid surface on it is a pane. */
-.desk { position: fixed; inset: 0; overflow: hidden; background: transparent; }
+/*
+ * The whole screen is the frosted sheet.
+ *
+ * The first version painted nothing here and gave the panes a near-solid fill,
+ * so the only frosting anybody could see was the gutter between them — a border
+ * around each quadrant rather than a surface. The tint belongs here, across the
+ * whole window, and the panes sit *in* it rather than on top of it.
+ */
+.desk {
+  position: fixed; inset: 0; overflow: hidden;
+  /* Exactly the window's own frosting, across the whole screen. Not a fraction
+   * of it: `--surface-alpha` is 1 when frosting is off, and any fraction would
+   * leave the desk milky over an unblurred desktop — see-through with nothing
+   * behind it to see. */
+  background: var(--surface);
+}
 .rail { display: flex; height: 100vh; width: 300vw; will-change: transform; }
 .surface { width: 100vw; height: 100vh; flex: none; padding: 22px; box-sizing: border-box; }
 
@@ -496,28 +509,28 @@ html, body { background: transparent; }
   height: 100%;
 }
 /*
- * A quadrant, frosted — and less so than the window it sits in.
+ * A quadrant: a veil over the sheet, not a lid on it.
  *
- * The desk carries the compositor's blur across its whole area, so the gutters
- * between the panes show it at full strength and each pane lays its own tint
- * over it. Half the window's transparency, tracked from the same setting rather
- * than fixed: turning frosting up should move both, and a pane that stayed at a
- * constant alpha while the desk around it went clear would look like a bug.
- *
- * Half rather than some other fraction because these are reading surfaces with
- * text in them. The gutters are where the desktop shows through; the panes are
- * where the words are, and words over a photograph is the failure mode this is
- * kept away from.
+ * Only a little more solid than the desk it sits in — enough that the pane
+ * reads as a pane and its text stays legible over a blurred desktop, and not so
+ * much that the frosting stops at its edge. Both values are tracked from
+ * `--surface-alpha`, so turning frosting up in settings moves the whole screen
+ * together rather than leaving four opaque cards on a clear field.
  */
 .quadrants .pane {
   display: flex; flex-direction: column; min-height: 0;
-  border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas);
+  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, Canvas calc(var(--surface-alpha) * 50% + 50%), transparent);
+  /* Almost nothing. The frosting is the sheet underneath and it must not stop
+   * at a pane's edge; what makes a pane a pane is its border and its header,
+   * not a lid. A hair of ink rather than a mix with `Canvas`, so this reads the
+   * same whether the sheet under it is opaque or barely there. */
+  background: color-mix(in srgb, CanvasText 4%, transparent);
   overflow: hidden;
 }
 .quadrants .pane > header {
   padding: 7px 13px;
+  background: color-mix(in srgb, CanvasText 5%, transparent);
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
   color: var(--muted);
   border-bottom: 1px solid var(--line);

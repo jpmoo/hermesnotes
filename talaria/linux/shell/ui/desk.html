@@ -180,11 +180,22 @@ async function today() {
       // The version travels with it: the daemon refuses a write built on a page
       // that has moved on, which is what stops this overwriting an edit made in
       // the web app while this sat open.
-      const saved = await put("/scratchpad", { content: latest, version: page.version });
+      // `id` travels too — the route takes the block, the text and the version
+      // together, and without the id every write came back as a validation
+      // complaint rendered in the status line as raw JSON.
+      const saved = await put("/scratchpad", {
+        id: page.id, content: latest, version: page.version,
+      });
       page = { ...page, ...saved };
       state.textContent = "saved";
     } catch (err) {
-      state.textContent = String(err.message || err).slice(0, 70);
+      // Short enough to read at a glance, with the whole complaint on hover: a
+      // status line is not a place to render a validation error.
+      const said = String(err.message || err);
+      state.textContent = /409/.test(said)
+        ? "changed in Hermes — reopen to get the new version"
+        : "couldn't save";
+      state.title = said;
     }
   }
 

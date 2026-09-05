@@ -449,11 +449,14 @@ class Shell(QObject):
         # Sized to what each one is for, rather than one number for all of
         # them. Glance is a narrow list you read down; the composer is a form;
         # a board wants width for its columns.
+        # Small, because these are summoned over your work rather than places
+        # to live in. A hotkey panel filling the screen is a context switch; one
+        # that takes a corner is a glance.
         size = {
-            "glance": QSize(560, 680),
-            "assistant": QSize(680, 760),
-            "compose": QSize(620, 720),
-        }.get(action, QSize(980, 720))
+            "glance": QSize(680, 380),
+            "assistant": QSize(720, 460),
+            "compose": QSize(620, 500),
+        }.get(action, QSize(1080, 560))
         return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), size,
                      route=lambda url, a=action: self._opened(url, a))
 

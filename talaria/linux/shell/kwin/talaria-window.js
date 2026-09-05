@@ -36,3 +36,105 @@ function report(window) {
 
 report(workspace.activeWindow);
 workspace.windowActivated.connect(report);
+
+// ---------------------------------------------------------------------------
+// Where Talaria's own panels sit, and how they arrive.
+//
+// **A client cannot place itself on Wayland.** That is not a gap to work
+// around, it is the design: the compositor owns geometry. So the placement
+// happens here, in a script KWin is running, which is the same reason this file
+// exists at all for the focused window.
+//
+// The alternative was `wlr-layer-shell` — the brief's stated reason for
+// choosing KDE — but the only binding is C++ (`libLayerShellQtInterface`), and
+// PySide6 cannot reach it without a shim. A KWin script needs no shim and no
+// new dependency.
+//
+// Sliding up rather than appearing is done by moving the window over a handful
+// of frames. A panel summoned by a hotkey that simply materializes in the
+// middle of the screen is startling; one that rises from the edge reads as
+// something being brought up, which is what it is.
+
+var OURS = "dev.talaria.shell";
+var MARGIN = 12;      // breathing room above the panel bar
+var STEPS = 10;
+var INTERVAL = 16;    // roughly a frame
+
+// **The size is set here too, not just the position.**
+//
+// `QWidget.resize` does not survive on Wayland: asking for 680x380 produced a
+// 952x504 window with no size hint anywhere that could explain it, and on
+// another run a 960x1080 one. The compositor decides geometry and the client
+// asks politely, so this stops asking. Keyed by our own captions, which are the
+// only thing distinguishing one panel from another at this level — the window
+// class is shared by all of them.
+var SIZES = {
+  "Talaria — Glance": { width: 720, height: 400 },
+  "Talaria — Ask Hermes Notes": { width: 760, height: 480 },
+  "Talaria — New Block": { width: 640, height: 520 },
+  "Talaria — Hermes Notes Collections": { width: 1100, height: 600 },
+};
+
+// The one window that is not a summoned panel.
+//
+// Hermes is a browser you work *in* — tiled, tabbed, left open — so it keeps
+// whatever geometry the user gave it. A comment here previously claimed it was
+// excluded by not being a `Tool` window; it is not. KWin reports every one of
+// these as `normalWindow`, `Tool` included, so the flag distinguishes nothing
+// and the title is what actually separates them.
+var NOT_A_PANEL = "Talaria — Hermes Notes";
+
+function place(window) {
+  if (!window || String(window.resourceClass) !== OURS) return;
+  if (String(window.caption) === NOT_A_PANEL) return;
+
+  // The usable area, which excludes the panel — a window placed against the
+  // literal screen edge would sit underneath it.
+  var area = workspace.clientArea(KWin.MaximizeArea, window);
+  var size = SIZES[String(window.caption)];
+  if (!size) return;   // a Talaria window nobody has given a size — leave it be
+  var restX = area.x + Math.round((area.width - size.width) / 2);
+  var restY = area.y + area.height - size.height - MARGIN;
+
+  // Start below the edge and climb. `frameGeometry` is assigned whole rather
+  // than mutated: KWin's geometry objects are values, and setting `.y` on one
+  // that was read out of a window changes a copy and nothing else.
+  var startY = area.y + area.height;
+  var step = 0;
+
+  var timer = new QTimer();
+  timer.interval = INTERVAL;
+  timer.repeat = true;
+  timer.timeout.connect(function () {
+    step += 1;
+    var t = step / STEPS;
+    // Ease out: fast at first, settling rather than stopping dead.
+    var eased = 1 - Math.pow(1 - t, 3);
+    var y = Math.round(startY + (restY - startY) * eased);
+    window.frameGeometry = { x: restX, y: y, width: size.width, height: size.height };
+    if (step >= STEPS) {
+      window.frameGeometry = { x: restX, y: restY, width: size.width, height: size.height };
+      timer.stop();
+      // Once more, a beat later. Something resizes these after they map — the
+      // 952x504 above — and the last word should be ours.
+      var settle = new QTimer();
+      settle.interval = 120;
+      settle.repeat = false;
+      settle.timeout.connect(function () {
+        window.frameGeometry = { x: restX, y: restY, width: size.width, height: size.height };
+      });
+      settle.start();
+    }
+  });
+  timer.start();
+}
+
+workspace.windowAdded.connect(place);
+// A panel that was hidden and summoned again is not added, it is shown — and it
+// may have been moved in between, so it is placed again rather than left where
+// the user last dragged it. That is the right call for something summoned by a
+// hotkey and the wrong one for a document window, which is why `hermes` is not
+// a normal panel and is excluded by being the only one that is not `Tool`.
+workspace.windowActivated.connect(function (w) {
+  if (w && String(w.resourceClass) === OURS) place(w);
+});

@@ -84,6 +84,50 @@ def request(
         conn.close()
 
 
+def stream(
+    method: str,
+    path: str,
+    body: bytes | None,
+    on_head,
+    on_chunk,
+    content_type: str = "application/json",
+    timeout: float = 300.0,
+) -> None:
+    """
+    One request whose body is read as it arrives.
+
+    `request` above waits for the whole answer, which is right for everything
+    that answers from the mirror and wrong for the one thing that does not: the
+    assistant streams its reply a token at a time and `/assistant/stream`
+    forwards those frames. Reading the response in one call would put the stream
+    back together only to hand it over finished.
+
+    The timeout is long because a model is thinking on the other end, and the
+    connection is closed by the `finally` — which is also the signal that aborts
+    the turn, since the daemon treats the reader going away as a stop.
+    """
+    conn = _UnixConnection(socket_path(), timeout)
+    try:
+        headers = {"content-type": content_type} if body else {}
+        conn.request(method, path, body=body, headers=headers)
+        resp = conn.getresponse()
+        on_head(resp.status, resp.getheader("content-type") or "application/octet-stream")
+        while True:
+            # **`read1`, not `read`.** `read(n)` waits until it has all `n`
+            # bytes, so a small reply arrived in one piece at the very end and
+            # the stream was a stream in name only — measured at 32 seconds to
+            # first byte for a turn that took 32.6. `read1` returns whatever has
+            # landed, which is the whole point.
+            piece = resp.read1(4096)
+            if not piece:
+                break
+            on_chunk(piece)
+    except (FileNotFoundError, ConnectionRefusedError, socket.error) as err:
+        raise DaemonDown(f"the daemon isn't answering on {socket_path()} — {err}") from err
+    finally:
+        conn.close()
+
+
 def get_json(path: str, timeout: float = 10.0) -> Any:
     """A read, unwrapped. The daemon answers `{"data": …}`; callers want the data."""
     status, body, _ = request("GET", path, timeout=timeout)

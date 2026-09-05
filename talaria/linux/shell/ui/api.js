@@ -66,6 +66,80 @@ function send(method, path, payload) {
   });
 }
 
+/**
+ * A request whose answer arrives in pieces.
+ *
+ * `onEvent` is called with each SSE frame the daemon forwards — Hermes'
+ * `token`, `step`, `done` and `error`, unchanged. The promise settles when the
+ * stream ends, so a caller can still `await` the whole turn and use the events
+ * only to show it happening.
+ *
+ * `x-talaria-stream` is what tells the shell to answer with a device it is
+ * still writing to rather than a finished buffer; without it the reply is
+ * assembled and handed over complete, which is the correct behavior for
+ * everything else and useless here. See `_wants_stream` in `scheme.py`.
+ *
+ * XHR rather than `fetch` for the reason the whole file uses XHR — the Fetch
+ * API is not available over this scheme — and it happens to be the better tool
+ * anyway: `onprogress` hands over `responseText` as it grows, which is exactly
+ * a stream of text frames.
+ */
+export function stream(path, payload, onEvent) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", path, true);
+    x.setRequestHeader("content-type", "application/json");
+    x.setRequestHeader("x-talaria-body", JSON.stringify(payload ?? {}));
+    x.setRequestHeader("x-talaria-stream", "1");
+
+    // How far into `responseText` has already been handed over. The text only
+    // grows, so a cursor is all the state a reader needs.
+    let read = 0;
+    // A reader that throws — the assistant does, on an `error` frame — has to
+    // reach the promise. Thrown inside `onprogress` it would otherwise be an
+    // uncaught exception in an event handler and the `await` would resolve as
+    // though the turn had gone fine.
+    let thrown = null;
+    const drain = () => {
+      if (thrown) return;
+      const text = x.responseText;
+      // A frame ends at a blank line; anything after the last one is a frame
+      // still being written and waits for the next progress event.
+      const edge = text.lastIndexOf("\n\n");
+      if (edge < read) return;
+      for (const frame of text.slice(read, edge).split("\n\n")) {
+        const line = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        let event;
+        try {
+          event = JSON.parse(line.slice(5).trim());
+        } catch {
+          // A frame that is not JSON is not a frame. Skipped rather than
+          // fatal: the rest of the stream is still worth reading.
+          continue;
+        }
+        try {
+          onEvent(event);
+        } catch (err) {
+          thrown = err;
+          // Stops the daemon's read, which stops Hermes: the route treats the
+          // reader going away as a stop rather than letting a model write into
+          // a socket nobody is reading.
+          x.abort();
+          reject(err);
+          return;
+        }
+      }
+      read = edge + 2;
+    };
+
+    x.onprogress = drain;
+    x.onload = () => { drain(); if (!thrown) resolve(); };
+    x.onerror = () => reject(new Error("can't reach the daemon — is it running?"));
+    x.send(null);
+  });
+}
+
 export const get = (path) => send("GET", path);
 export const post = (path, payload) => send("POST", path, payload ?? {});
 /* `PUT` because the daemon says `PUT` — `/scratchpad` replaces a document

@@ -1283,6 +1283,61 @@ export function buildServer(deps: {
     }
   });
 
+  /**
+   * The same turn, streamed.
+   *
+   * `/assistant` waits for the whole answer and hands it over; this forwards
+   * Hermes' own events as they arrive, so a panel can show the reply being
+   * written. The frames are passed through rather than reshaped — `token`,
+   * `step`, `done`, `error` are Hermes' vocabulary and inventing a second one
+   * here would mean two things to keep in step for no gain.
+   *
+   * Hijacked, because a streaming body is not something a reply serializer can
+   * express. The daemon's own envelope is dropped for the same reason: SSE has
+   * its own frame, and a `{ ok: true }` wrapper cannot be sent before the thing
+   * it is wrapping is known.
+   */
+  app.post("/assistant/stream", async (req, reply) => {
+    const { message } = z.object({ message: z.string().min(1).max(20_000) }).parse(req.body);
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      // The socket is local and the reader is one page, but a proxy that
+      // buffered this would turn a stream back into a wait, and saying so costs
+      // one header.
+      "X-Accel-Buffering": "no",
+    });
+    const send = (event: unknown) => {
+      if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    // The reader going away aborts the turn, which is what Hermes' own route
+    // does with the same signal: a model generating into a socket nobody is
+    // reading is work nobody asked for twice.
+    const stop = new AbortController();
+    let finished = false;
+    res.on("close", () => {
+      if (!finished) stop.abort();
+    });
+
+    try {
+      await hermes.assistant(message, stop.signal, send);
+    } catch (err) {
+      const offline = err instanceof OfflineError;
+      send({
+        type: "error",
+        message: offline
+          ? "Hermes isn't reachable, and the assistant runs there — this is the one thing that needs the network."
+          : (err as Error).message,
+      });
+    } finally {
+      finished = true;
+      res.end();
+    }
+  });
+
   app.post("/assistant/confirm", async (req, reply) => {
     const { calls } = z
       .object({ calls: z.array(z.object({ tool: z.string(), args: z.unknown() })).min(1).max(25) })

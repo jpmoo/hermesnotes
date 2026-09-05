@@ -26,7 +26,7 @@
 </div>
 
 <script type="module">
-import { post, el } from "/ui/api.js";
+import { post, stream, el } from "/ui/api.js";
 import { render } from "/ui/markdown.js";
 
 const log = document.getElementById("log");
@@ -131,10 +131,56 @@ form.onsubmit = async (event) => {
   send.disabled = true;
   const pending = thinking();
   try {
-    const reply = await post("/assistant", { message: text });
-    pending.querySelector(".bubble").replaceChildren(render(reply.reply || "_(no reply)_"));
-    steps(pending, reply.steps);
-    if (reply.pending?.length) await confirm(pending, reply.pending);
+    /*
+     * Streamed, because a turn can take a minute.
+     *
+     * Hermes writes the reply a token at a time and the daemon now forwards
+     * those frames instead of swallowing them — so the dots are replaced by the
+     * answer the moment there is any of it, and the tools it runs appear as it
+     * runs them rather than all at once at the end. What arrives is markdown
+     * mid-sentence, and it is re-rendered on every frame: a half-written table
+     * renders as the rows it has so far, and completes itself when the rest
+     * lands.
+     */
+    const turn = { reply: "", steps: [], pending: [] };
+    const body = pending.querySelector(".bubble");
+    let painting = false;
+
+    const paint = () => {
+      // Once per frame at most. A token arriving every few milliseconds would
+      // otherwise re-render the whole reply every few milliseconds, and the
+      // panel spent more time laying out markdown than the model spent writing
+      // it.
+      if (painting) return;
+      painting = true;
+      requestAnimationFrame(() => {
+        painting = false;
+        body.replaceChildren(render(turn.reply));
+        log.scrollTop = log.scrollHeight;
+      });
+    };
+
+    await stream("/assistant/stream", { message: text }, (event) => {
+      if (event.type === "token" && typeof event.text === "string") {
+        turn.reply += event.text;
+        paint();
+      } else if (event.type === "step") {
+        turn.steps.push(event.step ?? event);
+        steps(pending, [event.step ?? event]);
+      } else if (event.type === "done") {
+        turn.reply = String(event.reply ?? turn.reply);
+        turn.pending = Array.isArray(event.pending) ? event.pending : [];
+        // The steps arrive twice — once as they happen, once in the summary —
+        // so the chips are drawn from the final list rather than added to.
+        for (const old of pending.querySelectorAll(".steps")) old.remove();
+        steps(pending, event.steps);
+      } else if (event.type === "error") {
+        throw new Error(String(event.message || "the assistant failed"));
+      }
+    });
+
+    body.replaceChildren(render(turn.reply || "_(no reply)_"));
+    if (turn.pending.length) await confirm(pending, turn.pending);
   } catch (err) {
     failure(pending, String(err.message || err));
   } finally {

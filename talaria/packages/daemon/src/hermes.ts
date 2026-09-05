@@ -223,7 +223,21 @@ export class Hermes {
    * `pending` is the part that matters. Anything destructive is not executed —
    * it comes back for a person to approve, and nothing happens until it does.
    */
-  async assistant(message: string, signal?: AbortSignal): Promise<AssistantTurn> {
+  async assistant(
+    message: string,
+    signal?: AbortSignal,
+    /**
+     * Every event Hermes sends, as it sends it.
+     *
+     * Hermes streams `token` (the reply as the model writes it), `step` (a tool
+     * finished) and then `done` — and this consumed all of them silently and
+     * returned the finished turn, so a question that takes forty seconds showed
+     * three dots for forty seconds. The turn is still returned; this is a tap
+     * on the wire, not a change of shape, so `/assistant` keeps behaving
+     * exactly as it did.
+     */
+    onEvent?: (event: Record<string, unknown>) => void,
+  ): Promise<AssistantTurn> {
     let res: Response;
     try {
       res = await fetch(`${this.config.origin.replace(/\/$/, "")}/api/assistant/chat`, {
@@ -265,6 +279,7 @@ export class Hermes {
         } catch {
           continue;
         }
+        onEvent?.(ev);
         if (ev.type === "done") {
           out = {
             reply: String(ev.reply ?? ""),
@@ -273,7 +288,13 @@ export class Hermes {
             stopped: Boolean(ev.stopped),
           };
         } else if (ev.type === "error") {
-          throw new HermesError(500, String(ev.error ?? "the assistant failed"));
+          // `message`, which is what Hermes sends — `apps/server/src/assistant/
+          // routes.ts` writes `{ type: "error", message }`. Reading `ev.error`
+          // meant every assistant failure arrived here as the fallback string,
+          // so the one sentence saying what actually went wrong was dropped on
+          // the floor. `error` is still accepted in case an older Hermes is on
+          // the other end.
+          throw new HermesError(500, String(ev.message ?? ev.error ?? "the assistant failed"));
         }
       }
     }

@@ -212,6 +212,16 @@ that bindings live in the portal's store rather than System Settings;
 - **Nothing may be parented to a `QWebEngineUrlRequestJob` that outlives it.**
   The reply object was, so a worker thread emitted on freed memory — the same
   crash `DaemonScheme.swift` documents, in a different language.
+- **A streamed reply ends inside `readData`, and nowhere else.** The assistant
+  is the one surface that streams, so `scheme.py` answers it with a sequential
+  `QIODevice` it is still writing to. Two things about that device cost an hour
+  each. Chromium calls `readData` **off the main thread**, so deferring the
+  close with `QTimer.singleShot(0, …)` posts it to a thread with no event loop
+  and it never fires — the page renders the whole answer and sits with its send
+  button disabled forever, because the request never completed. And on the
+  socket side, `HTTPResponse.read(n)` waits for all `n` bytes: a small reply
+  arrived in one piece at the very end, 32 seconds to first byte on a turn that
+  took 32.6. `read1` returns what has landed.
 - **A tray app must refuse to be a second copy.** Autostart plus one manual
   launch is two icons, and the second is indistinguishable from the first.
 

@@ -85,6 +85,11 @@ def _error_json(message: str) -> bytes:
     return ('{"error":%s}' % _json_string(message)).encode("utf8")
 
 
+def _error_event(message: str) -> bytes:
+    """A failure in the stream's own vocabulary — Hermes' `error` frame."""
+    return ('{"type":"error","message":%s}' % _json_string(message)).encode("utf8")
+
+
 class _Reply(QObject):
     done = Signal(int, bytes, str)
     failed = Signal(str)
@@ -103,6 +108,114 @@ class _Ask(QRunnable):
             self._reply.done.emit(status, data, mime)
         except Exception as err:  # noqa: BLE001 — the page gets the message, whatever it was
             self._reply.failed.emit(str(err))
+
+
+class _Piece(QObject):
+    """A streamed reply, in three signals: its head, its pieces, its end."""
+
+    head = Signal(int, str)
+    chunk = Signal(bytes)
+    ended = Signal()
+    failed = Signal(str)
+
+
+class _Flow(QIODevice):
+    """
+    A reply device that is still being written to.
+
+    Everything else here answers with a `QBuffer` holding the finished body,
+    which is right for a mirror that answers in a millisecond and wrong for the
+    assistant, whose reply is written a token at a time. Chromium reads a
+    sequential device as it fills: append, emit `readyRead`, and the page's
+    `onprogress` fires with what has arrived so far.
+
+    **Only the main thread touches it.** The worker emits queued signals and the
+    appending happens here, on the thread that owns the object — the same fence
+    every other reply in this file is behind, and for the same reason: this file
+    has crashed twice already on a Qt object being touched from the wrong side.
+    """
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._held = bytearray()
+        self._ended = False
+        self.open(QIODevice.OpenModeFlag.ReadOnly)
+
+    def isSequential(self) -> bool:  # noqa: N802 — Qt's name
+        return True
+
+    def bytesAvailable(self) -> int:  # noqa: N802 — Qt's name
+        return len(self._held) + super().bytesAvailable()
+
+    def atEnd(self) -> bool:  # noqa: N802 — Qt's name
+        return self._ended and not self._held
+
+    def readData(self, maxlen: int) -> bytes:  # noqa: N802 — Qt's name
+        taken = bytes(self._held[:maxlen])
+        del self._held[:len(taken)]
+        # Drained, and nothing more is coming — so the close happens here,
+        # inside the read.
+        #
+        # **`readData` is not called on the main thread**, which is what makes
+        # this the only place it can happen. Deferring the close with
+        # `QTimer.singleShot(0, ...)` posted it to the calling thread's event
+        # loop, and there isn't one: the timer never fired, Chromium sat asking
+        # for bytes that were never coming, and the page had the whole answer
+        # rendered with its send button still disabled. Instrumented rather than
+        # guessed — `readData` was called four times against an empty buffer
+        # with `atEnd` answering true each time, and nothing ended it.
+        if not self._held and self._ended:
+            self._maybe_end()
+        return taken
+
+    def push(self, data: bytes) -> None:
+        self._held += data
+        self.readyRead.emit()
+
+    def finish(self) -> None:
+        """
+        Say that was all of it — *after* the last bytes have been read.
+
+        The first version emitted `readChannelFinished` and closed the device
+        immediately, and the request never completed: the page received every
+        frame, rendered the whole answer, and sat with the send button disabled
+        waiting for a reply it had already been shown. Closing a device with
+        bytes still in it takes them away, and a closed device answers a read
+        with an error rather than with an end.
+
+        So the end is a state, not an event. `atEnd` reports it, `readData`
+        announces it once the buffer is genuinely empty, and the close happens
+        after that — which is the order Chromium reads in.
+        """
+        self._ended = True
+        # Nudge Chromium into one more read; the close then happens in that
+        # read, once the last bytes have actually been handed over.
+        self.readyRead.emit()
+        self._maybe_end()
+
+    def _maybe_end(self) -> None:
+        if self._ended and not self._held and self.isOpen():
+            self.readChannelFinished.emit()
+            self.close()
+
+
+class _Flowing(QRunnable):
+    """One streaming request, off the UI thread."""
+
+    def __init__(self, piece: _Piece, method: str, path: str, body: bytes | None) -> None:
+        super().__init__()
+        self._piece, self._method, self._path, self._body = piece, method, path, body
+
+    def run(self) -> None:
+        try:
+            daemon.stream(
+                self._method, self._path, self._body,
+                lambda status, mime: self._piece.head.emit(status, mime),
+                lambda data: self._piece.chunk.emit(data),
+            )
+            self._piece.ended.emit()
+        except Exception as err:  # noqa: BLE001
+            self._piece.failed.emit(str(err))
 
 
 class DaemonScheme(QWebEngineUrlSchemeHandler):
@@ -186,6 +299,10 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
                 ), "application/json")
                 return
 
+        if self._wants_stream(job):
+            self._flow(job, key, method, path, body)
+            return
+
         reply = _Reply()
         self._replies[key] = reply  # owned here, never parented to the job
         reply.done.connect(
@@ -224,6 +341,61 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
                 raw = bytes(value)
                 return TOO_BIG if len(raw) > MAX_BODY else (raw or None)
         return None
+
+    @staticmethod
+    def _wants_stream(job: QWebEngineUrlRequestJob) -> bool:
+        """
+        Asked for by the page, not inferred from the path.
+
+        The alternative is a list of streaming routes here and the same list in
+        `api.js`, which is two places to forget. A header is one — and it is the
+        caller who knows whether it is prepared to read a reply in pieces.
+        """
+        try:
+            headers = job.requestHeaders()
+        except Exception:  # noqa: BLE001
+            return False
+        return any(bytes(k).lower() == b"x-talaria-stream" for k in headers)
+
+    def _flow(self, job: QWebEngineUrlRequestJob, key: int,
+              method: str, path: str, body: bytes | None) -> None:
+        piece = _Piece()
+        self._replies[key] = piece  # owned here, like every other reply
+        flow: list[_Flow] = []
+
+        def began(status: int, mime: str) -> None:
+            if not self._usable(job, key):
+                return
+            device = _Flow(job)  # Qt's prescription, and safe past the checks
+            flow.append(device)
+            job.reply(mime.split(";")[0].strip().encode("ascii", "replace"), device)
+
+        def more(data: bytes) -> None:
+            # No `_usable` here: the job may well be gone, and the device is
+            # ours and outlives nothing. Writing into a closed device is a
+            # no-op; asking about a freed job is a segfault.
+            if flow and flow[0].isOpen():
+                flow[0].push(data)
+
+        def ended() -> None:
+            if flow:
+                flow[0].finish()
+            self._forget(key)
+
+        def failed(message: str) -> None:
+            if flow:
+                # Already answering, so the failure is said in the stream's own
+                # vocabulary rather than by tearing the connection down.
+                flow[0].push(b"data: " + _error_event(message) + b"\n\n")
+                flow[0].finish()
+                self._forget(key)
+                return
+            self._fail(job, key, message)
+
+        for signal, slot in ((piece.head, began), (piece.chunk, more),
+                             (piece.ended, ended), (piece.failed, failed)):
+            signal.connect(slot, Qt.ConnectionType.QueuedConnection)
+        self._pool.start(_Flowing(piece, method, path, body))
 
     def _forget(self, key: int) -> None:
         self._live.discard(key)

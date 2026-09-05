@@ -145,7 +145,7 @@ function grid(board) {
     if (held.length) cards(held, body, board.id);
     else body.appendChild(el("div", "empty", "Drop here"));
     cell.appendChild(body);
-    dropInto(cell, board.id, i);
+    dropInto(cell, board.id, i, body);
     box.appendChild(cell);
   }
   pane.appendChild(box);
@@ -160,30 +160,87 @@ function grid(board) {
   // null rather than an index: still a member of the collection, just not
   // placed anywhere in the grid. It is the way back out of a region, which
   // otherwise had none.
-  dropInto(drawer, board.id, null);
+  dropInto(drawer, board.id, null, row);
   pane.appendChild(drawer);
 }
 
-/* Make somewhere accept a card. */
-function dropInto(host, collectionId, region) {
-  host.addEventListener("dragover", (e) => {
-    // Both, and both are needed: without preventDefault the browser refuses the
-    // drop, and without the effect the cursor says "no" the whole way across.
+/* Make somewhere accept a card.
+ *
+ * `into` is the element a dropped card is actually put in, which is not `host`:
+ * the whole region is the target you can drop on, but the card belongs in its
+ * scrolling body.
+ */
+function dropInto(host, collectionId, region, into) {
+  // Counted, not toggled. `dragleave` fires every time the pointer crosses into
+  // a *child* — every card in the region — so a plain add/remove made the
+  // outline strobe for the whole drag. Enter and leave come in pairs, so
+  // counting them says whether the pointer has really left.
+  let depth = 0;
+  host.addEventListener("dragenter", (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
+    depth += 1;
     host.classList.add("over");
   });
-  host.addEventListener("dragleave", () => host.classList.remove("over"));
+  host.addEventListener("dragover", (e) => {
+    // Both are needed: without preventDefault the browser refuses the drop, and
+    // without the effect the cursor says "no" the whole way across.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+  host.addEventListener("dragleave", () => {
+    depth -= 1;
+    if (depth <= 0) { depth = 0; host.classList.remove("over"); }
+  });
   host.addEventListener("drop", async (e) => {
     e.preventDefault();
+    depth = 0;
     host.classList.remove("over");
     const blockId = e.dataTransfer.getData("text/plain");
     if (!blockId) return;
+
+    // Moved here first, written after. Reloading the board to show the result
+    // blanked the pane and redrew every region — a card moving one square made
+    // the whole matrix flash. The daemon is the authority, but it is going to
+    // agree with this, and the one case where it does not is handled below by
+    // reloading the truth.
+    const card = pane.querySelector(`.card[data-id="${CSS.escape(blockId)}"]`);
+    const from = card && card.closest(".region, .drawer");
+    if (card && into && from !== host) {
+      into.appendChild(card);
+      recount(from);
+      recount(host);
+    }
+
     try {
       await post("/write", { kind: "move", collectionId, blockId, region });
+    } catch (err) {
+      complain(pane, err);
+      // Only now: the optimistic move was wrong, so replace it with what the
+      // daemon actually has rather than leaving a card somewhere it is not.
       await show(current);
-    } catch (err) { complain(pane, err); }
+    }
   });
+}
+
+/* Put a region's header back in step after a card has come or gone. */
+function recount(host) {
+  if (!host) return;
+  const body = host.querySelector(".body") || host.querySelector(".row");
+  if (!body) return;
+  const n = body.querySelectorAll(".card").length;
+
+  const count = host.querySelector(".count");
+  if (count) count.textContent = String(n);
+  const heading = host.querySelector("h2");
+  if (heading) heading.textContent = n ? `Unplaced — ${n}` : "Unplaced";
+
+  const drawer = host.classList.contains("drawer");
+  const empty = body.querySelector(".empty");
+  if (n && empty) empty.remove();
+  if (!n && !empty) {
+    body.appendChild(el("div", "empty",
+      drawer ? "Drag a card here to take it off the board" : "Drop here"));
+  }
 }
 
 /* A tree. `groupBy` splits the top level into headed sections; below that it is
@@ -419,6 +476,7 @@ function cards(members, host, movableIn) {
   if (!members.length) { host.appendChild(el("div", "note", "Nothing in this collection.")); return; }
   for (const m of members) {
     const card = el("div", "card" + (m.done ? " done" : ""));
+    card.dataset.id = m.id;
     // Draggable only where there is somewhere to drag to. A card in a plain
     // list that follows the pointer and then refuses to land is worse than one
     // that never moved.

@@ -48,6 +48,7 @@ INTROSPECTION = f"""
       <arg type='s' name='resourceName' direction='in'/>
       <arg type='i' name='pid' direction='in'/>
       <arg type='s' name='caption' direction='in'/>
+      <arg type='s' name='workspace' direction='in'/>
     </method>
   </interface>
 </node>
@@ -123,6 +124,9 @@ class Window:
     #: None when the blindlist refused it. Absent rather than emptied, so the
     #: difference between "no title" and "not looked at" survives to the UI.
     caption: str | None
+    #: The virtual desktop that was current. The Mac gets this from AeroSpace;
+    #: here KWin owns the desktops and simply says.
+    workspace: str | None
     blind: bool
 
     @property
@@ -149,6 +153,54 @@ class Frontmost(QObject):
 
     def _remember(self, window: Window) -> None:
         self.current = window
+        self._tell_the_daemon(window)
+
+    def _tell_the_daemon(self, window: Window) -> None:
+        """
+        Hand the change to `POST /context`.
+
+        The daemon has kept a context record since it was written and has had
+        nothing to put in it here: `frontmostApp` and AeroSpace are macOS, and
+        `talaria doctor` has been saying "no window source on this platform yet"
+        in those words. This is that source.
+
+        **The title is sent and the daemon decides.** It has rules about titles
+        that this side has no business duplicating — a short trusted list, a
+        second list where a title is kept only if it names a block in the
+        library, and everything else dropped. Filtering here as well would mean
+        two policies to keep in step, and the one that matters is the one next
+        to the storage.
+
+        What is *not* sent is a blinded window's title, because that never
+        existed in this process to send. Rung 1 dropped it on arrival.
+
+        Off the GLib thread, because it is a socket call on a callback the
+        compositor is waiting on — and failing quietly, because a context record
+        is a convenience and a daemon that is restarting is not an error worth
+        interrupting anybody about.
+        """
+        threading.Thread(
+            target=self._post_context, args=(window,), name="talaria-context", daemon=True
+        ).start()
+
+    @staticmethod
+    def _post_context(window: Window) -> None:
+        import json
+
+        import daemon as daemon_client
+
+        payload = {
+            # The window class, which is this platform's answer to a bundle id.
+            "app": window.window_class or window.resource_name or None,
+            "title": window.caption,
+            "workspace": window.workspace,
+        }
+        try:
+            daemon_client.request(
+                "POST", "/context", json.dumps(payload).encode("utf8"), timeout=5.0
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     def start(self) -> None:
         if self._thread:
@@ -176,7 +228,7 @@ class Frontmost(QObject):
             if method != "Changed":
                 invocation.return_value(None)
                 return
-            window_class, resource_name, pid, caption = params.unpack()
+            window_class, resource_name, pid, caption, workspace = params.unpack()
 
             # Our own windows are not "what is in front" for any purpose here.
             # Opening a panel would otherwise overwrite the thing the panel
@@ -209,6 +261,7 @@ class Frontmost(QObject):
                 resource_name=resource_name,
                 pid=pid,
                 caption=None if blind else (caption or None),
+                workspace=workspace or None,
                 blind=blind,
             ))
             invocation.return_value(None)

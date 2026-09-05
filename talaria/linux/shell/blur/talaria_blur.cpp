@@ -15,14 +15,15 @@
 //   - `pywayland`, to speak the protocol from Python — not installed, and not
 //     packaged for this distribution.
 //
-// And one dead end worth recording, because it looked like the answer and was
-// not: `ext_background_effect_manager_v1`, the KDE-specific protocol every guide and
-// every older article names. KWin does not advertise it any more. Enumerating
-// all 66 globals is what found the replacement — a standard `ext-` protocol
-// with a different name — after the KDE one had already been generated,
-// compiled and linked against nothing.
 //   - `QtWaylandClient` from PySide6 — the module is not exposed.
 //   - `platformNativeInterface()` from PySide6 — not exposed either.
+//
+// And one dead end worth recording, because it looked like the answer and was
+// not: `org_kde_kwin_blur_manager`, the KDE-specific protocol every guide and
+// every older article names. KWin does not advertise it any more. Enumerating
+// all 66 globals is what found the replacement — this standard `ext-` protocol
+// under a different name — after the KDE one had already been generated,
+// compiled and linked against nothing.
 //
 // So the protocol is spoken here, in the one language that can reach it, and
 // Python calls in through three `extern "C"` functions. The whole binding is

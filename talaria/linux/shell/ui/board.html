@@ -528,7 +528,13 @@ function cards(members, host, movableIn) {
       card.appendChild(tick);
     }
 
-    card.appendChild(el("span", "title", m.title || "(untitled)"));
+    const title = el("span", "title", m.title || "(untitled)");
+    // The whole title, for when the visible one has been cut short. Set on the
+    // span rather than the card: `openable` puts "Open in Hermes Notes" on the
+    // card, and the nearer tooltip is the one that shows — so the title wins
+    // where the title is, and the action wins everywhere else on the card.
+    title.title = m.title || "";
+    card.appendChild(title);
     for (const d of m.dates || []) {
       card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
     }

@@ -16,9 +16,29 @@
 // journal, where it would have stayed for as long as the journal keeps
 // anything.
 
+// Which virtual desktop is current.
+//
+// The Mac gets this from AeroSpace, which answers application, title and
+// workspace in one call — and the daemon's context record has carried a
+// `workspace` column since, waiting for something on this side to fill it. KWin
+// knows because KWin owns the desktops.
+//
+// The *current* desktop rather than the window's own: a window can be on
+// several, or on all of them, and the question the record is asking is "where
+// were you", not "where does this window live".
+function currentWorkspace() {
+  try {
+    var d = workspace.currentDesktop;
+    return d ? String(d.name || d.id || "") : "";
+  } catch (e) {
+    return "";
+  }
+}
+
 function report(window) {
   if (!window) {
-    callDBus("dev.talaria.Shell", "/Window", "dev.talaria.Window", "Changed", "", "", 0, "");
+    callDBus("dev.talaria.Shell", "/Window", "dev.talaria.Window", "Changed",
+             "", "", 0, "", currentWorkspace());
     return;
   }
   // Sent as four separate fields rather than a formatted line, because the
@@ -30,7 +50,8 @@ function report(window) {
     String(window.resourceClass || ""),
     String(window.resourceName || ""),
     Number(window.pid || 0),
-    String(window.caption || "")
+    String(window.caption || ""),
+    currentWorkspace()
   );
 }
 
@@ -156,6 +177,12 @@ function place(window) {
   });
   timer.start();
 }
+
+// Switching desktop changes the answer without changing the window, and the
+// record would otherwise keep reporting the workspace you left.
+workspace.currentDesktopChanged.connect(function () {
+  report(workspace.activeWindow);
+});
 
 workspace.windowAdded.connect(place);
 // A panel that was hidden and summoned again is not added, it is shown — and it

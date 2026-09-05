@@ -450,3 +450,19 @@ html, body { background: transparent; }
 }
 /* Finished things step back rather than joining in. */
 .pane .card.done { background: color-mix(in srgb, var(--olive) 26%, transparent); }
+
+/* One line per card in a region.
+ *
+ * A matrix cell is a fixed box — that is the point of the shape, and letting a
+ * long title wrap to a second row pushes the card below it out of view without
+ * saying so. Cut it instead, and keep the whole thing in the tooltip: a
+ * quadrant is for seeing *where* things are, and the full sentence is one hover
+ * away. Only in regions and the drawer; a list has the width to wrap.
+ */
+.region .card, .drawer .card { align-items: center; }
+.region .card .title, .drawer .card .title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}

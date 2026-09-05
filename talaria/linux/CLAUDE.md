@@ -176,6 +176,19 @@ was a second toolkit's idea of a tray icon. Needs
 | `shortcuts.py` | hotkeys, through the portal. |
 | `ui/` | the pages. `board.html` renders all six collection kinds. |
 
+**Never start the shell from inside another application** — not from an agent's
+shell, not from a terminal that is itself a child of something else. The portal
+identifies a non-sandboxed app by its process, so KDE files the hotkeys under
+whatever launched it: they appear in `kglobalshortcutsrc` under that
+application's component, bound to nothing, while the real bindings sit in
+`[token_talaria]` unreachable. It looks exactly like "hotkeys stopped working"
+and it has been diagnosed three times. Start it the way the desktop starts
+things:
+
+```bash
+systemd-run --user --scope --unit=app-dev.talaria.shell -- <repo>/talaria/linux/shell/talaria-shell
+```
+
 **Do not use `kglobalaccel`.** It is undocumented, unversioned, and on Plasma 6
 Wayland it is hosted *inside `kwin_wayland`* — so a malformed argument is not an
 error, it is a dead compositor. One `setShortcutKeys` call carrying `a(ai)` took

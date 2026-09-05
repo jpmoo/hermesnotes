@@ -17,7 +17,7 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import QObject, QSettings, QSize, Qt, QUrl, QTimer
+from PySide6.QtCore import QObject, QSettings, QSize, QStandardPaths, Qt, QUrl, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage
@@ -237,35 +237,74 @@ class Shell(QObject):
 
     def _icon(self) -> QIcon:
         """
-        The menu bar mark.
+        The menu bar mark, in a color the panel can actually show.
 
-        `MenuBar.svg` beside the Mac app is the same one path, and Qt renders SVG
-        only with the svg module present — so this falls back to a drawn glyph
-        rather than to an empty space where the tray item should be. A tray icon
-        that fails to load is an application the user cannot find.
+        `MenuBar.svg` is a template: one path, filled `#000000`, meant for macOS
+        to invert for a dark menu bar. Handed to Plasma unchanged it is a black
+        feather on a dark panel — which is exactly as invisible as no icon at
+        all, and is worse than the drawn letter it replaced, because at least
+        the letter was white.
+
+        So it is recolored to the palette's own text color before it is loaded.
+        That is one substitution rather than shipping two files, and it follows
+        a theme change for free the next time the shell starts.
         """
-        svg = os.path.join(HERE, "..", "..", "app", "MenuBar.svg")
-        if os.path.isfile(svg):
-            icon = QIcon(svg)
-            # `isNull` only. A scalable icon reports *no* available sizes —
-            # that is what scalable means — so asking for one rejected the SVG
-            # every time and fell through to the drawn letter below.
+        # The application's own glyph first, and this is the Linux convention
+        # rather than a compromise. A macOS menu bar item is a monochrome
+        # template the system inverts; a Plasma tray takes a full-color icon and
+        # renders it as given. There is no reliable way to ask what color *the
+        # panel* is — the application palette answers for windows, and a light
+        # theme with a dark panel is an ordinary setup — so an icon that depends
+        # on guessing that is an icon that is sometimes invisible.
+        glyph = os.path.join(HERE, "..", "..", "app", "glyph-1024.png")
+        if os.path.isfile(glyph):
+            icon = QIcon(glyph)
             if not icon.isNull():
                 return icon
+
+        # Failing that, the mark, recolored — better than nothing and better
+        # than black-on-black, which is what shipping `MenuBar.svg` unchanged
+        # gave: a template meant for a system that inverts it, handed to one
+        # that does not.
+        svg = os.path.join(HERE, "..", "..", "app", "MenuBar.svg")
+        ink = QApplication.palette().windowText().color().name()
+        if os.path.isfile(svg):
+            try:
+                with open(svg, encoding="utf8") as handle:
+                    body = handle.read()
+                body = body.replace('fill="#000000"', f'fill="{ink}"')
+                # Written beside the runtime state rather than into the repo:
+                # this is a rendering of the source, not a second source.
+                out = os.path.join(
+                    QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation)
+                    or "/tmp",
+                    "talaria-tray.svg",
+                )
+                with open(out, "w", encoding="utf8") as handle:
+                    handle.write(body)
+                icon = QIcon(out)
+                # `isNull` only. A scalable icon reports no available sizes —
+                # that is what scalable means — so asking for one rejects every
+                # SVG there is.
+                if not icon.isNull():
+                    return icon
+            except OSError:
+                pass
+
+        # Last resort, and deliberately legible: a mark nobody can find is an
+        # application nobody can quit.
         pixmap = QPixmap(22, 22)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.GlobalColor.white)
+        painter.setPen(QApplication.palette().windowText().color())
         font = painter.font()
         font.setPixelSize(16)
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "T")
         painter.end()
-        icon = QIcon(pixmap)
-        icon.setIsMask(True)  # let Plasma tint it for the panel's theme
-        return icon
+        return QIcon(pixmap)
 
     # ------------------------------------------------------------------ menu
 

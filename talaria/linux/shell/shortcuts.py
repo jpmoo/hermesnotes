@@ -97,6 +97,22 @@ class Shortcuts(QObject):
 
     # ------------------------------------------------------------------ thread
 
+    @staticmethod
+    def _asked() -> list[str]:
+        """Shortcut ids the portal has already been asked about, ever."""
+        from PySide6.QtCore import QSettings
+
+        value = QSettings("talaria", "shell").value("askedShortcuts")
+        if isinstance(value, str):
+            return [value] if value else []
+        return list(value or [])
+
+    @staticmethod
+    def _remember_asked(ids: set[str]) -> None:
+        from PySide6.QtCore import QSettings
+
+        QSettings("talaria", "shell").setValue("askedShortcuts", sorted(ids))
+
     def _run(self, rebind: bool) -> None:
         try:
             import gi
@@ -195,9 +211,22 @@ class Shortcuts(QObject):
                 if trigger.strip():
                     already.add(entry[0])
 
-        missing = [w for w in self._wanted if w[0] not in already]
+        # **Asked at most once, unless asked to ask again.**
+        #
+        # Re-requesting on every start is not merely noisy, it is destructive:
+        # a `BindShortcuts` whose dialog nobody answers leaves the shortcut
+        # recorded with no key, so the next start finds it empty and asks again,
+        # and a binding that was working is now gone. Restarting the shell a few
+        # times in a row was enough to wipe a set of hotkeys the user had chosen
+        # — which is exactly what kept happening while this was being built.
+        #
+        # An unbound shortcut is also a legitimate answer. Somebody who was
+        # asked and said no should not be asked again on Tuesday.
+        asked = set(self._asked())
+        missing = [w for w in self._wanted if w[0] not in already and w[0] not in asked]
         if missing or rebind:
             wanted = self._wanted if rebind else missing
+            self._remember_asked(asked | {w[0] for w in wanted})
             shortcuts = [
                 (action, {
                     "description": GLib.Variant("s", friendly),

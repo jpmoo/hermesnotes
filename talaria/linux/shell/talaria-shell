@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# The Talaria tray item.
+#
+# A script rather than an alias for the reason `bin/talaria` gives: the things
+# that start this — a desktop session's autostart, a hotkey, KRunner — none of
+# them read your shell profile.
+set -euo pipefail
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+# Qt picks X11 over Wayland when both are offered, and under XWayland the tray
+# still works but the window decorations and scaling come from the wrong world.
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland;xcb}"
+exec python3 "$HERE/shell.py" "$@"

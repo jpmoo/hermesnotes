@@ -1,9 +1,9 @@
 # Talaria on Linux
 
-Orientation for a coding agent picking this up on a KDE desktop. This is still
-mostly the brief rather than the report: **step 1 is done and steps 2 to 5 are
-not.** The daemon runs here, under systemd, answering its socket. Everything
-that is a front end is unwritten.
+Orientation for a coding agent picking this up on a KDE desktop. **Steps 1, 3
+and most of 4 are done; step 2 (the canvas fork) and step 5 (Glance) are not.**
+The daemon runs under systemd, a tray shell holds four panels, and hotkeys come
+through the shortcuts portal. The canvas is still read-only.
 
 Read `../../CLAUDE.md` first (the repo's own orientation), then `../DESIGN.md`
 for what Talaria is and why. This file covers only what changes when the
@@ -48,13 +48,12 @@ needs the step after it to be worth having.
    is already made — see below. It is also the safest: the component is mature,
    the adapter is the only new code, and Canvas Chat keeps working throughout
    because `canvas.json` never changes.
-3. **A shell to hold it.** WebKitGTK or Qt WebEngine, with a scheme handler
-   modelled on `reference/DaemonScheme.swift`. Plain window first; layer-shell
-   only when something needs to float.
-4. **Compositor integration.** Hotkeys through KDE's global-shortcuts portal or
-   `kglobalaccel`, each bound to a `talaria` CLI command — the CLI already has a
-   wide surface, so this is configuration rather than code. Focused window and
-   title from KWin.
+3. ~~**A shell to hold it.**~~ **Done** — `shell/`, PySide6 on Qt 6. Tray item,
+   four panels, settings window, and the scheme handler the canvas will reuse
+   unchanged.
+4. **Compositor integration.** Hotkeys: **done**, through the portal — see the
+   warning below about the route not taken. Focused window and title from KWin:
+   **not done**, and it is what `context.ts` is waiting on.
 5. **Glance last, and prototype before building.** It is the hard part and the
    only piece that might not reach parity. Everything above is worth having
    whether or not it does.
@@ -161,6 +160,47 @@ reported it down. **Change one, change the other.**
 Note the daemon is bundled by esbuild into a single file. **esbuild copies no
 static assets**; whatever build ships the web UI has to carry the directory
 across itself.
+
+## The shell
+
+`shell/talaria-shell` — PySide6, because Plasma 6 is Qt 6 and the alternative
+was a second toolkit's idea of a tray icon. Needs
+`python3-pyside6.{qtwidgets,qtgui,qtwebenginewidgets,qtnetwork}`.
+
+| | |
+|---|---|
+| `shell.py` | tray, menu, panels, the toggle. The Mac's `main.swift` around its `NSStatusItem`, minus nine hundred lines, because the panels are pages rather than AppKit. |
+| `scheme.py` | `talaria-app://daemon/…` into the socket. `/ui/` is served from disk, everything else is the daemon's. |
+| `settings.py` | every field the Mac panel edits, plus model discovery. |
+| `probe.py` | `/api/tags`, filtered by capability. A port of `Probe`. |
+| `shortcuts.py` | hotkeys, through the portal. |
+| `ui/` | the pages. `board.html` renders all six collection kinds. |
+
+**Do not use `kglobalaccel`.** It is undocumented, unversioned, and on Plasma 6
+Wayland it is hosted *inside `kwin_wayland`* — so a malformed argument is not an
+error, it is a dead compositor. One `setShortcutKeys` call carrying `a(ai)` took
+the session down during development. `org.freedesktop.portal.GlobalShortcuts` is
+specified, versioned, and lives in a separate process that respawns. The cost is
+that bindings live in the portal's store rather than System Settings;
+`talaria-shell --rebind` reopens its dialog.
+
+### Things that cost an hour here, so they do not cost another
+
+- **`job.requestBody()` on a GET is a segfault.** PySide tries to wrap the null
+  `QIODevice*` and dies inside `getWrapperForQObject` — on the first request the
+  page makes, after the window has already rendered. Ask for a body only when
+  the method can carry one.
+- **`fetch` does not work over a custom scheme here, and `XMLHttpRequest` does.**
+  Qt gates the Fetch API on `FetchApiAllowed`, and in this PySide6 build
+  `registerScheme` does not stick at all — `schemeByName` reads back empty for
+  every name. Navigation and subresources still work, so the pages render
+  perfectly and every request fails as "Failed to fetch", which looks exactly
+  like a dead daemon. See the note in `ui/api.js`.
+- **Nothing may be parented to a `QWebEngineUrlRequestJob` that outlives it.**
+  The reply object was, so a worker thread emitted on freed memory — the same
+  crash `DaemonScheme.swift` documents, in a different language.
+- **A tray app must refuse to be a second copy.** Autostart plus one manual
+  launch is two icons, and the second is indistinguishable from the first.
 
 ## Glance, which is the hard part
 

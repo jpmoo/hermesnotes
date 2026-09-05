@@ -1,0 +1,118 @@
+<!doctype html>
+<meta charset="utf8">
+<title>New Block</title>
+<link rel="stylesheet" href="/ui/panel.css">
+<div class="pane">
+  <h1>New Block</h1>
+  <div id="form"><div class="note">Loading types…</div></div>
+</div>
+<script type="module">
+import { get, post, complain, el } from "/ui/api.js";
+
+const host = document.getElementById("form");
+let types = [];
+
+/*
+ * Fields are drawn from the type, never from its name.
+ *
+ * The repo's first invariant, and this is the surface most likely to break it:
+ * it would be easy to draw a due-date box "for tasks" and a body box "for
+ * notes". Instead every field the type declares is rendered by its `kind`, so a
+ * type the user invented this morning composes as well as a built-in one, and
+ * renaming Task to Action breaks nothing.
+ */
+const WIDGETS = {
+  text: () => el("input"),
+  richtext: () => el("textarea"),
+  number: () => { const i = el("input"); i.type = "number"; return i; },
+  date: () => { const i = el("input"); i.type = "date"; return i; },
+  datespan: () => { const i = el("input"); i.type = "date"; return i; },
+  enum: (field) => {
+    const s = el("select");
+    for (const option of field.options || []) s.appendChild(el("option", null, option));
+    return s;
+  },
+};
+
+async function load() {
+  types = await get("/types");
+  host.innerHTML = "";
+
+  const picker = el("select");
+  picker.id = "type";
+  for (const t of types) {
+    const option = el("option", null, t.name);
+    option.value = t.id;
+    picker.appendChild(option);
+  }
+  host.append(Object.assign(el("label", null, "Type"), {}), picker);
+  picker.onchange = () => fields(picker.value);
+
+  const body = el("div");
+  body.id = "fields";
+  host.appendChild(body);
+
+  const go = el("button", "go", "Create");
+  go.onclick = () => create(picker.value, go);
+  host.appendChild(go);
+
+  const said = el("div", "note");
+  said.id = "said";
+  host.appendChild(said);
+
+  fields(picker.value);
+}
+
+function fields(typeId) {
+  const type = types.find(t => t.id === typeId);
+  const box = document.getElementById("fields");
+  box.innerHTML = "";
+  for (const field of type?.fields || []) {
+    const make = WIDGETS[field.kind];
+    // A field kind this page has not learned about is skipped rather than
+    // guessed at. Rendering it as a text box would invite somebody to type a
+    // reference into a string and watch it be discarded on the way in.
+    if (!make) continue;
+    box.appendChild(el("label", null, field.label || field.key));
+    const widget = make(field);
+    widget.dataset.key = field.key;
+    widget.dataset.kind = field.kind;
+    box.appendChild(widget);
+  }
+}
+
+async function create(typeId, go) {
+  const said = document.getElementById("said");
+  const properties = {};
+  let content = "";
+  for (const widget of document.querySelectorAll("#fields [data-key]")) {
+    const value = widget.value?.trim();
+    if (!value) continue;
+    if (widget.dataset.kind === "richtext") content = value;
+    else if (widget.dataset.key === "title") properties.title = value;
+    else properties[widget.dataset.key] = value;
+  }
+  if (!properties.title && !content) {
+    said.className = "error";
+    said.textContent = "Give it a title or a body.";
+    return;
+  }
+  go.disabled = true;
+  said.className = "note";
+  said.textContent = "Creating…";
+  try {
+    // `/write` rather than `/capture`: capture guesses a type from a sentence,
+    // and this panel has been told one.
+    const made = await post("/write", { kind: "create", blockTypeId: typeId, content, properties });
+    said.textContent = `Created “${properties.title || content.slice(0, 40)}”.`;
+    for (const widget of document.querySelectorAll("#fields [data-key]")) widget.value = "";
+    void made;
+  } catch (err) {
+    complain(said, err);
+  } finally {
+    go.disabled = false;
+  }
+}
+
+load().catch(err => complain(host, err));
+</script>

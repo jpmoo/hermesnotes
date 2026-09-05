@@ -1,0 +1,191 @@
+/*
+ * One sheet for all three panels.
+ *
+ * Colors follow the desktop rather than a palette of their own: these are
+ * summoned windows that sit over whatever you were reading, and a panel that
+ * ignores the system theme announces itself as a foreign object every time it
+ * appears. `color-scheme` gets the scrollbars and form controls for free.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: Canvas;
+  --fg: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 55%, Canvas);
+  --line: color-mix(in srgb, CanvasText 15%, Canvas);
+  --raised: color-mix(in srgb, CanvasText 4%, Canvas);
+  --accent: color-mix(in srgb, AccentColor 90%, Canvas);
+  --accent-fg: AccentColorText;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.5 system-ui, "Noto Sans", sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.frame { display: flex; height: 100vh; }
+.pane { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+.side {
+  width: 240px;
+  flex: none;
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 10px 0;
+  background: var(--raised);
+}
+.side button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 16px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side button:hover { background: color-mix(in srgb, CanvasText 8%, Canvas); }
+.side button[aria-current="true"] { background: var(--accent); color: var(--accent-fg); }
+
+h1 { font-size: 17px; margin: 0 0 14px; font-weight: 600; }
+.kind { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+
+/* Cards, used by the board and by anything listing blocks. */
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.card .title { flex: 1; }
+.card.done .title { text-decoration: line-through; color: var(--muted); }
+.card .meta { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.card .overdue { color: #d9534f; }
+.tick { cursor: pointer; background: none; border: 0; color: inherit; font-size: 15px; padding: 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
+
+/* Forms, used by compose. */
+label { display: block; margin: 12px 0 4px; color: var(--muted); font-size: 12px; }
+input, textarea, select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+textarea { min-height: 120px; resize: vertical; }
+button.go {
+  margin-top: 16px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.go:disabled { opacity: .5; cursor: default; }
+
+/* Chat, used by the assistant. */
+.turn { margin-bottom: 14px; }
+.turn .who { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.turn .body { white-space: pre-wrap; }
+.turn.me .body { padding: 8px 12px; background: var(--raised); border-radius: 8px; display: inline-block; }
+.steps { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.composer { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
+.composer input { flex: 1; }
+
+.note { color: var(--muted); padding: 8px 0; }
+.error { color: #d9534f; padding: 8px 0; white-space: pre-wrap; }
+
+/* --- Board kinds ------------------------------------------------------------
+ * The daemon decides which of these applies; these are just the shapes. The
+ * dispatch mirrors the Mac's, because a collection someone arranged as a matrix
+ * is not the same thing as a list of the same cards — the arrangement is the
+ * information, which is the whole reason for choosing that shape.
+ */
+
+/* Matrix / gridded. Every region the same size, as on the web and on the Mac:
+ * letting a cell grow with its contents makes the quadrant with the most work
+ * in it the biggest, which is backwards. The grid says *where* things are, and
+ * it can only do that if the cells stay put. */
+.grid { display: grid; gap: 8px; height: calc(100vh - 150px); }
+.region {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.region > header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 9px 4px;
+  font-size: 11px; font-weight: 600;
+}
+/* The region's color as a bar rather than a wash — a card has to stay readable
+ * on top of it, and a full-strength tint behind small text looks like a toy. */
+.region .bar { width: 3px; height: 11px; border-radius: 2px; flex: none; }
+.region .count {
+  margin-left: auto; font-weight: 400; font-size: 10px; color: var(--muted);
+  background: color-mix(in srgb, CanvasText 13%, Canvas);
+  border-radius: 99px; padding: 1px 6px;
+}
+.region .body { overflow-y: auto; padding: 0 6px 6px; flex: 1; min-height: 0; }
+.region .card { padding: 5px 8px; margin-bottom: 3px; font-size: 12.5px; }
+.empty { color: var(--muted); font-size: 12px; text-align: center; padding: 8px; }
+
+/* Unplaced. Always drawn, even with nothing in it: hiding it when empty took
+ * the target away at exactly the moment it was wanted. */
+.drawer { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 8px; }
+.drawer h2 { font-size: 11px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
+.drawer .row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.drawer .card { width: 190px; flex: none; margin: 0; font-size: 12.5px; }
+
+/* Rollup: a tree, indented by depth. */
+.node { border-left: 1px solid var(--line); margin-left: 5px; padding-left: 10px; }
+.node > .self { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; }
+.node > .self .title { flex: 1; }
+.node > .self.done .title { text-decoration: line-through; color: var(--muted); }
+.heading {
+  display: flex; align-items: center; gap: 8px; margin: 14px 0 4px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+}
+.heading .pill {
+  background: color-mix(in srgb, AccentColor 18%, Canvas);
+  color: var(--fg); border-radius: 99px; padding: 2px 8px;
+}
+.heading .rule { flex: 1; height: 1px; background: var(--line); }
+
+/* Canvas: read-only, at the geometry the canvas was arranged with. Scaled to
+ * fit rather than scrollable at full size, because this panel is a look at the
+ * arrangement — editing it is the canvas fork's job, not this one's. */
+.canvas { position: relative; transform-origin: top left; }
+.canvas .node-card {
+  position: absolute;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  padding: 8px 10px;
+  overflow: hidden;
+  font-size: 12.5px;
+}
+.canvas .node-card .meta { display: block; margin-top: 4px; }

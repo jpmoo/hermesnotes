@@ -1,0 +1,98 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Ask Hermes Notes</title>
+<link rel="stylesheet" href="/ui/panel.css">
+<div style="display:flex;flex-direction:column;height:100vh">
+  <div class="pane" id="log"></div>
+  <form class="composer" id="form">
+    <input id="msg" placeholder="Ask Hermes Notes…" autocomplete="off" autofocus>
+    <button class="go" id="send">Ask</button>
+  </form>
+</div>
+<script type="module">
+import { post, el } from "/ui/api.js";
+
+const log = document.getElementById("log");
+const form = document.getElementById("form");
+const msg = document.getElementById("msg");
+const send = document.getElementById("send");
+
+function turn(who, text, className) {
+  const wrap = el("div", "turn " + (className || ""));
+  wrap.appendChild(el("div", "who", who));
+  wrap.appendChild(el("div", "body", text));
+  log.appendChild(wrap);
+  log.scrollTop = log.scrollHeight;
+  return wrap;
+}
+
+/*
+ * The assistant is the one surface here that needs the network — everything
+ * else answers from the mirror. The daemon says so in a sentence when Hermes is
+ * unreachable, and that sentence is shown as written rather than replaced with
+ * a generic failure, because it is the only one that explains why this panel
+ * alone stopped working.
+ */
+form.onsubmit = async (event) => {
+  event.preventDefault();
+  const text = msg.value.trim();
+  if (!text) return;
+  msg.value = "";
+  turn("You", text, "me");
+  send.disabled = true;
+  const thinking = turn("Hermes", "…");
+  try {
+    const reply = await post("/assistant", { message: text });
+    thinking.querySelector(".body").textContent = reply.reply || "(no reply)";
+    steps(thinking, reply.steps);
+    if (reply.pending?.length) await confirm(thinking, reply.pending);
+  } catch (err) {
+    thinking.querySelector(".body").textContent = String(err.message || err);
+    thinking.querySelector(".body").className = "body error";
+  } finally {
+    send.disabled = false;
+    msg.focus();
+  }
+};
+
+function steps(wrap, list) {
+  if (!list?.length) return;
+  const note = el("div", "steps", list.map(s => `${s.ok === false ? "✗" : "✓"} ${s.tool}`).join("  ·  "));
+  wrap.appendChild(note);
+}
+
+/*
+ * Anything that writes is asked about first.
+ *
+ * The daemon hands back `pending` rather than acting, and this is where that
+ * choice is honored. An assistant that edits the library because a sentence was
+ * ambiguous is a worse tool than one that asks — and the confirmation names the
+ * tools it is about to run, so "yes" means something specific.
+ */
+async function confirm(wrap, pending) {
+  const ask = el("div", "steps");
+  ask.appendChild(el("span", null, `Run ${pending.map(p => p.tool).join(", ")}? `));
+  const yes = el("button", "tick", "Yes");
+  const no = el("button", "tick", "No");
+  ask.append(yes, " ", no);
+  wrap.appendChild(ask);
+  await new Promise((resolve) => {
+    no.onclick = () => { ask.textContent = "Not run."; resolve(); };
+    yes.onclick = async () => {
+      ask.textContent = "Running…";
+      try {
+        const done = await post("/assistant/confirm", { calls: pending });
+        ask.textContent = "";
+        steps(wrap, done.steps);
+        if (done.reply) turn("Hermes", done.reply);
+      } catch (err) {
+        ask.textContent = String(err.message || err);
+        ask.className = "error";
+      }
+      resolve();
+    };
+  });
+}
+
+msg.focus();
+</script>

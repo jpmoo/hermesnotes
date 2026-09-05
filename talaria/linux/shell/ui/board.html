@@ -1,0 +1,260 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Hermes Notes Collections</title>
+<link rel="stylesheet" href="/ui/panel.css">
+<div class="frame">
+  <nav class="side" id="side"></nav>
+  <main class="pane" id="pane"><div class="note">Loading…</div></main>
+</div>
+<script type="module">
+import { get, post, complain, el } from "/ui/api.js";
+
+const side = document.getElementById("side");
+const pane = document.getElementById("pane");
+let boards = [];
+let current = null;
+
+/*
+ * The daemon prepares the board — it decides kind, resolves members, formats
+ * dates and works out which columns a table has. This file arranges what it is
+ * given and does not second-guess any of it. That is the same division the Mac
+ * app keeps, and it is why a collection type this page has never heard of still
+ * renders as a list of its members rather than as an error.
+ */
+async function load() {
+  boards = await get("/boards");
+  side.innerHTML = "";
+  for (const b of boards) {
+    const button = el("button", null, b.title);
+    button.title = `${b.title} — ${b.kind}`;
+    button.onclick = () => show(b.id);
+    button.dataset.id = b.id;
+    side.appendChild(button);
+  }
+  const remembered = localStorage.getItem("board");
+  await show(remembered && boards.some(b => b.id === remembered) ? remembered : boards[0]?.id);
+}
+
+async function show(id) {
+  if (!id) { pane.innerHTML = "<div class='note'>No collections yet.</div>"; return; }
+  current = id;
+  localStorage.setItem("board", id);
+  for (const b of side.querySelectorAll("button")) {
+    b.setAttribute("aria-current", String(b.dataset.id === id));
+  }
+  pane.innerHTML = "<div class='note'>Loading…</div>";
+  try {
+    render(await get(`/board/${id}`));
+  } catch (err) {
+    complain(pane, err);
+  }
+}
+
+/*
+ * Which shape a collection is drawn in, dispatched exactly as `BoardView.swift`
+ * does it. The order matters — a rollup is also a list of members, and a matrix
+ * is also a set of cards, so the most specific arrangement has to win.
+ *
+ * Drawing all of them as one list of titles is what this used to do, and it
+ * throws away the only thing that made someone choose the shape. A matrix says
+ * *where* a task is; a rollup says what it belongs under.
+ */
+function render(board) {
+  pane.innerHTML = "";
+  const h = el("h1", null, board.title);
+  h.appendChild(el("span", "kind", board.kind));
+  pane.appendChild(h);
+
+  if (board.kind === "calendar") return calendar(board.members || []);
+  if (board.table && board.columns?.length) return table(board);
+  if (board.rollup) return rollup(board);
+  if (board.canvas) return canvas(board);
+  if (board.gridded) return grid(board);
+  return cards(board.members || [], pane);
+}
+
+function table(board) {
+  const t = el("table");
+  const head = el("tr");
+  for (const c of board.columns) head.appendChild(el("th", null, c.label));
+  t.appendChild(head);
+  for (const row of board.tableRows || []) {
+    const tr = el("tr");
+    for (const c of board.columns) tr.appendChild(el("td", null, row.cells?.[c.key] ?? ""));
+    t.appendChild(tr);
+  }
+  pane.appendChild(t);
+}
+
+/* Days, in order, with what falls on each. The Mac hands this to its AgendaView;
+ * the daemon has already formatted every date, so this only has to group. */
+function calendar(members) {
+  const byDay = new Map();
+  for (const m of members) {
+    const key = (m.dates && m.dates[0]?.text) || "No date";
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(m);
+  }
+  if (!byDay.size) { pane.appendChild(el("div", "note", "Nothing on this calendar.")); return; }
+  for (const [day, items] of byDay) {
+    pane.appendChild(heading(day, items.length));
+    cards(items, pane);
+  }
+}
+
+function heading(label, count) {
+  const wrap = el("div", "heading");
+  wrap.appendChild(el("span", "pill", label === "—" ? "Ungrouped" : label));
+  wrap.appendChild(el("span", null, String(count)));
+  wrap.appendChild(el("span", "rule"));
+  return wrap;
+}
+
+/* Regions in a fixed grid, plus the cards the query matched but nobody placed.
+ * The drawer is drawn even when empty, which is deliberate on the Mac and worth
+ * keeping: it is the only thing that says unplaced cards are a category at all. */
+function grid(board) {
+  const box = el("div", "grid");
+  box.style.gridTemplateColumns = `repeat(${board.cols || 1}, 1fr)`;
+  box.style.gridTemplateRows = `repeat(${board.rows || 1}, 1fr)`;
+  const total = (board.cols || 1) * (board.rows || 1);
+  for (let i = 0; i < total; i++) {
+    const region = (board.regions || []).find(r => r.index === i);
+    if (!region) { box.appendChild(el("div")); continue; }
+    const held = board.cells?.[String(i)] || [];
+    const cell = el("div", "region");
+    const head = el("header");
+    const bar = el("span", "bar");
+    bar.style.background = region.color || "var(--accent)";
+    head.append(bar, el("span", null, region.title || region.name || ""), el("span", "count", String(held.length)));
+    cell.appendChild(head);
+    const body = el("div", "body");
+    if (held.length) cards(held, body);
+    else body.appendChild(el("div", "empty", "Empty"));
+    cell.appendChild(body);
+    box.appendChild(cell);
+  }
+  pane.appendChild(box);
+
+  const drawer = el("div", "drawer");
+  const unplaced = board.drawer || [];
+  drawer.appendChild(el("h2", null, unplaced.length ? `Unplaced — ${unplaced.length}` : "Unplaced"));
+  const row = el("div", "row");
+  if (unplaced.length) cards(unplaced, row);
+  else row.appendChild(el("div", "empty", "Everything matched has been placed"));
+  drawer.appendChild(row);
+  pane.appendChild(drawer);
+}
+
+/* A tree. `groupBy` splits the top level into headed sections; below that it is
+ * children all the way down, however deep the collection nests. */
+function rollup(board) {
+  const groups = board.groups || [];
+  if (!groups.length) { pane.appendChild(el("div", "note", "Nothing rolls up here.")); return; }
+  if (board.groupBy) {
+    const buckets = new Map();
+    for (const g of groups) {
+      const key = g.group || "—";
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(g);
+    }
+    // Ungrouped last, as on the Mac — it is the leftovers, not a category.
+    const keys = [...buckets.keys()].filter(k => k !== "—");
+    if (buckets.has("—")) keys.push("—");
+    for (const key of keys) {
+      pane.appendChild(heading(key, buckets.get(key).length));
+      for (const g of buckets.get(key)) pane.appendChild(node(g, 0));
+    }
+    return;
+  }
+  for (const g of groups) pane.appendChild(node(g, 0));
+}
+
+function node(item, depth) {
+  const wrap = el("div", "node");
+  const self = el("div", "self" + (item.done ? " done" : ""));
+  self.appendChild(el("span", "title", item.title || "(untitled)"));
+  if (item.due) self.appendChild(el("span", "meta", item.due));
+  if (item.typeName && item.typeName !== "unknown") self.appendChild(el("span", "meta", item.typeName));
+  wrap.appendChild(self);
+  // Depth is not capped. A rollup that stopped at two levels would silently
+  // hide work, which is the one thing a rollup exists to prevent.
+  for (const child of item.children || []) wrap.appendChild(node(child, depth + 1));
+  return wrap;
+}
+
+/* The arrangement, at the coordinates it was arranged at.
+ *
+ * Read-only and scaled to fit. Editing a canvas is the fork's job — this panel
+ * is for seeing where things are, and a canvas you can only see is still worth
+ * far more than the same cards in a list.
+ */
+function canvas(board) {
+  const nodes = (board.members || []).filter(m => typeof m.x === "number");
+  if (!nodes.length) return cards(board.members || [], pane);
+
+  const maxX = Math.max(...nodes.map(n => n.x + (n.w || 280)));
+  const maxY = Math.max(...nodes.map(n => n.y + (n.h || 190)));
+  const minX = Math.min(...nodes.map(n => n.x));
+  const minY = Math.min(...nodes.map(n => n.y));
+
+  const surface = el("div", "canvas");
+  const width = maxX - minX || 1;
+  // Only ever shrink. Blowing a small canvas up to fill the pane would make a
+  // deliberate arrangement look like a different one.
+  const scale = Math.min(1, (pane.clientWidth - 40) / width);
+  surface.style.transform = `scale(${scale})`;
+  surface.style.width = `${width}px`;
+  surface.style.height = `${maxY - minY}px`;
+
+  for (const n of nodes) {
+    const card = el("div", "node-card" + (n.done ? " done" : ""));
+    card.style.left = `${n.x - minX}px`;
+    card.style.top = `${n.y - minY}px`;
+    card.style.width = `${n.w || 280}px`;
+    card.style.height = `${n.h || 190}px`;
+    card.appendChild(el("div", "title", n.title || "(untitled)"));
+    for (const d of n.dates || []) card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
+    card.appendChild(el("span", "meta", n.typeName || n.kind || ""));
+    surface.appendChild(card);
+  }
+  // The wrapper carries the scaled height, because a transform does not change
+  // how much room the element asks for and the pane would not scroll.
+  const hold = el("div");
+  hold.style.height = `${(maxY - minY) * scale}px`;
+  hold.appendChild(surface);
+  pane.appendChild(hold);
+}
+
+function cards(members, host) {
+  if (!members.length) { host.appendChild(el("div", "note", "Nothing in this collection.")); return; }
+  for (const m of members) {
+    const card = el("div", "card" + (m.done ? " done" : ""));
+
+    // Completion is read through the daemon's `done`, never by comparing a type
+    // name. The repo's first invariant: `if (type.name === "Task")` is a bug,
+    // and a checkbox drawn only for things called Task would be exactly that.
+    if (typeof m.done === "boolean" && m.completable !== false) {
+      const tick = el("button", "tick", m.done ? "☑" : "☐");
+      tick.title = m.done ? "Completed" : "Mark complete";
+      tick.onclick = async () => {
+        tick.disabled = true;
+        try {
+          await post("/write", { kind: "complete", blockId: m.id });
+          await show(current);
+        } catch (err) { complain(pane, err); }
+      };
+      card.appendChild(tick);
+    }
+
+    card.appendChild(el("span", "title", m.title || "(untitled)"));
+    for (const d of m.dates || []) {
+      card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
+    }
+    card.appendChild(el("span", "meta", m.typeName || m.kind || ""));
+    host.appendChild(card);
+  }
+}
+
+load().catch(err => complain(pane, err));
+</script>

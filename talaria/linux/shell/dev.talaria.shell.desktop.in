@@ -1,0 +1,22 @@
+# The tray item, as an autostart entry.
+#
+# A template for the same reason the systemd unit is one: `Exec` needs an
+# absolute path and there is no machine-independent one. Copy it into
+# ~/.config/autostart with __ROOT__ substituted, or run:
+#   sed "s|__ROOT__|$PWD|" dev.talaria.shell.desktop.in > ~/.config/autostart/dev.talaria.shell.desktop
+#
+# Not installed by `linux/install.sh`. That script sets up the daemon, which is
+# a background service somebody asked for; a tray icon appearing at every login
+# is a decision about somebody's desktop and belongs to them.
+[Desktop Entry]
+Type=Application
+Name=Talaria
+Comment=Hermes Notes on the desktop
+Exec=__ROOT__/linux/shell/talaria-shell
+Icon=talaria
+Terminal=false
+Categories=Utility;
+# The shell refuses to be a second copy anyway, but saying so here keeps the
+# desktop from drawing a launcher that would do nothing.
+SingleMainWindow=true
+X-GNOME-Autostart-enabled=true

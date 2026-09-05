@@ -52,3 +52,7 @@ restart.sh
 # tracked, so a single `git add .` would have published the key. Ignored now,
 # and the stray copy untracked.
 .claude/
+
+# Python bytecode, from the Linux shell
+__pycache__/
+*.pyc

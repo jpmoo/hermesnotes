@@ -28,6 +28,7 @@ which is a boundary Qt already guarantees is safe.
 
 from __future__ import annotations
 
+import sys
 import threading
 import uuid
 
@@ -168,22 +169,25 @@ class Shortcuts(QObject):
             waiting.run()
             return replies.pop(handle, None)
 
-        # **The session token is stable, and that is not a shortcut taken.**
+        # **Unique again, and that is a reversal worth explaining.**
         #
-        # KDE implements this portal on top of `kglobalaccel`, and when it
-        # cannot resolve an app id it names the component after this token. A
-        # random one per launch therefore means a brand new component every
-        # start: the bindings a person set in System Settings are left behind
-        # under the old name, the defaults come back, and the shortcut list
-        # grows another `token_talaria_…` section every time the shell runs.
+        # This was made a constant because KDE was naming the kglobalaccel
+        # component after it, so a random token per launch stranded the user's
+        # bindings under a dead `token_talaria_…` section every start.
         #
-        # The spec wants `session_handle_token` unique only against *live*
-        # sessions, and the shell already refuses to be a second copy — so a
-        # constant is safe here and is what makes a customized hotkey survive a
-        # restart. `handle_token` stays unique because it identifies one request.
+        # That is no longer how the component is named. Started properly — as
+        # `app-dev.talaria.shell@autostart.service` rather than as a child of
+        # whatever happened to launch it — the portal resolves a real app id and
+        # the bindings live under `[dev.talaria.shell]`, which is stable on its
+        # own account. The constant then stopped helping and started hurting: a
+        # restart races the previous session's teardown, and `CreateSession`
+        # with a token the portal still holds fails outright. No session means
+        # no `Activated` subscription, which looks exactly like hotkeys that
+        # have stopped working while their bindings sit correctly in the config.
+        token = uuid.uuid4().hex[:8]
         created = ask("CreateSession", GLib.Variant("(a{sv})", ({
-            "handle_token": GLib.Variant("s", f"talaria_{uuid.uuid4().hex[:8]}"),
-            "session_handle_token": GLib.Variant("s", "talaria"),
+            "handle_token": GLib.Variant("s", f"talaria_{token}"),
+            "session_handle_token": GLib.Variant("s", f"talaria_{token}"),
         },)))
         if not created or created[0] != 0:
             self._give_up("the desktop's shortcut portal declined to open a session")
@@ -248,6 +252,11 @@ class Shortcuts(QObject):
         if final and final[0] == 0:
             for entry in final[1].get("shortcuts", []):
                 self.bound[entry[0]] = entry[1].get("trigger_description", "")
+        print(
+            "talaria: shortcuts listening — "
+            + (", ".join(f"{k}={v or 'unbound'}" for k, v in self.bound.items()) or "nothing bound"),
+            file=sys.stderr, flush=True,
+        )
         self.settled.emit()
 
         def on_activated(_c, _s, _p, _i, _sig, params):
@@ -266,5 +275,10 @@ class Shortcuts(QObject):
         GLib.MainLoop.new(context, False).run()
 
     def _give_up(self, message: str) -> None:
+        # To stderr as well as to the tray. A balloon is missed, and this is the
+        # one subsystem whose failure is completely silent from the outside — a
+        # hotkey that does nothing looks identical whether the binding is wrong,
+        # the session never opened, or the key was never pressed.
+        print(f"talaria: shortcuts — {message}", file=sys.stderr, flush=True)
         self.failures.append(message)
         self.settled.emit()

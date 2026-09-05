@@ -104,14 +104,128 @@ button.go {
 }
 button.go:disabled { opacity: .5; cursor: default; }
 
-/* Chat, used by the assistant. */
-.turn { margin-bottom: 14px; }
-.turn .who { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.turn .body { white-space: pre-wrap; }
-.turn.me .body { padding: 8px 12px; background: var(--raised); border-radius: 8px; display: inline-block; }
-.steps { font-size: 12px; color: var(--muted); margin-top: 6px; }
-.composer { display: flex; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); }
-.composer input { flex: 1; }
+/* --- Ask ------------------------------------------------------------------
+ * Bubbles rather than a transcript, following the Mac: yours lean on the accent
+ * and the assistant's are plain, so which side said what is legible without
+ * reading a label on every line.
+ */
+.chat { display: flex; flex-direction: column; height: 100vh; }
+.chat-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  font-size: 12px; font-weight: 600;
+}
+.chat-head .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--accent); flex: none; }
+.chat-head .who-title { flex: 1; }
+.log { padding: 16px 18px; }
+
+.turn { display: flex; margin-bottom: 12px; }
+.turn.mine { justify-content: flex-end; }
+.bubble {
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, CanvasText 16%, Canvas);
+  background: var(--raised);
+  overflow-wrap: anywhere;
+}
+.turn.mine .bubble {
+  background: color-mix(in srgb, AccentColor 16%, Canvas);
+  border-color: color-mix(in srgb, AccentColor 34%, Canvas);
+}
+
+/* Markdown inside a bubble. Tight margins: these are remarks, not documents,
+ * and browser defaults put a blank line between every one of them. */
+.bubble > :first-child { margin-top: 0; }
+.bubble > :last-child { margin-bottom: 0; }
+.bubble p { margin: 0 0 7px; }
+.bubble h2 { font-size: 15px; margin: 10px 0 5px; }
+.bubble h3 { font-size: 13px; margin: 9px 0 4px; }
+.bubble ul, .bubble ol { margin: 0 0 7px; padding-left: 20px; }
+.bubble li { margin: 2px 0; }
+.bubble li::marker { color: var(--accent); }
+.bubble code {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: .92em;
+  background: color-mix(in srgb, CanvasText 10%, Canvas);
+  padding: 1px 4px; border-radius: 4px;
+}
+.bubble pre {
+  margin: 0 0 7px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, CanvasText 9%, Canvas);
+  overflow-x: auto;
+}
+.bubble pre code { background: none; padding: 0; font-size: 11.5px; }
+.bubble blockquote {
+  margin: 0 0 7px; padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, AccentColor 45%, Canvas);
+  color: var(--muted);
+}
+.bubble a { color: var(--accent); }
+
+/* The empty state: what this can be asked, rather than a blank box. */
+.placeholder { color: var(--muted); }
+.placeholder p { margin: 0 0 8px; }
+.placeholder .fine { font-size: 11.5px; opacity: .8; margin-top: 12px; }
+.example {
+  display: flex; gap: 7px; align-items: baseline;
+  background: none; border: 0; padding: 3px 0;
+  color: inherit; font: inherit; font-size: 12.5px;
+  cursor: pointer; text-align: left;
+}
+.example:hover { color: var(--fg); }
+.example .arrow { color: var(--accent); opacity: .75; }
+
+/* Tool chips: what it ran, and whether that worked. */
+.steps { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; padding: 2px 7px; border-radius: 7px;
+  background: color-mix(in srgb, CanvasText 9%, Canvas);
+  border: 1px solid color-mix(in srgb, CanvasText 16%, Canvas);
+  color: var(--muted);
+}
+.chip .tick { color: var(--accent); }
+.chip.bad { background: color-mix(in srgb, #d9534f 12%, Canvas); border-color: color-mix(in srgb, #d9534f 34%, Canvas); }
+.chip.bad .tick { color: #d9534f; }
+
+.bad-box {
+  display: flex; gap: 7px; align-items: baseline;
+  color: #d9534f; font-size: 12.5px;
+}
+
+.confirm { display: flex; gap: 8px; align-items: center; margin-top: 9px; font-size: 12px; }
+.fine { color: var(--muted); font-size: 11.5px; }
+
+.thinking { display: inline-flex; gap: 3px; align-items: center; }
+.thinking span { width: 5px; height: 5px; border-radius: 99px; background: var(--muted); animation: pulse 1.2s infinite; }
+.thinking .dot1 { animation-delay: .15s; }
+.thinking .dot2 { animation-delay: .3s; }
+@keyframes pulse { 0%, 60%, 100% { opacity: .25; } 30% { opacity: .9; } }
+
+/* The composer. One field and a round send, rather than a button with a word
+ * on it competing with the placeholder for the same idea. */
+.composer {
+  display: flex; gap: 8px; align-items: center;
+  padding: 11px 16px; border-top: 1px solid var(--line);
+}
+.composer input { flex: 1; border-radius: 99px; padding: 8px 14px; }
+.send {
+  flex: none; width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: 0; border-radius: 99px;
+  background: var(--accent); color: var(--accent-fg);
+  cursor: pointer;
+}
+.send:disabled { opacity: .45; cursor: default; }
+button.quiet {
+  background: none; border: 0; color: var(--muted);
+  font: inherit; font-size: 11.5px; cursor: pointer; padding: 2px 6px;
+}
+button.quiet:hover { color: var(--fg); }
+button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 
 .note { color: var(--muted); padding: 8px 0; }
 .error { color: #d9534f; padding: 8px 0; white-space: pre-wrap; }
@@ -213,3 +327,9 @@ button.go:disabled { opacity: .5; cursor: default; }
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
+
+/* Something you can click through to. The pointer is the whole affordance —
+ * underlining every card would turn a board into a page of links. */
+.opens { cursor: pointer; }
+.opens:hover { border-color: color-mix(in srgb, AccentColor 55%, Canvas); }
+.node > .self.opens:hover { background: color-mix(in srgb, AccentColor 10%, Canvas); border-radius: 5px; }

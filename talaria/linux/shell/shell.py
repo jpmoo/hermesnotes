@@ -14,11 +14,13 @@ through `scheme.py`, and the daemon reaches Hermes through pkm-interchange.
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 
 from PySide6.QtCore import QObject, QSettings, QSize, Qt, QUrl, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout, QWidget
 
@@ -66,6 +68,33 @@ def config_hotkey(action: str, fallback: str) -> str:
         return fallback
 
 
+class RoutedPage(QWebEnginePage):
+    """
+    A page whose outbound links are the shell's business, not the view's.
+
+    The panels are served over `talaria-app://`, so any navigation to http(s) is
+    a link *out* — a card pointing at the block it stands for. Letting the view
+    follow it would replace the board with a web page and lose the board; the
+    Mac never had the question because its cards are not a web view at all.
+
+    `acceptNavigationRequest` catches both halves of it, a clicked anchor and a
+    `location.href =`, which is one hook rather than two.
+    """
+
+    def __init__(self, route, parent=None) -> None:
+        super().__init__(parent)
+        self._route = route
+
+    def acceptNavigationRequest(self, url: QUrl, kind, is_main_frame: bool) -> bool:  # noqa: N802
+        # The route says whether it took the link. When it did not — the Hermes
+        # window following one of Hermes' own links — the view navigates
+        # normally, which keeps it a working web app rather than a series of
+        # full page loads driven from Python.
+        if url.scheme() in ("http", "https") and self._route(url):
+            return False
+        return super().acceptNavigationRequest(url, kind, is_main_frame)
+
+
 class Panel(QWidget):
     """
     A window around a web view.
@@ -75,11 +104,17 @@ class Panel(QWidget):
     scroll position, its half-typed message and its session every time.
     """
 
-    def __init__(self, title: str, url: QUrl, size: QSize) -> None:
+    def __init__(self, title: str, url: QUrl, size: QSize, route=None) -> None:
         super().__init__()
         self.setWindowTitle(f"Talaria — {title}")
         self.resize(size)
         self.view = QWebEngineView(self)
+        if route is not None:
+            # Held on the view: a page the widget does not own is collected out
+            # from under the engine, which is the same lifetime trap as the
+            # request jobs in `scheme.py`.
+            self._page = RoutedPage(route, self.view)
+            self.view.setPage(self._page)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
@@ -282,8 +317,52 @@ class Shell(QObject):
                     "Check it with:  systemctl --user status talaria",
                 )
                 return None
-            return Panel(title, QUrl(origin), QSize(1200, 850))
-        return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), QSize(980, 720))
+            # The Hermes window follows Hermes' own links itself — it *is* the
+            # browser for them. Only somebody else's website is handed on.
+            return Panel(title, QUrl(origin), QSize(1200, 850),
+                         route=lambda url: self._opened(url, "hermes"))
+        return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), QSize(980, 720),
+                     route=lambda url, a=action: self._opened(url, a))
+
+    def _opened(self, url: QUrl, source: str) -> bool:
+        """
+        Something was opened. Put it where it belongs, then get out of the way.
+
+        A port of `Opener` and the `didOpen` observer in `main.swift`, including
+        the reasoning the observer is written around: "A panel is a way of
+        getting somewhere. Once you have gone, it has done its job and should
+        get out of the way rather than sit in front of what it just opened."
+
+        Where it belongs is the split the Mac makes too — a block in this
+        library opens in the Hermes window, and anything else is somebody's
+        website and belongs in a browser.
+        """
+        origin = daemon.origin()
+        ours = bool(origin) and url.toString().startswith(origin)
+
+        if ours and source == "hermes":
+            # Already where it belongs. Left to the view so Hermes stays a web
+            # app: intercepting its own links would make every one of them a
+            # fresh page load with the scroll and the session thrown away.
+            return False
+
+        if ours:
+            panel = self.panels.get("hermes") or self._build("hermes")
+            if panel is None:
+                return True  # complained already; going nowhere is the answer
+            self.panels["hermes"] = panel
+            panel.view.load(url)
+            panel.summon()
+        else:
+            subprocess.Popen(["xdg-open", url.toString()], start_new_session=True)
+
+        # The panel that offered the link steps back. Not the Hermes window,
+        # which is what was just asked for.
+        if source != "hermes":
+            offered = self.panels.get(source)
+            if offered is not None:
+                offered.hide()
+        return True
 
     # -------------------------------------------------------------- plumbing
 

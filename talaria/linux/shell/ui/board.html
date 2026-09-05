@@ -273,6 +273,7 @@ function node(item, depth) {
   self.appendChild(el("span", "title", item.title || "(untitled)"));
   if (item.due) self.appendChild(el("span", "meta", item.due));
   if (item.typeName && item.typeName !== "unknown") self.appendChild(el("span", "meta", item.typeName));
+  openable(self, item.url);
   wrap.appendChild(self);
   // Depth is not capped. A rollup that stopped at two levels would silently
   // hide work, which is the one thing a rollup exists to prevent.
@@ -374,6 +375,7 @@ function canvas(board) {
     card.appendChild(el("div", "title", n.title || "(untitled)"));
     for (const d of n.dates || []) card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
     card.appendChild(el("span", "meta", n.typeName || n.kind || ""));
+    openable(card, n.url);
     surface.appendChild(card);
   }
 
@@ -472,6 +474,25 @@ function readableOn(hex) {
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff";
 }
 
+/*
+ * Clicking it goes to the thing it stands for.
+ *
+ * The shell intercepts the navigation and decides where it lands — the Hermes
+ * window for a block in this library, a browser for anything else — which is
+ * `Opener` on the Mac, and the same split. The page only has to say where.
+ */
+function openable(node, url) {
+  if (!url) return;
+  node.classList.add("opens");
+  node.title = "Open in Hermes Notes";
+  node.addEventListener("click", (e) => {
+    // A click on the completion box is about the box. Without this, ticking
+    // something off also navigated away from the board you were working in.
+    if (e.target.closest(".tick, button")) return;
+    window.location.href = url;
+  });
+}
+
 function cards(members, host, movableIn) {
   if (!members.length) { host.appendChild(el("div", "note", "Nothing in this collection.")); return; }
   for (const m of members) {
@@ -511,6 +532,7 @@ function cards(members, host, movableIn) {
       card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
     }
     card.appendChild(el("span", "meta", m.typeName || m.kind || ""));
+    openable(card, m.url);
     host.appendChild(card);
   }
 }

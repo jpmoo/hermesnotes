@@ -2,35 +2,121 @@
 <meta charset="utf8">
 <title>Ask Hermes Notes</title>
 <link rel="stylesheet" href="/ui/panel.css">
-<div style="display:flex;flex-direction:column;height:100vh">
-  <div class="pane" id="log"></div>
+<div class="chat">
+  <header class="chat-head">
+    <span class="dot"></span>
+    <span class="who-title">Ask Hermes Notes</span>
+    <button id="clear" class="quiet" title="Start again">Clear</button>
+  </header>
+
+  <div class="pane log" id="log"></div>
+
   <form class="composer" id="form">
-    <input id="msg" placeholder="Ask Hermes Notes…" autocomplete="off" autofocus>
-    <button class="go" id="send">Ask</button>
+    <!-- Deliberately not the empty state's sentence. Both are on screen at once
+         before the first message, and saying the same thing twice in two type
+         sizes reads as a mistake rather than as emphasis. -->
+    <input id="msg" placeholder="Ask a question…" autocomplete="off" autofocus>
+    <button class="send" id="send" title="Send" aria-label="Send">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+        <path d="M1.5 8h11M8 3.5 12.5 8 8 12.5" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </form>
 </div>
+
 <script type="module">
 import { post, el } from "/ui/api.js";
+import { render } from "/ui/markdown.js";
 
 const log = document.getElementById("log");
 const form = document.getElementById("form");
 const msg = document.getElementById("msg");
 const send = document.getElementById("send");
 
-function turn(who, text, className) {
-  const wrap = el("div", "turn " + (className || ""));
-  wrap.appendChild(el("div", "who", who));
-  wrap.appendChild(el("div", "body", text));
+/* The Mac's placeholder, examples and all. They are worth copying rather than
+ * inventing: an empty chat box tells you nothing about what it can do, and
+ * these three say "dates", "writes" and "your own notes" without a paragraph
+ * of explanation. The last line is a promise the daemon actually keeps — see
+ * the confirmation flow below. */
+const EXAMPLES = [
+  "What's due this week?",
+  "Mark the roof task done",
+  "Summarize my notes on dual enrollment",
+];
+
+function placeholder() {
+  const box = el("div", "placeholder");
+  box.appendChild(el("p", null, "Ask about anything in Hermes Notes."));
+  for (const example of EXAMPLES) {
+    const row = el("button", "example");
+    row.appendChild(el("span", "arrow", "↳"));
+    row.appendChild(el("span", null, example));
+    // Clickable, which the Mac's are not — on a desktop with a pointer an
+    // example you can start from is worth more than one you must retype.
+    row.onclick = () => { msg.value = example; msg.focus(); };
+    box.appendChild(row);
+  }
+  box.appendChild(el("p", "fine", "Anything destructive comes back for your approval first."));
+  return box;
+}
+
+function reset() {
+  log.innerHTML = "";
+  log.appendChild(placeholder());
+}
+
+/** One side of the conversation. `mine` decides which way it leans. */
+function bubble(mine, node) {
+  const empty = log.querySelector(".placeholder");
+  if (empty) empty.remove();
+  const wrap = el("div", "turn" + (mine ? " mine" : ""));
+  const body = el("div", "bubble");
+  body.appendChild(node);
+  wrap.appendChild(body);
   log.appendChild(wrap);
   log.scrollTop = log.scrollHeight;
   return wrap;
 }
 
+function thinking() {
+  const dots = el("span", "thinking");
+  for (let i = 0; i < 3; i++) dots.appendChild(el("span", "dot" + i));
+  const wrap = el("div", "turn");
+  const body = el("div", "bubble");
+  body.append(dots, el("span", "fine", " thinking…"));
+  wrap.appendChild(body);
+  log.appendChild(wrap);
+  log.scrollTop = log.scrollHeight;
+  return wrap;
+}
+
+/** What it ran, as chips — the tool's name and whether it worked. */
+function steps(wrap, list) {
+  if (!list?.length) return;
+  const row = el("div", "steps");
+  for (const s of list) {
+    const chip = el("span", "chip" + (s.ok === false ? " bad" : ""));
+    chip.appendChild(el("span", "tick", s.ok === false ? "✗" : "✓"));
+    chip.appendChild(el("span", null, s.tool));
+    if (s.result) chip.title = s.result;
+    row.appendChild(chip);
+  }
+  wrap.appendChild(row);
+}
+
+function failure(wrap, text) {
+  const box = el("div", "bad-box");
+  box.appendChild(el("span", "tick", "!"));
+  box.appendChild(el("span", null, text));
+  wrap.querySelector(".bubble").replaceChildren(box);
+}
+
 /*
  * The assistant is the one surface here that needs the network — everything
- * else answers from the mirror. The daemon says so in a sentence when Hermes is
- * unreachable, and that sentence is shown as written rather than replaced with
- * a generic failure, because it is the only one that explains why this panel
+ * else answers from the mirror. The daemon says so in a sentence when Hermes
+ * cannot be reached, and that sentence is shown as written rather than replaced
+ * with a generic failure, because it is the only one explaining why this panel
  * alone stopped working.
  */
 form.onsubmit = async (event) => {
@@ -38,61 +124,56 @@ form.onsubmit = async (event) => {
   const text = msg.value.trim();
   if (!text) return;
   msg.value = "";
-  turn("You", text, "me");
+  bubble(true, document.createTextNode(text));
   send.disabled = true;
-  const thinking = turn("Hermes", "…");
+  const pending = thinking();
   try {
     const reply = await post("/assistant", { message: text });
-    thinking.querySelector(".body").textContent = reply.reply || "(no reply)";
-    steps(thinking, reply.steps);
-    if (reply.pending?.length) await confirm(thinking, reply.pending);
+    pending.querySelector(".bubble").replaceChildren(render(reply.reply || "_(no reply)_"));
+    steps(pending, reply.steps);
+    if (reply.pending?.length) await confirm(pending, reply.pending);
   } catch (err) {
-    thinking.querySelector(".body").textContent = String(err.message || err);
-    thinking.querySelector(".body").className = "body error";
+    failure(pending, String(err.message || err));
   } finally {
     send.disabled = false;
     msg.focus();
+    log.scrollTop = log.scrollHeight;
   }
 };
-
-function steps(wrap, list) {
-  if (!list?.length) return;
-  const note = el("div", "steps", list.map(s => `${s.ok === false ? "✗" : "✓"} ${s.tool}`).join("  ·  "));
-  wrap.appendChild(note);
-}
 
 /*
  * Anything that writes is asked about first.
  *
  * The daemon hands back `pending` rather than acting, and this is where that
  * choice is honored. An assistant that edits the library because a sentence was
- * ambiguous is a worse tool than one that asks — and the confirmation names the
+ * ambiguous is a worse tool than one that asks — and the question names the
  * tools it is about to run, so "yes" means something specific.
  */
 async function confirm(wrap, pending) {
-  const ask = el("div", "steps");
-  ask.appendChild(el("span", null, `Run ${pending.map(p => p.tool).join(", ")}? `));
-  const yes = el("button", "tick", "Yes");
-  const no = el("button", "tick", "No");
-  ask.append(yes, " ", no);
+  const ask = el("div", "confirm");
+  ask.appendChild(el("span", null, `Run ${pending.map((p) => p.tool).join(", ")}?`));
+  const yes = el("button", "go small", "Run");
+  const no = el("button", "quiet", "No");
+  ask.append(yes, no);
   wrap.appendChild(ask);
   await new Promise((resolve) => {
-    no.onclick = () => { ask.textContent = "Not run."; resolve(); };
+    no.onclick = () => { ask.replaceChildren(el("span", "fine", "Not run.")); resolve(); };
     yes.onclick = async () => {
-      ask.textContent = "Running…";
+      ask.replaceChildren(el("span", "fine", "Running…"));
       try {
         const done = await post("/assistant/confirm", { calls: pending });
-        ask.textContent = "";
+        ask.remove();
         steps(wrap, done.steps);
-        if (done.reply) turn("Hermes", done.reply);
+        if (done.reply) bubble(false, render(done.reply));
       } catch (err) {
-        ask.textContent = String(err.message || err);
-        ask.className = "error";
+        ask.replaceChildren(el("span", "bad-box", String(err.message || err)));
       }
       resolve();
     };
   });
 }
 
+document.getElementById("clear").onclick = () => { reset(); msg.focus(); };
+reset();
 msg.focus();
 </script>

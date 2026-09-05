@@ -401,11 +401,28 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
  * edge. The *page* is transparent — the shell tells the engine to paint nothing
  * — and this element is the only thing with a background, which is what makes
  * the rounded corners actually round rather than white. */
-html { background: transparent; }
-body {
-  background: var(--surface);
+html, body { background: transparent; }
+
+/* **The rounding has to be on the thing that clips, not on the outermost box.**
+ *
+ * A radius on `body` rounds `body`, and then `.side` and `.chat-head` paint
+ * their own backgrounds right into the corners it just cut — so the corner is
+ * round and the content inside it is square, which reads as a sloppy edge
+ * rather than as a mistake anybody can name. The clip belongs on whichever
+ * element actually contains the panel's content.
+ */
+.chat, .frame, body > .pane {
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, CanvasText 22%, Canvas);
+  background: var(--surface);
   overflow: hidden;
+  height: 100vh;
+  box-sizing: border-box;
 }
-.chat, .frame { border-radius: 12px; }
+
+/* Nothing inside may paint over the rounded edge. `overflow: hidden` on the
+ * container does the clipping, but a child with its own background and a
+ * square corner still shows through on the sub-pixel boundary — so the first
+ * and last children round with it. */
+.chat > :first-child, .frame > :first-child { border-radius: 11px 11px 0 0; }
+.chat > :last-child, .frame > :last-child { border-radius: 0 0 11px 11px; }

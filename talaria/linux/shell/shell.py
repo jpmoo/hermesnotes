@@ -148,6 +148,10 @@ class Panel(QWidget):
         if floating:
             # Rounded corners need the corners to be see-through.
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            # The widget itself must paint nothing either. `WA_TranslucentBackground`
+            # governs the window surface; a QWidget still fills its own rect from
+            # the palette unless told otherwise, and that fill is square.
+            self.setStyleSheet("background: transparent;")
             self.view_is_panel = True
             # `hidesOnDeactivate = false` on the Mac, and the same intent here:
             # stepping into another window to read something must not take the

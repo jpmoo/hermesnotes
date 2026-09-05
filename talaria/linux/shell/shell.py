@@ -651,9 +651,11 @@ class Shell(QObject):
             #
             # Ordered by PANELS rather than by whatever the portal happened to
             # return, so the same list appears in the same order every start.
+            # Alphabetical by name. `PANELS` order is the order they were built
+            # in, which means something to nobody reading a notification.
             lines = [
                 f"{self.shortcuts.bound[a]}  —  {SHORT.get(a, PANELS[a][0])}"
-                for a in PANELS
+                for a in sorted(PANELS, key=lambda k: SHORT.get(k, PANELS[k][0]).lower())
                 if self.shortcuts.bound.get(a)
             ]
             if lines:

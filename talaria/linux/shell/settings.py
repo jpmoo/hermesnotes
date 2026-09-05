@@ -43,8 +43,11 @@ import daemon
 import probe
 
 #: Keys written only when they have a value. See the module note.
-OPTIONAL = ["aerospaceCli", "boardHotkey", "assistantHotkey", "glanceHotkey", "composeHotkey",
-            "hermesHotkey", "menuBarSymbol"]
+#:
+#: The hotkey keys and `aerospaceCli` are not here and must not be added back:
+#: this panel stopped showing them, the Mac still reads them, and a key this
+#: panel does not display is a key it has no business writing or removing.
+OPTIONAL = ["menuBarSymbol"]
 
 
 def config_path() -> str:
@@ -303,27 +306,14 @@ class SettingsWindow(QDialog):
         ))
         form.addWidget(glance)
 
-        # --- Hotkeys ----------------------------------------------------------
-        keys = QGroupBox("Hotkeys")
-        rows = QFormLayout(keys)
-        self.board_hotkey = QLineEdit(placeholderText="shift+alt+c")
-        self.assistant_hotkey = QLineEdit(placeholderText="shift+alt+a")
-        self.compose_hotkey = QLineEdit(placeholderText="shift+alt+h")
-        self.hermes_hotkey = QLineEdit(placeholderText="shift+alt+o")
-        self.glance_hotkey = QLineEdit(placeholderText="shift+alt+g")
-        rows.addRow("Collections", self.board_hotkey)
-        rows.addRow("Ask", self.assistant_hotkey)
-        rows.addRow("New Block", self.compose_hotkey)
-        rows.addRow("Open Hermes", self.hermes_hotkey)
-        rows.addRow("Glance", self.glance_hotkey)
-        rows.addRow(_hint(
-            "These are a <i>preference</i> here, not the binding. Linux hotkeys go through the "
-            "desktop's shortcut portal, which asks before it grants and keeps the answer itself — "
-            "so this is what Talaria asks for the first time, and the portal's own dialog "
-            "(<tt>talaria-shell --rebind</tt>) is where it is changed after that. The Mac reads "
-            "these directly, which is why they live in the same file."
-        ))
-        form.addWidget(keys)
+        # No hotkey fields. They seeded the portal's *first* request and
+        # nothing after it: once a shortcut is granted, the portal owns the
+        # binding and `talaria-shell --rebind` is the only way to change it. A
+        # box that edits a value nobody reads again is worse than no box.
+        #
+        # The keys themselves are left in `config.json` untouched — the Mac
+        # reads `boardHotkey` and the rest directly, and this panel has no
+        # business deleting settings for a machine it is not running on.
 
         # --- Desktop ----------------------------------------------------------
         desk = QGroupBox("Desktop")
@@ -331,7 +321,6 @@ class SettingsWindow(QDialog):
         self.symbol = QLineEdit(placeholderText="talaria")
         self.context_exclude = QPlainTextEdit()
         self.context_exclude.setFixedHeight(90)
-        self.aerospace = QLineEdit(placeholderText="found automatically")
         rows.addRow("Tray icon", self.symbol)
         rows.addRow(_hint(
             "A freedesktop icon name from the current theme. The Mac reads this key as an SF Symbol "
@@ -343,11 +332,6 @@ class SettingsWindow(QDialog):
             "One per line. These are invisible to the context record — and so to ranking and "
             "defaulting, which is the price of being invisible. The Mac matches bundle ids; Linux "
             "will match window classes once the context poll is wired to KWin."
-        ))
-        rows.addRow("aerospace", self.aerospace)
-        rows.addRow(_hint(
-            "macOS only — AeroSpace is a macOS tiling manager. Kept so the key survives a save made "
-            "on this machine."
         ))
         form.addWidget(desk)
 
@@ -393,13 +377,7 @@ class SettingsWindow(QDialog):
         self.glance_placement.setCurrentIndex(placed if placed >= 0 else 7)
         opacity = c.get("overlayOpacity")
         self.overlay_opacity.setValue(float(opacity) if isinstance(opacity, (int, float)) else 1.0)
-        self.board_hotkey.setText(s("boardHotkey"))
-        self.assistant_hotkey.setText(s("assistantHotkey"))
-        self.compose_hotkey.setText(s("composeHotkey"))
-        self.hermes_hotkey.setText(s("hermesHotkey"))
-        self.glance_hotkey.setText(s("glanceHotkey"))
         self.symbol.setText(s("menuBarSymbol"))
-        self.aerospace.setText(s("aerospaceCli"))
         # Asked as the window opens rather than waiting for a press. The common
         # case is a server already running, and making somebody click Connect to
         # discover that is a step which almost never changes the answer. It runs
@@ -452,12 +430,13 @@ class SettingsWindow(QDialog):
         obj["glanceUrl"] = self.glance_url.text().strip() or "http://localhost:11434"
         obj["glanceModel"] = self.glance_model.value() or "nomic-embed-text:latest"
 
-        for key, field in {
-            "aerospaceCli": self.aerospace, "boardHotkey": self.board_hotkey,
-            "assistantHotkey": self.assistant_hotkey, "composeHotkey": self.compose_hotkey,
-            "hermesHotkey": self.hermes_hotkey, "glanceHotkey": self.glance_hotkey,
-            "menuBarSymbol": self.symbol,
-        }.items():
+        # Only what this panel actually edits. `aerospaceCli` and the four
+        # hotkey keys are deliberately absent: they are read by the Mac, this
+        # panel no longer shows them, and a save that removed a field it stopped
+        # displaying would quietly delete somebody's setting on another machine.
+        # The overlay rule the whole file is built on — unknown fields survive —
+        # applies to fields we knowingly stopped knowing about too.
+        for key, field in {"menuBarSymbol": self.symbol}.items():
             value = field.text().strip()
             if value:
                 obj[key] = value

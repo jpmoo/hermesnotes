@@ -71,6 +71,21 @@ export function complain(node, err) {
   node.appendChild(p);
 }
 
+/**
+ * A type's name, or nothing.
+ *
+ * `toCanonical` falls back to the literal string "unknown" when a block's type
+ * is not in the index — `collectionKind ?? type?.name ?? "unknown"` — and that
+ * word is a placeholder for the mapper's benefit, not a label for a person. It
+ * was being shown as though it were a type called Unknown. The rollup already
+ * guarded against it and nothing else did, which is exactly the sort of rule
+ * that should live in one place.
+ */
+export function typeLabel(block) {
+  const name = block?.typeName;
+  return name && name !== "unknown" ? name : "";
+}
+
 /** Text into a node, never markup — titles are user data and arrive as typed. */
 export function el(tag, className, text) {
   const node = document.createElement(tag);

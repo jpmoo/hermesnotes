@@ -12,7 +12,7 @@
 </div>
 
 <script type="module">
-import { get, complain, el } from "/ui/api.js";
+import { get, complain, el, typeLabel } from "/ui/api.js";
 
 const body = document.getElementById("body");
 const source = document.getElementById("source");
@@ -85,7 +85,8 @@ function show(hits) {
 
     card.appendChild(el("span", "title", b.title || "(untitled)"));
     if (b.schedule?.end?.value) card.appendChild(el("span", "meta", b.schedule.end.value));
-    card.appendChild(el("span", "meta", b.typeName || b.kind || ""));
+    const label = typeLabel(b) || b.kind || "";
+    if (label) card.appendChild(el("span", "meta", label));
 
     if (b.url) {
       card.classList.add("opens");

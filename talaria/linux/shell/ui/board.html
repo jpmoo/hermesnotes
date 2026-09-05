@@ -7,7 +7,7 @@
   <main class="pane" id="pane"><div class="note">Loading…</div></main>
 </div>
 <script type="module">
-import { get, post, complain, el } from "/ui/api.js";
+import { get, post, complain, el, typeLabel } from "/ui/api.js";
 
 const side = document.getElementById("side");
 const pane = document.getElementById("pane");
@@ -272,7 +272,7 @@ function node(item, depth) {
   const self = el("div", "self" + (item.done ? " done" : ""));
   self.appendChild(el("span", "title", item.title || "(untitled)"));
   if (item.due) self.appendChild(el("span", "meta", item.due));
-  if (item.typeName && item.typeName !== "unknown") self.appendChild(el("span", "meta", item.typeName));
+  if (typeLabel(item)) self.appendChild(el("span", "meta", typeLabel(item)));
   openable(self, item.url);
   wrap.appendChild(self);
   // Depth is not capped. A rollup that stopped at two levels would silently
@@ -374,7 +374,8 @@ function canvas(board) {
     if (n.color) { card.style.background = n.color; card.style.color = readableOn(n.color); }
     card.appendChild(el("div", "title", n.title || "(untitled)"));
     for (const d of n.dates || []) card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
-    card.appendChild(el("span", "meta", n.typeName || n.kind || ""));
+    const nlabel = typeLabel(n) || n.kind || "";
+    if (nlabel) card.appendChild(el("span", "meta", nlabel));
     openable(card, n.url);
     surface.appendChild(card);
   }
@@ -531,7 +532,8 @@ function cards(members, host, movableIn) {
     for (const d of m.dates || []) {
       card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
     }
-    card.appendChild(el("span", "meta", m.typeName || m.kind || ""));
+    const label = typeLabel(m) || m.kind || "";
+    if (label) card.appendChild(el("span", "meta", label));
     openable(card, m.url);
     host.appendChild(card);
   }

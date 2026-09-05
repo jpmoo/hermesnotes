@@ -62,6 +62,25 @@ SHORT = {
 }
 
 
+def frosting_alpha() -> float:
+    """
+    How opaque a panel's own background is, from `frostingAmount`.
+
+    1.0 is a solid panel with the blur invisible behind it; lower lets more of
+    the blurred desktop through. Clamped at 0.35, below which text over a busy
+    desktop stops being readable however much it is blurred.
+    """
+    import json
+
+    try:
+        with open(os.path.join(os.path.dirname(daemon.socket_path()), "config.json"),
+                  encoding="utf8") as handle:
+            asked = float(json.load(handle).get("frostingAmount", 0.82))
+    except Exception:  # noqa: BLE001
+        return 0.82
+    return min(1.0, max(0.35, asked))
+
+
 def config_hotkey(action: str, fallback: str) -> str:
     """
     A hotkey from `config.json`, so both machines can be configured in one file.
@@ -157,6 +176,8 @@ class Panel(QWidget):
             # stepping into another window to read something must not take the
             # panel away, because reading something else is usually the point.
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        #: Asked for once, after the first show — see `_frost`.
+        self._frosted = False
         self.setWindowTitle(f"Talaria — {title}")
         self.resize(size)
         self.view = QWebEngineView(self)
@@ -179,6 +200,19 @@ class Panel(QWidget):
             # background.
             self.view.page().setBackgroundColor(Qt.GlobalColor.transparent)
             self.view.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # How much of the blurred backdrop shows through.
+        #
+        # `ext-background-effect-v1` has no strength — the blur radius is the
+        # compositor's own setting, the same for every window. What a per-panel
+        # "amount" can honestly mean is how translucent the panel's own surface
+        # is, so this is handed to the page as a CSS variable and the page
+        # paints its background with it.
+        self.view.loadFinished.connect(
+            lambda ok: ok and self.view.page().runJavaScript(
+                f"document.documentElement.style.setProperty("
+                f"'--surface-alpha', '{frosting_alpha():.2f}')"
+            )
+        )
         self.view.load(url)
         QShortcut(QKeySequence("Escape"), self, activated=self.hide)
 
@@ -214,6 +248,25 @@ class Panel(QWidget):
         if not self.isActiveWindow():
             self.hide()
 
+    def _frost(self) -> None:
+        """
+        Ask the compositor to blur what is behind this panel.
+
+        After showing, never before: blur attaches to a Wayland surface and a
+        window that has not been shown has none yet. Asked once — the effect
+        stays with the surface, and the surface outlives every summon.
+
+        Only the panels. The Hermes window is a browser you work in, and a
+        page of text over a blurred desktop is harder to read than a page of
+        text over a page.
+        """
+        if not getattr(self, "view_is_panel", False) or self._frosted:
+            return
+        import frosting
+
+        if frosting.apply_to(self):
+            self._frosted = True
+
     def summon(self) -> None:
         """
         Show, raise and focus — centred on the screen the pointer is on.
@@ -227,6 +280,7 @@ class Panel(QWidget):
         self.show()
         self.raise_()
         self.activateWindow()
+        self._frost()
 
 
 class Shell(QObject):

@@ -280,7 +280,7 @@ def _generated_script() -> str:
             raw = json.load(h)
         if raw.get("glancePlacement") in PLACEMENTS:
             placement = raw["glancePlacement"]
-        asked = float(raw.get("overlayOpacity") or 1.0)
+        asked = 1.0
         # Clamped rather than trusted. A panel at 0.2 is unreadable and a panel
         # somebody cannot find is a panel they cannot turn back up.
         opacity = min(1.0, max(0.6, asked))

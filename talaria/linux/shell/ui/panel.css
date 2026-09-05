@@ -15,7 +15,11 @@
   --raised: color-mix(in srgb, CanvasText 4%, Canvas);
   /* The panel's own background. Overridden by the shell when translucency is
      configured — see `--talaria-opacity` below. */
-  --surface: Canvas;
+  /* How solid a panel is. Set by the shell from `frostingAmount`; the default
+     matters because a page opened outside the shell still has to look like
+     something. */
+  --surface-alpha: 1;
+  --surface: color-mix(in srgb, Canvas calc(var(--surface-alpha) * 100%), transparent);
   --accent: color-mix(in srgb, AccentColor 90%, Canvas);
   --accent-fg: AccentColorText;
 }

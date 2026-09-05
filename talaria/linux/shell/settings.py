@@ -280,14 +280,16 @@ class SettingsWindow(QDialog):
         ):
             self.glance_placement.addItem(label, value)
         rows.addRow("Appears", self.glance_placement)
-        self.overlay_opacity = QDoubleSpinBox(minimum=0.6, maximum=1.0, singleStep=0.05, decimals=2)
-        rows.addRow("Panel opacity", self.overlay_opacity)
+        self.frosting = QDoubleSpinBox(minimum=0.35, maximum=1.0, singleStep=0.05, decimals=2)
+        rows.addRow("Panel solidity", self.frosting)
         rows.addRow(_hint(
-            "Applies to every summoned panel, not only Glance. This is plain translucency — what "
-            "is behind shows through, unblurred. Frosting would need a window to <i>ask</i> KWin "
-            "for blur, and that asking is a C++ API with no Python binding, so calling it frosted "
-            "would describe something the desktop is not doing. Clamped at 0.6: a panel nobody "
-            "can read is a panel nobody can dismiss."
+            "Applies to every summoned panel, not only Glance. What is behind them is genuinely "
+            "blurred by the compositor — 1.00 is a solid panel that hides it, lower lets more of "
+            "the frosted desktop through. The blur <i>radius</i> is not set here: the protocol has "
+            "no strength, so that is the one in System Settings → Desktop Effects → Blur, shared "
+            "by everything on the desktop. Clamped at 0.35, below which text over a busy desktop "
+            "stops being readable however much it is blurred. The Hermes window is never frosted: "
+            "it is a page of text, and a page of text over a blurred desktop reads badly."
         ))
         rows.addRow(_hint(
             "Where the panel comes up. It arrives from the nearest edge, so it always reads as "
@@ -375,8 +377,8 @@ class SettingsWindow(QDialog):
         self.glance_undated.setChecked(bool(c.get("glanceUndatedFurtherOut")))
         placed = self.glance_placement.findData(c.get("glancePlacement") or "bottom-center")
         self.glance_placement.setCurrentIndex(placed if placed >= 0 else 7)
-        opacity = c.get("overlayOpacity")
-        self.overlay_opacity.setValue(float(opacity) if isinstance(opacity, (int, float)) else 1.0)
+        amount = c.get("frostingAmount")
+        self.frosting.setValue(float(amount) if isinstance(amount, (int, float)) else 0.82)
         self.symbol.setText(s("menuBarSymbol"))
         # Asked as the window opens rather than waiting for a press. The common
         # case is a server already running, and making somebody click Connect to
@@ -460,12 +462,7 @@ class SettingsWindow(QDialog):
             else:
                 obj.pop(key, None)
         obj["glancePlacement"] = self.glance_placement.currentData()
-        # Written only when it is not the default, so a file nobody has changed
-        # stays the shape it was first written in.
-        if self.overlay_opacity.value() < 1.0:
-            obj["overlayOpacity"] = round(self.overlay_opacity.value(), 2)
-        else:
-            obj.pop("overlayOpacity", None)
+        obj["frostingAmount"] = round(self.frosting.value(), 2)
         if self.glance_threshold.value() > 0:
             obj["glanceThreshold"] = round(self.glance_threshold.value(), 4)
         else:

@@ -111,8 +111,16 @@ function heading(label, count) {
 }
 
 /* Regions in a fixed grid, plus the cards the query matched but nobody placed.
+ *
  * The drawer is drawn even when empty, which is deliberate on the Mac and worth
- * keeping: it is the only thing that says unplaced cards are a category at all. */
+ * keeping: hiding it took the drop target away at exactly the moment it was
+ * wanted — there was nowhere to put the first card you wanted out of the grid.
+ *
+ * The region's color goes on as a tint and a border, not a wash. Hermes already
+ * stores these with alpha, so the fill is held well back and the cards sitting
+ * on it keep their own opaque background; the border is what actually says
+ * which region you are looking at.
+ */
 function grid(board) {
   const box = el("div", "grid");
   box.style.gridTemplateColumns = `repeat(${board.cols || 1}, 1fr)`;
@@ -123,15 +131,21 @@ function grid(board) {
     if (!region) { box.appendChild(el("div")); continue; }
     const held = board.cells?.[String(i)] || [];
     const cell = el("div", "region");
+    const tint = region.color;
+    if (tint) {
+      cell.style.background = `color-mix(in srgb, ${tint} 45%, transparent)`;
+      cell.style.borderColor = tint;
+    }
     const head = el("header");
     const bar = el("span", "bar");
-    bar.style.background = region.color || "var(--accent)";
+    bar.style.background = tint || "var(--accent)";
     head.append(bar, el("span", null, region.title || region.name || ""), el("span", "count", String(held.length)));
     cell.appendChild(head);
     const body = el("div", "body");
-    if (held.length) cards(held, body);
-    else body.appendChild(el("div", "empty", "Empty"));
+    if (held.length) cards(held, body, board.id);
+    else body.appendChild(el("div", "empty", "Drop here"));
     cell.appendChild(body);
+    dropInto(cell, board.id, i);
     box.appendChild(cell);
   }
   pane.appendChild(box);
@@ -140,10 +154,36 @@ function grid(board) {
   const unplaced = board.drawer || [];
   drawer.appendChild(el("h2", null, unplaced.length ? `Unplaced — ${unplaced.length}` : "Unplaced"));
   const row = el("div", "row");
-  if (unplaced.length) cards(unplaced, row);
-  else row.appendChild(el("div", "empty", "Everything matched has been placed"));
+  if (unplaced.length) cards(unplaced, row, board.id);
+  else row.appendChild(el("div", "empty", "Drag a card here to take it off the board"));
   drawer.appendChild(row);
+  // null rather than an index: still a member of the collection, just not
+  // placed anywhere in the grid. It is the way back out of a region, which
+  // otherwise had none.
+  dropInto(drawer, board.id, null);
   pane.appendChild(drawer);
+}
+
+/* Make somewhere accept a card. */
+function dropInto(host, collectionId, region) {
+  host.addEventListener("dragover", (e) => {
+    // Both, and both are needed: without preventDefault the browser refuses the
+    // drop, and without the effect the cursor says "no" the whole way across.
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    host.classList.add("over");
+  });
+  host.addEventListener("dragleave", () => host.classList.remove("over"));
+  host.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    host.classList.remove("over");
+    const blockId = e.dataTransfer.getData("text/plain");
+    if (!blockId) return;
+    try {
+      await post("/write", { kind: "move", collectionId, blockId, region });
+      await show(current);
+    } catch (err) { complain(pane, err); }
+  });
 }
 
 /* A tree. `groupBy` splits the top level into headed sections; below that it is
@@ -186,26 +226,86 @@ function node(item, depth) {
 /* The arrangement, at the coordinates it was arranged at.
  *
  * Read-only and scaled to fit. Editing a canvas is the fork's job — this panel
- * is for seeing where things are, and a canvas you can only see is still worth
- * far more than the same cards in a list.
+ * is for seeing where things are, and a canvas you can only look at is still
+ * worth far more than the same cards in a list.
+ *
+ * Three kinds of thing live here and all three matter: placed blocks, the
+ * ephemeral notes that carry their own text and color, and the links between
+ * them. Drawing only the blocks — which is what this did first — throws away
+ * most of what somebody arranged.
  */
+const SIDE = {
+  n: (b) => ({ x: b.x + b.w / 2, y: b.y }),
+  s: (b) => ({ x: b.x + b.w / 2, y: b.y + b.h }),
+  e: (b) => ({ x: b.x + b.w, y: b.y + b.h / 2 }),
+  w: (b) => ({ x: b.x, y: b.y + b.h / 2 }),
+};
+
+/* Nearest side to a point, for a link that does not name one. Ported with the
+ * rest of `LinkGeometry` — see `canvasapp/canvas.js`, which the brief keeps
+ * precisely because this arithmetic is easy to get subtly wrong. */
+function nearestSide(box, aim) {
+  let best = null, bestD = Infinity;
+  for (const key of ["n", "s", "e", "w"]) {
+    const p = SIDE[key](box);
+    const d = (p.x - aim.x) ** 2 + (p.y - aim.y) ** 2;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+function dashFor(style, w) {
+  if (style === "dashed") return `${Math.max(w * 2.5, 3)} ${Math.max(w * 2, 2.5)}`;
+  if (style === "dotted") return `${Math.max(w, 1)} ${Math.max(w * 2, 3)}`;
+  return "";
+}
+
 function canvas(board) {
   const nodes = (board.members || []).filter(m => typeof m.x === "number");
-  if (!nodes.length) return cards(board.members || [], pane);
+  const notes = board.notes || [];
+  const edges = board.edges || [];
+  if (!nodes.length && !notes.length) return cards(board.members || [], pane);
 
-  const maxX = Math.max(...nodes.map(n => n.x + (n.w || 280)));
-  const maxY = Math.max(...nodes.map(n => n.y + (n.h || 190)));
-  const minX = Math.min(...nodes.map(n => n.x));
-  const minY = Math.min(...nodes.map(n => n.y));
+  // One table of boxes, blocks and notes together, because a link may join any
+  // two of them and does not care which kind it reached.
+  const boxes = new Map();
+  const put = (id, o) => boxes.set(id, { x: o.x, y: o.y, w: o.w || 200, h: o.h || 120 });
+  for (const n of nodes) put(n.id, n);
+  for (const n of notes) put(n.id, n);
+
+  const all = [...boxes.values()];
+  const minX = Math.min(...all.map(b => b.x));
+  const minY = Math.min(...all.map(b => b.y));
+  const maxX = Math.max(...all.map(b => b.x + b.w));
+  const maxY = Math.max(...all.map(b => b.y + b.h));
+  const width = Math.max(maxX - minX, 1);
+  const height = Math.max(maxY - minY, 1);
 
   const surface = el("div", "canvas");
-  const width = maxX - minX || 1;
   // Only ever shrink. Blowing a small canvas up to fill the pane would make a
   // deliberate arrangement look like a different one.
   const scale = Math.min(1, (pane.clientWidth - 40) / width);
   surface.style.transform = `scale(${scale})`;
   surface.style.width = `${width}px`;
-  surface.style.height = `${maxY - minY}px`;
+  surface.style.height = `${height}px`;
+
+  surface.appendChild(links(edges, boxes, minX, minY, width, height));
+
+  for (const n of notes) {
+    const card = el("div", "note-card");
+    card.style.left = `${n.x - minX}px`;
+    card.style.top = `${n.y - minY}px`;
+    card.style.width = `${n.w || 200}px`;
+    card.style.height = `${n.h || 120}px`;
+    if (n.color) {
+      card.style.background = n.color;
+      // The note carries a fill and not a text color, so the text has to pick
+      // one that survives it. Anything else is white-on-cream at some point.
+      card.style.color = readableOn(n.color);
+    }
+    card.textContent = n.text || "";
+    surface.appendChild(card);
+  }
 
   for (const n of nodes) {
     const card = el("div", "node-card" + (n.done ? " done" : ""));
@@ -213,23 +313,124 @@ function canvas(board) {
     card.style.top = `${n.y - minY}px`;
     card.style.width = `${n.w || 280}px`;
     card.style.height = `${n.h || 190}px`;
+    if (n.color) { card.style.background = n.color; card.style.color = readableOn(n.color); }
     card.appendChild(el("div", "title", n.title || "(untitled)"));
     for (const d of n.dates || []) card.appendChild(el("span", "meta" + (d.overdue ? " overdue" : ""), d.text));
     card.appendChild(el("span", "meta", n.typeName || n.kind || ""));
     surface.appendChild(card);
   }
-  // The wrapper carries the scaled height, because a transform does not change
-  // how much room the element asks for and the pane would not scroll.
+
   const hold = el("div");
-  hold.style.height = `${(maxY - minY) * scale}px`;
+  // The wrapper carries the scaled height, because a transform does not change
+  // how much room an element asks for and the pane would not scroll.
+  hold.style.height = `${height * scale}px`;
   hold.appendChild(surface);
   pane.appendChild(hold);
 }
 
-function cards(members, host) {
+/* The links, as one SVG under everything else.
+ *
+ * Geometry ported from `LinkGeometry` via `canvasapp/canvas.js`: anchors are
+ * side-centres, the control point is the midpoint plus *twice* the bend, and
+ * the curve itself passes through midpoint plus the bend. Getting the factor of
+ * two wrong bulges every line inward and lands it on the far side of the box.
+ */
+function links(edges, boxes, minX, minY, width, height) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "links");
+  svg.setAttribute("width", width);
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+  for (const link of edges) {
+    const A = boxes.get(link.from);
+    const B = boxes.get(link.to);
+    if (!A || !B) continue;  // an end that is not on this canvas
+    const bx = link.bendX ?? 0;
+    const by = link.bendY ?? 0;
+    const aim = {
+      x: (A.x + A.w / 2 + B.x + B.w / 2) / 2 + bx,
+      y: (A.y + A.h / 2 + B.y + B.h / 2) / 2 + by,
+    };
+    const a = link.fromSide && SIDE[link.fromSide] ? SIDE[link.fromSide](A) : nearestSide(A, aim);
+    const b = link.toSide && SIDE[link.toSide] ? SIDE[link.toSide](B) : nearestSide(B, aim);
+    const shift = (p) => ({ x: p.x - minX, y: p.y - minY });
+    const s = shift(a), e = shift(b);
+    // Solved from the anchors, not the centres — the midpoint of two centres is
+    // the midpoint of two anchors only when the boxes match.
+    const mid = { x: (s.x + e.x) / 2, y: (s.y + e.y) / 2 };
+    const control = { x: mid.x + 2 * bx, y: mid.y + 2 * by };
+
+    const width_ = link.width || 1.5;
+    const color = link.color || "currentColor";
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", `M ${s.x} ${s.y} Q ${control.x} ${control.y} ${e.x} ${e.y}`);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", width_);
+    const dash = dashFor(link.dash, width_);
+    if (dash) path.setAttribute("stroke-dasharray", dash);
+    svg.appendChild(path);
+
+    // The arrowhead points the way the curve arrives, which is the tangent at
+    // the end — not the straight line between the boxes.
+    if (link.arrow && link.arrow !== "none") {
+      const dx = 2 * (e.x - control.x);
+      const dy = 2 * (e.y - control.y);
+      const angle = Math.atan2(dy, dx);
+      const size = Math.max(7, width_ * 4);
+      const head = document.createElementNS(NS, "path");
+      head.setAttribute("d",
+        `M ${e.x} ${e.y} ` +
+        `L ${e.x - size * Math.cos(angle - 0.4)} ${e.y - size * Math.sin(angle - 0.4)} ` +
+        `L ${e.x - size * Math.cos(angle + 0.4)} ${e.y - size * Math.sin(angle + 0.4)} Z`);
+      head.setAttribute("fill", color);
+      svg.appendChild(head);
+    }
+
+    if (link.label) {
+      const text = document.createElementNS(NS, "text");
+      // Where the curve actually passes, which is midpoint plus the bend — not
+      // the control point, which is twice as far out and not on the line.
+      text.setAttribute("x", mid.x + bx);
+      text.setAttribute("y", mid.y + by - 4);
+      text.setAttribute("text-anchor", "middle");
+      text.setAttribute("class", "link-label");
+      text.textContent = link.label;
+      svg.appendChild(text);
+    }
+  }
+  return svg;
+}
+
+/* Black or white, whichever survives the fill behind it. Hermes stores canvas
+ * colors with alpha, so this composites onto the panel's own ground first. */
+function readableOn(hex) {
+  const m = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(hex || "");
+  if (!m) return "";
+  const n = parseInt(m[1], 16);
+  const a = m[2] ? parseInt(m[2], 16) / 255 : 1;
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(c => c * a + 255 * (1 - a));
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#111" : "#fff";
+}
+
+function cards(members, host, movableIn) {
   if (!members.length) { host.appendChild(el("div", "note", "Nothing in this collection.")); return; }
   for (const m of members) {
     const card = el("div", "card" + (m.done ? " done" : ""));
+    // Draggable only where there is somewhere to drag to. A card in a plain
+    // list that follows the pointer and then refuses to land is worse than one
+    // that never moved.
+    if (movableIn) {
+      card.draggable = true;
+      card.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", m.id);
+        e.dataTransfer.effectAllowed = "move";
+        card.classList.add("dragging");
+      });
+      card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    }
 
     // Completion is read through the daemon's `done`, never by comparing a type
     // name. The repo's first invariant: `if (type.name === "Task")` is a bug,

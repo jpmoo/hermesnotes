@@ -189,3 +189,27 @@ button.go:disabled { opacity: .5; cursor: default; }
   font-size: 12.5px;
 }
 .canvas .node-card .meta { display: block; margin-top: 4px; }
+
+.canvas .links { position: absolute; inset: 0; overflow: visible; color: var(--muted); pointer-events: none; }
+.canvas .link-label { font-size: 11px; fill: var(--muted); }
+.canvas .note-card {
+  position: absolute;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow: hidden;
+  background: var(--raised);
+  border: 1px solid var(--line);
+}
+.canvas .node-card { z-index: 1; }
+.canvas .note-card { z-index: 1; }
+
+/* Drag. The target says so plainly — a drop that lands somewhere you did not
+ * mean is much harder to notice than one that never happened. */
+.card[draggable="true"] { cursor: grab; }
+.card.dragging { opacity: .4; }
+.region.over, .drawer.over {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

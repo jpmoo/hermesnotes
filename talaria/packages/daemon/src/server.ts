@@ -189,7 +189,7 @@ export function buildServer(deps: {
    */
   const AX_HELPER = join(dirname(fileURLToPath(import.meta.url)), "Talaria.app/Contents/MacOS/talaria-ax");
 
-  const context = new ContextRecord(mirror, config.contextExclude);
+  const context = new ContextRecord(mirror, config.contextExclude, config.contextTrustAllTitles);
 
   /**
    * Glance keeps its own index, deliberately.

@@ -466,3 +466,182 @@ html, body { background: transparent; }
   text-overflow: ellipsis;
   min-width: 0;
 }
+
+/* Waiting, with nothing to read. The dots carry it alone, so they are given a
+ * little more room than they had when a word sat beside them. */
+.bubble > .thinking { padding: 2px 4px; gap: 4px; }
+.bubble > .thinking span { width: 6px; height: 6px; }
+
+/* A table inside a reply. It may be wider than the panel; it scrolls itself
+ * rather than making the whole panel scroll sideways. */
+.bubble .table-scroll { overflow-x: auto; margin: 0 0 8px; }
+.bubble table { font-size: 12.5px; width: auto; min-width: 100%; }
+.bubble th, .bubble td { padding: 4px 9px; white-space: nowrap; }
+.bubble th { background: color-mix(in srgb, CanvasText 7%, Canvas); }
+
+/* --- The desk -------------------------------------------------------------
+ * Full screen, and the one surface the other panels sit on top of.
+ */
+/* Nothing of its own is painted here — the desk *is* the blurred field, and
+ * every solid surface on it is a pane. */
+.desk { position: fixed; inset: 0; overflow: hidden; background: transparent; }
+.rail { display: flex; height: 100vh; width: 300vw; will-change: transform; }
+.surface { width: 100vw; height: 100vh; flex: none; padding: 22px; box-sizing: border-box; }
+
+.quadrants {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 18px;
+  height: 100%;
+}
+/*
+ * A quadrant, frosted — and less so than the window it sits in.
+ *
+ * The desk carries the compositor's blur across its whole area, so the gutters
+ * between the panes show it at full strength and each pane lays its own tint
+ * over it. Half the window's transparency, tracked from the same setting rather
+ * than fixed: turning frosting up should move both, and a pane that stayed at a
+ * constant alpha while the desk around it went clear would look like a bug.
+ *
+ * Half rather than some other fraction because these are reading surfaces with
+ * text in them. The gutters are where the desktop shows through; the panes are
+ * where the words are, and words over a photograph is the failure mode this is
+ * kept away from.
+ */
+.quadrants .pane {
+  display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas calc(var(--surface-alpha) * 50% + 50%), transparent);
+  overflow: hidden;
+}
+.quadrants .pane > header {
+  padding: 7px 13px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.quadrants iframe { flex: 1; border: 0; width: 100%; background: transparent; }
+
+.waiting {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px; text-align: center;
+  border: 1px dashed color-mix(in srgb, CanvasText 22%, Canvas);
+  border-radius: 12px;
+  padding: 40px;
+}
+.waiting h2 { margin: 0; font-size: 19px; }
+.waiting p { margin: 0; max-width: 46ch; color: var(--muted); }
+.waiting .fine { font-size: 12px; opacity: .85; }
+
+/* Where you are, and the two ways to move. Faint until the pointer comes near:
+ * a full-screen surface with permanent chrome is just a window. */
+.chrome {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; border-radius: 99px;
+  background: color-mix(in srgb, CanvasText 10%, Canvas);
+  border: 1px solid var(--line);
+  opacity: .25; transition: opacity .2s;
+}
+.chrome:hover { opacity: 1; }
+.chrome .step {
+  background: none; border: 0; color: inherit; cursor: pointer;
+  font-size: 17px; line-height: 1; padding: 0 4px;
+}
+.dots { display: flex; gap: 7px; }
+.dots .dot {
+  width: 7px; height: 7px; padding: 0; border: 0; border-radius: 99px;
+  background: color-mix(in srgb, CanvasText 35%, Canvas); cursor: pointer;
+}
+.dots .dot.here { background: var(--accent); }
+
+/* --- Today's page, and the long-text field it is made of -------------------
+ * Hermes' own editor cannot be framed here (`frame-ancestors`), so this is the
+ * editor. Same model: the block you are in shows its markdown, the rest render.
+ */
+.today { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.today-holder { flex: 1; overflow-y: auto; padding: 10px 14px; }
+.today-state {
+  padding: 4px 14px; font-size: 11px; color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+
+.note-field { display: flex; flex-direction: column; gap: 2px; }
+.note-block {
+  padding: 2px 4px; border-radius: 6px; cursor: text;
+  /* The hover is what says a block is editable at all. Without it the page
+   * looks like a document rather than one you can click into. */
+  transition: background .12s;
+}
+.note-block:hover { background: color-mix(in srgb, CanvasText 5%, transparent); }
+.note-block > :first-child { margin-top: 0; }
+.note-block > :last-child { margin-bottom: 0; }
+.note-block p, .note-block ul, .note-block ol { margin: 3px 0; }
+.note-empty { color: var(--muted); font-style: italic; }
+
+/* The block being edited: its own markdown, in the same place the rendering
+ * was, so the line does not jump when you click it. */
+.note-source { position: relative; }
+.note-source textarea {
+  width: 100%; box-sizing: border-box; resize: none; overflow: hidden;
+  border: 1px solid var(--accent); border-radius: 6px;
+  padding: 2px 4px; min-height: 1.6em;
+  font: 13px/1.55 ui-monospace, "Noto Sans Mono", monospace;
+  background: color-mix(in srgb, Canvas 88%, CanvasText); color: var(--fg);
+}
+.note-source textarea:focus { outline: none; }
+
+/* A task line. The box is real and it writes back to the markdown. */
+li.task { list-style: none; margin-left: -1.2em; display: flex; gap: 7px; align-items: baseline; }
+li.task input { margin: 0; flex: none; }
+li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
+
+/* A mention, rendered. Not a link with a URL in it — the href is `block:<id>`,
+ * which is not something to show anybody. */
+.chip-link {
+  text-decoration: none; border-radius: 5px; padding: 0 5px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: inherit; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.chip-link.tag {
+  background: color-mix(in srgb, var(--olive, CanvasText) 20%, transparent);
+  border-color: color-mix(in srgb, CanvasText 18%, transparent);
+  cursor: default;
+}
+.chip-link.block:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* The picker. Floats over the field, under the caret's line. */
+.mention-menu {
+  position: absolute; z-index: 20; min-width: 220px; max-width: 340px;
+  padding: 4px; border-radius: 8px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, Canvas 96%, CanvasText);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+}
+.mention-row {
+  display: flex; width: 100%; gap: 10px; align-items: baseline;
+  padding: 4px 8px; border: 0; border-radius: 6px; cursor: pointer;
+  background: none; color: inherit; font: inherit; text-align: left;
+}
+.mention-row.here { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.mention-row > span:first-child {
+  flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mention-note { font-size: 11px; color: var(--muted); flex: none; }
+
+
+/* --- Framed: the same page, as a quadrant of the desk ----------------------
+ * Its own chrome comes off. The pane around it has a border and a name; a
+ * second border two pixels inside the first is the sort of detail that makes a
+ * screen look assembled rather than designed. See `api.js`.
+ */
+.framed body { background: transparent; }
+.framed .chat, .framed .frame, .framed body > .pane {
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+  height: 100%;
+}
+/* The pane's own header already says which one this is — whether the page says
+ * it in a bar or in a heading. */
+.framed .chat-head, .framed body > .pane > h1 { display: none; }

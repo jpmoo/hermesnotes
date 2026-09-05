@@ -9,9 +9,9 @@
     <button id="clear" class="quiet" title="Start again">Clear</button>
   </header>
 
-  <div class="pane log" id="log"></div>
+  <div class="pane log" id="log" data-context></div>
 
-  <form class="composer" id="form">
+  <form class="composer" id="form" data-context>
     <!-- Deliberately not the empty state's sentence. Both are on screen at once
          before the first message, and saying the same thing twice in two type
          sizes reads as a mistake rather than as emphasis. -->
@@ -84,7 +84,10 @@ function thinking() {
   for (let i = 0; i < 3; i++) dots.appendChild(el("span", "dot" + i));
   const wrap = el("div", "turn");
   const body = el("div", "bubble");
-  body.append(dots, el("span", "fine", " thinking…"));
+  // The dots alone. Three pulsing dots already say "waiting"; the word beside
+  // them was saying it twice, in two type sizes, which reads as a caption for
+  // something rather than as the thing itself.
+  body.append(dots);
   wrap.appendChild(body);
   log.appendChild(wrap);
   log.scrollTop = log.scrollHeight;

@@ -1,0 +1,235 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Desk</title>
+<link rel="stylesheet" href="/ui/panel.css">
+
+<!--
+  The desk: everything at once, over whatever you were doing.
+
+  The Mac's words, and they are the design: "The other panels are each about one
+  thing and are summoned when you want that thing. This is the opposite move — a
+  full screen, frosted over what is behind it, with the four surfaces in
+  quadrants. It is for the moment between things, when the question is not 'what
+  did I write about this' but 'where was I'."
+
+  **The quadrants are the panels themselves, in frames.** The Mac embeds its own
+  views for a reason it states plainly — "two copies of a form that builds itself
+  from a type's declared fields is precisely the duplication this project keeps
+  not doing" — and the same holds here with more force, because these are pages
+  and a frame costs nothing. New Block on the desk *is* New Block; a field added
+  to a type appears in both because there is only one of them.
+-->
+
+<div class="desk">
+  <div class="rail" id="rail">
+    <div class="surface" data-name="Desk">
+      <div class="quadrants">
+        <section class="pane"><header>Today</header><div class="today" id="today"></div></section>
+        <section class="pane"><header>New block</header><iframe src="/ui/compose.html" title="New block"></iframe></section>
+        <section class="pane"><header>Glance</header><iframe id="glance" src="/ui/glance.html" title="Glance"></iframe></section>
+        <section class="pane"><header>Chat</header><iframe src="/ui/assistant.html" title="Chat"></iframe></section>
+      </div>
+    </div>
+
+    <div class="surface" data-name="Canvas">
+      <div class="waiting">
+        <h2>Canvas</h2>
+        <p>Not built yet — it is step 2 of the port, and the largest piece left.</p>
+        <p class="fine">
+          The plan is settled: a fork of Hermes' own canvas with the API module swapped
+          for one that speaks <code>canvas.json</code> over the daemon socket. It renders
+          here, in this surface, as a web view — which is why the desk was built with a
+          place for it rather than around it.
+        </p>
+      </div>
+    </div>
+
+    <div class="surface" data-name="Writing">
+      <div class="waiting">
+        <h2>Writing surface</h2>
+        <p>A placeholder, holding its position in the order.</p>
+        <p class="fine">
+          Specified later. It sits on the far side of the desk on purpose: the canvas is
+          where things are arranged and this is where they are written, and putting them
+          either side of home means one gesture reaches each.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Where you are, and the two ways to move. Hidden until the pointer comes
+       near, because a full-screen surface with permanent chrome is a window. -->
+  <nav class="chrome" id="chrome">
+    <button class="step" id="back" title="Previous surface" aria-label="Previous surface">‹</button>
+    <span class="dots" id="dots"></span>
+    <button class="step" id="next" title="Next surface" aria-label="Next surface">›</button>
+  </nav>
+</div>
+
+<script type="module">
+import { get, put, el } from "/ui/api.js";
+import { noteField } from "/ui/notefield.js";
+
+const rail = document.getElementById("rail");
+const dots = document.getElementById("dots");
+const surfaces = [...rail.querySelectorAll(".surface")];
+
+/*
+ * Home is the middle one.
+ *
+ * The desk is the surface somebody summoned; the canvas is to its left and the
+ * writing surface to its right, so a single gesture in either direction reaches
+ * one of them and the way back is the same gesture reversed. The Mac has two
+ * surfaces and a swipe between them; this is that arrangement with a third, and
+ * the third is the reason home is in the middle rather than at the start.
+ */
+const HOME = surfaces.findIndex(s => s.dataset.name === "Desk");
+let at = HOME;
+
+function slide(to, animate = true) {
+  at = Math.max(0, Math.min(surfaces.length - 1, to));
+  rail.style.transition = animate ? "transform .32s cubic-bezier(.22,.61,.36,1)" : "none";
+  rail.style.transform = `translateX(${-at * 100}vw)`;
+  for (const [i, dot] of [...dots.children].entries()) {
+    dot.classList.toggle("here", i === at);
+    dot.setAttribute("aria-current", String(i === at));
+  }
+  // The surface you are on is the one that may be reached by tab or by a
+  // pointer; the others are off-screen and should not be either.
+  for (const [i, s] of surfaces.entries()) s.inert = i !== at;
+}
+
+for (const [i, s] of surfaces.entries()) {
+  const dot = el("button", "dot");
+  dot.title = s.dataset.name;
+  dot.onclick = () => slide(i);
+  dots.appendChild(dot);
+}
+document.getElementById("back").onclick = () => slide(at - 1);
+document.getElementById("next").onclick = () => slide(at + 1);
+
+// Horizontal scroll moves between surfaces, which is the Mac's swipe. Wheel
+// events with a horizontal component are what a trackpad sends for one.
+let travelled = 0;
+let settle;
+addEventListener("wheel", (e) => {
+  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+  travelled += e.deltaX;
+  clearTimeout(settle);
+  // A threshold, because a swipe is a continuous thing and a surface change is
+  // not: without one, an ordinary two-finger drift walks the whole rail.
+  if (Math.abs(travelled) > 90) {
+    slide(at + (travelled > 0 ? 1 : -1));
+    travelled = 0;
+  }
+  settle = setTimeout(() => { travelled = 0; }, 220);
+}, { passive: true });
+
+addEventListener("keydown", (e) => {
+  if (e.key === "ArrowLeft") slide(at - 1);
+  if (e.key === "ArrowRight") slide(at + 1);
+  if (e.key === "Home") slide(HOME);
+});
+
+/*
+ * Today's page — the real one, not a link to it.
+ *
+ * The Mac embeds Hermes' own editor here and says why: the page renders
+ * markdown, checkboxes, the `@` and `#` pickers and piping into a block, and
+ * "reimplementing that in Swift would be weeks of work whose only possible
+ * outcome is a second editor that drifts from the first."
+ *
+ * **The embed is not available to us.** Hermes sets a `frame-ancestors` policy
+ * and the browser refuses to frame it from `talaria-app://`, in those words.
+ * So the editor is here instead — `notefield.js`, built on the same model
+ * Hermes' own uses: every block rendered except the one you are in, which shows
+ * its markdown verbatim. The pickers speak Hermes' vocabulary because they were
+ * read out of it: `@` people, `#` tags, `|` anything, each inserting a markdown
+ * link that round-trips.
+ *
+ * Saved on a pause rather than a keystroke: this is a whole-document write
+ * against a page somebody may also have open in Hermes, and one write per
+ * character would be a race with themselves.
+ */
+async function today() {
+  const host = document.getElementById("today");
+  let page;
+  try {
+    page = await get("/scratchpad");
+  } catch {
+    host.replaceChildren(el("div", "waiting", "Today's page needs the daemon."));
+    return;
+  }
+
+  const state = el("div", "today-state");
+  state.textContent = page.date || "";
+  const holder = el("div", "today-holder");
+  host.replaceChildren(holder, state);
+
+  let pending;
+  let latest = page.content || "";
+  const field = noteField(holder, latest, (text) => {
+    latest = text;
+    state.textContent = "unsaved";
+    clearTimeout(pending);
+    pending = setTimeout(save, 1200);
+  });
+
+  async function save() {
+    try {
+      // The version travels with it: the daemon refuses a write built on a page
+      // that has moved on, which is what stops this overwriting an edit made in
+      // the web app while this sat open.
+      const saved = await put("/scratchpad", { content: latest, version: page.version });
+      page = { ...page, ...saved };
+      state.textContent = "saved";
+    } catch (err) {
+      state.textContent = String(err.message || err).slice(0, 70);
+    }
+  }
+
+  /*
+   * Where a chip goes.
+   *
+   * A block chip opens the block in Hermes — the same move a Glance card makes,
+   * through the shell's navigation route, which sends an outside URL to the
+   * browser and a Hermes one to the Hermes window.
+   *
+   * **A tag chip goes nowhere, and that is not an oversight.** Hermes filters
+   * by tag through a query builder held in component state; there is no URL
+   * that means "blocks tagged X", so a link here would be an invention that
+   * lands on the wrong page. It stays a chip.
+   */
+  host.addEventListener("click", async (e) => {
+    const link = e.target.closest("a");
+    if (!link) return;
+    const href = link.getAttribute("href") || "";
+    if (href.startsWith("tag:")) return e.preventDefault();
+    if (href.startsWith("block:")) {
+      e.preventDefault();
+      const id = href.slice(6);
+      try {
+        const block = await get(`/blocks/${encodeURIComponent(id)}`);
+        if (block?.url) window.location.href = block.url;
+      } catch { /* a mention of something no longer in the mirror */ }
+      return;
+    }
+    if (/^https?:/.test(href)) {
+      e.preventDefault();
+      window.location.href = href;
+    }
+  });
+
+  // Nothing polls: a note being edited here is a note nobody else is editing,
+  // and asking every few seconds would fight the caret. `field.set` is there
+  // for when that stops being true.
+  void field;
+}
+
+slide(HOME, false);
+today();
+window.deskGo = (name) => {
+  const i = surfaces.findIndex(s => s.dataset.name.toLowerCase() === String(name).toLowerCase());
+  if (i >= 0) slide(i);
+};
+</script>

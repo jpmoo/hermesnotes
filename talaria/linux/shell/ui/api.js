@@ -68,6 +68,9 @@ function send(method, path, payload) {
 
 export const get = (path) => send("GET", path);
 export const post = (path, payload) => send("POST", path, payload ?? {});
+/* `PUT` because the daemon says `PUT` — `/scratchpad` replaces a document
+ * rather than adding one, and the route is declared that way. */
+export const put = (path, payload) => send("PUT", path, payload ?? {});
 
 /** Put a message where the user will see it, without a dialog. */
 export function complain(node, err) {
@@ -100,3 +103,14 @@ export function el(tag, className, text) {
   if (text !== undefined) node.textContent = text;
   return node;
 }
+
+/*
+ * A page that is a quadrant of the desk, rather than a window of its own.
+ *
+ * Every panel page draws its own frame — a rounded border, a header with its
+ * name — because normally it *is* the window. In a quadrant that frame lands
+ * inside the pane's frame, which already has a border and a title above it, and
+ * two nested boxes saying "New Block" reads as a mistake. Marked here, once,
+ * because every page imports this module; the styling is in `panel.css`.
+ */
+if (window.parent !== window) document.documentElement.classList.add("framed");

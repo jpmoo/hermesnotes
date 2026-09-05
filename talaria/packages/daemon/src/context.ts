@@ -402,6 +402,15 @@ export class ContextRecord {
     private mirror: Mirror,
     /** Extra bundle ids the user never wants recorded at all. */
     private exclude: string[] = [],
+    /**
+     * Whether every application's title may be recorded.
+     *
+     * `TITLE_TRUSTED` is a curated list of macOS bundle ids and matches no
+     * window class, so on Linux it drops every title — correct as a default and
+     * wrong as a permanent answer for somebody who has looked at their own
+     * machine and decided. `contextTrustAllTitles` is that decision.
+     */
+    private trustAllTitles: boolean = false,
   ) {}
 
   get recording(): boolean {
@@ -466,6 +475,22 @@ export class ContextRecord {
       } else {
         why = "title named nothing in the library, so it was dropped";
       }
+    } else if (app && title && this.trustAllTitles) {
+      // Everything vetted at once, by a person who said so.
+      //
+      // `TITLE_TRUSTED` is a curated list of macOS bundle ids and matches no
+      // window class, so on Linux every title was being dropped and the record
+      // kept an application name and a workspace. That is the right default —
+      // it is what the Mac does for an application nobody has checked — but it
+      // is a default, and somebody who has looked at their own machine and
+      // decided is entitled to say so.
+      //
+      // Off unless `contextTrustAllTitles` is set, so a config nobody has
+      // touched behaves exactly as it did. The blindlist is untouched by this
+      // and always applies first: trusting every application is not the same
+      // as trusting a password manager, and that distinction is the whole
+      // reason the two lists are separate.
+      why = "titles are trusted on this machine";
     } else if (app && title && !TITLE_TRUSTED.includes(app)) {
       // The default, and the point of the rewrite. An application nobody has
       // checked contributes its name and its workspace and nothing else.

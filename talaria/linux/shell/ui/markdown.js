@@ -47,12 +47,82 @@ function inline(escaped) {
     (_, text, href) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`,
   );
 
+  /*
+   * A mention, as Hermes writes one.
+   *
+   * `@`, `#` and `|` in an editor insert an ordinary markdown link whose href
+   * is `block:<id>` or `tag:<name>` — `apps/web/src/lib/mentions.ts` says why in
+   * one line: "inserted as a markdown link so it round-trips". Nothing about
+   * the file format knows what a chip is, which is what makes a note written
+   * here readable by anything that reads markdown.
+   *
+   * Rendered as a chip rather than a link because it is not somewhere to go so
+   * much as something named — and the id is not worth showing anybody. The
+   * href is kept verbatim for whoever handles the click; the schemes are
+   * matched exactly, so this is not a door for `javascript:`.
+   */
+  s = s.replace(
+    /\[([^\]]+)\]\((block:[0-9a-fA-F-]+|tag:[^\s)]+)\)/g,
+    (_, text, href) => {
+      const kind = href.startsWith("tag:") ? "tag" : "block";
+      return `<a class="chip-link ${kind}" href="${href}">${text}</a>`;
+    },
+  );
+
   s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
   s = s.replace(/(^|[\s(])\*([^*\n]+)\*/g, "$1<em>$2</em>");
   s = s.replace(/(^|[\s(])_([^_\n]+)_/g, "$1<em>$2</em>");
 
   return s.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${spans[Number(i)]}</code>`);
+}
+
+/**
+ * A pipe table.
+ *
+ * `rows[1]` is the separator and is read for alignment rather than shown. Cells
+ * carry inline markup, because the assistant bolds things inside them and a
+ * table of literal asterisks is worse than no table.
+ */
+function table(rows) {
+  const el = (t) => document.createElement(t);
+  const cells = (line) =>
+    line.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map((c) => c.trim());
+
+  const align = (rows[1] || "").split("|").map((c) => {
+    const t = c.trim();
+    if (t.startsWith(":") && t.endsWith(":")) return "center";
+    if (t.endsWith(":")) return "right";
+    return "";
+  }).filter((_, i, a) => a.length);
+
+  const node = el("table");
+  const head = el("tr");
+  for (const [i, c] of cells(rows[0]).entries()) {
+    const th = el("th");
+    th.innerHTML = inline(escape(c));
+    if (align[i]) th.style.textAlign = align[i];
+    head.appendChild(th);
+  }
+  node.appendChild(head);
+
+  for (const line of rows.slice(2)) {
+    const tr = el("tr");
+    for (const [i, c] of cells(line).entries()) {
+      const td = el("td");
+      td.innerHTML = inline(escape(c));
+      if (align[i]) td.style.textAlign = align[i];
+      tr.appendChild(td);
+    }
+    node.appendChild(tr);
+  }
+
+  // Tables are the one thing here that legitimately exceeds the panel's width,
+  // and a panel that scrolls sideways as a whole is a broken panel.
+  const scroller = el("div");
+  scroller.className = "table-scroll";
+  scroller.appendChild(node);
+  return scroller;
 }
 
 /** Markdown to a DocumentFragment — never a string of HTML handed to innerHTML. */
@@ -86,7 +156,8 @@ export function render(text) {
     out.appendChild(pre);
   };
 
-  for (const raw of lines) {
+  for (let at = 0; at < lines.length; at++) {
+    const raw = lines[at];
     const t = raw.trim();
 
     if (t.startsWith("```")) {
@@ -101,9 +172,49 @@ export function render(text) {
     if (!t) { closeList(); continue; }
 
     let m;
+    // A table, which the assistant reaches for constantly — every "what is due
+    // this week" comes back as one — and which was rendering as a wall of
+    // pipes. Recognized by its separator row rather than by the first row
+    // alone: a single line with pipes in it is a sentence with pipes in it, and
+    // only the `|---|---|` beneath makes it a table.
+    // Found by position rather than by `indexOf` — a document with the same
+    // line twice in it (a daily note has many) matched the first one and
+    // consumed rows from the wrong place.
+    if (t.includes("|") && /^\s*\|?[\s:-]*-[\s:|-]*\|?\s*$/.test(lines[at + 1] || "")) {
+      closeList();
+      const rows = [];
+      let i = at;
+      while (i < lines.length && lines[i].trim().includes("|")) rows.push(lines[i++].trim());
+      // Consumed here, so the loop does not meet them again as paragraphs.
+      lines.splice(at, rows.length, ...new Array(rows.length).fill(""));
+      out.appendChild(table(rows));
+      continue;
+    }
     if ((m = /^(#{1,6})\s*(.*)$/.exec(t))) {
       closeList();
       block(m[1].length <= 1 ? "h2" : "h3", m[2]);
+    } else if ((m = /^[-*]\s+\[([ xX])\]\s*(.*)$/.exec(t))) {
+      /*
+       * A task line, which is most of what a daily note is.
+       *
+       * The box is a real checkbox and it carries the line it came from, so
+       * whoever is holding the source can toggle exactly that line without
+       * re-parsing the document or guessing between two identical tasks. A
+       * reader that only displays markdown leaves it disabled; the field in
+       * `notefield.js` enables it.
+       */
+      const li = document.createElement("li");
+      li.className = "task";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = m[1] !== " ";
+      box.disabled = true;
+      box.dataset.line = String(at);
+      const said = document.createElement("span");
+      said.innerHTML = inline(escape(m[2]));
+      li.append(box, said);
+      if (box.checked) li.classList.add("is-done");
+      intoList("ul").appendChild(li);
     } else if (/^[-*]\s+/.test(t)) {
       const li = document.createElement("li");
       li.innerHTML = inline(escape(t.replace(/^[-*]\s+/, "")));

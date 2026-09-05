@@ -90,6 +90,9 @@ var INTERVAL = 16;    // roughly a frame
 // only thing distinguishing one panel from another at this level — the window
 // class is shared by all of them.
 var SIZES = {
+  // The desk is sized and placed by the shell to fill the screen, so it is
+  // absent here on purpose: a full-screen surface has nowhere to slide in from
+  // and nothing to centre against.
   "Talaria — Glance": { width: 720, height: 400 },
   "Talaria — Ask Hermes Notes": { width: 760, height: 480 },
   "Talaria — New Block": { width: 640, height: 520 },

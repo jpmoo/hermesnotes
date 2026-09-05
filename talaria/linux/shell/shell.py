@@ -32,18 +32,23 @@ from shortcuts import Shortcuts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# Title, page, default hotkey. The hotkeys mirror the Mac's defaults so a person
-# with both machines has one set of fingers; `glance` is absent because it is
-# not built here and a hotkey for nothing is worse than no hotkey.
+# Title, page, default hotkey.
+#
+# The defaults were the Mac's — shift+alt+… — on the reasoning that somebody
+# with both machines should have one set of fingers. They are the Meta+Shift
+# ones actually in use here now, because a default that nobody kept is not a
+# default, it is a first suggestion that was declined.
 PANELS = {
-    "board": ("Hermes Notes Collections", "board.html", "shift+alt+c"),
-    "assistant": ("Ask Hermes Notes", "assistant.html", "shift+alt+a"),
-    "compose": ("New Block", "compose.html", "shift+alt+h"),
+    "board": ("Hermes Notes Collections", "board.html", "meta+shift+c"),
+    "assistant": ("Ask Hermes Notes", "assistant.html", "meta+shift+a"),
+    "compose": ("New Block", "compose.html", "meta+shift+n"),
     # No counterpart on the Mac, which reaches Hermes through the menu only. It
     # earns one here because on Linux this window is also where a `talaria://`
     # deep link would land.
-    "hermes": ("Hermes Notes", None, "shift+alt+o"),
-    "glance": ("Glance", "glance.html", "shift+alt+g"),
+    "hermes": ("Hermes Notes", None, "meta+shift+h"),
+    "glance": ("Glance", "glance.html", "meta+shift+g"),
+    # The desk. Full screen, and the one panel the others sit on top of.
+    "desk": ("Desk", "desk.html", "meta+shift+t"),
 }
 
 
@@ -54,6 +59,7 @@ PANELS = {
 #: entries at that length wrap, and a wrapped list is harder to read than the
 #: five words it was trying to spell out.
 SHORT = {
+    "desk": "Desk",
     "board": "Collections",
     "assistant": "Ask",
     "compose": "New Block",
@@ -130,6 +136,26 @@ class RoutedPage(QWebEnginePage):
         if url.scheme() in ("http", "https") and self._route(url):
             return False
         return super().acceptNavigationRequest(url, kind, is_main_frame)
+
+
+_HARVEST: str | None = None
+
+
+def _harvest() -> str:
+    """
+    The rung-2 script, which lives with the pages it reaches into.
+
+    In `ui/` rather than in a string here because it is DOM knowledge — which
+    element is the surface in view, which frames are ours — and that belongs
+    next to the markup making those true. Read once: it does not change while
+    the shell is running, and this is on the path of a keypress.
+    """
+    global _HARVEST
+    if _HARVEST is None:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "ui", "harvest.js"), encoding="utf8") as handle:
+            _HARVEST = handle.read()
+    return _HARVEST
 
 
 class Panel(QWidget):
@@ -362,59 +388,34 @@ class Shell(QObject):
 
     def _icon(self) -> QIcon:
         """
-        The menu bar mark, in a color the panel can actually show.
+        The tray mark, monochrome like everything else in that row.
 
-        `MenuBar.svg` is a template: one path, filled `#000000`, meant for macOS
-        to invert for a dark menu bar. Handed to Plasma unchanged it is a black
-        feather on a dark panel — which is exactly as invisible as no icon at
-        all, and is worse than the drawn letter it replaced, because at least
-        the letter was white.
+        **By theme name, not by file**, and that is the whole trick. A tray icon
+        handed over as a picture is drawn as given — which is how this shipped a
+        black feather onto a dark panel, and then a full-color glyph that was
+        visible but looked nothing like its neighbours. An icon named from the
+        theme is drawn by the *desktop*, which substitutes its own foreground
+        color: white on a dark panel, black on a light one, the same as every
+        other item there.
 
-        So it is recolored to the palette's own text color before it is loaded.
-        That is one substitution rather than shipping two files, and it follows
-        a theme change for free the next time the shell starts.
+        What makes that possible is the stylesheet in `icons/talaria-symbolic.svg`.
+        Breeze's monochrome icons are not shipped in two colors; they are shipped
+        colorless, with a `ColorScheme-Text` class the desktop fills in. Ours is
+        the same file with the same class.
+
+        `install.sh` puts it in the user's icon theme. The fallbacks below are
+        for a machine where that has not happened yet, and both are worse: a
+        colored glyph does not match the row, and a drawn letter is a letter.
         """
-        # The application's own glyph first, and this is the Linux convention
-        # rather than a compromise. A macOS menu bar item is a monochrome
-        # template the system inverts; a Plasma tray takes a full-color icon and
-        # renders it as given. There is no reliable way to ask what color *the
-        # panel* is — the application palette answers for windows, and a light
-        # theme with a dark panel is an ordinary setup — so an icon that depends
-        # on guessing that is an icon that is sometimes invisible.
+        icon = QIcon.fromTheme("talaria-symbolic")
+        if not icon.isNull():
+            return icon
+
         glyph = os.path.join(HERE, "..", "..", "app", "glyph-1024.png")
         if os.path.isfile(glyph):
             icon = QIcon(glyph)
             if not icon.isNull():
                 return icon
-
-        # Failing that, the mark, recolored — better than nothing and better
-        # than black-on-black, which is what shipping `MenuBar.svg` unchanged
-        # gave: a template meant for a system that inverts it, handed to one
-        # that does not.
-        svg = os.path.join(HERE, "..", "..", "app", "MenuBar.svg")
-        ink = QApplication.palette().windowText().color().name()
-        if os.path.isfile(svg):
-            try:
-                with open(svg, encoding="utf8") as handle:
-                    body = handle.read()
-                body = body.replace('fill="#000000"', f'fill="{ink}"')
-                # Written beside the runtime state rather than into the repo:
-                # this is a rendering of the source, not a second source.
-                out = os.path.join(
-                    QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation)
-                    or "/tmp",
-                    "talaria-tray.svg",
-                )
-                with open(out, "w", encoding="utf8") as handle:
-                    handle.write(body)
-                icon = QIcon(out)
-                # `isNull` only. A scalable icon reports no available sizes —
-                # that is what scalable means — so asking for one rejects every
-                # SVG there is.
-                if not icon.isNull():
-                    return icon
-            except OSError:
-                pass
 
         # Last resort, and deliberately legible: a mark nobody can find is an
         # application nobody can quit.
@@ -498,29 +499,12 @@ class Shell(QObject):
         # itself. `main.swift` carries the same note over its compose panel, for
         # the same reason, and this had it the wrong way round: the selection
         # was fetched a line after the window that destroyed it.
-        # `allow_copy` for this read and no other. Glance is summoned, reads
-        # once, and shows what it found — there is no poll here to hijack the
-        # clipboard on, which is the fence the Mac has to state explicitly
-        # because it re-reads every four seconds while open.
-        reading = (
-            glance.read(
-                self.frontmost.current,
-                allow_copy=True,
-                changed_at=self.frontmost.selection.changed_at,
-                focused_at=self.frontmost.focused_at,
-            )
-            if action == "glance"
-            else None
-        )
-        if reading is not None:
-            # What it looked at and where it got it, but never the text itself:
-            # this is a log, and the text is the user's document.
-            front = self.frontmost.current
-            print(
-                f"talaria: glance — front={front.name if front else 'unknown'} "
-                f"rung={reading.rung} chars={len(reading.text or '')} why={reading.why}",
-                file=sys.stderr, flush=True,
-            )
+        #
+        # Glance leaves here, because rung 2 answers through a callback and the
+        # rest of the summon has to happen inside it.
+        if action == "glance":
+            self._ask_our_own(self._summon_glance)
+            return
 
         if panel is None:
             panel = self._build(action)
@@ -528,8 +512,82 @@ class Shell(QObject):
                 return
             self.panels[action] = panel
         panel.summon()
-        if reading is not None:
-            self._glance(panel, reading)
+
+    # ---------------------------------------------------------------- glance
+
+    def _ask_our_own(self, then) -> None:
+        """
+        Rung 2: what one of *our* windows is showing.
+
+        The Mac takes this rung through its own JS bridge and this is the same
+        move, but it matters more here because of the desk. `frontmost.py`
+        ignores Talaria's own windows on purpose — a window source that answers
+        "Talaria" to "what were you doing?" is wrong — so with the desk up,
+        every rung below is describing whatever was in front before it opened.
+        Text selected on the desk read the window behind it.
+
+        The desk wins when it is visible, because it is full screen and frosted
+        over everything: if it is up, it is what somebody is looking at.
+        Otherwise the ordinary panel that has focus, and usually neither, in
+        which case this costs one dictionary lookup and the ladder runs as it
+        always did.
+        """
+        found_key, panel = None, None
+        desk = self.panels.get("desk")
+        if desk is not None and desk.isVisible():
+            found_key, panel = "desk", desk
+        else:
+            for key, other in self.panels.items():
+                if key != "glance" and other.isVisible() and other.isActiveWindow():
+                    found_key, panel = key, other
+                    break
+        if panel is None:
+            then(None, None)
+            return
+        panel.view.page().runJavaScript(_harvest(), lambda found: then(found, found_key))
+
+    def _summon_glance(self, found, from_key) -> None:
+        """The reading, then the panel — in that order, and never the reverse."""
+        if isinstance(found, dict) and str(found.get("text") or "").strip():
+            # The short name, which is the one on the hotkey toast. The window
+            # title is "Talaria — Desk" and this sentence is already inside
+            # Talaria.
+            where = SHORT.get(from_key, from_key or "a Talaria window")
+            reading = glance.Reading(
+                text=str(found["text"]),
+                rung="our own window",
+                why=(f"selected in {where}" if found.get("how") == "selected"
+                     else f"everything showing in {where}"),
+            )
+        else:
+            # `allow_copy` for this read and no other. Glance is summoned, reads
+            # once, and shows what it found — there is no poll here to hijack
+            # the clipboard on, which is the fence the Mac has to state
+            # explicitly because it re-reads every four seconds while open.
+            reading = glance.read(
+                self.frontmost.current,
+                allow_copy=True,
+                changed_at=self.frontmost.selection.changed_at,
+                focused_at=self.frontmost.focused_at,
+            )
+
+        # What it looked at and where it got it, but never the text itself:
+        # this is a log, and the text is the user's document.
+        front = self.frontmost.current
+        print(
+            f"talaria: glance — front={front.name if front else 'unknown'} "
+            f"rung={reading.rung} chars={len(reading.text or '')} why={reading.why}",
+            file=sys.stderr, flush=True,
+        )
+
+        panel = self.panels.get("glance")
+        if panel is None:
+            panel = self._build("glance")
+            if panel is None:
+                return
+            self.panels["glance"] = panel
+        panel.summon()
+        self._glance(panel, reading)
 
     def _glance(self, panel: Panel, reading) -> None:
         """
@@ -601,6 +659,19 @@ class Shell(QObject):
         # Small, because these are summoned over your work rather than places
         # to live in. A hotkey panel filling the screen is a context switch; one
         # that takes a corner is a glance.
+        if action == "desk":
+            # Full screen, and deliberately *not* stays-on-top.
+            #
+            # The other panels keep that flag, so Glance and Ask and New Block
+            # come up above the desk rather than behind it — which is the whole
+            # arrangement asked for: the desk is a surface you put things on.
+            screen = QApplication.primaryScreen().availableGeometry()
+            panel = Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"),
+                          QSize(screen.width(), screen.height()),
+                          route=lambda url, a=action: self._opened(url, a))
+            panel.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+            return panel
+
         size = {
             "glance": QSize(680, 380),
             "assistant": QSize(720, 460),

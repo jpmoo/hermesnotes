@@ -93,6 +93,20 @@ const configSchema = z.object({
    */
   contextExclude: z.array(z.string()).default([]),
   /**
+   * Whether every application's window title may go into the context record.
+   *
+   * `TITLE_TRUSTED` in `context.ts` is a short, curated list, and everything
+   * outside it contributes its name and its workspace and nothing else. That is
+   * the right default and it is the wrong permanent answer on Linux, where the
+   * list is macOS bundle ids and matches no window class — so every title is
+   * dropped and the record is thinner than the person using it wants.
+   *
+   * This does not touch the blindlist, which always applies first. Trusting
+   * every application is not the same as trusting a password manager, and
+   * keeping those two decisions apart is why they are two lists.
+   */
+  contextTrustAllTitles: z.boolean().default(false),
+  /**
    * Where `aerospace` lives, if it is not in one of the obvious places.
    *
    * A LaunchAgent's `PATH` is not your shell's, so a binary you can run by name

@@ -430,3 +430,23 @@ html, body { background: transparent; }
  * and last children round with it. */
 .chat > :first-child, .frame > :first-child { border-radius: 11px 11px 0 0; }
 .chat > :last-child, .frame > :last-child { border-radius: 0 0 11px 11px; }
+
+/* Glance cards, shaded.
+ *
+ * A muted olive, mixed from the panel's own text and background rather than
+ * written as a hex pair — so it stays legible in a light theme and a dark one
+ * without a second palette to keep in step, and sits behind text that is still
+ * `CanvasText`. The hue is fixed because it is a choice about this panel; the
+ * lightness is not, because that belongs to whoever's theme it is.
+ */
+.pane .card {
+  --olive: color-mix(in srgb, #6b7a4a 30%, Canvas);
+  background: color-mix(in srgb, var(--olive) 62%, transparent);
+  border-color: color-mix(in srgb, #6b7a4a 34%, var(--line));
+}
+.pane .card.opens:hover {
+  background: color-mix(in srgb, var(--olive) 85%, transparent);
+  border-color: color-mix(in srgb, #6b7a4a 55%, var(--line));
+}
+/* Finished things step back rather than joining in. */
+.pane .card.done { background: color-mix(in srgb, var(--olive) 26%, transparent); }

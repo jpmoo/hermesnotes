@@ -197,56 +197,46 @@ class Shortcuts(QObject):
             self._give_up("the shortcut portal opened a session but did not name it")
             return
 
-        # What the portal already holds for this session. On a second run these
-        # come back bound and nothing is asked of the user again.
+        # **Bound on every session, and that is not the nagging it looks like.**
         #
-        # **Listed is not the same as bound**, and reading it that way is what
-        # left four of five hotkeys dead. `ListShortcuts` returns every shortcut
-        # id the session knows, including ones the portal is holding with no
-        # trigger attached — `trigger_description` is empty for those. Treating
-        # a bare id as "already done" meant only the one genuinely new shortcut
-        # was ever requested, and the other four were skipped on every start
-        # while appearing, correctly, in the portal's own list.
-        listed = ask("ListShortcuts", GLib.Variant("(oa{sv})", (session, {})))
-        already = set()
-        if listed and listed[0] == 0:
-            for entry in listed[1].get("shortcuts", []):
-                trigger = (entry[1] or {}).get("trigger_description") or ""
-                if trigger.strip():
-                    already.add(entry[0])
-
-        # **Asked at most once, unless asked to ask again.**
+        # This has been wrong in both directions. First it re-requested anything
+        # the portal reported without a trigger, and an unanswered dialog
+        # records a shortcut with no key — so each restart asked again and a
+        # working binding was lost. The fix was to ask at most once. That made
+        # it worse in a way that was harder to see: in this portal a shortcut is
+        # attached to a *session*, and `BindShortcuts` is what attaches it. A
+        # session that never binds has no routing at all, so the keys sat
+        # correctly in `[dev.talaria.shell]`, the app sat listening, and nothing
+        # connected the two.
         #
-        # Re-requesting on every start is not merely noisy, it is destructive:
-        # a `BindShortcuts` whose dialog nobody answers leaves the shortcut
-        # recorded with no key, so the next start finds it empty and asks again,
-        # and a binding that was working is now gone. Restarting the shell a few
-        # times in a row was enough to wipe a set of hotkeys the user had chosen
-        # — which is exactly what kept happening while this was being built.
-        #
-        # An unbound shortcut is also a legitimate answer. Somebody who was
-        # asked and said no should not be asked again on Tuesday.
+        # Binding every time is what the portal expects. A shortcut this app id
+        # has already been granted is re-attached silently; only a genuinely new
+        # one raises the dialog. The record of what has been asked is kept, but
+        # as a record rather than as a gate — it is what tells the log whether a
+        # prompt was expected.
         asked = set(self._asked())
-        missing = [w for w in self._wanted if w[0] not in already and w[0] not in asked]
-        if missing or rebind:
-            wanted = self._wanted if rebind else missing
-            self._remember_asked(asked | {w[0] for w in wanted})
-            shortcuts = [
-                (action, {
-                    "description": GLib.Variant("s", friendly),
-                    "preferred_trigger": GLib.Variant("s", trigger),
-                })
-                for action, friendly, trigger in wanted
-            ]
-            bound = ask("BindShortcuts", GLib.Variant(
-                "(oa(sa{sv})sa{sv})", (session, shortcuts, "", {})
-            ))
-            if not bound or bound[0] != 0:
-                # Response code 1 is the user closing the dialog, which is a
-                # decision rather than a fault and is reported as one.
-                self.failures.append(
-                    "hotkeys were not granted — reopen the request with:  talaria-shell --rebind"
-                )
+        fresh = [w[0] for w in self._wanted if w[0] not in asked]
+        if fresh:
+            print(f"talaria: shortcuts — asking the portal for {', '.join(fresh)}",
+                  file=sys.stderr, flush=True)
+        shortcuts = [
+            (action, {
+                "description": GLib.Variant("s", friendly),
+                "preferred_trigger": GLib.Variant("s", trigger),
+            })
+            for action, friendly, trigger in self._wanted
+        ]
+        bound = ask("BindShortcuts", GLib.Variant(
+            "(oa(sa{sv})sa{sv})", (session, shortcuts, "", {})
+        ))
+        if not bound or bound[0] != 0:
+            # Response code 1 is somebody closing the dialog, which is a
+            # decision rather than a fault and is reported as one.
+            self.failures.append(
+                "hotkeys were not granted — ask again with:  talaria-shell --rebind"
+            )
+        else:
+            self._remember_asked(asked | {w[0] for w in self._wanted})
 
         final = ask("ListShortcuts", GLib.Variant("(oa{sv})", (session, {})))
         if final and final[0] == 0:
@@ -259,19 +249,30 @@ class Shortcuts(QObject):
         )
         self.settled.emit()
 
-        def on_activated(_c, _s, _p, _i, _sig, params):
+        def on_activated(_c, sender, path, _i, _sig, params):
             unpacked = params.unpack()
             # Logged because a hotkey that does nothing has two very different
             # causes — the portal never sent it, or it arrived and the handler
             # dropped it — and from the outside they look identical.
-            print(f"talaria: portal Activated {unpacked[1:2]}", flush=True)
+            print(f"talaria: portal Activated {unpacked[1:2]} from {sender} {path}",
+                  file=sys.stderr, flush=True)
             if len(unpacked) >= 2:
                 self.pressed.emit(unpacked[1])
 
+        # **No path filter, and no sender filter.**
+        #
+        # Both were set, and a subscription that matches nothing is
+        # indistinguishable from a key that was never pressed — which is how
+        # this went four rounds. The spec puts `Activated` on the portal's own
+        # object, but the portal is one implementation among several and the
+        # session object is an equally reasonable place to emit it. Matching on
+        # the interface and member alone costs nothing here: this bus carries a
+        # handful of signals a second and exactly one interface uses this name.
         bus.signal_subscribe(
-            PORTAL, SHORTCUTS_IFACE, "Activated", PORTAL_PATH, None,
+            None, SHORTCUTS_IFACE, "Activated", None, None,
             Gio.DBusSignalFlags.NONE, on_activated,
         )
+
         GLib.MainLoop.new(context, False).run()
 
     def _give_up(self, message: str) -> None:

@@ -79,7 +79,7 @@ window.glanceAsk = async (reading) => {
 function sectionOf(hit, s) {
   const b = hit.block || {};
   if (s.separateDone && b.completion?.done === true) return "done";
-  if (!isAboveFold(b, !!s.undatedFurtherOut)) return "furtherOut";
+  if (!isAboveFold(b, !!s.undatedFurtherOut, s.horizon)) return "furtherOut";
   // Zero is off rather than "everything qualifies", so a library that has never
   // set a threshold behaves exactly as it did before.
   if (s.threshold > 0 && (hit.score ?? 0) < s.threshold) return "lessSimilar";
@@ -93,26 +93,36 @@ function datesOf(b) {
   return [b.schedule?.start?.value, b.schedule?.end?.value].filter(Boolean);
 }
 
-/* Near is the last week or the next three weeks, or spanning today. String
- * comparison is correct for ISO days and needs no parsing — the Mac's note. */
-function isNear(b) {
+/*
+ * Near is a window around today: `horizon` days ahead, and a fixed week behind.
+ *
+ * The week behind is not configurable on purpose. It is there so something that
+ * slipped a few days stays where you can see it, and a person who shortens the
+ * horizon is saying "show me less of the future", not "hide what I have already
+ * missed". The Mac fixes both at seven and twenty-one; only the half somebody
+ * asked about moves.
+ *
+ * String comparison is correct for ISO days and needs no parsing — the Mac's
+ * note, and the reason there is no date arithmetic here beyond the offsets.
+ */
+function isNear(b, horizon) {
   const dates = datesOf(b);
   if (!dates.length) return true;
   const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
-  const today = day(0), from = day(-7), to = day(21);
+  const today = day(0), from = day(-7), to = day(horizon);
   const on = dates.map(d => String(d).slice(0, 10));
   return on.some(d => d >= from && d <= to)
       || (on.some(d => d <= today) && on.some(d => d >= today));
 }
 
-function isAboveFold(b, undatedBelow) {
-  return datesOf(b).length ? isNear(b) : !undatedBelow;
+function isAboveFold(b, undatedBelow, horizon) {
+  return datesOf(b).length ? isNear(b, horizon) : !undatedBelow;
 }
 
 const SECTIONS = [
   ["main", null],                                  // never folded
   ["other", "Other items"],
-  ["furtherOut", "Further out or undated"],
+  ["furtherOut", null],   // labelled at render time — see `show`
   ["lessSimilar", "Less similar"],
   ["done", "Done"],
 ];
@@ -126,6 +136,7 @@ function show(hits, settings) {
     threshold: Number(settings.threshold || 0),
     separateDone: !!settings.separateDone,
     undatedFurtherOut: !!settings.undatedFurtherOut,
+    horizon: Number(settings.horizon) > 0 ? Number(settings.horizon) : 21,
   };
 
   const buckets = {};
@@ -137,11 +148,17 @@ function show(hits, settings) {
   for (const [key, label] of SECTIONS) {
     const held = buckets[key];
     if (!held?.length) continue;
-    if (label === null) {
+    if (key === "main") {
       for (const hit of held) body.appendChild(card(hit));
       continue;
     }
-    body.appendChild(fold(label, held));
+    // Named with the number, because the number is now somebody's choice and a
+    // fold that says "further out" without saying further than what is asking
+    // the reader to remember a setting.
+    const heading = key === "furtherOut"
+      ? `Beyond ${s.horizon} days${s.undatedFurtherOut ? ", or undated" : ""}`
+      : label;
+    body.appendChild(fold(heading, held));
   }
 
   // Everything was folded away, which reads as "nothing found" unless it says

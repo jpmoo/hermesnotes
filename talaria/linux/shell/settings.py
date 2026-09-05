@@ -269,6 +269,14 @@ class SettingsWindow(QDialog):
             "calls finished rather than the word “done”. Things with no status at all — a note, a "
             "person — are never filed here."
         ))
+        self.glance_horizon = QSpinBox(minimum=1, maximum=365, suffix="  days ahead")
+        rows.addRow("Show up to", self.glance_horizon)
+        rows.addRow(_hint(
+            "How far ahead counts as current. Anything dated beyond this is folded away under "
+            "“Beyond N days” rather than hidden. A week of the recent past is always current and "
+            "is not adjustable: shortening this says “show me less of the future”, not “hide what "
+            "I have already missed”."
+        ))
         rows.addRow("", self.glance_undated)
 
         self.glance_placement = QComboBox()
@@ -375,6 +383,8 @@ class SettingsWindow(QDialog):
         self.glance_threshold.setValue(float(threshold) if isinstance(threshold, (int, float)) else 0.0)
         self.glance_separate_done.setChecked(bool(c.get("glanceSeparateDone")))
         self.glance_undated.setChecked(bool(c.get("glanceUndatedFurtherOut")))
+        horizon = c.get("glanceHorizonDays")
+        self.glance_horizon.setValue(int(horizon) if isinstance(horizon, int) and horizon > 0 else 21)
         placed = self.glance_placement.findData(c.get("glancePlacement") or "bottom-center")
         self.glance_placement.setCurrentIndex(placed if placed >= 0 else 7)
         amount = c.get("frostingAmount")
@@ -462,6 +472,7 @@ class SettingsWindow(QDialog):
             else:
                 obj.pop(key, None)
         obj["glancePlacement"] = self.glance_placement.currentData()
+        obj["glanceHorizonDays"] = self.glance_horizon.value()
         obj["frostingAmount"] = round(self.frosting.value(), 2)
         if self.glance_threshold.value() > 0:
             obj["glanceThreshold"] = round(self.glance_threshold.value(), 4)

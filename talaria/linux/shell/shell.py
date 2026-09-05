@@ -557,9 +557,13 @@ class Shell(QObject):
                 "threshold": float(raw.get("glanceThreshold") or 0),
                 "separateDone": bool(raw.get("glanceSeparateDone")),
                 "undatedFurtherOut": bool(raw.get("glanceUndatedFurtherOut")),
+                # Clamped rather than trusted: zero would fold away everything
+                # dated, including today's.
+                "horizon": min(365, max(1, int(raw.get("glanceHorizonDays") or 21))),
             }
         except Exception:  # noqa: BLE001
-            settings = {"threshold": 0, "separateDone": False, "undatedFurtherOut": False}
+            settings = {"threshold": 0, "separateDone": False,
+                        "undatedFurtherOut": False, "horizon": 21}
 
         payload = json.dumps({
             "text": reading.text, "rung": reading.rung, "why": reading.why,

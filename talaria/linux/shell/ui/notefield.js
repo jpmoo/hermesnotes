@@ -88,6 +88,13 @@ export const joined = (blocks) => blocks.map((b) => b.src + b.sep).join("");
 export function noteField(host, text, onChange) {
   let blocks = split(text);
   let editing = null;
+  //: Where the caret goes when the next block opens. Null means "at the end",
+  //: which is right for clicking into something and for a block Enter just
+  //: created empty.
+  let landing = null;
+  //: The textarea that is open right now, held by identity rather than by
+  //: index — see the blur handler, where the difference is the whole bug.
+  let active = null;
   const view = el("div", "note-field");
   host.replaceChildren(view);
 
@@ -143,6 +150,85 @@ export function noteField(host, text, onChange) {
   }
 
   /** The block being edited: its markdown, exactly as it is stored. */
+  /*
+   * What Enter does, which is not "insert a newline".
+   *
+   * A block editor where Enter only made the textarea taller is one block with
+   * the whole day in it — the rendering never comes back and the model is a
+   * textarea wearing a costume. Three cases, and they are the ones every
+   * markdown editor has:
+   *
+   * - **In a list, continue the list.** Consecutive list lines are one block,
+   *   so this is a newline plus the same marker — and a task line continues as
+   *   an unticked task, because a list of things to do is usually more than one
+   *   thing to do.
+   * - **On an empty list item, end the list.** The marker somebody did not fill
+   *   in is removed and the block ends there. This is how a list is left
+   *   without reaching for the mouse, and pressing Enter twice is the gesture
+   *   everybody already knows.
+   * - **Anywhere else, split.** What is before the caret stays and renders;
+   *   what is after it becomes the next block, which is the one now being
+   *   edited. At the end of a block — the common case — that is simply a new
+   *   empty block below.
+   *
+   * Shift+Enter is left alone: a soft line break inside the block, which is why
+   * this only claims the unmodified key.
+   */
+  function enter(event, i, field) {
+    const caret = field.selectionStart;
+    const upto = field.value.slice(0, caret);
+    const lineFrom = upto.lastIndexOf("\n") + 1;
+    const line = field.value.slice(lineFrom, caret);
+
+    // A fence is verbatim; Enter inside one is a newline like any other.
+    const fences = (field.value.slice(0, caret).match(/^\s*```/gm) || []).length;
+    if (fences % 2 === 1) return;
+
+    const marker = /^(\s*)([-*]\s+\[[ xX]\]\s+|[-*]\s+|\d+\.\s+)(.*)$/.exec(line);
+    if (marker) {
+      const [, indent, bullet, said] = marker;
+      event.preventDefault();
+      if (!said.trim()) {
+        // An empty item: take the marker back off and leave the list. The
+        // newline on each side of the line being removed goes with it —
+        // otherwise the list keeps a trailing blank and whatever followed it
+        // starts one line further down every time somebody leaves a list.
+        const before = field.value.slice(0, lineFrom).replace(/\n$/, "");
+        const after = field.value.slice(caret).replace(/^\n/, "");
+        return breakAt(i, before, after, 0);
+      }
+      // Numbered lists count; bulleted ones repeat. A task continues unticked —
+      // the box is for the new thing, not a copy of the old one's state.
+      const numbered = /^(\d+)\.\s+$/.exec(bullet);
+      const next = numbered
+        ? `${Number(numbered[1]) + 1}. `
+        : bullet.replace(/\[[xX]\]/, "[ ]");
+      const inserted = `\n${indent}${next}`;
+      field.value = field.value.slice(0, caret) + inserted + field.value.slice(caret);
+      const to = caret + inserted.length;
+      field.setSelectionRange(to, to);
+      blocks[i] = { ...blocks[i], src: field.value };
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+
+    event.preventDefault();
+    breakAt(i, field.value.slice(0, caret), field.value.slice(caret), 0);
+  }
+
+  /** Split block `i` in two, and edit the second. */
+  function breakAt(i, before, after, caret) {
+    const held = blocks[i];
+    blocks[i] = { src: before, sep: "\n\n" };
+    blocks.splice(i + 1, 0, { src: after, sep: held.sep });
+    // The block that ends the document keeps whatever ended it — a trailing
+    // newline stays a trailing newline rather than becoming a paragraph break.
+    editing = i + 1;
+    landing = caret;
+    changed();
+    draw();
+  }
+
   function source(i) {
     const box = el("div", "note-source");
     const field = document.createElement("textarea");
@@ -150,6 +236,7 @@ export function noteField(host, text, onChange) {
     field.spellcheck = false;
     box.appendChild(field);
 
+    active = field;
     const picker = mentions(field, box);
 
     const grow = () => {
@@ -168,6 +255,7 @@ export function noteField(host, text, onChange) {
       // to the text underneath it.
       if (picker.keydown(e)) return e.preventDefault();
       if (e.key === "Escape") { field.blur(); return; }
+      if (e.key === "Enter" && !e.shiftKey) return enter(e, i, field);
       // Leaving the block by arrow at its edge, which is how a document made of
       // separate editors still feels like one document.
       const atStart = field.selectionStart === 0 && field.selectionEnd === 0;
@@ -182,6 +270,23 @@ export function noteField(host, text, onChange) {
       // A blur into the picker is not a blur out of the block.
       setTimeout(() => {
         if (picker.open || document.activeElement === field) return;
+        /*
+         * **And a blur because the editor moved is not a blur either.**
+         *
+         * Enter, and the arrow keys at a block's edge, open a different block —
+         * which redraws, which removes this textarea, which blurs it. This
+         * handler then ran and set `editing` to null, closing the block that had
+         * just been opened: Enter rendered the document and left the caret
+         * nowhere.
+         *
+         * Compared by identity, not by index. The first version asked whether
+         * `editing` still pointed at this block's number, and two different
+         * textareas can wear the same number — a block reopened at the index the
+         * last one had. The stale blur then passed its own guard and closed the
+         * editor a few milliseconds after it opened, which is a very confusing
+         * thing to watch.
+         */
+        if (active !== field) return;
         // An emptied block goes, rather than leaving a gap that has to be
         // deleted twice.
         if (!blocks[i].src.trim()) {
@@ -194,11 +299,18 @@ export function noteField(host, text, onChange) {
           if (again.length !== blocks.length) blocks = again;
         }
         editing = null;
+        active = null;
         draw();
       }, 0);
     });
 
-    queueMicrotask(() => { field.focus(); grow(); field.setSelectionRange(field.value.length, field.value.length); });
+    queueMicrotask(() => {
+      field.focus();
+      grow();
+      const caret = landing === null ? field.value.length : landing;
+      landing = null;
+      field.setSelectionRange(caret, caret);
+    });
     return box;
   }
 

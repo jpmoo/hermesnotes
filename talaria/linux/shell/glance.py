@@ -89,6 +89,28 @@ def primary_selection() -> tuple[str | None, str]:
     reliable enough to be the only vote when the fallback costs one failed
     spawn.
     """
+    # Qt first, when there is a Qt application to ask.
+    #
+    # Not an optimization. Every `wl-paste` is a new Wayland client, and KWin
+    # reports one as an activated window — sampling the selection on each focus
+    # change therefore fed itself and flashed the screen. In the shell there is
+    # already a client with the primary-selection protocol negotiated, and it
+    # can simply be asked.
+    #
+    # The subprocesses stay for the probes, which have no Qt application, and
+    # for X11 where `xclip` is the only answer.
+    try:
+        from PySide6.QtGui import QClipboard, QGuiApplication
+
+        app = QGuiApplication.instance()
+        if app is not None:
+            clipboard = app.clipboard()
+            if clipboard is not None:
+                text = clipboard.text(QClipboard.Mode.Selection)
+                return (text, "qt") if text else (None, "nothing is selected")
+    except Exception:  # noqa: BLE001
+        pass
+
     for cmd in (
         ["wl-paste", "--primary", "--no-newline"],
         ["xclip", "-o", "-selection", "primary"],
@@ -329,7 +351,58 @@ def synthetic_copy(window) -> tuple[str | None, str]:
     return got, "synthetic copy"
 
 
-def read(window, allow_copy: bool = False) -> Reading:
+def copy_enabled() -> bool:
+    """
+    Whether the synthetic copy may run at all.
+
+    Default off, and that is a change of mind. It was built because the Mac
+    reaches for it and because nothing else can read a canvas — but it presses
+    keys in a window somebody else is using, and the first version of it opened
+    the KDE launcher on every Glance. A rung with a side effect is something to
+    turn on deliberately, not something to meet by surprise.
+
+    `glanceSyntheticCopy: true` in `config.json`.
+    """
+    import json
+    import os
+
+    path = os.path.join(
+        os.path.dirname(
+            os.environ.get("TALARIA_SOCKET")
+            or os.path.join(
+                (os.environ.get("XDG_DATA_HOME") or "").strip()
+                or os.path.join(os.path.expanduser("~"), ".local", "share"),
+                "talaria", "talaria.sock",
+            )
+        ),
+        "config.json",
+    )
+    try:
+        with open(path, encoding="utf8") as handle:
+            return bool(json.load(handle).get("glanceSyntheticCopy"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bool:
+    """
+    Whether the primary selection was inherited from some other window.
+
+    Two timestamps and no content: the selection last changed before the current
+    window was focused, so it was not made in the current window. That is the
+    whole test, and it is the only way to attribute a buffer that carries no
+    owner.
+
+    Unknown counts as *not* stale. Without both timestamps there is nothing to
+    compare, and refusing a selection on a suspicion would throw away the rung
+    that answers most often.
+    """
+    if changed_at is None or focused_at is None:
+        return False
+    return changed_at < focused_at
+
+
+def read(window, allow_copy: bool = False, changed_at=None, focused_at=None) -> Reading:
     """
     Climb until something answers.
 
@@ -393,7 +466,9 @@ def read(window, allow_copy: bool = False) -> Reading:
     # might have answered correctly. The fences make that bounded — browsers
     # only, once per summon, clipboard restored — and the alternative is a rung
     # that exists and never fires.
-    if allow_copy and _is_copyable(window):
+    # Off unless asked for. A rung that presses keys in somebody else's window
+    # should be a thing they turned on, not a thing they discover.
+    if allow_copy and copy_enabled() and _is_copyable(window) and selection_is_stale(changed_at, focused_at):
         text, how = synthetic_copy(window)
         # Said out loud either way. A rung with a side effect that quietly
         # declines is the worst of both — it has already pressed the keys.
@@ -402,7 +477,16 @@ def read(window, allow_copy: bool = False) -> Reading:
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "synthetic copy", how)
 
-    if atspi_why != REACHED_NO_SELECTION:
+    # **And only if it was made here.**
+    #
+    # The Mac has no rung like this and therefore no way to be wrong like this:
+    # with nothing selected it falls to the window title, which for a real
+    # document is a real answer — its own note says "a title is a fallback
+    # rather than the intent: 'Untitled' is a real filename and tells nobody
+    # anything." Here the global selection answered first and always, so the
+    # title was never reached and Glance kept offering text from an hour ago.
+    stale = selection_is_stale(changed_at, focused_at)
+    if atspi_why != REACHED_NO_SELECTION and not stale:
         text, how = primary_selection()
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "primary selection", how)

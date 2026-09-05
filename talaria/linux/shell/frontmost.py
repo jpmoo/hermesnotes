@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Signal
@@ -55,6 +56,56 @@ INTROSPECTION = f"""
 SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kwin", "talaria-window.js")
 
 
+#: Our own tools, which are not windows anybody switched to.
+HELPERS = {"wl-paste", "wl-copy", "xclip", "xsel", "busctl", "curl"}
+
+
+class SelectionClock(QObject):
+    """
+    When the primary selection last changed — and nothing about what it holds.
+
+    The primary selection is global: it carries the last thing highlighted by
+    any window and cannot say which. Comparing *when* it last changed against
+    when the current window took focus answers what it cannot — a selection
+    older than the focus was made somewhere else.
+
+    **Qt's clipboard, not `wl-paste`.** Two earlier attempts failed in ways
+    worth recording. Sampling with `wl-paste` on every window change spawned a
+    Wayland client per focus event, which KWin reported as the newly activated
+    window, which sampled again: the screen flashed continuously and Glance
+    reported that the front window was `wl-paste`. Switching to
+    `wl-paste --watch` failed differently and silently — it needs the wlroots
+    `data-control` protocol, KWin does not implement it, so the watcher exited
+    immediately and the clock never ticked at all.
+
+    Qt is already a Wayland client with the primary-selection protocol
+    negotiated. `selectionChanged` costs no process, creates no window, and
+    cannot loop.
+
+    Only the timestamp is kept. What the selection holds is never read here,
+    which is not merely tidy: this fires on every highlight anywhere on the
+    desktop, and the question is answered by a clock.
+    """
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.changed_at: float | None = None
+
+    def start(self) -> None:
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if app is None:
+            return
+        clipboard = app.clipboard()
+        if clipboard is None:
+            return
+        clipboard.selectionChanged.connect(self._tick)
+
+    def _tick(self) -> None:
+        self.changed_at = time.monotonic()
+
+
 @dataclass(frozen=True)
 class Window:
     """One window, already judged."""
@@ -81,6 +132,11 @@ class Frontmost(QObject):
         super().__init__(parent)
         self.current: Window | None = None
         self.failure: str | None = None
+        #: When the focused window last changed. Compared against the clock
+        #: below to decide whether a selection was made in this window.
+        self.focused_at: float = time.monotonic()
+        self.selection = SelectionClock(self)
+        self.selection.start()
         self._thread: threading.Thread | None = None
         self.changed.connect(self._remember)
 
@@ -124,8 +180,23 @@ class Frontmost(QObject):
             if pid == os.getpid() or (window_class or "").startswith(OURS):
                 return invocation.return_value(None)
 
+            # **Never our own helpers.**
+            #
+            # An earlier version fingerprinted the primary selection here by
+            # running `wl-paste`, which connects to the display, becomes a
+            # Wayland client for an instant, and is reported by KWin as the
+            # newly activated window — which ran this again, which spawned
+            # another one. The screen flashed continuously and Glance solemnly
+            # reported that the front window was `wl-paste`. Nothing is spawned
+            # from this callback now, and the tools are ignored besides.
+            if (window_class or "") in HELPERS or (resource_name or "") in HELPERS:
+                return invocation.return_value(None)
+
             # Here, and before anything else touches it.
             blind = blindlist.is_blind(window_class or None, pid or None)
+            # Only a timestamp. What the selection *holds* is never sampled on a
+            # window change — see `SelectionClock`.
+            self.focused_at = time.monotonic()
             self.changed.emit(Window(
                 window_class=window_class,
                 resource_name=resource_name,

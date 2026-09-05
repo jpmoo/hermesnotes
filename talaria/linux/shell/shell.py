@@ -377,7 +377,16 @@ class Shell(QObject):
         # once, and shows what it found — there is no poll here to hijack the
         # clipboard on, which is the fence the Mac has to state explicitly
         # because it re-reads every four seconds while open.
-        reading = glance.read(self.frontmost.current, allow_copy=True) if action == "glance" else None
+        reading = (
+            glance.read(
+                self.frontmost.current,
+                allow_copy=True,
+                changed_at=self.frontmost.selection.changed_at,
+                focused_at=self.frontmost.focused_at,
+            )
+            if action == "glance"
+            else None
+        )
         if reading is not None:
             # What it looked at and where it got it, but never the text itself:
             # this is a log, and the text is the user's document.

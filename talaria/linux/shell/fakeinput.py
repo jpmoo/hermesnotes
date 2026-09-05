@@ -49,11 +49,23 @@ KEY_C = 46
 #: Releasing them is safe: the user is about to let go of the keys anyway, and a
 #: key-up for a key nobody is holding is ignored.
 MODIFIERS = (
-    125, 126,  # left/right meta
     42, 54,    # left/right shift
     56, 100,   # left/right alt
     97,        # right ctrl — left is ours to drive below
 )
+
+#: **Meta is deliberately absent from that list.**
+#:
+#: Releasing it is what made the screen flash on every Glance. On KDE a Meta
+#: press followed by a release with nothing in between opens the application
+#: launcher, and an injected key-up completes exactly that gesture for a key the
+#: user is physically holding. So the launcher opened, and closed, on every
+#: synthetic copy.
+#:
+#: Instead of forcing it, wait: the hotkey is a keypress and a person lets go of
+#: it. A short pause costs a fraction of a second on the one rung that is a last
+#: resort anyway, and it leaves the user's own keyboard alone.
+SETTLE = 0.35
 
 #: Keyboard only. A session that can also move the pointer is a larger grant
 #: than this needs, and the dialog says which.
@@ -179,12 +191,20 @@ class FakeInput:
             def key(code: int, pressed: int) -> None:
                 bus.call_sync(
                     PORTAL, PORTAL_PATH, REMOTE, "NotifyKeyboardKeycode",
-                    GLib.Variant("(oa{sv}ii)", (session, {}, code, pressed)),
+                    # `iu`, not `ii`. The keycode is signed and the state is
+                    # unsigned — `busctl introspect` says so plainly, and every
+                    # press was rejected by the bus for a fortnight of minutes
+                    # because this said `ii`. The error never reached the user:
+                    # rung 6 reported "nothing was selected", which is what an
+                    # empty selection looks like too.
+                    GLib.Variant("(oa{sv}iu)", (session, {}, code, pressed)),
                     None, Gio.DBusCallFlags.NONE, 5000, None,
                 )
 
             try:
-                # The hotkey's own modifiers first — see MODIFIERS.
+                # Long enough for a hand to come off the hotkey — see SETTLE.
+                time.sleep(SETTLE)
+                # Then the modifiers that are safe to force. Not Meta.
                 for code in MODIFIERS:
                     key(code, 0)
                 # A beat, so the release is processed before the chord. Without

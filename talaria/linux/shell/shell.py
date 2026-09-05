@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import sys
 
-from PySide6.QtCore import QSettings, QSize, Qt, QUrl, QTimer
+from PySide6.QtCore import QObject, QSettings, QSize, Qt, QUrl, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -105,8 +105,22 @@ class Panel(QWidget):
         self.activateWindow()
 
 
-class Shell:
+class Shell(QObject):
+    """
+    The tray item and everything it opens.
+
+    **A QObject, and that is load-bearing rather than tidiness.** `Shortcuts`
+    emits `pressed` from the GLib thread the portal is driven on, and Qt decides
+    a connection's type from the *receiver's* thread affinity — a plain Python
+    object has none, so an AutoConnection to one of its methods is a **direct**
+    call. `toggle` then ran on the GLib thread and built QWidgets outside the
+    GUI thread, which does not raise and does not draw: hotkeys bound, fired,
+    and appeared to do nothing at all. Inheriting QObject gives the slot an
+    affinity, so the same connection becomes queued and lands on the main loop.
+    """
+
     def __init__(self, app: QApplication) -> None:
+        super().__init__()
         self.app = app
         self.settings = QSettings("talaria", "shell")
         self.panels: dict[str, Panel] = {}
@@ -121,7 +135,10 @@ class Shell:
         self._listen()
 
         self.shortcuts = Shortcuts()
-        self.shortcuts.pressed.connect(self.toggle)
+        # Queued because this Shell is a QObject on the main thread — see the
+        # class note. Spelled out rather than left to AutoConnection so that
+        # removing the base class breaks loudly instead of silently.
+        self.shortcuts.pressed.connect(self.toggle, Qt.ConnectionType.QueuedConnection)
         for action, (title, _page, default) in PANELS.items():
             self.shortcuts.bind(action, title, config_hotkey(action, default))
         self.shortcuts.settled.connect(self._report_shortcuts)
@@ -235,6 +252,7 @@ class Shell:
 
     def toggle(self, action: str) -> None:
         """Visible means hide; anything else means show. The Mac's semantics."""
+        print(f"talaria: toggle {action!r}", flush=True)
         # Not a panel, but it is a thing worth reaching by name — so a hotkey or
         # `--toggle settings` can open it like anything else.
         if action == "settings":

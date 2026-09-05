@@ -63,6 +63,21 @@ def register_scheme() -> None:
     QWebEngineUrlScheme.registerScheme(scheme)
 
 
+#: How much JSON a request may carry in its header. Headers are not sized for
+#: documents; over this the request is refused with a sentence rather than
+#: truncated into something the daemon would half-accept. QWebChannel is the way
+#: out if this ever bites — it has no such limit.
+MAX_BODY = 96 * 1024
+
+#: Sentinel for "there was a body and it was too big", which is not the same
+#: answer as "there was no body".
+TOO_BIG = object()
+
+
+def _error_json(message: str) -> bytes:
+    return ('{"error":%s}' % _json_string(message)).encode("utf8")
+
+
 class _Reply(QObject):
     done = Signal(int, bytes, str)
     failed = Signal(str)
@@ -148,16 +163,13 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
         # window renders, the CSS arrives, and the process dies reaching for a
         # body that was never going to be there.
         if method in ("POST", "PUT", "PATCH"):
-            try:
-                device = job.requestBody()
-                if device is not None:
-                    raw = device.readAll()
-                    body = bytes(raw) if raw.size() else None
-            except (RuntimeError, TypeError):
-                # A POST whose body cannot be read is still worth forwarding as
-                # an empty one — the daemon will say what it thinks of that far
-                # more usefully than a dead window can.
-                body = None
+            body = self._body_from_headers(job)
+            if body is TOO_BIG:
+                self._forget(key)
+                self._reply_bytes(job, _error_json(
+                    f"That is too large to send this way — the limit is {MAX_BODY // 1024} KB."
+                ), "application/json")
+                return
 
         reply = _Reply()
         self._replies[key] = reply  # owned here, never parented to the job
@@ -170,6 +182,33 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
             Qt.ConnectionType.QueuedConnection,
         )
         self._pool.start(_Ask(reply, method, path, body, "application/json"))
+
+    @staticmethod
+    def _body_from_headers(job: QWebEngineUrlRequestJob) -> bytes | None | object:
+        """
+        The request body, which arrives in a header rather than in the body.
+
+        **`job.requestBody()` cannot be called at all in this PySide6 build.**
+        It hands PySide a `QIODevice*` it cannot wrap and dies inside
+        `getWrapperForQObject` — on a GET, where the device is null, and equally
+        on a POST where there plainly is one. Dragging a card is the first thing
+        that writes, and it took the whole application down.
+
+        `requestHeaders()` returns a value type, so no wrapper is looked up and
+        nothing crashes. `api.js` puts the JSON in `x-talaria-body` instead.
+        This is one process talking to itself — the header never reaches a
+        network or a log, which is why it is acceptable here and would not be
+        over the wire.
+        """
+        try:
+            headers = job.requestHeaders()
+        except Exception:  # noqa: BLE001
+            return None
+        for key, value in headers.items():
+            if bytes(key).lower() == b"x-talaria-body":
+                raw = bytes(value)
+                return TOO_BIG if len(raw) > MAX_BODY else (raw or None)
+        return None
 
     def _forget(self, key: int) -> None:
         self._live.discard(key)

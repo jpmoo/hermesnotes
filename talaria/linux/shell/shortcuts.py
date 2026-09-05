@@ -198,6 +198,10 @@ class Shortcuts(QObject):
 
         def on_activated(_c, _s, _p, _i, _sig, params):
             unpacked = params.unpack()
+            # Logged because a hotkey that does nothing has two very different
+            # causes — the portal never sent it, or it arrived and the handler
+            # dropped it — and from the outside they look identical.
+            print(f"talaria: portal Activated {unpacked[1:2]}", flush=True)
             if len(unpacked) >= 2:
                 self.pressed.emit(unpacked[1])
 

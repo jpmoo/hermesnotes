@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import queue
 import sys
+import time
 import threading
 import uuid
 
@@ -35,6 +36,24 @@ REQUEST = "org.freedesktop.portal.Request"
 #: behaviour wanted here: ctrl+c is a chord, not the letter C.
 KEY_LEFTCTRL = 29
 KEY_C = 46
+
+#: Modifiers released before the chord is sent.
+#:
+#: **This rung is reached from a hotkey, and a hotkey is held.** Glance is
+#: summoned with Meta+Shift+G; a moment later this injects ctrl+c while Meta and
+#: Shift are still physically down, and the window receives Meta+Shift+Ctrl+C —
+#: which is not a copy in any application. The first synthetic copy that ever
+#: ran did nothing at all for this reason and reported "nothing was selected",
+#: which is exactly what it looks like from the outside.
+#:
+#: Releasing them is safe: the user is about to let go of the keys anyway, and a
+#: key-up for a key nobody is holding is ignored.
+MODIFIERS = (
+    125, 126,  # left/right meta
+    42, 54,    # left/right shift
+    56, 100,   # left/right alt
+    97,        # right ctrl — left is ours to drive below
+)
 
 #: Keyboard only. A session that can also move the pointer is a larger grant
 #: than this needs, and the dialog says which.
@@ -157,15 +176,25 @@ class FakeInput:
 
         while True:
             answer = self._jobs.get()
+            def key(code: int, pressed: int) -> None:
+                bus.call_sync(
+                    PORTAL, PORTAL_PATH, REMOTE, "NotifyKeyboardKeycode",
+                    GLib.Variant("(oa{sv}ii)", (session, {}, code, pressed)),
+                    None, Gio.DBusCallFlags.NONE, 5000, None,
+                )
+
             try:
+                # The hotkey's own modifiers first — see MODIFIERS.
+                for code in MODIFIERS:
+                    key(code, 0)
+                # A beat, so the release is processed before the chord. Without
+                # it the two arrive together and the window still sees the
+                # modifiers held.
+                time.sleep(0.06)
                 for code, pressed in (
                     (KEY_LEFTCTRL, 1), (KEY_C, 1), (KEY_C, 0), (KEY_LEFTCTRL, 0),
                 ):
-                    bus.call_sync(
-                        PORTAL, PORTAL_PATH, REMOTE, "NotifyKeyboardKeycode",
-                        GLib.Variant("(oa{sv}ii)", (session, {}, code, pressed)),
-                        None, Gio.DBusCallFlags.NONE, 5000, None,
-                    )
+                    key(code, pressed)
                 answer.put((True, "ctrl+c"))
             except Exception as err:  # noqa: BLE001
                 answer.put((False, f"the key press failed ({err})"))

@@ -35,6 +35,7 @@ stripped of everything but the fact that it was refused.
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 
@@ -43,10 +44,25 @@ from dataclasses import dataclass
 #: term in it pulls the point toward the middle of the library.
 MAX_CHARS = 4000
 
+#: The shortest a field's whole contents can be and still be worth asking about.
+#: Not applied to a selection, which is deliberate at any length — a highlight is
+#: a statement of intent and a field's contents are incidental.
+#:
+#: The floor exists because of Google Docs, and the Mac names the same case: the
+#: focused element there is an off-screen input one pixel tall holding a
+#: two-character window around the cursor. Without a floor Glance would take
+#: "no" as the document, embed it, and return nonsense with every appearance of
+#: having read something.
+MEANINGFUL = 12
+
 #: Said by rung 4 when it could see the focused window and there was nothing
 #: selected in it. Distinct from not being able to see the window at all, and
 #: `read` treats the two very differently.
 REACHED_NO_SELECTION = "the focused window has nothing selected"
+
+#: Said by rung 4 when it read the focused field's whole contents instead of a
+#: selection. A weaker claim, and the panel says so.
+FOCUSED_FIELD = "the focused field, unselected"
 
 
 @dataclass(frozen=True)
@@ -111,6 +127,9 @@ def atspi_selection() -> tuple[str | None, str]:
     #: Whether anything in the focused window implements the text interface at
     #: all. Without one, this rung has no opinion about selections — see `read`.
     speaks_text = False
+    #: The focused field's whole contents, when there is no selection in it.
+    #: A weaker answer, so it is kept and only used if nothing better turns up.
+    whole: list[str] = []
 
     def walk(node, depth=0):
         nonlocal seen, speaks_text
@@ -119,13 +138,20 @@ def atspi_selection() -> tuple[str | None, str]:
         seen += 1
         try:
             text = node.query_text()
-            if text.get_character_count():
+            count = text.get_character_count()
+            if count:
                 speaks_text = True
             if node.get_state_set().contains(Atspi.StateType.FOCUSED):
                 if text.get_n_selections() > 0:
                     start, end = text.get_selection(0)
                     if end > start:
                         return text.get_text(start, end)
+                # Nothing highlighted, but this is the field somebody is in.
+                # Worth having when the alternative is a window title.
+                if count:
+                    body = text.get_text(0, min(count, MAX_CHARS))
+                    if body and len(body.strip()) >= MEANINGFUL:
+                        whole.append(body)
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -147,6 +173,13 @@ def atspi_selection() -> tuple[str | None, str]:
                     got = walk(frame)
                     if got:
                         return got, "at-spi"
+                    # No highlight, but the field somebody is typing in is a
+                    # fair answer to "what is this about" — which is the whole
+                    # question. The Mac does the same and calls it incidental
+                    # rather than chosen, which is why it ranks below a
+                    # selection and above a window title.
+                    if whole:
+                        return whole[0], FOCUSED_FIELD
                     # **Reachable is not the same as competent.**
                     #
                     # Firefox exposes a thousand nodes of page structure and
@@ -327,7 +360,8 @@ def read(window, allow_copy: bool = False) -> Reading:
     # than trusted alone: a miss here costs one bounded tree walk.
     text, how = atspi_selection()
     if text and text.strip():
-        return Reading(text[:MAX_CHARS], "accessibility", how)
+        rung = "focused field" if how == FOCUSED_FIELD else "accessibility"
+        return Reading(text[:MAX_CHARS], rung, how)
     atspi_why = how
 
     # **A window that was reachable and had nothing selected has answered.**
@@ -342,16 +376,36 @@ def read(window, allow_copy: bool = False) -> Reading:
     #
     # Only when the front window is invisible to AT-SPI — most browsers here,
     # and every terminal — is the primary selection the best available guess.
+    # **In a browser, ask the browser — before trusting a global buffer.**
+    #
+    # This is the ordering that made rung 6 reachable at all. A browser is the
+    # one window whose selection may be invisible to everything else: Google
+    # Docs sets no primary selection when you highlight in it, so the primary
+    # selection still holds whatever was highlighted somewhere else, answers
+    # confidently, and the ladder stops. Rung 6 was built and never ran.
+    #
+    # So for a browser the copy is tried first. It is authoritative — it asks
+    # *that window* what it has — where the primary selection cannot say whose
+    # text it holds. When nothing is selected the copy changes nothing, the
+    # clipboard does not move, and this falls through exactly as before.
+    #
+    # The cost is honest: a synthetic ctrl+c on a browser Glance where rung 3
+    # might have answered correctly. The fences make that bounded — browsers
+    # only, once per summon, clipboard restored — and the alternative is a rung
+    # that exists and never fires.
+    if allow_copy and _is_copyable(window):
+        text, how = synthetic_copy(window)
+        # Said out loud either way. A rung with a side effect that quietly
+        # declines is the worst of both — it has already pressed the keys.
+        print(f"talaria: glance rung 6 — {'read ' + str(len(text)) + ' chars' if text else 'nothing'} ({how})",
+              file=sys.stderr, flush=True)
+        if text and text.strip():
+            return Reading(text[:MAX_CHARS], "synthetic copy", how)
+
     if atspi_why != REACHED_NO_SELECTION:
         text, how = primary_selection()
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "primary selection", how)
-
-    # Rung 6, and only when the caller says so. See `synthetic_copy`.
-    if allow_copy:
-        text, how = synthetic_copy(window)
-        if text and text.strip():
-            return Reading(text[:MAX_CHARS], "synthetic copy", how)
 
     # Rung 7. The weakest thing that is still better than nothing, and the one
     # the daemon would otherwise have had to guess at.

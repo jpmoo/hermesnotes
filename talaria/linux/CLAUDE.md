@@ -252,8 +252,17 @@ Measured, not assumed. Keep this up to date rather than re-deriving it.
 |---|---|
 | **Rung 3, primary selection** | Answers most often, and is the only rung for terminals and anything AT-SPI cannot see. **It is global and persistent** — it holds the last thing highlighted by *any* window and cannot say which, so it returned a terminal transcript to somebody working in Kate. Never trust it when rung 4 could see the focused window and reported nothing selected. |
 | **Rung 4, AT-SPI** | Useless until `gsettings set org.gnome.desktop.interface toolkit-accessibility true` — four applications visible before, eighteen after. Scoped to the focused window, which is the property rung 3 lacks, so it is asked *first*. |
-| **Firefox** | Invisible to AT-SPI until restarted with that setting on. This is the same lazy-tree behavior `GlanceView.swift` documents for macOS: browsers build the web-content tree only when they believe an assistive technology is listening. macOS sets `AXManualAccessibility`; the Linux equivalent is `org.a11y.Status`. After a restart Firefox exposes ~1000 nodes of page structure. |
-| **Google Docs** | **Opaque, and it is not a browser problem.** Docs renders the document to a canvas. 1,874 nodes walked with screen reader support turned on, none carrying text, no trace of the document's own words — and selecting in it sets no primary selection either. Rung 5 is the only thing that will read it. |
+| **Firefox** | Invisible to AT-SPI until restarted with `toolkit-accessibility` on — the same lazy-tree behavior `GlanceView.swift` documents for macOS, where browsers build the web-content tree only when they believe an assistive technology is listening (`AXManualAccessibility` there, `org.a11y.Status` here). After a restart it exposes ~1000 nodes of structure and **still never reports a text selection** — not on a Google Doc and not on an ordinary news page where the selection was plainly there. Rung 3 reads that page without difficulty. So Firefox is covered, by rung 3, and rung 4 has no opinion about it. |
+| **Google Docs** | Covered by neither. The document is drawn to a canvas, so it is not in the accessibility tree, and highlighting in it sets no primary selection. **Rung 5 is the only thing that would read it** — and on the evidence that is what rung 5 buys: this application, not "the browser". |
+
+**Measure with the window focused.** Every early conclusion here was wrong
+because the probe was run from a terminal, so the terminal was in front. A
+browser that is minimized or merely unfocused does not maintain its web-content
+tree, and rung 4 looks for the *active* frame — so "AT-SPI returns nothing,
+ever" was measured against a window the ladder would never have read.
+`glance_watch.py` samples on a timer for this reason, and prints every sample
+rather than only the changes: a rung that keeps returning nothing while text is
+plainly selected is itself the result, and deduplicating hid exactly that.
 
 **Prototype rungs 3 and 4 against the applications actually used before building
 any of this rung by rung.** A day's script that reports what each rung returns

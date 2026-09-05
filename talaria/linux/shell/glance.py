@@ -107,15 +107,20 @@ def atspi_selection() -> tuple[str | None, str]:
         return None, f"no AT-SPI bindings ({err})"
 
     seen = 0
+    #: Whether anything in the focused window implements the text interface at
+    #: all. Without one, this rung has no opinion about selections — see `read`.
+    speaks_text = False
 
     def walk(node, depth=0):
-        nonlocal seen
+        nonlocal seen, speaks_text
         if depth > 12 or seen > 400:
             return None
         seen += 1
         try:
+            text = node.query_text()
+            if text.get_character_count():
+                speaks_text = True
             if node.get_state_set().contains(Atspi.StateType.FOCUSED):
-                text = node.query_text()
                 if text.get_n_selections() > 0:
                     start, end = text.get_selection(0)
                     if end > start:
@@ -139,9 +144,24 @@ def atspi_selection() -> tuple[str | None, str]:
                 frame = app.get_child_at_index(j)
                 if frame.get_state_set().contains(Atspi.StateType.ACTIVE):
                     got = walk(frame)
-                    # Reachable, which is the important half of the answer even
-                    # when there is no selection — see `read`.
-                    return (got, "at-spi") if got else (None, REACHED_NO_SELECTION)
+                    if got:
+                        return got, "at-spi"
+                    # **Reachable is not the same as competent.**
+                    #
+                    # Firefox exposes a thousand nodes of page structure and
+                    # never reports a text selection — not on a Google Doc and
+                    # not on an ordinary news page where the selection was
+                    # plainly there and rung 3 read it without difficulty. Its
+                    # "nothing is selected" is not an answer about the window,
+                    # it is this rung having nothing to say.
+                    #
+                    # So the negative only counts when something in the window
+                    # implements the text interface. Kate does, and its silence
+                    # means there is genuinely no selection. Firefox does not,
+                    # and its silence means nothing at all.
+                    return (None, REACHED_NO_SELECTION) if speaks_text else (
+                        None, "the focused window exposes no text to read",
+                    )
     except Exception as err:  # noqa: BLE001
         return None, f"AT-SPI walk failed ({err})"
     return None, "the focused window exposes no accessibility tree"

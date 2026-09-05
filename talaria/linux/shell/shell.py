@@ -164,7 +164,11 @@ class Shell(QObject):
         self.tray.setIcon(self._icon())
         self.tray.setToolTip("Talaria")
         self.tray.activated.connect(self._activated)
-        self.tray.setContextMenu(self._menu())
+        # Held, not just handed over. `setContextMenu` does not take ownership,
+        # and a QMenu with no parent and no Python reference is a menu that can
+        # be collected while the tray still points at it.
+        self._context = self._menu()
+        self.tray.setContextMenu(self._context)
         self.tray.show()
 
         self._listen()

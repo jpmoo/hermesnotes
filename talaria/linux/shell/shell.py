@@ -373,7 +373,11 @@ class Shell(QObject):
         # itself. `main.swift` carries the same note over its compose panel, for
         # the same reason, and this had it the wrong way round: the selection
         # was fetched a line after the window that destroyed it.
-        reading = glance.read(self.frontmost.current) if action == "glance" else None
+        # `allow_copy` for this read and no other. Glance is summoned, reads
+        # once, and shows what it found — there is no poll here to hijack the
+        # clipboard on, which is the fence the Mac has to state explicitly
+        # because it re-reads every four seconds while open.
+        reading = glance.read(self.frontmost.current, allow_copy=True) if action == "glance" else None
         if reading is not None:
             # What it looked at and where it got it, but never the text itself:
             # this is a log, and the text is the user's document.

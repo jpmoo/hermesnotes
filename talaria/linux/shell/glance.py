@@ -35,6 +35,7 @@ stripped of everything but the fact that it was refused.
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass
 
 #: How much is worth embedding. The daemon embeds whatever it is given, and a
@@ -167,7 +168,135 @@ def atspi_selection() -> tuple[str | None, str]:
     return None, "the focused window exposes no accessibility tree"
 
 
-def read(window) -> Reading:
+#: Window classes a synthetic copy may be sent to.
+#:
+#: A named list rather than "anything", copying the Mac's fence and its
+#: reasoning: a synthetic ctrl+c is near-universal but not universal, and
+#: sending one into an application that means something else by it is not a risk
+#: worth taking to fill in a form. Browsers only, because a browser is the one
+#: thing that draws a document rather than exposing it.
+COPYABLE = (
+    "firefox", "librewolf", "waterfox", "zen",
+    "chromium", "google-chrome", "brave-browser", "microsoft-edge", "vivaldi",
+)
+
+
+def _is_copyable(window) -> bool:
+    if window is None:
+        return False
+    haystack = f"{window.window_class or ''} {window.resource_name or ''}".lower()
+    return any(name in haystack for name in COPYABLE)
+
+
+def clipboard_text() -> str | None:
+    """What is on the clipboard now, if it is text."""
+    try:
+        done = subprocess.run(
+            ["wl-paste", "--no-newline"], capture_output=True, timeout=2
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    return done.stdout.decode("utf8", "replace") if done.returncode == 0 else None
+
+
+def _clipboard_is_text() -> bool:
+    """
+    Whether the clipboard holds text and nothing more interesting.
+
+    This decides whether the rung runs at all. The clipboard is put back
+    afterwards, but only what can be read can be put back — and restoring an
+    image as the empty string, or as its own file name, is worse than declining
+    to look. Somebody who copied a picture a minute ago should not lose it
+    because a note-taking tool wanted a paragraph.
+    """
+    try:
+        done = subprocess.run(["wl-paste", "--list-types"], capture_output=True, timeout=2)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    if done.returncode != 0:
+        # Nothing on the clipboard at all, which is the easiest case to restore.
+        return True
+    types = [t.strip() for t in done.stdout.decode("utf8", "replace").split() if t.strip()]
+    if not types:
+        return True
+
+    # **Refuse what cannot be put back; ignore what nobody would miss.**
+    #
+    # Requiring *every* offered type to be text was far too strict: a clipboard
+    # filled from any Chromium application carries
+    # `chromium/x-internal-source-rfh-token` beside the real text, and a file
+    # copied in a file manager carries several. The first is a provenance marker
+    # nobody pastes and losing it costs nothing; an image or a list of files is
+    # content, and replacing it with a paragraph of prose would be destroying
+    # something the user still wanted.
+    losable = ("image/", "application/", "text/uri-list", "x-special/")
+    if any(t.startswith(losable) or t == "text/uri-list" for t in types):
+        return False
+    return any(t.startswith("text/") or t in ("UTF8_STRING", "STRING", "TEXT") for t in types)
+
+
+def synthetic_copy(window) -> tuple[str | None, str]:
+    """
+    Rung 6. Ask the front window to copy, and read what it copied.
+
+    The last resort, and the only thing that reaches a document a browser draws
+    rather than exposes — which on this machine means Google Docs, whose body is
+    not in the accessibility tree and whose selection sets no primary. The Mac
+    reaches for exactly this rung, for exactly that reason.
+
+    It is the one read here with a side effect, so it carries the same three
+    fences the Mac puts on it: browsers only, never on a poll (the caller passes
+    `allow_copy` for the single read when a panel opens), and the clipboard is
+    put back.
+
+    **Wayland has no `changeCount`.** macOS can tell "nothing was selected" from
+    "it has not landed yet" by watching a counter; here the only signal is the
+    content itself, so this waits for the clipboard to *differ* and treats a
+    timeout as nothing having been selected. That is why a copy of text
+    identical to what was already on the clipboard reads as a failure — a rare
+    and harmless wrong answer, and the honest one to accept.
+    """
+    if not _is_copyable(window):
+        return None, "a synthetic copy is only sent to browsers"
+    if not _clipboard_is_text():
+        return None, "the clipboard holds something that could not be put back"
+
+    import fakeinput
+
+    before = clipboard_text()
+    sent, why = fakeinput.shared.copy()
+    if not sent:
+        return None, why
+
+    got = None
+    deadline = time.time() + 1.5
+    while time.time() < deadline:
+        time.sleep(0.08)
+        now = clipboard_text()
+        if now is not None and now != before and now.strip():
+            got = now
+            break
+
+    if got is None:
+        # Nothing landed, so nothing was taken and there is nothing to restore.
+        return None, "nothing was selected"
+
+    # Put it back, and only after reading what we came for.
+    if before is not None and before != got:
+        try:
+            subprocess.run(["wl-copy"], input=before.encode("utf8"), timeout=2, check=False)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    elif before is None:
+        try:
+            subprocess.run(["wl-copy", "--clear"], timeout=2, check=False)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    return got, "synthetic copy"
+
+
+def read(window, allow_copy: bool = False) -> Reading:
     """
     Climb until something answers.
 
@@ -217,6 +346,12 @@ def read(window) -> Reading:
         text, how = primary_selection()
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "primary selection", how)
+
+    # Rung 6, and only when the caller says so. See `synthetic_copy`.
+    if allow_copy:
+        text, how = synthetic_copy(window)
+        if text and text.strip():
+            return Reading(text[:MAX_CHARS], "synthetic copy", how)
 
     # Rung 7. The weakest thing that is still better than nothing, and the one
     # the daemon would otherwise have had to guess at.

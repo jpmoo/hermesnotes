@@ -118,8 +118,22 @@ class Panel(QWidget):
         #
         # The Hermes window is not one of these. It is a browser you work *in*,
         # so it is an ordinary window that can be tiled, tabbed and left open.
-        super().__init__(None, Qt.WindowType.Tool if floating else Qt.WindowType.Window)
+        # Frameless, for the panels. These are summoned over your work, do one
+        # thing and go — a titlebar with a close button is furniture for a
+        # window you live in, and these are closer to a large toast. The page
+        # draws its own header, so nothing is lost but the chrome.
+        flags = Qt.WindowType.Window
         if floating:
+            flags = (
+                Qt.WindowType.Tool
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.NoDropShadowWindowHint
+            )
+        super().__init__(None, flags)
+        if floating:
+            # Rounded corners need the corners to be see-through.
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.view_is_panel = True
             # `hidesOnDeactivate = false` on the Mac, and the same intent here:
             # stepping into another window to read something must not take the
             # panel away, because reading something else is usually the point.
@@ -142,6 +156,34 @@ class Panel(QWidget):
     def closeEvent(self, event) -> None:  # noqa: N802 — Qt's name
         event.ignore()
         self.hide()
+
+    def event(self, e):  # noqa: ANN001, N802 — Qt's names
+        """
+        Go away when somebody looks elsewhere.
+
+        The Mac watches for a click outside and calls this "the right trade for
+        a thing summoned by a hotkey and the wrong one for a document" — so it
+        applies to the panels and not to the Hermes window, which is exactly the
+        `floating` split already made here. Wayland gives no global click
+        monitor, but it does say when a window stops being active, which is the
+        same moment from this side of it.
+        """
+        from PySide6.QtCore import QEvent
+
+        if (
+            e.type() == QEvent.Type.WindowDeactivate
+            and getattr(self, "view_is_panel", False)
+            and self.isVisible()
+        ):
+            # Deferred: a deactivation arrives while a menu or a file dialog of
+            # our own is opening too, and hiding underneath one of those makes
+            # the panel vanish mid-interaction.
+            QTimer.singleShot(120, self._hide_if_still_inactive)
+        return super().event(e)
+
+    def _hide_if_still_inactive(self) -> None:
+        if not self.isActiveWindow():
+            self.hide()
 
     def summon(self) -> None:
         """
@@ -419,7 +461,27 @@ class Shell(QObject):
         """
         import json
 
-        payload = json.dumps({"text": reading.text, "rung": reading.rung, "why": reading.why})
+        # The three Glance settings travel with the reading. The page cannot
+        # read `config.json` — it has no filesystem — and the daemon does not
+        # apply them either: on the Mac they are the *reader's* preferences
+        # about how an answer is arranged, not part of the answer.
+        settings = {}
+        try:
+            with open(os.path.join(os.path.dirname(daemon.socket_path()), "config.json"),
+                      encoding="utf8") as handle:
+                raw = json.load(handle)
+            settings = {
+                "threshold": float(raw.get("glanceThreshold") or 0),
+                "separateDone": bool(raw.get("glanceSeparateDone")),
+                "undatedFurtherOut": bool(raw.get("glanceUndatedFurtherOut")),
+            }
+        except Exception:  # noqa: BLE001
+            settings = {"threshold": 0, "separateDone": False, "undatedFurtherOut": False}
+
+        payload = json.dumps({
+            "text": reading.text, "rung": reading.rung, "why": reading.why,
+            "settings": settings,
+        })
 
         def ask() -> None:
             panel.view.page().runJavaScript(f"window.glanceAsk && window.glanceAsk({payload})")

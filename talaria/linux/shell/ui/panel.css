@@ -373,3 +373,33 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 .picker .option:hover { background: color-mix(in srgb, AccentColor 14%, Canvas); }
 .picker .option .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon { flex: none; opacity: .75; }
+
+/* Folded sections in Glance. Closed by default: these are the things you did
+ * not ask about, kept rather than hidden. */
+.fold { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.fold > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); padding: 2px 0;
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "▸"; font-size: 10px; }
+.fold[open] > summary::before { content: "▾"; }
+.fold > summary:hover { color: var(--fg); }
+.fold > summary .count {
+  margin-left: auto; font-weight: 400;
+  background: color-mix(in srgb, CanvasText 12%, Canvas);
+  border-radius: 99px; padding: 1px 7px;
+}
+.fold .card { margin-top: 8px; }
+
+/* The panel itself is a floating card: the window has no frame, so the page
+ * draws the edge. Rounded, with a hairline so it separates from whatever it is
+ * sitting over. */
+body { border-radius: 12px; overflow: hidden; }
+.chat, .frame, .pane:only-child {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, CanvasText 22%, Canvas);
+  background: var(--bg);
+}

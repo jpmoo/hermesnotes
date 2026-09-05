@@ -58,21 +58,112 @@ window.glanceAsk = async (reading) => {
   body.appendChild(waiting);
 
   try {
-    const hits = await get(`/glance?q=${encodeURIComponent(reading.text)}&k=12`);
+    const hits = await get(`/glance?q=${encodeURIComponent(reading.text)}&k=24`);
     waiting.remove();
-    show(hits);
+    show(hits, reading.settings || {});
   } catch (err) {
     waiting.remove();
     complain(body, err);
   }
 };
 
-function show(hits) {
+/*
+ * Where a hit belongs, ported from `Daemon.GlanceSection.of`.
+ *
+ * The order of the tests is the whole design, and the Mac says why: done is
+ * checked first because it is the strongest statement that something needs no
+ * attention — a finished task that happens to be due tomorrow and scores well
+ * is still finished, and letting either of those pull it back into the main
+ * list would rank it above things you can still act on.
+ */
+function sectionOf(hit, s) {
+  const b = hit.block || {};
+  if (s.separateDone && b.completion?.done === true) return "done";
+  if (!isAboveFold(b, !!s.undatedFurtherOut)) return "furtherOut";
+  // Zero is off rather than "everything qualifies", so a library that has never
+  // set a threshold behaves exactly as it did before.
+  if (s.threshold > 0 && (hit.score ?? 0) < s.threshold) return "lessSimilar";
+  // The reader's own split, and not one the Mac makes: something with a status
+  // is something you can act on, and it goes first. Everything else is context
+  // and waits behind a fold.
+  return b.completable ? "main" : "other";
+}
+
+function datesOf(b) {
+  return [b.schedule?.start?.value, b.schedule?.end?.value].filter(Boolean);
+}
+
+/* Near is the last week or the next three weeks, or spanning today. String
+ * comparison is correct for ISO days and needs no parsing — the Mac's note. */
+function isNear(b) {
+  const dates = datesOf(b);
+  if (!dates.length) return true;
+  const day = (offset) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+  const today = day(0), from = day(-7), to = day(21);
+  const on = dates.map(d => String(d).slice(0, 10));
+  return on.some(d => d >= from && d <= to)
+      || (on.some(d => d <= today) && on.some(d => d >= today));
+}
+
+function isAboveFold(b, undatedBelow) {
+  return datesOf(b).length ? isNear(b) : !undatedBelow;
+}
+
+const SECTIONS = [
+  ["main", null],                                  // never folded
+  ["other", "Other items"],
+  ["furtherOut", "Further out or undated"],
+  ["lessSimilar", "Less similar"],
+  ["done", "Done"],
+];
+
+function show(hits, settings) {
   if (!hits?.length) {
     body.appendChild(el("div", "note", "Nothing in the library looks like this."));
     return;
   }
-  for (const hit of hits) body.appendChild(card(hit));
+  const s = {
+    threshold: Number(settings.threshold || 0),
+    separateDone: !!settings.separateDone,
+    undatedFurtherOut: !!settings.undatedFurtherOut,
+  };
+
+  const buckets = {};
+  for (const hit of hits) {
+    const where = sectionOf(hit, s);
+    (buckets[where] = buckets[where] || []).push(hit);
+  }
+
+  for (const [key, label] of SECTIONS) {
+    const held = buckets[key];
+    if (!held?.length) continue;
+    if (label === null) {
+      for (const hit of held) body.appendChild(card(hit));
+      continue;
+    }
+    body.appendChild(fold(label, held));
+  }
+
+  // Everything was folded away, which reads as "nothing found" unless it says
+  // otherwise. The Mac unfolds the first section with anything in it for the
+  // same reason.
+  if (!buckets.main?.length) {
+    const first = body.querySelector("details");
+    if (first) first.open = true;
+  }
+}
+
+/* A folded section. Closed by default, because these are the things you did not
+ * ask about — and independently, so opening "further out" to find a date does
+ * not also unfurl everything that scored badly. */
+function fold(label, held) {
+  const box = el("details", "fold");
+  const summary = el("summary");
+  summary.appendChild(el("span", null, label));
+  summary.appendChild(el("span", "count", String(held.length)));
+  box.appendChild(summary);
+  for (const hit of held) box.appendChild(card(hit));
+  return box;
 }
 
 function card(hit) {

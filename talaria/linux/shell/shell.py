@@ -47,6 +47,21 @@ PANELS = {
 }
 
 
+#: Short names, for the one place a long one does not fit.
+#:
+#: The menu keeps the Mac's wording — "Hermes Notes Collections" — because that
+#: is what it is called and a menu has room. A notification does not: five
+#: entries at that length wrap, and a wrapped list is harder to read than the
+#: five words it was trying to spell out.
+SHORT = {
+    "board": "Collections",
+    "assistant": "Ask",
+    "compose": "New Block",
+    "hermes": "Hermes",
+    "glance": "Glance",
+}
+
+
 def config_hotkey(action: str, fallback: str) -> str:
     """
     A hotkey from `config.json`, so both machines can be configured in one file.
@@ -633,7 +648,7 @@ class Shell(QObject):
             # Ordered by PANELS rather than by whatever the portal happened to
             # return, so the same list appears in the same order every start.
             lines = [
-                f"{self.shortcuts.bound[a]}  —  {PANELS[a][0]}"
+                f"{self.shortcuts.bound[a]}  —  {SHORT.get(a, PANELS[a][0])}"
                 for a in PANELS
                 if self.shortcuts.bound.get(a)
             ]

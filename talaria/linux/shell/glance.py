@@ -7,13 +7,17 @@ covers the real workflow, rung 6 never needs building, and it is the most
 fragile part and the only one with a side effect" — and the measurements said
 something clear:
 
-- **Rung 3, the primary selection, is the workhorse.** It returned a real
-  selection every time it was asked, with no permission, no prompt and no
-  synthesis. It does not exist on macOS at all.
-- **Rung 4, AT-SPI, returned nothing, ever.** Four applications on this desktop
-  expose an accessibility tree; GTK's `toolkit-accessibility` is off and
-  Electron wants `--force-renderer-accessibility`. It is kept because it costs
-  nothing when it fails and would start working the day that changes.
+- **Rung 3, the primary selection, answers most often** — with no permission, no
+  prompt and no synthesis, and it does not exist on macOS at all. But it is
+  *global and persistent*: it holds the last thing highlighted anywhere, by any
+  window, so it can confidently return something that belongs to a different
+  application. See the ordering note in `read`.
+- **Rung 4, AT-SPI, returned nothing at first** — four applications on this
+  desktop exposed a tree, GTK's `toolkit-accessibility` was off and Electron
+  wants `--force-renderer-accessibility`. With that setting turned on it reaches
+  seventeen, including the Qt and KDE applications, and it has the one property
+  the primary selection lacks: it is scoped to the focused window, so when it
+  answers the answer is certainly about what is in front.
 - **Rung 6, synthetic copy, is not built.** It is the only rung with a side
   effect — it presses Ctrl+C in somebody else's window and puts their clipboard
   back afterwards — and rung 3 already covers what it was for. Building it
@@ -37,6 +41,11 @@ from dataclasses import dataclass
 #: whole document pasted into one vector says less than a paragraph does — every
 #: term in it pulls the point toward the middle of the library.
 MAX_CHARS = 4000
+
+#: Said by rung 4 when it could see the focused window and there was nothing
+#: selected in it. Distinct from not being able to see the window at all, and
+#: `read` treats the two very differently.
+REACHED_NO_SELECTION = "the focused window has nothing selected"
 
 
 @dataclass(frozen=True)
@@ -130,11 +139,12 @@ def atspi_selection() -> tuple[str | None, str]:
                 frame = app.get_child_at_index(j)
                 if frame.get_state_set().contains(Atspi.StateType.ACTIVE):
                     got = walk(frame)
-                    if got:
-                        return got, "at-spi"
+                    # Reachable, which is the important half of the answer even
+                    # when there is no selection — see `read`.
+                    return (got, "at-spi") if got else (None, REACHED_NO_SELECTION)
     except Exception as err:  # noqa: BLE001
         return None, f"AT-SPI walk failed ({err})"
-    return None, "nothing selected in the accessibility tree"
+    return None, "the focused window exposes no accessibility tree"
 
 
 def read(window) -> Reading:
@@ -151,18 +161,46 @@ def read(window) -> Reading:
     if window is not None and window.blind:
         return Reading(None, "blindlist", f"{window.name} is on the blindlist — nothing was read")
 
-    text, how = primary_selection()
-    if text and text.strip():
-        return Reading(text[:MAX_CHARS], "primary selection", how)
-    first_why = how
-
+    # **The accessibility tree first, and this is a departure from the Mac's
+    # order for a reason the Mac cannot have.**
+    #
+    # macOS has no primary selection, so its ladder never faces this: the
+    # primary selection is *global and persistent*. It holds the last thing
+    # highlighted anywhere, by any window, until something replaces it. Asking
+    # it first means that working in an editor with nothing selected returns
+    # whatever was selected in a terminal ten minutes ago — confidently, and
+    # with no sign that it belongs to a different window. That was observed:
+    # Glance offered a shell transcript while the user sat in Kate.
+    #
+    # AT-SPI has the opposite property. It is scoped to the *focused* window, so
+    # when it answers, the answer is certainly about what is in front. It is
+    # also the rung that fails more often, which is why it is tried first rather
+    # than trusted alone: a miss here costs one bounded tree walk.
     text, how = atspi_selection()
     if text and text.strip():
         return Reading(text[:MAX_CHARS], "accessibility", how)
+    atspi_why = how
+
+    # **A window that was reachable and had nothing selected has answered.**
+    #
+    # This is the whole point of asking AT-SPI first. The primary selection is
+    # global: with nothing highlighted in the front window it happily returns
+    # what was highlighted in a terminal an hour ago, and Glance then goes off
+    # and looks up a shell transcript while the user sits in an editor. When the
+    # accessibility tree can see the focused window and reports no selection,
+    # that is direct evidence about *this* window, and it outranks a global
+    # buffer that cannot say whose text it holds.
+    #
+    # Only when the front window is invisible to AT-SPI — most browsers here,
+    # and every terminal — is the primary selection the best available guess.
+    if atspi_why != REACHED_NO_SELECTION:
+        text, how = primary_selection()
+        if text and text.strip():
+            return Reading(text[:MAX_CHARS], "primary selection", how)
 
     # Rung 7. The weakest thing that is still better than nothing, and the one
     # the daemon would otherwise have had to guess at.
     if window is not None and window.caption:
         return Reading(window.caption[:MAX_CHARS], "window title", f"from {window.name}")
 
-    return Reading(None, "nothing", first_why)
+    return Reading(None, "nothing", atspi_why)

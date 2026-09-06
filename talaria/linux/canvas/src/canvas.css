@@ -346,3 +346,15 @@ textarea {
 .tal-node input[type="checkbox"] {
   cursor: pointer;
 }
+
+/* A picture to choose from, in the node menu. Its own thumbnail, because the
+ * only useful label for a photograph is the photograph. */
+.cv-swatch.cv-pic {
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--border);
+}
+.cv-swatch.cv-pic.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

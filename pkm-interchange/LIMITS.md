@@ -30,9 +30,62 @@ into an API for one product.
 
 ## Open
 
-Nothing outstanding that a real client has been blocked by. The three that
-were here are below, with what each cost to answer; the one remaining piece of
-unfinished business is named at the end of the first.
+### An attachment can be named and not carried
+
+**Found by building.** Talaria's canvas on Linux can put a picture on a node,
+and a node can be converted into a real block. The obvious next step — the one
+the Mac takes — is for that picture to become an attachment on the block, so the
+thing that was on the canvas is now on the block wherever you look at it.
+
+The format has an `attachment` value kind, and what it carries is a file name:
+
+```json
+{ "kind": "attachment", "filename": "notes.pdf" }
+```
+
+A name is enough to *describe* an attachment and not enough to *move* one. There
+is no channel in the export for the bytes, so a consumer holding a file has no
+way to say "here it is, keep it"; it can only say "there is one, called this",
+which is true and useless to anybody who does not already have the file. Between
+two applications on one machine, sharing a disk, that may be survivable. Between
+two that have never heard of each other — the test this file exists to serve —
+it is not: the receiving side gets a library full of names pointing at nothing.
+
+Hermes closes the question from the other end besides. Its manifest declares
+`"unsupported": ["attachments"]`, and `fixtures/roundtrip.json` case 7 makes an
+export carrying an attachment value against such a manifest **invalid** —
+"the manifest is a promise about the export, not an aspiration." So there is
+today no valid way for Talaria to attach anything to a Hermes block through the
+format, whether or not it has the bytes.
+
+What Talaria does instead, and this is the whole of it: **the picture stays on
+the canvas.** It lives beside `canvas.json` in `canvas-images/`, the node names
+it, and a converted node goes on showing it. Nothing is written to Hermes and
+nothing is smuggled past the binding. The cost is real and worth stating: the
+image is visible on that canvas, on that machine, and nowhere else in the
+library.
+
+Two shapes an answer could take, in the order they seem worth trying:
+
+1. **A bytes channel beside the objects.** The binding is already more than a
+   file — `ix.put` is a request — so an attachment could be a second request
+   naming the object and the field. This does not touch the file binding, where
+   an export is one document, and that asymmetry is the argument against it.
+2. **Attachments as content-addressed blobs in the export.** `{ "kind":
+   "attachment", "filename": …, "sha256": …, "bytes": "<base64>" }`, with the
+   bytes optional and the hash the identity. A file binding stays one file, at
+   the price of a format that can carry a gigabyte in a string. The escape is
+   that `bytes` is optional: a producer that cannot afford it sends the name and
+   the hash, which is exactly what v0 sends today, and a consumer knows the
+   difference between "no attachment" and "an attachment I was not given".
+
+Neither is a small change, which is why this is written down rather than
+guessed at.
+
+---
+
+The three that were here before are below, with what each cost to answer; the
+one remaining piece of unfinished business is named at the end of the first.
 
 ---
 

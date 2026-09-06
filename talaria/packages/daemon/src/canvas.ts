@@ -40,6 +40,17 @@ export interface CanvasItem {
   textColor?: string | null;
   /** File name of a picture in `canvas-images/`, when this node is one. */
   image?: string | null;
+  /**
+   * Every picture this node has, when it has more than one.
+   *
+   * `image` says which one is showing; this says what there is to choose from.
+   * Written by the Linux canvas, carried untouched by everything else, and
+   * honored by `sweepImages` — which is the part that matters, because a sweep
+   * that only knew `image` would delete the alternatives.
+   */
+  images?: string[];
+  /** Show the picture rather than the card. Absent means "if there is one". */
+  showImage?: boolean;
   blockId?: string | null;
 }
 export interface CanvasLink {
@@ -199,6 +210,17 @@ export function sweepImages(live: CanvasDocument): number {
   const note = (d: CanvasDocument | null) => {
     for (const item of d?.items ?? []) {
       if (typeof item.image === "string" && item.image) keep.add(item.image);
+      /*
+       * And the ones it is *not* wearing.
+       *
+       * A node can carry several pictures with one of them showing, and the
+       * others are just as much part of the canvas — a sweep that kept only the
+       * visible one would quietly delete every alternative the moment somebody
+       * chose. `image` is which, `images` is what there is.
+       */
+      for (const name of item.images ?? []) {
+        if (typeof name === "string" && name) keep.add(name);
+      }
     }
   };
   note(live);

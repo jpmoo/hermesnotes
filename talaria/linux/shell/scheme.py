@@ -313,7 +313,24 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
             lambda message: self._fail(job, key, message),
             Qt.ConnectionType.QueuedConnection,
         )
-        self._pool.start(_Ask(reply, method, path, body, "application/json"))
+        # What the body *is*, when it is not JSON. The daemon's image route reads
+        # the content type to decide the file's extension, so a picture posted as
+        # `application/json` is refused before it is looked at.
+        #
+        # **`header`, not `key`.** The two lambdas above close over `key` — the
+        # job's identity — and a closure captures the variable rather than its
+        # value, so a loop that reused the name left both callbacks delivering
+        # their answer against the last header's name instead. Nothing failed;
+        # every reply simply found no job to give itself to, and every request
+        # in the application hung.
+        ctype = "application/json"
+        try:
+            for header, value in job.requestHeaders().items():
+                if bytes(header).lower() == b"x-talaria-content-type":
+                    ctype = bytes(value).decode("ascii", "replace")
+        except Exception:  # noqa: BLE001
+            pass
+        self._pool.start(_Ask(reply, method, path, body, ctype))
 
     @staticmethod
     def _body_from_headers(job: QWebEngineUrlRequestJob) -> bytes | None | object:
@@ -336,11 +353,33 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
             headers = job.requestHeaders()
         except Exception:  # noqa: BLE001
             return None
+        found: bytes | None = None
+        encoding = b""
         for key, value in headers.items():
-            if bytes(key).lower() == b"x-talaria-body":
-                raw = bytes(value)
-                return TOO_BIG if len(raw) > MAX_BODY else (raw or None)
-        return None
+            name = bytes(key).lower()
+            if name == b"x-talaria-body":
+                found = bytes(value)
+            elif name == b"x-talaria-encoding":
+                encoding = bytes(value).lower()
+        if found is None:
+            return None
+        if len(found) > MAX_BODY:
+            return TOO_BIG
+        if encoding == b"base64":
+            # A picture, which is not text and cannot ride as one.
+            #
+            # The body travels in a header because `requestBody()` segfaults
+            # this build, and a header is a string: bytes with a zero in them do
+            # not survive it. Base64 costs a third more and is the only thing
+            # that does. The page says which of the two it sent, so nothing that
+            # was already working has to change.
+            import base64
+
+            try:
+                return base64.b64decode(found, validate=True) or None
+            except Exception:  # noqa: BLE001
+                return None
+        return found or None
 
     @staticmethod
     def _wants_stream(job: QWebEngineUrlRequestJob) -> bool:

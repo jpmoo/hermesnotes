@@ -2,6 +2,7 @@ import { Grid2x2, GripHorizontal, Image as ImageIcon, Layers, Minus, Pipette, Pl
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readableOn } from "../lib/display.ts";
+import { pictureAt } from "../api.ts";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import {
   useEffect,
@@ -217,6 +218,10 @@ interface CanvasNote extends Rect, TalariaInk {
  * ---------------------------------------------------------------------------
  */
 interface TalariaInk {
+  /** Every picture this node has, by name. Talaria's; Hermes has one or none. */
+  images?: string[];
+  /** Which of them is its face — the name, where `image` is the URL to draw. */
+  imageName?: string | null;
   /** Across the box: `leading` | `center` | `trailing`. The Mac's `TextAlign`. */
   hAlign?: string | null;
   /** And down it: `top` | `middle` | `bottom`. The Mac's `TextVAlign`. */
@@ -2054,6 +2059,19 @@ export function CanvasView({
       .catch(() => {});
   };
 
+  /** Which of a node's pictures is the one you see. */
+  const choosePicture = (id: string, name: string) => {
+    const r = rectOf(id) as NodeCtx | null;
+    if (!r) return;
+    const ctx = { ...r, imageName: name, image: pictureAt(name), showImage: true };
+    setLocal((p) => ({ ...p, [id]: ctx }));
+    if (id.startsWith("n:")) {
+      saveNotes(notes.map((n) => (n.id === id ? { ...n, imageName: name, image: { name, mime: "", data: pictureAt(name) } } : n)));
+      return;
+    }
+    persistMemberCtx(id, ctx);
+  };
+
   const setShowImage = (id: string, showImage: boolean) => {
     const r = rectOf(id) as NodeCtx | null;
     if (!r) return;
@@ -2367,7 +2385,19 @@ export function CanvasView({
         w: note.w,
         h: note.h,
         color: note.color ?? null,
-        ...(note.image ? { showImage: true } : {}),
+        /*
+         * The picture comes with it.
+         *
+         * Hermes turns a note's image into an attachment on the new block and
+         * lets the node keep showing it, "because that is what it looked like a
+         * moment ago and a conversion that changed the drawing as well as the
+         * substance would read as having done something else." Talaria cannot
+         * make it an attachment — the format's `attachment` value is a file name
+         * and carries no bytes, and Hermes' own manifest declares attachments
+         * unsupported — but the second half holds: the picture stays on the
+         * canvas, beside the document, and the node goes on showing it.
+         */
+        ...(note.image ? { showImage: true, image: note.image.name } : {}),
       },
     });
     // Remap edges AND region memberships from the ephemeral id to the real
@@ -2566,15 +2596,18 @@ export function CanvasView({
   const nodeBox = (id: string, r: NodeCtx, body: ReactNode, isNote: boolean) => {
     // A node told to show its picture asks for one on sight: here it is not a
     // menu item that might be needed, it is the thing being drawn.
-    if (r.showImage) lookForPicture(id);
-    const pic = r.showImage ? pictures[id] : null;
-    const shown: ReactNode = pic ? (
-      <img
-        className="cv-node-image"
-        src={`${apiBase}/attachments/${pic.id}`}
-        alt={pic.filename}
-        draggable={false}
-      />
+    /*
+     * The picture a node names, which is not the same as one Hermes holds.
+     *
+     * Hermes asks the server what is attached to the block and draws the first
+     * image it finds. Talaria's pictures live beside the canvas document and the
+     * node names one, so there is nothing to ask: `r.image` is the URL the
+     * daemon serves it at. A canvas that shows a photograph therefore shows it
+     * with the network down, which the other way round could not.
+     */
+    const named = r.showImage ? r.image ?? null : null;
+    const shown: ReactNode = named ? (
+      <img className="cv-node-image" src={named} alt="" draggable={false} />
     ) : (
       body
     );
@@ -3250,9 +3283,30 @@ export function CanvasView({
               </label>
             </div>
             {(() => {
-              const pic = pictures[nodeMenu.id];
-              if (!pic) return null;
-              const showing = (rectOf(nodeMenu.id) as NodeCtx | null)?.showImage === true;
+              /*
+               * Picture, or words — and which picture.
+               *
+               * The switch is Hermes' and so is its reasoning; what is new is
+               * the list under it. A node can carry several pictures and only
+               * one can be the face of it, so the others are named rather than
+               * lost: choosing one is choosing what this node *looks like*,
+               * which is a fact about the node and not about anything in the
+               * library.
+               */
+              /*
+               * The node itself, not just its box.
+               *
+               * `rectOf` answers the question every line and every drag asks —
+               * where is this — and for a note it answers with four numbers.
+               * The pictures are on the note, so a menu built from a rectangle
+               * finds none and quietly offers nothing.
+               */
+              const nr = (nodeMenu.id.startsWith("n:")
+                ? notes.find((n) => n.id === nodeMenu.id)
+                : rectOf(nodeMenu.id)) as NodeCtx | null;
+              const all = nr?.images ?? [];
+              if (!all.length) return null;
+              const showing = nr?.showImage === true;
               return (
                 <>
                   <div className="menu-sep" />
@@ -3264,8 +3318,27 @@ export function CanvasView({
                     }}
                   >
                     <ImageIcon size={14} />
-                    <span>{showing ? "Show text instead of image" : "Show image instead of text"}</span>
+                    <span>{showing ? "Show text instead of the picture" : "Show the picture instead of text"}</span>
                   </button>
+                  {all.length > 1 && (
+                    <>
+                      <div className="hint" style={{ padding: "4px 10px" }}>Which picture</div>
+                      <div className="cv-menu-row">
+                        {all.map((name) => (
+                          <button
+                            key={name}
+                            className={`cv-swatch cv-pic${nr?.imageName === name ? " on" : ""}`}
+                            title={name}
+                            style={{ backgroundImage: `url("${pictureAt(name)}")` }}
+                            onClick={() => {
+                              choosePicture(nodeMenu.id, name);
+                              setNodeMenu(null);
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}

@@ -22,7 +22,7 @@
  * the library.
  */
 import { useEffect, useRef, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { MessageSquarePlus, X } from "lucide-react";
 import { ask } from "../api.ts";
 
 interface Step {
@@ -89,8 +89,13 @@ export function CanvasChat({ onDrawn }: { onDrawn: () => void }) {
 
   if (!open) {
     return (
-      <button className="chat-tab" title="Draw on this canvas" onClick={() => setOpen(true)}>
-        <Pencil size={14} />
+      <button className="chat-tab" title="Canvas chat — ask it to draw" onClick={() => setOpen(true)}>
+        {/* A message with a mark on it: this is a conversation, and what it
+         * leaves behind is drawing. The Mac reaches for a pencil to keep it
+         * apart from the Hermes assistant's wings; the same distinction holds
+         * with a bubble that is plainly not those wings, and it says "chat"
+         * first — which is what somebody is looking for when they want one. */}
+        <MessageSquarePlus size={15} />
       </button>
     );
   }
@@ -98,8 +103,8 @@ export function CanvasChat({ onDrawn }: { onDrawn: () => void }) {
   return (
     <aside className="chat-drawer">
       <header>
-        <Pencil size={13} />
-        <span>Draw</span>
+        <MessageSquarePlus size={13} />
+        <span>Canvas chat</span>
         <button className="icon-btn" title="Close" onClick={() => setOpen(false)}>
           <X size={13} />
         </button>
@@ -152,7 +157,7 @@ export function CanvasChat({ onDrawn }: { onDrawn: () => void }) {
           ref={field}
           rows={2}
           value={draft}
-          placeholder="Draw something here…"
+          placeholder="Ask it to draw something…"
           spellCheck={false}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

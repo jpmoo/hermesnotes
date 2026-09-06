@@ -169,6 +169,45 @@ export function ask<T>(method: string, path: string, body?: unknown): Promise<T>
   });
 }
 
+/**
+ * Bytes, rather than a sentence.
+ *
+ * The daemon keeps a canvas picture beside the document and answers with the
+ * name to ask for it by — a raw body with an image content type, which is the
+ * one request here that is not JSON. The shell decodes the base64 and passes the
+ * type along; see `_body_from_headers` in `scheme.py` for why a header is the
+ * only road and why base64 is the only way down it.
+ */
+export async function keep(bytes: Blob): Promise<string> {
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(new Error("could not read the picture"));
+    reader.readAsDataURL(bytes);
+  });
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", `${ORIGIN}/canvas/image`, true);
+    x.setRequestHeader("x-talaria-body", base64);
+    x.setRequestHeader("x-talaria-encoding", "base64");
+    x.setRequestHeader("x-talaria-content-type", bytes.type || "image/png");
+    x.onload = () => {
+      try {
+        const said = JSON.parse(x.responseText) as { name?: string; error?: string };
+        if (said.name) return resolve(said.name);
+        reject(new Error(said.error || "the daemon would not keep that picture"));
+      } catch {
+        reject(new Error("the daemon answered something unreadable"));
+      }
+    };
+    x.onerror = () => reject(new Error("can't reach the daemon — is it running?"));
+    x.send(null);
+  });
+}
+
+/** Where a kept picture can be seen. */
+export const pictureAt = (name: string) => `${ORIGIN}/canvas/image/${encodeURIComponent(name)}`;
+
 /* ------------------------------------------------------------- the routing */
 
 import {
@@ -278,7 +317,20 @@ function itemFromNote(note: Record<string, unknown>, was: CanvasItem | undefined
      * file already said — never overwritten with a shape this build has not
      * taught the component to produce.
      */
-    image: base.image,
+    /*
+     * The picture, by name.
+     *
+     * What comes back is the component's shape — `{name, mime, data}` where
+     * `data` is a URL — or `imageName` when somebody has just chosen between
+     * several. The file stores the name and nothing else, so either one is read
+     * for it and the untouched case keeps whatever the item already had.
+     */
+    image:
+      typeof note.imageName === "string"
+        ? note.imageName
+        : ((note.image as { name?: string } | null)?.name ?? base.image),
+    images: Array.isArray(note.images) ? (note.images as string[]) : base.images,
+    showImage: typeof note.showImage === "boolean" ? note.showImage : base.showImage,
   };
 }
 
@@ -342,6 +394,11 @@ function patchMember(blockId: string, context: Record<string, unknown>) {
   if (typeof from.shape === "string") item.shape = from.shape;
   // Only when said. A context that does not mention alignment is not a context
   // that cleared it — see `itemFromNote`.
+  // A member's picture arrives as a name when it was chosen, and as a URL when
+  // the context was simply handed back; only the name means anything in a file.
+  if (typeof from.imageName === "string") item.image = from.imageName;
+  if (Array.isArray(from.images)) item.images = from.images as string[];
+  if (typeof from.showImage === "boolean") item.showImage = from.showImage;
   if (typeof from.hAlign === "string") item.hAlign = from.hAlign;
   if (typeof from.vAlign === "string") item.vAlign = from.vAlign;
   if ("textColor" in from) item.textColor = (from.textColor as string) ?? null;
@@ -352,6 +409,7 @@ function addMember(body: Record<string, unknown>) {
   const blockId = String(body.blockId);
   if (held.items.some((i) => i.blockId === blockId)) return;
   const c = (body.context as Record<string, unknown>) ?? {};
+  const picture = typeof c.image === "string" ? c.image : null;
   held.items.push({
     id: `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     x: Number(c.x) || 0,
@@ -359,6 +417,9 @@ function addMember(body: Record<string, unknown>) {
     w: Number(c.w) || 200,
     h: Number(c.h) || 90,
     blockId,
+    // A note converted into a block keeps the picture it had — see the note at
+    // the call site.
+    ...(picture ? { image: picture, images: [picture], showImage: true } : {}),
   });
   save();
 }

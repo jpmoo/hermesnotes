@@ -6,7 +6,14 @@
  * met came from a canvas that was two documents; this one is one." The same
  * holds here — this module never patches fields into a document it has not got.
  */
-import { ask, type Collection, type Member } from "./api.ts";
+import { ask, pictureAt, type Collection, type Member } from "./api.ts";
+
+/** A file name to a content type, for the shape the component expects. */
+function mimeOf(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  return { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+           webp: "image/webp", heic: "image/heic", tiff: "image/tiff" }[ext] ?? "image/png";
+}
 
 export interface CanvasItem {
   id: string;
@@ -24,6 +31,16 @@ export interface CanvasItem {
   vAlign?: string;
   textColor?: string | null;
   image?: string | null;
+  /**
+   * Every picture on this node, when it has more than one.
+   *
+   * Talaria's own key, and an addition rather than a change: `image` stays the
+   * one being shown, so anything that has never heard of this — Canvas Chat,
+   * the Mac, an older build — keeps working and keeps showing the same picture.
+   */
+  images?: string[];
+  /** Show the picture instead of the card. Absent means "if there is one". */
+  showImage?: boolean;
   blockId?: string | null;
 }
 
@@ -117,14 +134,27 @@ function notesOf(doc: CanvasDocument) {
       vAlign: item.vAlign,
       textColor: item.textColor ?? null,
       /*
-       * **Not passed through, on purpose.** Hermes' note carries its picture as
-       * `{name, mime, data}` — the bytes, inline. Talaria stores a file name in
-       * `canvas-images/` beside the document. Handing the component a string
-       * where it expects an object makes it read `.data` off a string, and the
-       * failure lands in the middle of converting a note rather than anywhere
-       * near here. The file keeps its `image` either way; `itemFromNote` never
-       * overwrites it.
+       * The picture, in the shape the component reads.
+       *
+       * Hermes carries a note's image inline — `{name, mime, data}`, where
+       * `data` is a data URI, because on that side the bytes ride on the
+       * collection itself. Talaria keeps the file beside the document and the
+       * item names it, which is the arrangement Hermes' own comment says it
+       * envies: "the same argument Talaria's canvas made for keeping its
+       * pictures beside the document rather than in it."
+       *
+       * So the shape is met without the bytes: `data` is the URL the daemon
+       * serves it at. `<img src>` cannot tell the difference, and a canvas of
+       * twenty photographs stays a canvas of twenty file names.
        */
+      image: item.image
+        ? { name: item.image, mime: mimeOf(item.image), data: pictureAt(item.image) }
+        : null,
+      /** Which pictures this node has to choose from, when it has several. */
+      images: item.images ?? (item.image ? [item.image] : []),
+      /** …and which of them it is wearing, by name rather than by URL. */
+      imageName: item.image ?? null,
+      showImage: item.showImage,
     }));
 }
 
@@ -207,6 +237,14 @@ export function toMembers(doc: CanvasDocument, linked: Linked[]): Member[] {
           h: item.h,
           // `color` is the component's name for it — see `notesOf`.
           color: item.fill ?? null,
+          // A placed block can be shown as its picture instead of as a card —
+          // `showImage` is Hermes' own switch for exactly this, and it calls it
+          // "a fact about this node rather than about the block: the same task
+          // can be a card on one canvas and its photograph on another".
+          image: item.image ? pictureAt(item.image) : null,
+          images: item.images ?? (item.image ? [item.image] : []),
+          imageName: item.image ?? null,
+          showImage: item.showImage === true,
           hAlign: item.hAlign,
           vAlign: item.vAlign,
           textColor: item.textColor ?? null,

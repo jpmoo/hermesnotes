@@ -218,6 +218,23 @@ that bindings live in the portal's store rather than System Settings;
 
 ### Things that cost an hour here, so they do not cost another
 
+- **`runJavaScript` cannot return an object.** Measured, after rung 2 spent this
+  long looking like an empty desk: `"hello"` comes back `'hello'`, `2 + 2` comes
+  back `4.0`, `document.title` comes back fine — and `({a: 1})` and `[1, 2, 3]`
+  both come back as **`''`**. So `harvest.js`, which returns `{text, how}`,
+  never once reached Python; `_summon_glance` saw nothing worth using and fell
+  through to reading whatever window was behind the desk, which is precisely the
+  defect rung 2 exists to fix. `JSON.stringify` on the page, `json.loads` on this
+  side. `export.py` already carried that workaround without saying why — this is
+  the why.
+- **`return` and a block comment is automatic semicolon insertion.** The fix
+  above was first wrapped as `return <harvest.js> ?? null`, and `harvest.js`
+  opens with a block comment — so a line terminator sat between the keyword and
+  the expression, ASI ended the statement there, the function returned
+  `undefined`, and the harvest that followed ran as dead code and was thrown
+  away. It looked exactly like a page with nothing on it, which is the same
+  symptom as the bug it was fixing. Assign first, return the name.
+
 - **The desk was a panel, and panels dismiss themselves.** Summoning Glance over
   the desk made the desk vanish: `_build` constructs it with `floating=True`
   like everything else — frameless, translucent, drawing its own frosted sheet —

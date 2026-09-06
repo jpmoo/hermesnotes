@@ -164,7 +164,34 @@ def _harvest() -> str:
     if _HARVEST is None:
         with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "ui", "harvest.js"), encoding="utf8") as handle:
-            _HARVEST = handle.read()
+            body = handle.read().strip().rstrip(";")
+        # **Stringified, because an object does not survive the trip.**
+        #
+        # `runJavaScript` returns primitives faithfully — a string, a number,
+        # `document.title` — and hands back an *empty string* for any object or
+        # array. Measured, after rung 2 spent this long looking like an empty
+        # desk: `"hello"` came back `'hello'`, `2 + 2` came back `4.0`, and
+        # `({a: 1})` came back `''`. So the harvest's `{text, how}` never once
+        # reached Python, `_summon_glance` saw nothing worth using, and Glance
+        # fell through to reading whatever window was behind the desk — which
+        # is precisely the defect rung 2 was written to fix.
+        #
+        # `export.py` already carried the workaround (`JSON.stringify(...)` on
+        # its own `runJavaScript`) without saying why. This is the why.
+        #
+        # Wrapped in a try as well, so a harvest that throws says so instead of
+        # arriving as the same silence.
+        #
+        # **Assigned before it is returned, and that is not a style choice.**
+        # `harvest.js` opens with a block comment, so `return <body>` put a line
+        # terminator between the keyword and the expression — automatic
+        # semicolon insertion ends the statement there, the function returns
+        # `undefined`, and the harvest that follows is dead code that runs and
+        # is thrown away. It looked exactly like a page with nothing on it.
+        _HARVEST = (
+            "(() => { try { const found = " + body + " ?? null; return JSON.stringify(found); }"
+            " catch (err) { return JSON.stringify({ error: String((err && err.message) || err) }); } })()"
+        )
     return _HARVEST
 
 
@@ -718,9 +745,30 @@ class Shell(QObject):
                     found_key, panel = key, other
                     break
         if panel is None:
+            print("talaria: rung 2 — none of our windows is showing", file=sys.stderr, flush=True)
             then(None, None)
             return
-        panel.view.page().runJavaScript(_harvest(), lambda found: then(found, found_key))
+
+        def answered(raw, key=found_key):
+            import json as _json
+
+            try:
+                found = _json.loads(raw) if isinstance(raw, str) and raw else None
+            except ValueError:
+                found = None
+            # What it found and where, never what it says. Rung 2 was silent
+            # until it went wrong, and "Glance is not reading the desk" is not a
+            # thing anybody can debug from the outside: the harvest either found
+            # the surface or it did not, and only this knows which.
+            said = found.get("text") if isinstance(found, dict) else None
+            how = (found.get("error") or found.get("how")) if isinstance(found, dict) else "nothing"
+            print(
+                f"talaria: rung 2 — {key} how={how} chars={len(said or '')}",
+                file=sys.stderr, flush=True,
+            )
+            then(found, key)
+
+        panel.view.page().runJavaScript(_harvest(), answered)
 
     def _summon_glance(self, found, from_key) -> None:
         """The reading, then the panel — in that order, and never the reverse."""

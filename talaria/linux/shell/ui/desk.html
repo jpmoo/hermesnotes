@@ -272,6 +272,19 @@ frost.onclick = () => applyFrost(!seeThrough);
 applyFrost(seeThrough);
 
 /*
+ * Glance, relayed into its quadrant.
+ *
+ * `runJavaScript` reaches this page's main frame and no further, so the shell
+ * hands the reading here and this passes it on. The quadrant *is* the ambient
+ * panel when the desk is open — a surface showing what the library knows about
+ * whatever you were looking at a second ago, which is what the desk is for.
+ */
+window.glanceRelay = (reading) => {
+  const frame = document.getElementById("glance");
+  frame?.contentWindow?.postMessage({ talaria: "glance", reading }, "*");
+};
+
+/*
  * A frame that asks is answered.
  *
  * Announcing it on load is not enough on its own: a frame can finish loading

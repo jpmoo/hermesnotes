@@ -26,7 +26,20 @@ const source = document.getElementById("source");
  * is whatever the user had selected a second ago, and a query string is a place
  * things get logged.
  */
+/*
+ * The same reading, arriving from the desk rather than from the shell.
+ *
+ * In a quadrant this page is a frame, and a frame is out of `runJavaScript`'s
+ * reach — so the desk relays. One entry point either way: what changes is who
+ * called it, not what it does.
+ */
+addEventListener("message", (e) => {
+  if (e.data?.talaria === "glance" && e.data.reading) void window.glanceAsk(e.data.reading);
+});
+
 window.glanceAsk = async (reading) => {
+  // Which rung answered, and — when the reading arrived on its own — that this
+  // is following the window rather than something you asked for.
   source.textContent = reading.rung ? `via ${reading.rung}` : "";
   body.innerHTML = "";
 

@@ -357,6 +357,13 @@ class Shell(QObject):
         # know what was in front *before* it opened, and the answer has to have
         # arrived by the time a hotkey can fire.
         self.frontmost = Frontmost()
+        # Ambient Glance: redrawn when the desktop says the window changed, once
+        # the changes stop coming. See `_ambient`.
+        self._ambient_at = None
+        self._ambient_timer = QTimer(self)
+        self._ambient_timer.setSingleShot(True)
+        self._ambient_timer.timeout.connect(self._ambient_read)
+        self.frontmost.changed.connect(self._ambient)
         self.frontmost.start()
 
         self.shortcuts = Shortcuts()
@@ -539,6 +546,69 @@ class Shell(QObject):
             told = _json.dumps(was_in_front)
             panel.view.page().runJavaScript(f"window.pickFor && window.pickFor({told})")
 
+    # --------------------------------------------------------------- ambient
+
+    def _ambient(self, window) -> None:
+        """
+        Glance follows what you are looking at.
+
+        AMBIENT's third capability, and the whole of it: "not a search box you
+        invoke — a surface that is always showing what the library knows about
+        what you are looking at, **redrawn on the context signal rather than on a
+        timer**."
+
+        The Mac cannot do that and says so: it polls every four seconds because
+        "nothing on this machine emits a 'the focused document changed' event".
+        KWin emits one. So this is the same feature arriving by the route the
+        design asked for, and the reason it is a signal here and a timer there is
+        the desktop, not the intent.
+
+        **Only while something is showing it.** A panel nobody has open is not
+        ambient, it is a background job reading windows — which is the one thing
+        this must never be.
+
+        **And never with a synthetic copy.** Rung 6 presses keys in somebody
+        else's window; doing that every time the focus moves would be a hand
+        reaching across the desk all day. It is for the moment you *asked*, which
+        is the first read after a summon — the Mac draws the same line, allowing
+        a copy on `startFollowing` and not on the timer that follows it.
+        """
+        if not self._following():
+            return
+        # A burst of changes is one gesture — alt-tabbing through five windows is
+        # not five questions. Read when it settles.
+        self._ambient_at = window
+        self._ambient_timer.start(450)
+
+    def _following(self) -> bool:
+        glance = self.panels.get("glance")
+        desk = self.panels.get("desk")
+        return bool((glance and glance.isVisible()) or (desk and desk.isVisible()))
+
+    def _ambient_read(self) -> None:
+        window = getattr(self, "_ambient_at", None)
+        if not self._following():
+            return
+        reading = glance.read(
+            window,
+            allow_copy=False,
+            changed_at=self.frontmost.selection.changed_at,
+            focused_at=self.frontmost.focused_at,
+        )
+        print(
+            f"talaria: ambient — front={window.name if window else 'unknown'} "
+            f"rung={reading.rung} chars={len(reading.text or '')}",
+            file=sys.stderr, flush=True,
+        )
+        panel = self.panels.get("glance")
+        if panel is not None and panel.isVisible():
+            self._glance(panel, reading)
+        # The desk's own Glance is a frame, which `runJavaScript` cannot reach;
+        # the desk relays it, the way it relays frosting.
+        desk = self.panels.get("desk")
+        if desk is not None and desk.isVisible():
+            self._glance(desk, reading, relay=True)
+
     # ---------------------------------------------------------------- glance
 
     def _ask_our_own(self, then) -> None:
@@ -615,7 +685,7 @@ class Shell(QObject):
         panel.summon()
         self._glance(panel, reading)
 
-    def _glance(self, panel: Panel, reading) -> None:
+    def _glance(self, panel: Panel, reading, relay: bool = False) -> None:
         """
         Tell the panel what was read.
 
@@ -655,7 +725,8 @@ class Shell(QObject):
         })
 
         def ask() -> None:
-            panel.view.page().runJavaScript(f"window.glanceAsk && window.glanceAsk({payload})")
+            call = "window.glanceRelay" if relay else "window.glanceAsk"
+            panel.view.page().runJavaScript(f"{call} && {call}({payload})")
 
         # The page may still be loading on the first summon; asking a blank
         # document does nothing and leaves the panel saying it is waiting.

@@ -376,7 +376,16 @@ Named rather than implied, in the order they cost something.
   already covered by rung 3.
 - **The writing surface is a placeholder.** The third desk surface holds its
   position in the order and says so on screen. Specified later.
-- **`AMBIENT.md` is unbuilt** — the ambient-desktop design. Never started.
+- **`AMBIENT.md` is partly built now.** #1 the reference picker (Meta+Shift+L),
+  #2 the context record (the KWin script fills it) and #3 the ambient panel
+  (Glance follows the focus signal while it is open) are done. #4, workspace
+  binding, is skipped — nobody here works in workspaces. #5, background
+  inference, is not started.
+
+  Worth knowing where this platform beat the design: AMBIENT asks for a panel
+  "redrawn on the context signal rather than on a timer", and the Mac cannot do
+  it — `GlanceView.startFollowing` polls every four seconds because "nothing on
+  this machine emits a 'the focused document changed' event". KWin emits one.
 - **Canvas leftovers, all cosmetic.** No gesture adds a *second* picture to a
   node that already has one (the chooser and the sweep both handle several; only
   loading and converting ever make them). The PNG export is a bitmap of the

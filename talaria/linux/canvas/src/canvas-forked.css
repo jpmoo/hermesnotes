@@ -14,6 +14,13 @@
  * canvas drew itself in the browser's defaults with `--postit`, `--surface` and
  * `--accent` all empty.
  *
+ * A third pass added the furniture the canvas's menus and dialogs are made of —
+ * `menu`, `menu-item`, `menu-sep`, the `modal-*` set, `field`. They are not
+ * canvas classes, so no `cv-` sweep would ever find them, and the two that are
+ * single words could not match a pattern shaped like a hyphenated class either.
+ * Every popover on the canvas was therefore unstyled: right-clicking a node or a
+ * connector opened a stack of naked buttons.
+ *
  * **Taken by selector, whole.** A first pass kept only the rules whose classes
  * appeared as string literals in the built bundle, which sounded careful and
  * dropped seventy of them — every class the component builds by concatenation,
@@ -153,10 +160,106 @@ body,
   margin: 0;
 }
 
+.review-linkpick .seg {
+  display: flex;
+  gap: 4px;
+}
+
+.review-linkpick .seg-btn {
+  flex: 1;
+  padding: 5px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.review-linkpick .seg-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.review-linkmenu .menu-item {
+  border-radius: 6px;
+}
+
+.graph-depth .seg {
+  padding: 2px 7px;
+  font-size: 12px;
+}
+
 .graph-zoom .icon-btn {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  min-width: 196px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-lift);
+  padding: 4px;
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.menu-item:hover {
+  background: var(--surface-2);
+}
+
+.swatch-preview {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  /* checkerboard so transparency is visible */
+  background-image: linear-gradient(45deg, #ccc 25%, transparent 25%),
+    linear-gradient(-45deg, #ccc 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ccc 75%),
+    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+  background-size: 10px 10px;
+  background-position: 0 0, 0 5px, 5px -5px, -5px 0;
+}
+
+.swatch-btn.small {
+  width: 26px;
+  height: 26px;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
 }
 
 .icon-btn {
@@ -177,6 +280,24 @@ body,
 .icon-btn:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+
+.field {
+  margin-bottom: 18px;
+}
+
+label.field,
+div.field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+label.field > span,
+div.field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
 }
 
 button.ghost {
@@ -246,6 +367,161 @@ input.typed-title:focus {
 /* Text/url fields take the full row rather than tiling. */
 .typed-field.full {
   grid-column: 1 / -1;
+}
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.swatch-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.field-row .f-key {
+  width: 130px;
+}
+
+.field-row .f-label {
+  width: 130px;
+}
+
+.field-row .f-type {
+  width: 120px;
+}
+
+.field-row .f-options {
+  flex: 1;
+  min-width: 140px;
+}
+
+.menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 2px;
+}
+
+.seg {
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: capitalize;
+  padding: 7px 12px;
+  border-radius: 0;
+}
+
+.seg + .seg {
+  border-left: 1px solid var(--border);
+}
+
+.seg:not(:disabled):hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.seg.active {
+  background: #eef4f6;
+  color: var(--accent-ink);
+}
+
+/* A segment carrying a glyph rather than a word sits tighter and centers it. */
+.seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+}
+
+/* Where you are, said by disabling the way there — so it reads as a position
+   rather than as a button grayed out for some reason of its own. */
+.seg.active:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+/* ── Modal ────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(30, 32, 35, 0.4);
+  animation: modalFade 0.12s ease;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 384px;
+  /* Never taller than the viewport — scroll inside instead of off the page. */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.2);
+  padding: 22px 22px 18px;
+  animation: modalPop 0.14s ease;
+}
+
+.modal-title {
+  font-family: var(--font-chrome);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  position: sticky;
+  top: -22px;
+  background: var(--surface);
+  margin: -22px -22px 8px;
+  padding: 22px 22px 10px;
+  z-index: 1;
+}
+
+.modal-message {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+/* Banner chooser: wider than a confirm dialog, since it shows a gallery. */
+.modal-card.banner-picker {
+  max-width: 680px;
+}
+
+/* Choosing the days a piece of text should land on. */
+.modal-card.send-days {
+  max-width: 340px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  /* Keep the action buttons in view while a tall modal body scrolls. */
+  position: sticky;
+  bottom: -18px;
+  background: var(--surface);
+  padding: 12px 0 18px;
+  margin-bottom: -18px;
+  box-shadow: 0 -8px 8px -8px rgba(0, 0, 0, 0.12);
 }
 
 /* ── Markdown text block ──────────────────────────────────────── */
@@ -595,9 +871,37 @@ input.typed-title:focus {
   color: var(--text-muted);
 }
 
+/* Expanded-note modal is wider than a form modal. */
+.modal-card.block-modal {
+  max-width: 680px;
+}
+
 .info-nav .icon-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.recents-menu .menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-nav .menu {
+  left: 0;
+  right: auto;
+}
+
+.menu-item.active {
+  background: var(--surface-2);
+}
+
+.global-search .menu {
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 /* ── Long-text field (paragraph markdown editor) ──────────────── */
@@ -654,6 +958,25 @@ input.typed-title:focus {
   padding: 2px 0;
 }
 
+/* Variant: a body text field (mirrors the default input look). */
+.mention-input.field-text {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
+  font-size: 13.5px;
+}
+
+.mention-input.field-text:focus-within {
+  border-color: var(--accent);
+}
+
+/* Red TEXT, not the filled danger button: reusing .danger here turned the row
+   into a solid red bar with unreadable text. */
+.menu-item.menu-danger {
+  color: var(--danger);
+}
+
 .info-actions .icon-btn {
   width: 26px;
   height: 26px;
@@ -665,6 +988,14 @@ input.typed-title:focus {
 .info-actions .icon-btn:hover {
   background: transparent;
   color: var(--accent-ink);
+}
+
+.tv-cell .field-text,
+.tv-title {
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  width: 100%;
 }
 
 .tv-truncate .tv-cell .longtext {
@@ -1051,16 +1382,8 @@ input.typed-title:focus {
    no part in layout, and is not something anybody can set from the menu.
 
    Offset out, so it reads as a mark around the note rather than as its edge. */
-/* **Talaria draws no such mark**, and that is the parity call rather than an
-   oversight. On Hermes a note is ephemeral *relative to* the real blocks around
-   it, and saying so is useful. On this canvas both are items in the same
-   document — the Mac tells them apart in a tooltip ("Make this a block in
-   Hermes Notes" against "Open in Hermes Notes") and nowhere else, so a node
-   with no outline of its own is words on the canvas, exactly as it is there.
-   The rule is kept, disabled, because the reasoning above it is worth reading
-   the next time somebody wonders where the mark went. */
 .cv-node.cv-note {
-  outline: none;
+  outline: 2px dashed color-mix(in srgb, var(--border-strong) 75%, transparent);
   outline-offset: 3px;
   border-radius: 3px;
 }
@@ -1440,9 +1763,58 @@ input.cv-add-input {
   font-size: 12px;
 }
 
+.search-modal-results .menu-item {
+  width: 100%;
+}
+
 .cal-find .icon-btn {
   width: 22px;
   height: 22px;
+}
+
+.feed-diag .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* An editable field whose value is a URL: input plus a click-through. */
+.field-with-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field-with-link > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Both selectors on purpose: a field label rule (`label.field > span`) is more
+   specific than a lone class, and it was forcing this span to display:block —
+   which stacked the input, rocker and units instead of keeping them in a row. */
+.num-field,
+.field > .num-field {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  /* One line even in a narrow panel or masonry column: the input is only as wide
+     as a few digits need, and a long unit label ellipsises rather than wrapping
+     the rocker onto its own row. */
+  flex-wrap: nowrap;
+}
+
+.field-open {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: var(--text-muted);
+}
+
+.field-open:hover {
+  color: var(--accent);
 }
 
 .mobile-bar .icon-btn {
@@ -1478,8 +1850,25 @@ input.cv-add-input {
   color: #fff;
 }
 
+.day-nav-reset .seg:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.day-nav-reset .seg:disabled {
+  opacity: 0.45;
+}
+
 .typed-head .head-banner-add {
   margin-left: auto;
+}
+
+.app-shell.mobile .sort-bar .segmented .seg {
+  flex: 1;
+  white-space: nowrap;
+  padding: 10px 8px;
+  font-size: 13px;
+  text-align: center;
 }
 
 .app-shell.mobile .sort-bar .icon-btn {
@@ -1687,6 +2076,15 @@ body:has(.embed-scratchpad) #root {
   cursor: grabbing;
 }
 
+/* A menu row that carries an icon has to lay it beside the words rather than
+   above them: `.menu-item` is `display: block`, which stacks an svg and a span.
+   Scoped to the rows that opt in, so every other menu in the app is untouched. */
+.menu-item.menu-item-icon {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* A node showing its picture instead of its fields. Contained rather than
    cropped: the node is the size somebody dragged it to, and a photograph that
    filled it by cropping would decide for them which half of the picture
@@ -1796,4 +2194,35 @@ body:has(.embed-scratchpad) #root {
   top: 0;
   pointer-events: none;
   overflow: visible;
+}
+
+/* A choice inside a confirmation. Reads as part of the dialog's own prose
+   rather than as a stray form control: the message is 13px muted text, and a
+   checkbox label at the page's base size and color looked like it had been
+   pasted in from somewhere else. */
+.modal-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -8px 0 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.modal-choice input[type="checkbox"] {
+  /* Line the box up with the first line of text, not the middle of the block. */
+  margin: 2px 0 0;
+  flex: none;
+}
+
+/* A heading inside a menu — "Convert to…" over the list of types. Not a button:
+   nothing happens if you click it, and it should not look as though it might. */
+.menu-label {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
 }

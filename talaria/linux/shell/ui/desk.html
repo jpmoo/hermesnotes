@@ -128,15 +128,43 @@ document.getElementById("next").onclick = () => slide(at + 1);
  */
 let travelled = 0;
 let settle;
+/*
+ * One gesture, one page turn — and then nothing until the fingers stop.
+ *
+ * A trackpad flick keeps sending deltas for a few hundred milliseconds after
+ * the fingers have lifted; that is momentum, and it is a tail on the gesture
+ * rather than a new one. Zeroing the tally and carrying on meant the tail
+ * immediately spent another ninety pixels and the desk skipped a second
+ * surface: one flick, two pages, which reads as a hair trigger.
+ *
+ * So a turn locks the rail until a quiet moment. Every further event, momentum
+ * included, refreshes the wait rather than counting toward anything.
+ */
+let spent = false;
+
+/*
+ * How far is a decision.
+ *
+ * The Mac's ninety points are ninety points of *finger*: `scrollingDeltaX` on a
+ * trackpad is roughly what the hand travelled. A browser's `deltaX` is not the
+ * same unit — Chromium scales and batches it, and the same swipe arrives here
+ * several times larger — so ninety was a flick of nothing. A fifth of the way
+ * across the surface is the same *gesture* rather than the same number, and it
+ * scales with the screen it is drawn on.
+ */
+const commitment = () => Math.max(220, innerWidth * 0.2);
+
 function swipeBy(dx, dy) {
-  if (Math.abs(dx) <= Math.abs(dy) * 1.6 || Math.abs(dx) <= 1) return;
-  travelled += dx;
+  if (Math.abs(dx) <= Math.abs(dy) * 1.6 || Math.abs(dx) <= 2) return;
   clearTimeout(settle);
-  if (Math.abs(travelled) > 90) {
+  settle = setTimeout(() => { travelled = 0; spent = false; }, 350);
+  if (spent) return;
+  travelled += dx;
+  if (Math.abs(travelled) > commitment()) {
     slide(at + (travelled > 0 ? 1 : -1));
     travelled = 0;
+    spent = true;
   }
-  settle = setTimeout(() => { travelled = 0; }, 350);
 }
 
 addEventListener("wheel", (e) => swipeBy(e.deltaX, e.deltaY), { passive: true });

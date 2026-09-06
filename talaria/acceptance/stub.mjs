@@ -1,6 +1,19 @@
 /**
- * A stand-in for Hermes: just enough of the API for the daemon to be exercised
- * against, and — crucially — something that can be killed mid-scenario.
+ * A stand-in for a producer: just enough for the daemon to be exercised against,
+ * and — crucially — something that can be killed mid-scenario.
+ *
+ * **It speaks pkm-interchange**, which is what the daemon speaks. It once
+ * answered Hermes' private routes — `/sync/blocks`, `/sync/changes`, `/blocks` —
+ * and the daemon moved onto the binding without it, so every step of the
+ * scenario that reads or writes through the format printed "this producer does
+ * not implement GET /interchange" and the run carried on to its cheerful "done".
+ * The old routes are kept below because nothing is served by removing them, but
+ * the interchange ones are the ones under test.
+ *
+ * It is deliberately *not* Hermes. A stub that answered the way Hermes does
+ * would prove the daemon works against Hermes; the question this scenario asks
+ * is whether it works against a producer, and the difference is the whole point
+ * of the format.
  */
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
@@ -29,6 +42,51 @@ const types = [
   { id: TEXT_TYPE, name: "text", isText: true, builtin: true, propertySchema: null },
 ];
 
+/** One block, as the format says it. */
+function asObject(b) {
+  return {
+    id: b.id,
+    type: b.blockTypeId ?? undefined,
+    properties: b.properties ?? {},
+    ...(b.content != null ? { content: b.content } : {}),
+    tags: b.tags ?? [],
+    archived: Boolean(b.archivedAt),
+    created: b.createdAt,
+    updated: b.updatedAt,
+    version: b.version,
+    url: `http://127.0.0.1:58080/block/${b.id}`,
+  };
+}
+
+/**
+ * One type, as the format says it — fields and profiles rather than a schema.
+ *
+ * The profiles are the point: they are how a consumer knows which field holds a
+ * title, which holds a body, and what "done" means here, without knowing
+ * anything about this producer. A stub that skipped them would be testing a
+ * consumer against a producer it already understood.
+ */
+function asType(t) {
+  const fields = (t.propertySchema?.fields ?? []).map((f) => ({
+    key: f.key,
+    label: f.key === "title" ? "Title" : f.key[0].toUpperCase() + f.key.slice(1),
+    kind: { text: "text", longtext: "richtext", datespan: "datespan", status: "enum" }[f.type] ?? "text",
+    ...(f.options ? { options: f.options } : {}),
+  }));
+  const profiles = {};
+  if (t.propertySchema?.status_field) {
+    profiles.task = {
+      title: "title",
+      due: { field: "schedule", part: "end" },
+      status: t.propertySchema.status_field,
+      completeValues: t.propertySchema.complete_values ?? ["done"],
+    };
+  }
+  if (t.isText) profiles.note = { body: "content" };
+  else profiles.note = { title: "title", body: "description" };
+  return { id: t.id, name: t.name, fields, profiles };
+}
+
 function log(op, id, version) {
   state.changes.push({ seq: ++state.seq, blockId: id, op, version: version ?? null, at: new Date().toISOString() });
 }
@@ -55,13 +113,104 @@ const json = (res, code, body) => {
 };
 
 createServer((req, res) => {
-  if (req.headers.authorization !== `Bearer ${KEY}`) return json(res, 401, { error: "unauthorized" });
   const url = new URL(req.url, "http://x");
+  // `/conformance` is unauthenticated on purpose — see the route below.
+  if (!url.pathname.replace(/^\/api/, "").startsWith("/conformance")
+      && req.headers.authorization !== `Bearer ${KEY}`) {
+    return json(res, 401, { error: "unauthorized" });
+  }
   const p = url.pathname.replace(/^\/api/, "");
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
     const parsed = body ? JSON.parse(body) : undefined;
+
+    /* ---------------------------------------------------------- interchange */
+
+    // Unauthenticated by design: a 401 here would say nothing about the network,
+    // and the daemon uses this to answer "is the far end there".
+    if (p === "/conformance") {
+      return json(res, 200, {
+        format: "pkm-interchange/0",
+        producer: { name: "acceptance-stub", version: "1.0.0" },
+        conformance: {
+          produce: 2, consume: 1, operate: 1,
+          bindings: ["http"],
+          profiles: ["task", "note"],
+          features: ["cursor"],
+          unsupported: ["attachments", "series", "relations"],
+        },
+      });
+    }
+
+    if (p === "/interchange" && req.method === "GET") {
+      // `since` is this producer's own cursor and nothing else — the daemon
+      // never parses it, which is what lets it be a sequence number here.
+      const since = url.searchParams.get("since");
+      const q = (url.searchParams.get("q") ?? "").toLowerCase();
+      const all = [...state.blocks.values()];
+      const moved = since === null
+        ? all
+        : all.filter((b) => {
+            const at = state.changes.filter((c) => c.blockId === b.id).pop();
+            return at ? at.seq > Number(since) : false;
+          });
+      const found = q
+        ? moved.filter((b) =>
+            JSON.stringify(b.properties ?? {}).toLowerCase().includes(q) ||
+            (b.content ?? "").toLowerCase().includes(q))
+        : moved;
+      return json(res, 200, {
+        format: "pkm-interchange/0",
+        cursor: String(state.seq),
+        producer: { name: "acceptance-stub", version: "1.0.0" },
+        conformance: { produce: 2, consume: 1, operate: 1, bindings: ["http"], profiles: ["task", "note"] },
+        types: types.map(asType),
+        objects: found.map(asObject),
+        collections: [],
+      });
+    }
+
+    const object = p.match(/^\/interchange\/objects\/([0-9a-fA-F-]{36})$/);
+
+    if (object && req.method === "PUT") {
+      /*
+       * Idempotent by the id, which is the property the whole offline story
+       * rests on: the daemon decides an id before it writes, so a create that
+       * was sent twice — because the answer went missing, not because anybody
+       * asked twice — is recognizably the same create.
+       *
+       * `created: false` is how that is said. Inferring it from a version number
+       * is what the daemon used to do and what its own comment calls wrong.
+       */
+      const already = state.blocks.get(object[1]);
+      if (already) return json(res, 200, { ok: true, created: false, object: asObject(already) });
+      const typeId = parsed?.type ?? TEXT_TYPE;
+      const isText = types.find((t) => t.id === typeId)?.isText ?? false;
+      const made = mk({
+        id: object[1], typeId,
+        content: isText ? (parsed?.content ?? "") : (parsed?.content ?? null),
+        properties: isText ? {} : (parsed?.properties ?? {}),
+      });
+      return json(res, 201, { ok: true, created: true, object: asObject(made) });
+    }
+
+    if (object && req.method === "PATCH") {
+      const b = state.blocks.get(object[1]);
+      if (!b) return json(res, 404, { ok: false, error: "no such object" });
+      // A version that has moved on is a conflict, not a silent overwrite.
+      if (parsed?.version !== undefined && parsed.version !== b.version) {
+        return json(res, 409, { ok: false, conflict: true, object: asObject(b) });
+      }
+      if (parsed?.content !== undefined) b.content = parsed.content;
+      if (parsed?.properties !== undefined) b.properties = { ...b.properties, ...parsed.properties };
+      b.version += 1;
+      b.updatedAt = new Date().toISOString();
+      log("update", b.id, b.version); save();
+      return json(res, 200, { ok: true, cursor: String(state.seq), object: asObject(b) });
+    }
+
+    /* --------------------------------------------- the producer's own routes */
 
     if (p === "/block-types") return json(res, 200, types);
 

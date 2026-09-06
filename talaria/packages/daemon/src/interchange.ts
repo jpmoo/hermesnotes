@@ -11,8 +11,11 @@
  * otherwise. Those still use the Hermes client, and that is the honest split.
  */
 
-export class OfflineError extends Error {}
-export class GoneError extends Error {}
+import { GoneError, OfflineError } from "./errors.js";
+
+// Re-exported, because callers have always imported them from here and there is
+// no reason for a move to be their problem.
+export { GoneError, OfflineError };
 
 export interface Conformance {
   produce?: number;

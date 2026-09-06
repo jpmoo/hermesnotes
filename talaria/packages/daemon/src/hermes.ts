@@ -1,5 +1,8 @@
 import type { Config } from "./config.js";
 
+import { OfflineError } from "./errors.js";
+export { OfflineError };
+
 /** Hermes said no, and this is what it said. */
 export class HermesError extends Error {
   constructor(
@@ -11,7 +14,7 @@ export class HermesError extends Error {
 }
 
 /** The network isn't there. Distinct from Hermes answering with a refusal. */
-export class OfflineError extends Error {}
+
 
 export interface SyncBlockRow {
   id: string;

@@ -203,10 +203,41 @@ It should come back byte-identical.
 
 ---
 
+## 11. Two `OfflineError` classes, and no offline creates — **fixed**
+
+Found by making #7's acceptance scenario work, which is exactly what it was
+for.
+
+`hermes.ts` and `interchange.ts` each defined `export class OfflineError extends
+Error {}`. `server.ts` imported the one from `hermes.js` and caught it around a
+write that goes through the *binding* — so `err instanceof OfflineError` was
+false, and an offline create fell past the queue into a 500. The daemon's whole
+offline story ("this is queued and will go out on reconnect") was broken for
+creates, and had been since the write path moved onto the binding.
+
+It read as a network error rather than as a bug, because both classes carry the
+same message: `fetch failed`. The CLI said `talaria: Internal Server Error` and
+nothing was logged.
+
+One class now, in `errors.ts`, imported and re-exported by both. An error used
+to decide control flow across modules cannot be a per-module definition.
+
+**On the Mac too.** The daemon is shared; this was not a Linux fault and is not
+a Linux fix.
+
+---
+
 ## 7. Still to do
 
 - **The remaining drift in #5.**
-- **`talaria/acceptance/run.sh` has been passing vacuously.** Its stub producer
+- ~~**`talaria/acceptance/run.sh` has been passing vacuously.**~~ **Fixed.** The
+  stub speaks pkm-interchange now — `GET /conformance`, `GET /interchange` with
+  a cursor, `PUT`/`PATCH /interchange/objects/:id` — and translates its own
+  blocks into objects and types with profiles, because a stub that answered the
+  way Hermes does would only prove the daemon works against Hermes. The runner
+  checks every claim the scenario makes and exits non-zero when one fails; ten
+  checks, and it found the bug in #11 on its first honest run.
+- **The old text of the acceptance item, for the record:** `run.sh` Its stub producer
   answers Hermes' old private routes and not `GET /interchange`, so steps 3 and 6
   print "this producer does not implement GET /interchange" and step 8 — the
   replayed-create check, which is the whole point of the scenario — dies on

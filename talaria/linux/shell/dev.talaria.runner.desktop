@@ -1,0 +1,24 @@
+# How KDE finds the runner in `krunner.py`.
+#
+# Installed to ~/.local/share/krunner/dbusplugins/. KRunner reads this directory
+# once at startup, so a fresh install needs `kquitapp6 krunner` before the
+# results appear — the install script says so.
+#
+# `X-Plasma-Request-Actions-Once` is what lets a match name its own actions: the
+# alternative is one list of actions for every result, and "Copy a link to it"
+# under a row offering to create something is worse than no actions at all.
+
+[Desktop Entry]
+Name=Hermes Notes
+Comment=Tasks, notes and everything else in your library
+Icon=talaria-symbolic
+Type=Service
+X-KDE-ServiceTypes=Plasma/Runner
+X-KDE-PluginInfo-Name=talaria
+X-KDE-PluginInfo-Author=Talaria
+X-KDE-PluginInfo-License=MIT
+X-Plasma-API=DBus
+X-Plasma-DBusRunner-Service=dev.talaria.Runner
+X-Plasma-DBusRunner-Path=/runner
+X-Plasma-Request-Actions-Once=true
+X-Plasma-Runner-Syntaxes=:q:,hn :q:,note :q:,task :q:

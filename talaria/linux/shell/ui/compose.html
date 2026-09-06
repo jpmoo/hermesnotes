@@ -14,6 +14,20 @@ const host = document.getElementById("form");
 let types = [];
 
 /*
+ * What was selected when the panel was summoned, if anything.
+ *
+ * The shell reads it before this window exists — a panel is the front window
+ * from the moment it appears, so a selection asked for afterwards is this
+ * panel's own — and hands it down through `composeWith`, the same arrangement
+ * Glance uses and for the same reason.
+ *
+ * Kept rather than consumed, because it is re-applied when the type changes:
+ * choosing a different type after the text arrived should not throw the text
+ * away, and the fields are rebuilt from scratch on every change.
+ */
+let seed = null;
+
+/*
  * Fields are drawn from the type, never from its name.
  *
  * The repo's first invariant, and this is the surface most likely to break it:
@@ -177,7 +191,54 @@ function fields(typeId) {
     widget.dataset.kind = field.kind;
     box.appendChild(widget);
   }
+  sow();
 }
+
+/*
+ * The selection, laid into the fields this type happens to have.
+ *
+ * The split is the one `/capture` makes and the one a person makes by hand: the
+ * first line is what the thing is called, and the whole of it is what it says.
+ * The body keeps the first line too — a note whose text begins one line below
+ * its own opening sentence reads as though something was lost.
+ *
+ * Which field is which is asked of the type, never of a name: the body is
+ * whichever field the type declares as rich text, and the title is the key the
+ * format reserves. A type with neither takes nothing, and says so.
+ */
+function sow() {
+  if (!seed) return;
+  const box = document.getElementById("fields");
+  const body = box.querySelector('[data-kind="richtext"]');
+  const title = box.querySelector('[data-key="title"]');
+  const first = (seed.split("\n").find((line) => line.trim()) || "").trim();
+
+  if (body) body.value = seed;
+  if (title) title.value = first.slice(0, 500);
+
+  const said = document.getElementById("said");
+  if (said) {
+    said.className = "note";
+    if (!body && !title) {
+      said.textContent = "Nothing on this type takes text — pick another and it will fill itself in.";
+    } else if (!body && seed.trim() !== first) {
+      // Honest about what did not fit rather than quietly truncating. The rest
+      // is still on the clipboard, and another type would hold it.
+      said.textContent = "Only the first line fits this type — it has nowhere to put a body.";
+    } else {
+      said.textContent = "Filled in from what you had selected.";
+    }
+  }
+  // Where somebody would put the cursor themselves: the title, to check the
+  // line that was chosen for it.
+  (title || body)?.focus();
+}
+
+/** Called by the shell after the panel is summoned. */
+window.composeWith = (text) => {
+  seed = typeof text === "string" && text.trim() ? text : null;
+  if (seed) sow();
+};
 
 async function create(typeId, go) {
   const said = document.getElementById("said");
@@ -211,6 +272,9 @@ async function create(typeId, go) {
     // and this panel has been told one.
     const made = await post("/write", { kind: "create", blockTypeId: typeId, content, properties });
     said.textContent = `Created “${properties.title || content.slice(0, 40)}”.`;
+    // Used. A type change after this should give an empty form, not the text
+    // that has already been written down once.
+    seed = null;
     for (const widget of document.querySelectorAll("#fields [data-key]")) {
       if (widget.chosen) { widget.chosen = []; widget.querySelector(".chips").replaceChildren(); }
       else widget.value = "";

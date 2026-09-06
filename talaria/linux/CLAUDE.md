@@ -186,8 +186,10 @@ was a second toolkit's idea of a tray icon. Needs
 | `settings.py` | every field the Mac panel edits, plus model discovery. |
 | `probe.py` | `/api/tags`, filtered by capability. A port of `Probe`. |
 | `shortcuts.py` | hotkeys, through the portal. |
+| `krunner.py` | the library in KDE's search box — the entrance you reach by typing on the desktop. `org.kde.krunner1` on a GLib thread, answered out of the daemon; `dev.talaria.runner.desktop` is how Plasma finds it, and `install.sh` puts it in place on a Plasma session. |
 | `ui/` | the pages. `board.html` renders all six collection kinds; `desk.html` is the full-screen surface, with the canvas and a writing surface either side of it. |
 | `ui/notefield.js` · `ui/mentions.js` | the long-text editor — every block rendered except the one the caret is in, with `@`/`#`/`|` pickers. Used by the desk's Today pane *and*, imported at runtime, by canvas notes. |
+| `ui/compose.html` | New Block. Summoned with something selected, it arrives filled in — the first line as the title, the whole selection as the body, laid into whichever fields the *type* declares. `toggle` reads before it shows the panel, the order Glance keeps and for the same reason. |
 | `export.py` | a canvas to a PNG or a PDF. Opens the page off-screen with `?export=1` and photographs it, because a page cannot render itself to a PDF or ask where to put a file. |
 | `frontmost.py` · `blindlist.py` · `glance.py` | who is in front, what must not be read, and the ladder. |
 | `../canvas/` | the canvas fork. Built with vite into `shell/ui/canvas/`. |
@@ -381,7 +383,20 @@ Named rather than implied, in the order they cost something.
   (Glance follows the focus signal while it is open) are done. #4, workspace
   binding, is skipped — nobody here works in workspaces. #5, background
   inference, is done: `packages/daemon/src/propose.ts`, a queue at
-  `GET /proposals`, and Meta+Shift+I to read it.
+  `GET /proposals`, and Meta+Shift+I to read it — waiting and dismissed on two
+  tabs, because a dismissal is kept rather than deleted and "no" is a decision
+  worth being able to take back.
+
+  Its Alfred line — "one more search entrance; already fed by `talaria alfred`;
+  nothing new required" — has a counterpart here in `shell/krunner.py`. Two
+  things had to be decided that Alfred never asks. **An unprefixed query sees
+  only titles**: the daemon searches full text, which is right where somebody
+  has already said which haystack they mean, and wrong in a box full of
+  applications and files where a title with no visible relation to what was
+  typed reads as a broken runner. `hn` is how you ask for the rest. And **forty
+  are fetched to keep ten**, because ranking by full text buries the block
+  *named* the word below any short limit — `q=learning` did not return the note
+  called "Learning" in the first ten.
 
   Worth knowing where this platform beat the design: AMBIENT asks for a panel
   "redrawn on the context signal rather than on a timer", and the Mac cannot do

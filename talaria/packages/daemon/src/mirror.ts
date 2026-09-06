@@ -752,12 +752,31 @@ export class Mirror {
     return true;
   }
 
-  proposals(limit = 50): Proposal[] {
+  proposals(limit = 50, dismissed = false): Proposal[] {
+    // Two different questions, and the ordering differs with them: what is
+    // waiting reads newest-first, and what was dismissed reads by *when it was
+    // dismissed*, because that is the order somebody remembers saying no in.
     return this.db
       .prepare(
-        `SELECT * FROM proposals WHERE dismissed IS NULL ORDER BY made DESC LIMIT ?`,
+        dismissed
+          ? `SELECT * FROM proposals WHERE dismissed IS NOT NULL ORDER BY dismissed DESC LIMIT ?`
+          : `SELECT * FROM proposals WHERE dismissed IS NULL ORDER BY made DESC LIMIT ?`,
       )
       .all(limit) as unknown as Proposal[];
+  }
+
+  /**
+   * Take a dismissal back.
+   *
+   * The whole reason dismissals are kept rather than deleted: saying no is a
+   * decision, and a decision you cannot look at again is a decision you have to
+   * be sure about at the moment you make it. Nobody is.
+   */
+  restoreProposal(id: string): boolean {
+    const out = this.db
+      .prepare("UPDATE proposals SET dismissed = NULL WHERE id = ? AND dismissed IS NOT NULL")
+      .run(id);
+    return Number(out.changes) > 0;
   }
 
   /** How many are waiting, for a badge and for the budget. */

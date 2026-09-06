@@ -336,8 +336,19 @@ export function buildServer(deps: {
    * that already exist.
    */
   app.get("/proposals", async (req) => {
-    const q = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }).parse(req.query);
-    const rows = mirror.proposals(q.limit ?? 50);
+    const q = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        /**
+         * The ones already said no to — kept, and reviewable.
+         *
+         * Spelled out rather than `z.coerce.boolean()`, which reads "0" as true
+         * along with every other non-empty string.
+         */
+        dismissed: z.enum(["0", "1", "true", "false"]).optional(),
+      })
+      .parse(req.query);
+    const rows = mirror.proposals(q.limit ?? 50, q.dismissed === "1" || q.dismissed === "true");
     return envelope(
       rows.map((p) => {
         // The block it is about, so a queue can be read without a second call
@@ -356,6 +367,13 @@ export function buildServer(deps: {
   app.post("/proposals/:id/dismiss", async (req, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     if (!mirror.dismissProposal(id)) return reply.code(404).send({ error: "no such proposal" });
+    return { ok: true, waiting: mirror.proposalCount() };
+  });
+
+  /** Said no by mistake, or changed your mind. */
+  app.post("/proposals/:id/restore", async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    if (!mirror.restoreProposal(id)) return reply.code(404).send({ error: "not a dismissed proposal" });
     return { ok: true, waiting: mirror.proposalCount() };
   });
 

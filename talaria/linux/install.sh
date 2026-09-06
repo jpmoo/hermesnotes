@@ -96,5 +96,31 @@ if ! curl -sf --max-time 2 --unix-socket "$SOCK" http://talaria/health >/dev/nul
   exit 1
 fi
 
+# --- KDE's search box -------------------------------------------------------
+#
+# One file, naming a D-Bus service the shell answers on. Installed only on a
+# Plasma session, because on anything else it is a file nothing will ever read.
+#
+# Unlike the autostart entry — which `dev.talaria.shell.desktop.in` deliberately
+# leaves to the person whose desktop it is — this changes nothing until Talaria
+# is running and somebody types something. It goes in.
+if [ "${XDG_CURRENT_DESKTOP:-}" = "KDE" ] || [ -n "${KDE_FULL_SESSION:-}" ]; then
+  RUNNERS="${XDG_DATA_HOME:-$HOME/.local/share}/krunner/dbusplugins"
+  ICONS="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+  mkdir -p "$RUNNERS" "$ICONS"
+  cp "$ROOT/linux/shell/dev.talaria.runner.desktop" "$RUNNERS/"
+  # So the result row carries a mark rather than a blank square. Same file the
+  # tray uses; the theme wants it under a name it can look up.
+  cp "$ROOT/linux/shell/icons/talaria-symbolic.svg" "$ICONS/"
+  echo "==> KRunner: installed $RUNNERS/dev.talaria.runner.desktop"
+  # KRunner reads that directory once, at startup. It comes straight back.
+  if command -v kquitapp6 >/dev/null 2>&1; then
+    kquitapp6 krunner >/dev/null 2>&1 || true
+    echo "    (restarted krunner so it picks the plugin up)"
+  else
+    echo "    (run 'kquitapp6 krunner' once, or log out, before it appears)"
+  fi
+fi
+
 echo "==> Up. Checking:"
 exec "$ROOT/bin/talaria" doctor

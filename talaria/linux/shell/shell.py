@@ -28,6 +28,7 @@ import daemon
 import glance
 import scheme
 from frontmost import Frontmost
+from krunner import Runner
 from shortcuts import Shortcuts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -379,6 +380,16 @@ class Shell(QObject):
         self.shortcuts.settled.connect(self._report_shortcuts)
         self.shortcuts.start(rebind="--rebind" in sys.argv)
 
+        # The other entrance: KDE's search box, which is reached by typing on
+        # the desktop and does not need a hotkey of ours at all. Queued for the
+        # same reason as the shortcuts — it answers on a GLib thread, and
+        # opening a window is the main thread's.
+        self.krunner = Runner()
+        self.krunner.open_url.connect(self._open_from_runner, Qt.ConnectionType.QueuedConnection)
+        self.krunner.put.connect(self._put_from_runner, Qt.ConnectionType.QueuedConnection)
+        self.krunner.said.connect(self._note, Qt.ConnectionType.QueuedConnection)
+        self.krunner.start()
+
 
     def _listen(self) -> None:
         """Somewhere for `--toggle` to land."""
@@ -529,6 +540,14 @@ class Shell(QObject):
             self._ask_our_own(self._summon_glance)
             return
 
+        # Same order, same reason. A new block made out of what you were reading
+        # is the other half of Glance — one asks the library about the selection
+        # and the other puts the selection *in* the library — so the reading has
+        # to happen before this panel becomes the front window.
+        if action == "compose":
+            self._ask_our_own(self._summon_compose)
+            return
+
         # What was in front a moment ago, kept before this panel becomes the
         # front window itself. The picker needs it to choose a link's shape, and
         # asking after it is open answers "Talaria" — the trap `link.ts`
@@ -551,6 +570,41 @@ class Shell(QObject):
 
             told = _json.dumps(was_in_front)
             panel.view.page().runJavaScript(f"window.pickFor && window.pickFor({told})")
+
+    # --------------------------------------------------------------- krunner
+
+    def _open_from_runner(self, url: str) -> None:
+        """
+        A result was chosen in KDE's search box.
+
+        Through `_opened` rather than around it, so a block lands in the Hermes
+        window and somebody's website lands in a browser — the same split every
+        other surface here gets, decided in one place. `"krunner"` names no
+        panel of ours, which is exactly right: there is nothing of ours on
+        screen to step out of the way.
+        """
+        self._opened(QUrl(url), "krunner")
+
+    def _note(self, title: str, body: str) -> None:
+        """
+        A word from the search box, where there is no window to put one in.
+
+        The tray rather than `_complain`'s dialog: by the time this fires
+        KRunner has closed and nothing of ours is on screen, and a modal that
+        appears over whatever you turned to next has to be dismissed before you
+        can carry on. Neither of the two things it says is worth that.
+        """
+        self.tray.showMessage(title, body, self._icon(), 4000)
+
+    @staticmethod
+    def _put_from_runner(text: str, paste: bool) -> None:
+        """A rendered link, onto the clipboard and optionally into the window."""
+        if paste:
+            scheme._insert(text)
+            return
+        board = QApplication.instance().clipboard()
+        if board is not None:
+            board.setText(text)
 
     # --------------------------------------------------------------- ambient
 
@@ -690,6 +744,52 @@ class Shell(QObject):
             self.panels["glance"] = panel
         panel.summon()
         self._glance(panel, reading)
+
+    #: Rungs that found text somebody *chose*. A window title or the whole of a
+    #: focused field is a fine thing to tell Glance about and a bad thing to put
+    #: in a new block: neither was selected, and one of them is a filename.
+    CHOSEN = {"accessibility", "synthetic copy", "primary selection"}
+
+    def _summon_compose(self, found, from_key) -> None:
+        """
+        New Block, with what you were looking at already in it.
+
+        The panel first and the text after, which is the reverse of Glance's
+        order and is not an inconsistency: Glance's panel *is* the reading, so
+        showing it before it has one would show an empty window. This one is a
+        form that stands on its own, and the text is an improvement to it.
+        """
+        text = None
+        if isinstance(found, dict) and str(found.get("text") or "").strip():
+            # Our own window, and only when something was actually selected in
+            # it — "everything showing in the desk" is not a block.
+            if found.get("how") == "selected":
+                text = str(found["text"])
+        else:
+            reading = glance.read(
+                self.frontmost.current,
+                allow_copy=True,
+                changed_at=self.frontmost.selection.changed_at,
+                focused_at=self.frontmost.focused_at,
+            )
+            if reading.usable and reading.rung in self.CHOSEN:
+                text = reading.text
+
+        panel = self.panels.get("compose")
+        if panel is None:
+            panel = self._build("compose")
+            if panel is None:
+                return
+            self.panels["compose"] = panel
+        panel.summon()
+        if text:
+            import json
+
+            # Through `runJavaScript` rather than a URL, for the reason `_glance`
+            # gives: the argument is the user's selected text.
+            panel.view.page().runJavaScript(
+                f"window.composeWith && window.composeWith({json.dumps(text)})"
+            )
 
     def _glance(self, panel: Panel, reading, relay: bool = False) -> None:
         """

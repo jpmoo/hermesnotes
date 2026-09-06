@@ -208,9 +208,11 @@ class Panel(QWidget):
             # the palette unless told otherwise, and that fill is square.
             self.setStyleSheet("background: transparent;")
             self.view_is_panel = True
-            # `hidesOnDeactivate = false` on the Mac, and the same intent here:
-            # stepping into another window to read something must not take the
-            # panel away, because reading something else is usually the point.
+            #: Whether losing focus dismisses it — see `event`. Every floating
+            #: panel does; the desk is the one that does not, and it is not a
+            #: property of *looking* like a panel, which is why it is its own
+            #: flag rather than another reading of `view_is_panel`.
+            self.dismisses = True
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         #: Asked for once, after the first show — see `_frost`.
         self._frosted = False
@@ -276,7 +278,7 @@ class Panel(QWidget):
 
         if (
             e.type() == QEvent.Type.WindowDeactivate
-            and getattr(self, "view_is_panel", False)
+            and getattr(self, "dismisses", False)
             and self.isVisible()
         ):
             # Deferred: a deactivation arrives while a menu or a file dialog of
@@ -286,8 +288,25 @@ class Panel(QWidget):
         return super().event(e)
 
     def _hide_if_still_inactive(self) -> None:
-        if not self.isActiveWindow():
-            self.hide()
+        """
+        Gone, unless what took the focus was also ours.
+
+        "Somebody looked elsewhere" has to mean *out of Talaria*. Over the desk
+        it did not: summoning Ask put it above the desk, the desk stayed the
+        active window — a panel that is not granted focus is the ordinary case
+        on Wayland — and this hid the panel a moment later. The desk survived
+        and the thing summoned onto it did not, which is the same bug as the
+        one before it seen from the other side.
+
+        `activeWindow()` is our own application's, so it is None exactly when
+        the focus has gone to somebody else's window, which is the question
+        being asked.
+        """
+        if self.isActiveWindow():
+            return
+        if QApplication.activeWindow() is not None:
+            return
+        self.hide()
 
     def _frost(self) -> None:
         """
@@ -887,6 +906,18 @@ class Shell(QObject):
                           QSize(screen.width(), screen.height()),
                           route=lambda url, a=action: self._opened(url, a))
             panel.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+            # **And it does not go away when something else takes focus.**
+            #
+            # The desk looks like a panel — frameless, translucent, drawing its
+            # own frosted sheet — so it is built as one, and inherited the rule
+            # that a summoned thing dismisses itself when you look elsewhere.
+            # That rule is right for Glance and wrong here, and the wrongness
+            # was invisible: pressing the Glance key over the desk summoned
+            # Glance, Glance took focus, and the desk underneath it vanished. A
+            # KWin probe found exactly one Talaria window in the stack at any
+            # moment, which is not what "the desk is a surface you put things
+            # on" means.
+            panel.dismisses = False
             return panel
 
         size = {

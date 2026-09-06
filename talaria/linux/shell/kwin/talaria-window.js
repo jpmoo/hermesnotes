@@ -108,15 +108,38 @@ var SIZES = {
 // and the title is what actually separates them.
 var NOT_A_PANEL = "Talaria — Hermes Notes";
 
+// The surface the panels are summoned *over*.
+//
+// It is sized and placed by the shell, so it takes no geometry from here — but
+// it does need saying which side of the others it is on.
+var DESK = "Talaria — Desk";
+
 function place(window) {
   if (!window || String(window.resourceClass) !== OURS) return;
   if (String(window.caption) === NOT_A_PANEL) return;
 
   // The usable area, which excludes the panel — a window placed against the
   // literal screen edge would sit underneath it.
+  // **Keep-above is decided here, because a Wayland client cannot ask for it.**
+  //
+  // `Qt.WindowStaysOnTopHint` is set on every panel and does nothing: a KWin
+  // probe found `keepAbove=false` on all of them. Wayland has no protocol for a
+  // window to raise itself out of its layer, which is the same reason placement
+  // and sizing had to move into this file. So the flag is honoured here, where
+  // it is a property KWin owns.
+  //
+  // The desk is the exception and is named rather than inferred: it is a
+  // full-screen surface the panels are summoned over, and a desk that kept
+  // itself above them would be the whole arrangement upside down.
+  if (String(window.caption) === DESK) {
+    window.keepAbove = false;
+    return;
+  }
+
   var area = workspace.clientArea(KWin.MaximizeArea, window);
   var size = SIZES[String(window.caption)];
   if (!size) return;   // a Talaria window nobody has given a size — leave it be
+  window.keepAbove = true;
 
   // Nine positions, written by the shell into `__PLACEMENT__` from
   // `glancePlacement` in config.json. A script cannot read that file, so the

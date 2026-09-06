@@ -218,6 +218,29 @@ that bindings live in the portal's store rather than System Settings;
 
 ### Things that cost an hour here, so they do not cost another
 
+- **The desk was a panel, and panels dismiss themselves.** Summoning Glance over
+  the desk made the desk vanish: `_build` constructs it with `floating=True`
+  like everything else — frameless, translucent, drawing its own frosted sheet —
+  and inherited the rule that a summoned thing goes away when you look
+  elsewhere. A KWin probe found exactly one Talaria window in the stack at any
+  moment, which is not what "the desk is a surface you put things on" means.
+  Dismissal is its own flag now (`Panel.dismisses`), because it is not the same
+  question as whether something *looks* like a panel — `view_is_panel` still
+  governs the frosting and the appearance.
+- **"Looked elsewhere" has to mean out of Talaria.** With the desk staying put,
+  the panel summoned onto it hid instead: a Wayland client is usually not
+  granted focus when it asks, so the desk remained the active window and the
+  panel read that as being dismissed. `_hide_if_still_inactive` now asks
+  `QApplication.activeWindow()`, which is None exactly when the focus has gone
+  to somebody else's window.
+- **`WindowStaysOnTopHint` does nothing on Wayland.** It is set on every panel
+  and the probe read `keepAbove=false` on all of them — there is no protocol for
+  a client to raise itself out of its layer, the same reason placement and
+  sizing already live in `kwin/talaria-window.js`. So the flag is honoured
+  there, where it is a property KWin owns: panels get `keepAbove`, and the desk
+  is named and excluded, because a desk that kept itself above the things
+  summoned onto it would be the arrangement upside down.
+
 - **A runner without `X-KDE-PluginInfo-EnabledByDefault=true` is installed and
   switched off.** KRunner reads the plugin file, lists it in its settings, and
   never calls it — indistinguishable from a runner whose D-Bus service is

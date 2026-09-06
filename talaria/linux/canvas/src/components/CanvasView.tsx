@@ -2422,29 +2422,38 @@ export function CanvasView({
     const toSide = sideToward(tr, aim);
     const a = anchor(fr, fromSide);
     const b = anchor(tr, toSide);
-    const ext = 46;
-    /**
-     * The bend, solved backwards so the curve passes through the handle.
+    /*
+     * One curve, through a control point on the line between the anchors.
      *
-     * A cubic at its halfway mark sits at (a + 3·c1 + 3·c2 + b)/8. Shifting
-     * both control points by δ therefore moves that point by ¾δ — so to move
-     * the middle of the line by exactly the bend somebody dragged, the controls
-     * move by four thirds of it. Putting the bend straight on the controls
-     * would leave the line lagging behind the grip, which reads as the drag not
-     * quite working.
+     * Hermes pushes each control point out along its own side's normal, which
+     * makes every connector leave and arrive square-on — a flowchart look, and
+     * a good one when a canvas is a diagram of boxes. The Mac does not: its
+     * control is "the midpoint of the two *anchors*, plus twice the bend", so a
+     * link nobody has bent is a straight line between two points on two edges,
+     * and the arrowhead lands at the angle the line actually travelled.
+     *
+     * That is the difference somebody sees. A node up and to the right used to
+     * be met by an arrow pointing straight up, because the curve was bent
+     * vertical in its last few pixels to arrive perpendicular to the edge it
+     * touched. Now it points up and to the right, at the thing it came from.
+     *
+     * Twice the bend, and the reason is the same arithmetic Hermes was doing at
+     * four thirds for a cubic: a quadratic at its halfway mark sits at
+     * `(a + 2c + b) / 4`, so a control at `midpoint + 2·bend` puts the middle of
+     * the line at `midpoint + bend` — exactly where the grip was dragged to.
      */
-    const push = 4 / 3;
-    const bx = (e.bendX ?? 0) * push;
-    const by = (e.bendY ?? 0) * push;
-    const c1 = { x: a.x + OUT[fromSide].x * ext + bx, y: a.y + OUT[fromSide].y * ext + by };
-    const c2 = { x: b.x + OUT[toSide].x * ext + bx, y: b.y + OUT[toSide].y * ext + by };
+    const bx = e.bendX ?? 0;
+    const by = e.bendY ?? 0;
+    const control = { x: (a.x + b.x) / 2 + 2 * bx, y: (a.y + b.y) / 2 + 2 * by };
     return {
-      d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`,
-      // The real halfway point rather than an approximation of it, because the
-      // grip is drawn here and a grip beside its line is a grip you miss.
-      mid: { x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8, y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8 },
+      d: `M ${a.x} ${a.y} Q ${control.x} ${control.y}, ${b.x} ${b.y}`,
+      // The curve's own halfway point, which for this construction is the
+      // anchors' midpoint plus the bend — the Mac's `handle`, and the one place
+      // the grip can sit without being beside its line.
+      mid: { x: (a.x + b.x) / 2 + bx, y: (a.y + b.y) / 2 + by },
     };
   };
+
   const dashOf = (e: CanvasEdge) => (e.dash === "dashed" ? "9 6" : e.dash === "dotted" ? "2 6" : undefined);
 
   /**

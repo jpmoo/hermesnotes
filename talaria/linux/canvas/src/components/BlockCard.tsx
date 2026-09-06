@@ -57,9 +57,38 @@ export function BlockCard({
   const done = status === "done";
 
   return (
-    <div className={"tal-node" + (done ? " tal-done" : "")}>
+    <div
+      className={"tal-node" + (done ? " tal-done" : "")}
+      /*
+       * Double-click opens the block in Hermes Notes.
+       *
+       * On the whole card rather than on its title: the node *is* the block as
+       * far as this canvas is concerned, and a target the size of one line of
+       * text is a target you miss. A single click still selects and drags —
+       * this is the second click, which on a node that cannot be edited is free
+       * to mean something else.
+       */
+      title={url ? "Double-click to open in Hermes Notes" : undefined}
+      onDoubleClick={() => {
+        if (url) window.location.href = url;
+      }}
+    >
       <div className="tal-head">
-        {completable && (
+        {/*
+          * The box, or the icon — never both.
+          *
+          * For anything that can be finished, the box *is* the type indicator:
+          * it says what kind of thing this is by the fact that it can be ticked,
+          * and it says where the thing has got to, which an icon cannot. Putting
+          * a circle-with-a-check beside a checkbox is the same fact drawn twice.
+          *
+          * And it is a control rather than a picture. "A checkbox that shows the
+          * state and cannot change it is a worse checkbox than none" — the Mac's
+          * words, and the one interaction a linked node keeps: completing
+          * something is not editing it. Everything else about the block belongs
+          * to Hermes Notes.
+          */}
+        {completable ? (
           <input
             type="checkbox"
             checked={done}
@@ -80,15 +109,13 @@ export function BlockCard({
               }
             }}
           />
+        ) : (
+          /* `iconKey`, which is what it takes. Passing the type object left it
+           * undefined, so every linked node wore the fallback file glyph and
+           * looked like the same kind of thing as every other. */
+          type && <BlockIcon iconKey={type.iconKey} color={type.iconColor} size={14} />
         )}
-        {type && <BlockIcon type={type} />}
-        <span
-          className="tal-title"
-          title={block.content ?? ""}
-          onDoubleClick={() => {
-            if (url) window.location.href = url;
-          }}
-        >
+        <span className="tal-title">
           {block.content || "Untitled"}
         </span>
       </div>

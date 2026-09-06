@@ -271,7 +271,8 @@ textarea {
   box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
 }
 .tools .tool { width: 32px; height: 32px; }
-.tools .tool-shape { width: 18px; height: 32px; }
+/* Wide enough for what is in it. */
+.tools .tool-shape { width: 22px; height: 32px; color: var(--muted, inherit); }
 .tools .tool:hover, .tools .tool-shape:hover, .tools .tool-shape.open {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
@@ -294,3 +295,54 @@ textarea {
 }
 .tools .tool:disabled { opacity: .4; cursor: default; }
 .tools .tool:disabled:hover { background: var(--surface); }
+
+/* --- Which nodes wear the dashed mark, and which do not --------------------
+ *
+ * Reversed from Hermes, and the reason is what each canvas is *for*. There, a
+ * canvas is a view of a collection: the blocks belong on it and an ephemeral
+ * note is the odd one out, so the note is what gets marked. Here the canvas is
+ * a surface of its own — notes are simply what it is made of — and the node
+ * that deserves a second look is the one standing for something in the library,
+ * because that one is a reference to a thing living somewhere else.
+ *
+ * `:not(.cv-note)` is exactly the linked ones: a node comes either from the
+ * notes on this document or from a member standing for a block, and only the
+ * first wears `cv-note`.
+ *
+ * **This lives here rather than in `canvas-forked.css`**, which is generated
+ * from Hermes' stylesheet. The same rule was edited there once and vanished the
+ * next time the extraction ran.
+ */
+.cv-node.cv-note {
+  outline: none;
+}
+.cv-node:not(.cv-note) {
+  outline: 2px dashed color-mix(in srgb, var(--border-strong) 70%, transparent);
+  outline-offset: 3px;
+}
+/* Selected still says selected: the mark is about what a node *is*, and has no
+ * business arguing with what is happening to it. */
+.cv-node:not(.cv-note).cv-sel {
+  outline-color: var(--accent);
+}
+
+/*
+ * A linked node is a reference, not a document.
+ *
+ * Its words belong to a block in Hermes Notes and are edited there — this canvas
+ * only says where the thing sits and what it is next to. So nothing about it
+ * invites a caret: no text cursor, no drag-select, no editable field (there is
+ * none to begin with — the card is a title, an icon and a box).
+ *
+ * The one exception is the box, because completing something is not editing it:
+ * the type says whether it can be finished and the daemon carries the write. A
+ * checkbox that shows a state and cannot change it is a worse checkbox than
+ * none.
+ */
+.tal-node {
+  user-select: none;
+  cursor: default;
+}
+.tal-node input[type="checkbox"] {
+  cursor: pointer;
+}

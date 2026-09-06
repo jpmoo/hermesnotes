@@ -16,7 +16,7 @@
  * having to know anything else about the surface it sits on.
  */
 import { useEffect, useRef, useState } from "react";
-import { FileText, Image as ImageIcon, Search, Square, Type } from "lucide-react";
+import { ChevronDown, FileText, Image as ImageIcon, Search, Type } from "lucide-react";
 import { ask, document_ } from "../api.ts";
 import { putDocument, type CanvasItem } from "../document.ts";
 
@@ -182,12 +182,20 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
       <div className="tool-row">
         {tool("text", `Drag onto the canvas — ${SHAPES.find((s) => s.key === shape)?.name}`, <Type size={15} />,
           () => { /* the drag does the work; a bare click opens the shapes */ setShapesOpen((o) => !o); })}
+        {/*
+          * The shape this tool will drop, and a way to change it.
+          *
+          * It was a square icon in an eighteen-pixel slot, which read as a
+          * button someone had cut in half. A chevron says "there is a list here"
+          * without pretending to be one of the shapes, and the shape itself is
+          * named in the text tool's own tooltip where there is room for a word.
+          */}
         <button
           className={`tool-shape${shapesOpen ? " open" : ""}`}
-          title="What shape a new node is"
+          title={`New nodes are ${SHAPES.find((s) => s.key === shape)?.name ?? shape}`}
           onClick={() => setShapesOpen((o) => !o)}
         >
-          <Square size={11} />
+          <ChevronDown size={12} />
         </button>
       </div>
       {shapesOpen && (

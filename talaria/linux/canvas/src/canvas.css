@@ -390,6 +390,11 @@ textarea {
 .cv-node[data-shape="ellipse"] .cv-body {
   padding-left: 12%;
   padding-right: 12%;
+  /* Down the box as well as across it. `justify-content` alone left the label
+   * at the top, where an ellipse is narrowest and where it had to be inset
+   * hardest to fit; in the middle it has the whole width of the shape. */
+  padding-top: 12%;
+  padding-bottom: 12%;
   justify-content: center;
   text-align: center;
 }

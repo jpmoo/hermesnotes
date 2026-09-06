@@ -35,6 +35,23 @@ MAJOR="$("$NODE" -p 'process.versions.node.split(".")[0]')"
 
 TSX="$ROOT/packages/daemon/node_modules/tsx/dist/cli.mjs"
 [ -f "$TSX" ] || { echo "!! no tsx at $TSX — run 'pnpm install' at the repo root first"; exit 1; }
+
+# The canvas is a build, and a build that nothing runs is a build that goes
+# stale. Its output is committed — a fresh clone has a working canvas without a
+# toolchain — but the moment somebody edits `canvas/src` the two disagree, and
+# the disagreement is invisible: the old bundle loads perfectly well.
+#
+# Built here, before anything is installed or started, which is this script's own
+# rule: "nothing here is installed or started until the things that can fail have
+# been tried."
+CANVAS_BUILD="$ROOT/linux/canvas/node_modules/.bin/vite"
+if [ -x "$CANVAS_BUILD" ]; then
+  echo "-- building the canvas"
+  ( cd "$ROOT/linux/canvas" && "$CANVAS_BUILD" build >/dev/null ) \
+    || { echo "!! the canvas would not build"; exit 1; }
+else
+  echo "-- no vite in linux/canvas; leaving the committed canvas bundle as it is"
+fi
 [ -f "$ROOT/packages/daemon/src/index.ts" ] || { echo "!! no daemon at $ROOT"; exit 1; }
 
 echo "==> node:  $NODE (v$("$NODE" -p 'process.versions.node'))"

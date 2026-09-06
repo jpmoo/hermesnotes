@@ -2121,6 +2121,50 @@ export function CanvasView({
       .catch(() => {});
   };
 
+  /**
+   * Another picture on a node that already has one.
+   *
+   * The chooser and the daemon's sweep have both understood several pictures per
+   * node from the start — `image` is which one is showing, `images` is what there
+   * is — but nothing made the second one. Loading a saved canvas could, and
+   * converting a note could; a person could not.
+   *
+   * The file goes the same way every other picture does: resized, kept beside the
+   * document, named on the item. Adding one does not change which is showing —
+   * that is what the chooser is for, and a node that swapped its face because you
+   * added an alternative would be answering a question nobody asked.
+   */
+  const addPictureTo = (id: string) => {
+    const pick = document.createElement("input");
+    pick.type = "file";
+    pick.accept = "image/*";
+    pick.onchange = async () => {
+      const file = pick.files?.[0];
+      if (!file) return;
+      let kept: { name: string; w: number; h: number };
+      try {
+        kept = await keepResized(file);
+      } catch (err) {
+        window.alert(String((err as Error).message || err));
+        return;
+      }
+      if (id.startsWith("n:")) {
+        saveNotes(
+          notes.map((n) =>
+            n.id === id ? { ...n, images: [...(n.images ?? (n.imageName ? [n.imageName] : [])), kept.name] } : n,
+          ),
+        );
+        return;
+      }
+      const r = rectOf(id) as NodeCtx | null;
+      if (!r) return;
+      const ctx = { ...r, images: [...(r.images ?? (r.imageName ? [r.imageName] : [])), kept.name] };
+      setLocal((p) => ({ ...p, [id]: ctx }));
+      persistMemberCtx(id, ctx);
+    };
+    pick.click();
+  };
+
   /** Which of a node's pictures is the one you see. */
   const choosePicture = (id: string, name: string) => {
     const r = rectOf(id) as NodeCtx | null;
@@ -3401,6 +3445,16 @@ export function CanvasView({
                   >
                     <ImageIcon size={14} />
                     <span>{showing ? "Show text instead of the picture" : "Show the picture instead of text"}</span>
+                  </button>
+                  <button
+                    className="menu-item menu-item-icon"
+                    onClick={() => {
+                      addPictureTo(nodeMenu.id);
+                      setNodeMenu(null);
+                    }}
+                  >
+                    <ImageIcon size={14} />
+                    <span>Add a picture…</span>
                   </button>
                   {all.length > 1 && (
                     <>

@@ -1,9 +1,15 @@
 # Talaria on Linux
 
-Orientation for a coding agent picking this up on a KDE desktop. **Steps 1, 3
-and most of 4 are done; step 2 (the canvas fork) and step 5 (Glance) are not.**
-The daemon runs under systemd, a tray shell holds four panels, and hotkeys come
-through the shortcuts portal. The canvas is still read-only.
+Orientation for a coding agent picking this up on a KDE desktop. **All five
+steps below are done.** The daemon runs under systemd; a tray shell holds six
+panels and a full-screen desk; hotkeys come through the shortcuts portal; the
+canvas is a fork of Hermes' own, editable, with its own tool strip and chat; and
+Glance reads the focused window through six of its seven rungs.
+
+What is *not* done is listed at the end, under **Still open**. The largest is not
+a Linux problem at all: the format cannot carry an attachment's bytes, so a
+picture converted into a block stays on the canvas. That is written up in
+`../../pkm-interchange/LIMITS.md`.
 
 Read `../../CLAUDE.md` first (the repo's own orientation), then `../DESIGN.md`
 for what Talaria is and why. This file covers only what changes when the
@@ -44,19 +50,25 @@ needs the step after it to be worth having.
 1. ~~**Get the daemon running.**~~ **Done.** `linux/install.sh` writes the user
    unit and finishes by asking `/health` over the socket. It was a handful of
    constants and one thing that was not — see *Making the daemon run here*.
-2. **Fork Hermes' canvas.** This is the first real piece of UI and the decision
-   is already made — see below. It is also the safest: the component is mature,
-   the adapter is the only new code, and Canvas Chat keeps working throughout
-   because `canvas.json` never changes.
+2. ~~**Fork Hermes' canvas.**~~ **Done** — `linux/canvas/`, a vite build whose
+   output is served from `shell/ui/canvas/`. The decision below held: the
+   component came across unedited in shape, and `src/api.ts` + `src/document.ts`
+   are the only place that knows both vocabularies. What needed real work was the
+   piece the plan named — a placed block is a title, an icon and a completion
+   box read from the mirror, not a live editor. **There is no web server**: the
+   scheme handler was always a file server, and a bundle is more files in it.
 3. ~~**A shell to hold it.**~~ **Done** — `shell/`, PySide6 on Qt 6. Tray item,
-   four panels, settings window, and the scheme handler the canvas will reuse
-   unchanged.
-4. **Compositor integration.** Hotkeys: **done**, through the portal — see the
-   warning below about the route not taken. Focused window and title from KWin:
-   **not done**, and it is what `context.ts` is waiting on.
-5. **Glance last, and prototype before building.** It is the hard part and the
-   only piece that might not reach parity. Everything above is worth having
-   whether or not it does.
+   six panels, a full-screen desk, settings window, and the scheme handler the
+   canvas now uses unchanged.
+4. ~~**Compositor integration.**~~ **Done.** Hotkeys through the portal — see the
+   warning below about the route not taken — and the focused window, its title
+   and its workspace pushed from a KWin script, which is what `context.ts` was
+   waiting on.
+5. ~~**Glance last, and prototype before building.**~~ **Done**, and the
+   prototyping was the right call — what the rungs actually returned is in the
+   table below, and it changed the order they are tried in. Six of the seven are
+   built; rung 5, the browser extension, is not, and what it would buy is one
+   application rather than "the browser" — see the table.
 
 Do not start with Glance because it is the interesting problem. Starting there
 means weeks before anything runs.
@@ -174,7 +186,11 @@ was a second toolkit's idea of a tray icon. Needs
 | `settings.py` | every field the Mac panel edits, plus model discovery. |
 | `probe.py` | `/api/tags`, filtered by capability. A port of `Probe`. |
 | `shortcuts.py` | hotkeys, through the portal. |
-| `ui/` | the pages. `board.html` renders all six collection kinds. |
+| `ui/` | the pages. `board.html` renders all six collection kinds; `desk.html` is the full-screen surface, with the canvas and a writing surface either side of it. |
+| `ui/notefield.js` · `ui/mentions.js` | the long-text editor — every block rendered except the one the caret is in, with `@`/`#`/`|` pickers. Used by the desk's Today pane *and*, imported at runtime, by canvas notes. |
+| `export.py` | a canvas to a PNG or a PDF. Opens the page off-screen with `?export=1` and photographs it, because a page cannot render itself to a PDF or ask where to put a file. |
+| `frontmost.py` · `blindlist.py` · `glance.py` | who is in front, what must not be read, and the ladder. |
+| `../canvas/` | the canvas fork. Built with vite into `shell/ui/canvas/`. |
 
 **Never start the shell from inside another application** — not from an agent's
 shell, not from a terminal that is itself a child of something else. The portal
@@ -342,6 +358,31 @@ side effect.
   question correctly while the real page rendered at a fifth of life size, with
   invisible borders and drags multiplied by five. All three were one bug, and
   none of them were visible to the stub.
+
+## Still open
+
+Named rather than implied, in the order they cost something.
+
+- **An attachment cannot be carried through the format.** Its `attachment` value
+  is a file name and there is no channel for the bytes; Hermes' manifest declares
+  attachments unsupported besides. So a picture converted into a block stays on
+  the canvas, beside `canvas.json`, and is visible on that canvas and nowhere
+  else in the library. Written up as the open entry in
+  `../../pkm-interchange/LIMITS.md`, with the two shapes an answer could take.
+- **Glance rung 5 — the browser extension.** Everything else on the ladder is
+  built. What this buys is one application rather than "the browser": Google Docs
+  draws its document to a canvas, so the accessibility tree cannot see it and
+  highlighting sets no primary selection. Everything else a browser shows is
+  already covered by rung 3.
+- **The writing surface is a placeholder.** The third desk surface holds its
+  position in the order and says so on screen. Specified later.
+- **`AMBIENT.md` is unbuilt** — the ambient-desktop design. Never started.
+- **Canvas leftovers, all cosmetic.** No gesture adds a *second* picture to a
+  node that already has one (the chooser and the sweep both handle several; only
+  loading and converting ever make them). The PNG export is a bitmap of the
+  fitted canvas rather than vector art, because the drawing lives in a browser
+  and the Mac's route — walking the items and drawing them again — is not open to
+  it.
 
 ## House style
 

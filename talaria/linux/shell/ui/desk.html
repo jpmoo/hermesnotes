@@ -225,6 +225,31 @@ addEventListener("message", (e) => {
  * sheet — but the canvas is a frame with its own document and its own
  * background, so it is told.
  */
+/*
+ * The chrome comes up when the pointer nears the bottom of the screen.
+ *
+ * It used to sit at a quarter opacity all the time, which is a permanent mark on
+ * a surface whose whole point is that it is somebody's own. A band along the
+ * bottom is where a hand goes when it wants the pager anyway, and everywhere
+ * else it is out of the way entirely — the Mac's strip does the same thing and
+ * fades itself out again after a couple of seconds.
+ */
+const chromeEl = document.getElementById("chrome");
+let hideChrome;
+function showChrome(near) {
+  clearTimeout(hideChrome);
+  chromeEl.classList.toggle("near", near);
+  // Kept up for a moment after the pointer leaves, so it does not vanish from
+  // under a hand on its way to it.
+  if (!near) return;
+  hideChrome = setTimeout(() => chromeEl.classList.remove("near"), 2600);
+}
+addEventListener("pointermove", (e) => {
+  showChrome(e.clientY > innerHeight - 90);
+}, { passive: true });
+// Anything happening *in* the chrome keeps it up.
+chromeEl.addEventListener("pointerenter", () => showChrome(true));
+
 const frost = document.getElementById("frost");
 let seeThrough = true;
 try {

@@ -247,6 +247,54 @@ export async function keepResized(file: Blob): Promise<{ name: string; w: number
   return { name: await keep(fits), w, h };
 }
 
+/**
+ * A request whose answer arrives in pieces, with a way to give up on it.
+ *
+ * The canvas chat is a loop on a local model: it reads the canvas, adds
+ * something, looks again. Waiting for the whole turn means a panel that says
+ * "drawing…" for half a minute while nodes appear behind it, which reads as two
+ * unrelated things happening. Each step arrives as it finishes instead.
+ *
+ * `abort` is the stop button. Dropping the stream is what tells the daemon to
+ * stop the turn — there is nothing else it could mean.
+ */
+export function stream(
+  path: string,
+  body: unknown,
+  onEvent: (event: Record<string, unknown>) => void,
+): { done: Promise<void>; abort: () => void } {
+  const x = new XMLHttpRequest();
+  const done = new Promise<void>((resolve, reject) => {
+    x.open("POST", ORIGIN + path, true);
+    x.setRequestHeader("content-type", "application/json");
+    x.setRequestHeader("x-talaria-body", asHeader(body ?? {}));
+    x.setRequestHeader("x-talaria-stream", "1");
+    let read = 0;
+    const drain = () => {
+      const text = x.responseText;
+      const edge = text.lastIndexOf("\n\n");
+      if (edge < read) return;
+      for (const frame of text.slice(read, edge).split("\n\n")) {
+        const line = frame.split("\n").find((l) => l.startsWith("data:"));
+        if (!line) continue;
+        try {
+          onEvent(JSON.parse(line.slice(5).trim()));
+        } catch {
+          // A frame that is not JSON is not a frame; the rest is still worth
+          // reading.
+        }
+      }
+      read = edge + 2;
+    };
+    x.onprogress = drain;
+    x.onload = () => { drain(); resolve(); };
+    x.onabort = () => resolve();
+    x.onerror = () => reject(new Error("can't reach the daemon — is it running?"));
+    x.send(null);
+  });
+  return { done, abort: () => x.abort() };
+}
+
 /** Where a kept picture can be seen. */
 export const pictureAt = (name: string) => `${ORIGIN}/canvas/image/${encodeURIComponent(name)}`;
 

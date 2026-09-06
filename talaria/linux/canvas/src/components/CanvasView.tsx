@@ -1,4 +1,4 @@
-import { Grid2x2, GripHorizontal, Image as ImageIcon, Layers, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
+import { Grid2x2, GripHorizontal, Image as ImageIcon, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readableOn } from "../lib/display.ts";
@@ -373,25 +373,7 @@ export function CanvasView({
    * into, and having to turn the blur off again every time it opens is the sort
    * of small tax that makes a surface feel borrowed.
    */
-  const [seeThrough, setSeeThrough] = useState(() => {
-    try {
-      return localStorage.getItem("talaria.canvas.frost") !== "0";
-    } catch {
-      return true;
-    }
-  });
-  const toggleFrost = () => {
-    setSeeThrough((was) => {
-      const next = !was;
-      try {
-        localStorage.setItem("talaria.canvas.frost", next ? "1" : "0");
-      } catch { /* a private window still gets the toggle, just not the memory */ }
-      // The class goes on the root so the stylesheet can dress the whole page,
-      // not just the wrap — the surface *behind* the canvas is what changes.
-      document.documentElement.classList.toggle("solid", !next);
-      return next;
-    });
-  };
+  const [seeThrough, setSeeThrough] = useState(true);
   useEffect(() => {
     document.documentElement.classList.toggle("solid", !seeThrough);
   }, [seeThrough]);
@@ -897,6 +879,48 @@ export function CanvasView({
     setLocal({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.canvas_notes, props.canvas_edges, props.canvas_regions]);
+
+  /*
+   * Fit everything into the window — for a picture of the canvas.
+   *
+   * Only in export mode, and only there because the canvas has no zoom-to-fit
+   * of its own: on screen the view is wherever somebody left it, which is
+   * correct, and a photograph of "wherever somebody left it" is a photograph
+   * with half the drawing outside the frame. The shell sizes its off-screen
+   * window to the drawing and this puts the drawing in it.
+   *
+   * Re-run on resize, because the shell resizes *after* the first layout: it has
+   * to ask how big the drawing is before it can make a window that shape.
+   */
+  const exporting = typeof location !== "undefined" && new URLSearchParams(location.search).has("export");
+  useEffect(() => {
+    if (!exporting) return;
+    const fit = () => {
+      const boxes = [
+        ...notes.map((n) => ({ x: n.x, y: n.y, w: n.w, h: n.h })),
+        ...members.map((m) => local[m.id] ?? ctxOf(m)).filter((r): r is NodeCtx => r !== null),
+        ...regions.map((rg) => regionRect(rg)).filter((r): r is Rect => r !== null),
+      ];
+      if (!boxes.length) return;
+      const minX = Math.min(...boxes.map((b) => b.x));
+      const minY = Math.min(...boxes.map((b) => b.y));
+      const maxX = Math.max(...boxes.map((b) => b.x + b.w));
+      const maxY = Math.max(...boxes.map((b) => b.y + b.h));
+      const pad = 40;
+      const w = maxX - minX + pad * 2;
+      const h = maxY - minY + pad * 2;
+      const z = Math.min(1, Math.min(innerWidth / w, innerHeight / h));
+      setView({
+        z,
+        x: (innerWidth - w * z) / 2 - (minX - pad) * z,
+        y: (innerHeight - h * z) / 2 - (minY - pad) * z,
+      });
+    };
+    fit();
+    addEventListener("resize", fit);
+    return () => removeEventListener("resize", fit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exporting, notes, members, regions]);
 
   const rectsExcept = (ids: string[]): Rect[] => {
     const skip = new Set(ids);
@@ -1561,7 +1585,17 @@ export function CanvasView({
     if (e.target !== e.currentTarget) return;
     e.preventDefault(); // stop text-selection sweeps while panning/selecting
     dropCaret();
-    if (e.shiftKey && !locked) {
+    /*
+     * Shift, or the Select tool.
+     *
+     * Hermes marquees on shift-drag and pans otherwise, which is right for a
+     * mouse and awkward on a trackpad, where the hand is already doing two
+     * things. The Mac has a tool you arm instead — a mode, on until you turn it
+     * off — and this is that tool asking: the strip sets the flag on the root
+     * because it is a sibling of this component and not its parent.
+     */
+    const arming = document.documentElement.dataset.select === "on";
+    if ((e.shiftKey || arming) && !locked) {
       const p = toCanvas(e.clientX, e.clientY);
       setMarquee({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
       drag.current = { kind: "marquee" };
@@ -3232,16 +3266,11 @@ export function CanvasView({
         >
           <Grid2x2 size={14} />
         </button>
-        {/* Hidden on the desk: the desk's own chrome carries it there, for all
-          * three surfaces at once. */}
-        <button
-          hidden={window.parent !== window}
-          className={`icon-btn cv-frost-toggle${seeThrough ? " on" : ""}`}
-          title={seeThrough ? "Hide what is behind" : "Let the desktop show through"}
-          onClick={toggleFrost}
-        >
-          <Layers size={14} />
-        </button>
+        {/*
+          * **No frosting switch here.** It is one setting across the desk's three
+          * surfaces, so it lives in the chrome all three share — see `desk.html`.
+          * This canvas listens for it and does not offer a second way to set it.
+          */}
         <span className="cv-tb-sep" />
         <button className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.2, innerWidth / 2, innerHeight / 2)}>
           <Minus size={14} />

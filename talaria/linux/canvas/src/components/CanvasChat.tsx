@@ -22,8 +22,8 @@
  * the library.
  */
 import { useEffect, useRef, useState } from "react";
-import { MessageSquarePlus, X } from "lucide-react";
-import { ask } from "../api.ts";
+import { MessageSquarePlus, Square, X } from "lucide-react";
+import { stream } from "../api.ts";
 
 interface Step {
   tool: string;
@@ -61,30 +61,68 @@ export function CanvasChat({ onDrawn }: { onDrawn: () => void }) {
     if (open) field.current?.focus();
   }, [open]);
 
+  const running = useRef<{ abort: () => void } | null>(null);
+
   async function send() {
     const message = draft.trim();
     if (!message || busy) return;
     setDraft("");
     setTrouble(null);
-    // The history goes with it, so "make those ones circles" has a "those".
     const history = turns.map((t) => ({ role: t.mine ? "user" : "assistant", content: t.text }));
     setTurns((was) => [...was, { mine: true, text: message }]);
     setBusy(true);
+    /*
+     * Streamed, so the panel can say what it is doing.
+     *
+     * Each tool arrives as it finishes and is shown at once — the canvas is
+     * filling in behind this window while it happens, and a chat that says
+     * nothing until the end makes those look like two unrelated events. The
+     * canvas is re-read on every step for the same reason.
+     */
+    const steps: Step[] = [];
+    let said = "";
     try {
-      const turn = await ask<{ reply?: string; steps?: Step[] }>("POST", "/canvas/chat", {
-        message,
-        history,
+      const turn = stream("/canvas/chat/stream", { message, history }, (event) => {
+        if (event.type === "step" && event.step) {
+          steps.push(event.step as Step);
+          setTurns((was) => {
+            const next = [...was];
+            const last = next[next.length - 1];
+            if (last && !last.mine) next[next.length - 1] = { ...last, steps: [...steps] };
+            else next.push({ mine: false, text: "", steps: [...steps] });
+            return next;
+          });
+          onDrawn();
+        } else if (event.type === "done") {
+          said = String(event.reply ?? "");
+        } else if (event.type === "error") {
+          setTrouble(String(event.message ?? "the canvas chat failed"));
+        }
       });
-      setTurns((was) => [...was, { mine: false, text: turn.reply || "(nothing to say)", steps: turn.steps }]);
-      // It drew on the document, so the document is read again. Every tool it
-      // has writes `canvas.json`; nothing it does is visible until this.
+      running.current = turn;
+      await turn.done;
+      setTurns((was) => {
+        const next = [...was];
+        const last = next[next.length - 1];
+        const text = said || (steps.length ? "Done." : "(nothing to say)");
+        if (last && !last.mine) next[next.length - 1] = { ...last, text };
+        else next.push({ mine: false, text, steps });
+        return next;
+      });
       onDrawn();
     } catch (err) {
       setTrouble(String((err as Error).message || err));
     } finally {
+      running.current = null;
       setBusy(false);
       field.current?.focus();
     }
+  }
+
+  /** Give up on a turn. Dropping the stream is what stops it at the daemon. */
+  function stop() {
+    running.current?.abort();
+    running.current = null;
   }
 
   if (!open) {
@@ -142,7 +180,15 @@ export function CanvasChat({ onDrawn }: { onDrawn: () => void }) {
           </div>
         ))}
 
-        {busy && <div className="chat-busy">drawing…</div>}
+        {busy && (
+          <div className="chat-busy">
+            <span>drawing…</span>
+            <button className="chat-stop" onClick={stop} title="Stop this turn">
+              <Square size={9} />
+              <span>Stop</span>
+            </button>
+          </div>
+        )}
         {trouble && <div className="chat-trouble">{trouble}</div>}
       </div>
 

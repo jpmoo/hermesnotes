@@ -412,6 +412,16 @@ export async function runCanvasChat(opts: {
   mirror: Mirror;
   messages: { role: "user" | "assistant"; content: string }[];
   maxSteps?: number;
+  /**
+   * Each step as it finishes, and the reply when it lands.
+   *
+   * A drawing turn is a loop — read the canvas, add three nodes, group them —
+   * and the caller had no way to see any of it until the whole thing was over.
+   * On a local model that is tens of seconds of a panel saying "drawing…" while
+   * nodes appear behind it, which reads as two things happening rather than one.
+   */
+  onStep?: (step: Step) => void;
+  signal?: AbortSignal;
 }): Promise<Turn> {
   const registry = tools(opts.ix, opts.mirror);
   const byName = new Map(registry.map((t) => [t.name, t]));
@@ -423,10 +433,15 @@ export async function runCanvasChat(opts: {
   let lastText = "";
 
   for (let i = 0; i < maxSteps; i++) {
+    // Given up on, rather than run to the end for nobody. The reader dropping
+    // the stream is the signal — there is nothing else it could be, and a model
+    // drawing into a canvas nobody is watching is work asked for twice.
+    if (opts.signal?.aborted) return { reply: lastText, steps, stopped: true };
     const res = await fetch(`${opts.url.replace(/\/$/, "")}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ model: opts.model, messages, tools: declared, stream: false }),
+      signal: opts.signal,
     });
     if (!res.ok) throw new Error(`the model at ${opts.url} answered ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const json = (await res.json()) as { message?: Message };
@@ -457,7 +472,9 @@ export async function runCanvasChat(opts: {
           ok = false;
         }
       }
-      steps.push({ tool: name, result, ok });
+      const step = { tool: name, result, ok };
+      steps.push(step);
+      opts.onStep?.(step);
       messages.push({ role: "tool", content: result });
     }
   }

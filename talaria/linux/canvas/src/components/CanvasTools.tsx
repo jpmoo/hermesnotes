@@ -16,7 +16,7 @@
  * having to know anything else about the surface it sits on.
  */
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileText, Image as ImageIcon, Search, Type } from "lucide-react";
+import { ChevronDown, FileText, Image as ImageIcon, Search, SquareDashed, Type } from "lucide-react";
 import { ask, document_, keep, keepResized, pictureAt } from "../api.ts";
 import { putDocument, type CanvasItem } from "../document.ts";
 
@@ -59,6 +59,30 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<{ id: string; title: string; typeName?: string }[]>([]);
   const [dragging, setDragging] = useState<string | null>(null);
+  /*
+   * The Select tool: a mode rather than an action.
+   *
+   * The Mac calls it "a mode tool that is currently on" and leaves it on until
+   * it is turned off, which is what makes it worth having — arming it once and
+   * sweeping three groups is the gesture; a tool that disarmed itself after one
+   * would be a worse shift key.
+   *
+   * The flag lives on the root because the canvas is a sibling of this strip,
+   * not a child of it, and a dataset attribute is the one channel both can see
+   * without either owning the other.
+   */
+  const [selecting, setSelecting] = useState(false);
+  useEffect(() => {
+    if (selecting) window.document.documentElement.dataset.select = "on";
+    else delete window.document.documentElement.dataset.select;
+  }, [selecting]);
+  useEffect(() => {
+    const off = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelecting(false);
+    };
+    addEventListener("keydown", off);
+    return () => removeEventListener("keydown", off);
+  }, []);
   const loader = useRef<HTMLInputElement>(null);
   const picture = useRef<HTMLInputElement>(null);
 
@@ -140,6 +164,14 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
       // photograph has its own edges.
       shape: "plain", fill: null, strokeWidth: 0,
     });
+  }
+
+  /** Ask the shell for a picture of this canvas. */
+  function exportAs(kind: "png" | "pdf") {
+    setFileOpen(false);
+    // Fire and forget: the shell answers at once and does the work behind a file
+    // dialog, so nothing here waits on a modal window somebody is typing into.
+    void ask("GET", `/shell/export?kind=${kind}`).catch(() => {});
   }
 
   /** One kept picture, as base64 — the shape a saved canvas carries. */
@@ -301,6 +333,14 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
         </div>
       )}
 
+      <button
+        className={`tool${selecting ? " armed" : ""}`}
+        title={selecting ? "Selecting — drag to sweep, Escape to stop" : "Select: drag to sweep without holding Shift"}
+        onClick={() => setSelecting((on) => !on)}
+      >
+        <SquareDashed size={15} />
+      </button>
+
       {tool("image", "A picture on the canvas", <ImageIcon size={15} />, () => picture.current?.click())}
 
       {tool("file", "Save or load this canvas", <FileText size={15} />, () => {
@@ -311,6 +351,21 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
         <div className="tool-menu">
           <button className="menu-item" onClick={save}>Save…</button>
           <button className="menu-item" onClick={() => loader.current?.click()}>Load…</button>
+          <div className="menu-sep" />
+          {/*
+            * Exporting is the shell's job, not this page's.
+            *
+            * A page cannot render itself to a PDF, cannot take its own picture
+            * larger than its window, and cannot ask where to put a file. The
+            * shell can: it opens this same canvas off-screen with `?export=1`,
+            * sizes the window to the drawing and photographs it. So what comes
+            * out is what you are looking at, drawn by the same code — the Mac
+            * gets there by walking the items and drawing them again in Swift,
+            * which is the one route not open to a canvas that lives in a
+            * browser.
+            */}
+          <button className="menu-item" onClick={() => exportAs("png")}>Export PNG…</button>
+          <button className="menu-item" onClick={() => exportAs("pdf")}>Export PDF…</button>
         </div>
       )}
 

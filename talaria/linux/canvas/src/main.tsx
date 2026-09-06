@@ -72,8 +72,8 @@ function Canvas() {
           which is where the Mac puts them and for the reason it gives: the
           surface knows about items, links and regions, and neither of these is
           one of those. */}
-      <CanvasTools onPlaced={() => void read()} />
-      <CanvasChat onDrawn={() => void read()} />
+      {!forExport && <CanvasTools onPlaced={() => void read()} />}
+      {!forExport && <CanvasChat onDrawn={() => void read()} />}
     </>
   );
 }
@@ -118,6 +118,39 @@ class Boundary extends Component<{ children: ReactNode }, { failure: Error | nul
  * canvas painted itself solid inside a desk built to show through it.
  */
 if (window.parent !== window) document.documentElement.classList.add("framed");
+
+/*
+ * Export mode: the same canvas, with nothing on it that is not the drawing.
+ *
+ * The shell opens this page a second time, off-screen, to take its picture — so
+ * this is where the tool strip, the chat and the toolbar go away, and where the
+ * page says how big the drawing actually is. Everything about *how* the canvas
+ * looks is unchanged, which is the point: what comes out is what you were
+ * looking at, rendered by the same code at a different size.
+ */
+const forExport = new URLSearchParams(location.search).has("export");
+if (forExport) {
+  document.documentElement.classList.add("exporting");
+  /**
+   * The extent of the drawing, in document points.
+   *
+   * Read off the nodes rather than the layer, because the layer is a fixed span
+   * centred on the origin — the size of the *stage*, not of what is on it.
+   */
+  (window as unknown as { __exportSize: () => { w: number; h: number } }).__exportSize = () => {
+    const boxes = [...document.querySelectorAll<HTMLElement>(".cv-node, .cv-region")];
+    if (!boxes.length) return { w: 900, h: 600 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const el of boxes) {
+      const b = el.getBoundingClientRect();
+      minX = Math.min(minX, b.left);
+      minY = Math.min(minY, b.top);
+      maxX = Math.max(maxX, b.right);
+      maxY = Math.max(maxY, b.bottom);
+    }
+    return { w: Math.ceil(maxX - minX), h: Math.ceil(maxY - minY) };
+  };
+}
 
 createRoot(document.getElementById("canvas-root")!).render(
   <StrictMode>

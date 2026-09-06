@@ -25,7 +25,8 @@ import mimetypes
 import os
 import traceback
 
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QRunnable, Qt, QThreadPool, QUrl, Signal
+from PySide6.QtCore import (QBuffer, QByteArray, QIODevice, QObject, QRunnable, Qt, QThreadPool,
+                            QTimer, QUrl, Signal)
 import shiboken6
 from PySide6.QtWebEngineCore import QWebEngineUrlRequestJob, QWebEngineUrlScheme, QWebEngineUrlSchemeHandler
 
@@ -272,6 +273,17 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
         if url.hasQuery():
             path += "?" + url.query(fmt)
 
+        # Things only the shell can do, asked for by a page.
+        #
+        # A page cannot open a file dialog, render itself to a PDF, or take its
+        # own picture at a size larger than its window. The shell can do all
+        # three, and this scheme is the only channel between them — so `/shell/`
+        # is a small namespace of shell verbs, answered here and never reaching
+        # the daemon.
+        if path.startswith("/shell/"):
+            self._shell_verb(job, path)
+            return
+
         if path.startswith("/ui/") or path == "/":
             self._serve_file(job, "/ui/index.html" if path == "/" else path)
             return
@@ -449,8 +461,36 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
             return False
         return True
 
+    def _shell_verb(self, job: QWebEngineUrlRequestJob, path: str) -> None:
+        """
+        One of the shell's own verbs. Today: exporting a canvas.
+
+        Answered immediately rather than when the work finishes. The export puts
+        up a file dialog and renders a second view, which takes seconds and must
+        not be something the page is waiting on — a request held open across a
+        modal dialog is a page that looks frozen while somebody types a file
+        name.
+        """
+        what = path.split("?")[0].removeprefix("/shell/")
+        query = path.split("?", 1)[1] if "?" in path else ""
+        if what == "export":
+            kind = "pdf" if "kind=pdf" in query else "png"
+            import export
+
+            # On the main thread, because it makes windows. `requestStarted`
+            # already runs there; the timer is only so the reply below goes back
+            # before the dialog opens.
+            QTimer.singleShot(0, lambda: export.canvas(kind))
+            self._reply_bytes(job, b'{"ok":true}', "application/json")
+            return
+        self._reply_bytes(job, _error_json(f"the shell has no verb called {what}"), "application/json")
+
     def _serve_file(self, job: QWebEngineUrlRequestJob, path: str) -> None:
-        rel = path[len("/ui/"):]
+        # Without the query. A page may be asked for with one — the export view
+        # opens the canvas as `index.html?export=1` — and a file whose name has
+        # `?export=1` on the end of it does not exist, which arrives as a page
+        # that simply fails to load with nothing to say why.
+        rel = path.split("?", 1)[0][len("/ui/"):]
         # The name is checked rather than trusted, the same way the daemon checks
         # an image name. These files are ours, but a page is a place where a
         # string becomes a path and `../../.ssh/id_rsa` is a file name until

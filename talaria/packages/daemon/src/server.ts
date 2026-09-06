@@ -1620,6 +1620,61 @@ export function buildServer(deps: {
   });
 
   /**
+   * The same turn, streamed — and stoppable.
+   *
+   * A drawing turn is a loop, and on a local model it is a slow one. This sends
+   * each step as it finishes, so the panel can say what it is doing while the
+   * canvas fills in behind it, and stops when the reader goes away: the same
+   * arrangement `/assistant/stream` has, for the same reason.
+   */
+  app.post("/canvas/chat/stream", async (req, reply) => {
+    const body = z
+      .object({
+        message: z.string().min(1).max(20_000),
+        history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).default([]),
+      })
+      .parse(req.body);
+    reply.hijack();
+    const res = reply.raw;
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    });
+    const send = (event: unknown) => {
+      if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    const stop = new AbortController();
+    let finished = false;
+    res.on("close", () => {
+      if (!finished) stop.abort();
+    });
+
+    try {
+      if (!config.inferenceModel) {
+        throw new Error("No chat model set. Choose a tool-capable one (llama3.1, qwen2.5) in Settings → Chat.");
+      }
+      const { runCanvasChat } = await import("./canvasagent.js");
+      const turn = await runCanvasChat({
+        url: config.inferenceUrl,
+        model: config.inferenceModel,
+        ix,
+        mirror,
+        messages: [...body.history, { role: "user" as const, content: body.message }],
+        onStep: (step) => send({ type: "step", step }),
+        signal: stop.signal,
+      });
+      send({ type: "done", ...turn });
+    } catch (err) {
+      send({ type: "error", message: (err as Error).message });
+    } finally {
+      finished = true;
+      res.end();
+    }
+  });
+
+  /**
    * The canvas, and the page that draws it.
    *
    * The renderer is moving out of Swift and into a web view, for two reasons

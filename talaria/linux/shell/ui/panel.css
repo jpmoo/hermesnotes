@@ -572,9 +572,18 @@ html, body { background: transparent; }
   padding: 6px 10px; border-radius: 99px;
   background: color-mix(in srgb, CanvasText 10%, Canvas);
   border: 1px solid var(--line);
-  opacity: .25; transition: opacity .2s;
+  /* Out of the way until the pointer comes down to it — see `desk.html`. The
+   * transform keeps it from catching the eye on the way in. */
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+  pointer-events: none;
+  transition: opacity .18s, transform .18s;
 }
-.chrome:hover { opacity: 1; }
+.chrome.near, .chrome:hover {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
 .chrome .step {
   background: none; border: 0; color: inherit; cursor: pointer;
   font-size: 17px; line-height: 1; padding: 0 4px;

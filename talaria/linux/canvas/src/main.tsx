@@ -9,6 +9,7 @@
 import { Component, StrictMode, useCallback, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { CanvasView } from "./components/CanvasView.tsx";
+import { CanvasChat } from "./components/CanvasChat.tsx";
 import { api, flush, hold, type BlockType, type Collection, type Member } from "./api.ts";
 import { getDocument, getLinked, toCollection, toMembers } from "./document.ts";
 import "./canvas-forked.css";
@@ -59,12 +60,18 @@ function Canvas() {
   if (failure) return <div className="canvas-waiting">{failure}</div>;
   if (!state) return <div className="canvas-waiting">Reading the canvas…</div>;
   return (
-    <CanvasView
-      collection={state.collection}
-      members={state.members}
-      types={state.types}
-      onChanged={() => void read()}
-    />
+    <>
+      <CanvasView
+        collection={state.collection}
+        members={state.members}
+        types={state.types}
+        onChanged={() => void read()}
+      />
+      {/* Over the canvas rather than inside it, which is where the Mac puts it
+          and for the reason it gives: the surface knows about items, links and
+          regions, and chat is none of those. */}
+      <CanvasChat onDrawn={() => void read()} />
+    </>
   );
 }
 

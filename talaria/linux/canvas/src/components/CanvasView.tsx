@@ -834,6 +834,37 @@ export function CanvasView({
   };
 
 
+  /*
+   * The document can change while this is mounted, which it cannot in Hermes.
+   *
+   * There, the canvas is the only thing that writes a canvas: state is seeded
+   * from props once and every later change is one this component made. Talaria
+   * has a second writer — Canvas Chat edits `canvas.json` through the daemon —
+   * so a turn that adds three nodes updates the file, the page re-reads it, and
+   * without this the component carries on drawing the document it was born
+   * with. It looked exactly like the chat lying about what it had done.
+   *
+   * Compared by content rather than by identity: `main.tsx` hands over a fresh
+   * object on every read, including the reads that follow this component's own
+   * edits, and adopting on identity would put the caret-time state back a beat
+   * on every one of them.
+   */
+  const adopted = useRef("");
+  useEffect(() => {
+    const said = JSON.stringify([props.canvas_notes, props.canvas_edges, props.canvas_regions]);
+    if (said === adopted.current) return;
+    adopted.current = said;
+    if (Array.isArray(props.canvas_notes)) setNotes((props.canvas_notes as CanvasNote[]).map((n) => ({ ...n })));
+    if (Array.isArray(props.canvas_edges)) {
+      setEdges((props.canvas_edges as CanvasEdge[]).map((e) => (e.id ? e : { ...e, id: uid() })));
+    }
+    if (Array.isArray(props.canvas_regions)) setRegions(props.canvas_regions as CanvasRegion[]);
+    // Anything held locally over the top of a member's stored geometry is about
+    // the document that has just been replaced.
+    setLocal({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.canvas_notes, props.canvas_edges, props.canvas_regions]);
+
   const rectsExcept = (ids: string[]): Rect[] => {
     const skip = new Set(ids);
     return [
@@ -3072,47 +3103,21 @@ export function CanvasView({
       </div>
 
       {/* inline add search (top left) */}
-      <div className="cv-add">
-        <input
-          className="cv-add-input"
-          placeholder="Add a block…"
-          value={addQ}
-          onFocus={() => setAddOpen(true)}
-          onBlur={() => setTimeout(() => setAddOpen(false), 150)}
-          onChange={(e) => setAddQ(e.target.value)}
-        />
-        {addOpen && addQ.trim() && (
-          <div className="cv-add-list">
-            {addResults
-              .filter((b) => !members.some((m) => m.id === b.id) && b.id !== cid)
-              .map((b) => {
-                const t = b.blockTypeId ? typeById.get(b.blockTypeId) : undefined;
-                return (
-                  <button
-                    key={b.id}
-                    className="cv-add-row"
-                    // mousedown so the input's blur doesn't kill the click
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      void addFromSearch(b);
-                    }}
-                  >
-                    <BlockIcon
-                      iconKey={!t || t.isText ? "type" : t.iconKey}
-                      color={!t || t.isText ? null : t.iconColor}
-                      size={14}
-                    />
-                    <span className="cv-add-label">{b.label}</span>
-                    <span className="cv-add-go">Add</span>
-                  </button>
-                );
-              })}
-            {addResults.filter((b) => !members.some((m) => m.id === b.id) && b.id !== cid).length === 0 && (
-              <div className="hint" style={{ padding: "7px 10px" }}>No matches.</div>
-            )}
-          </div>
-        )}
-      </div>
+      {/*
+        * **No "Add a block" here.**
+        *
+        * Hermes' canvas is a view of a collection, so a search that finds a
+        * block and drops it in is the natural way to fill one. Talaria's canvas
+        * is not that: it is a surface of its own, and what it borrows from the
+        * library it borrows through the format. A search box wired straight to
+        * Hermes' `/blocks/query` would be the one place on this canvas reaching
+        * past the interchange.
+        *
+        * Blocks still arrive, by the two routes that are specified: the chat,
+        * whose `hermes_search` and `hermes_in` run through the daemon — "find my
+        * 1Offs tasks and put them on here" — and converting a note, which
+        * creates one through `/capture` and the binding.
+        */}
 
       {/* toolbar (lower right) */}
       <div className="cv-toolbar">

@@ -180,3 +180,77 @@ textarea {
     var(--surface-2);
 }
 .cv-frost-toggle.on { color: var(--accent); }
+
+/* --- The canvas's own chat -------------------------------------------------
+ * A drawer at the right edge, and a pencil when it is shut. It must not look
+ * like the Hermes assistant: both can be open at once, and the one thing two
+ * chats in one window must not be is identical.
+ */
+.chat-tab {
+  position: fixed; right: 14px; top: 14px; z-index: 30;
+  width: 30px; height: 30px; display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text);
+  cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+.chat-tab:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+
+.chat-drawer {
+  position: fixed; right: 0; top: 0; bottom: 0; z-index: 30;
+  width: min(360px, 40vw);
+  display: flex; flex-direction: column;
+  border-left: 1px solid var(--border);
+  /* A shade more solid than the canvas: it is a thing laid on top, and text
+   * over a blurred desktop over a blurred window is text nobody can read. */
+  background: color-mix(in srgb, Canvas 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+.chat-drawer > header {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 10px; border-bottom: 1px solid var(--border);
+  font: 600 11px/1 var(--font-chrome, system-ui); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-secondary, var(--text));
+}
+.chat-drawer > header > button { margin-left: auto; }
+
+.chat-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.chat-empty { display: flex; flex-direction: column; gap: 6px; }
+.chat-what { margin: 0; font: 600 11.5px/1.4 var(--font-chrome, system-ui); }
+.chat-example {
+  display: flex; gap: 6px; align-items: baseline; text-align: left;
+  background: none; border: 0; padding: 1px 0; cursor: pointer;
+  color: var(--text-secondary, inherit); font-size: 11.5px;
+}
+.chat-example .arrow { color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.chat-example:hover { color: var(--text); }
+.chat-fine { margin: 6px 0 0; font-size: 11px; opacity: .75; }
+
+.chat-turn { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.chat-turn.mine { align-items: flex-end; }
+.chat-bubble {
+  max-width: 92%; padding: 6px 9px; border-radius: 9px; white-space: pre-wrap;
+  background: color-mix(in srgb, CanvasText 6%, transparent); font-size: 12.5px;
+}
+.chat-turn.mine .chat-bubble { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.chat-steps { display: flex; flex-wrap: wrap; gap: 4px; }
+.chat-chip {
+  font-size: 10.5px; padding: 1px 6px; border-radius: 99px;
+  border: 1px solid var(--border); color: var(--text-secondary, inherit);
+}
+.chat-chip.bad { border-color: var(--danger, #b3261e); color: var(--danger, #b3261e); }
+.chat-busy { font-size: 11.5px; opacity: .7; }
+.chat-trouble {
+  font-size: 11.5px; padding: 6px 8px; border-radius: 7px;
+  background: color-mix(in srgb, var(--danger, #b3261e) 12%, transparent);
+}
+
+.chat-composer { display: flex; gap: 6px; padding: 9px; border-top: 1px solid var(--border); }
+.chat-composer textarea {
+  flex: 1; resize: none; border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 8px; background: var(--surface); color: var(--text); font-size: 12.5px;
+}
+.chat-composer .go {
+  align-self: stretch; width: 32px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+}
+.chat-composer .go:disabled { opacity: .45; cursor: default; }

@@ -672,6 +672,143 @@ export function CanvasView({
     to: number;
   }
   const [guides, setGuides] = useState<Guide[]>([]);
+  /*
+   * ---------------------------------------------------------------------------
+   * Drop-to-connect, which is how the Mac makes a line.
+   *
+   * Hermes connects by dragging out of one of four side handles. The Mac drags
+   * the node itself onto another and lets go — and reverses the same way, which
+   * is the half that matters: "Dropping A on B when they were joined used to
+   * re-point the same line at itself — a drag that travelled, landed, and
+   * changed nothing visible, which is indistinguishable from a drag that missed.
+   * The way to undo a connection was to find it, click it, and press its delete
+   * button; the way to make one was a gesture. Undoing something should not be
+   * harder to reach than doing it."
+   *
+   * The handles stay. They are a second way to do it, they are what the mobile
+   * layout has, and nothing about them fights this.
+   * ---------------------------------------------------------------------------
+   */
+  /*
+   * The target lives in a ref; the state beside it exists only to redraw.
+   *
+   * The release handler reads this, and a value held in state would be the one
+   * from the last render rather than from the last pointer move — a pointerup
+   * that arrives before React has committed the move's update would find the
+   * previous target, or none. The ref is the answer; the state is the picture.
+   */
+  const linkTargetRef = useRef<string | null>(null);
+  const [linkTarget, showLinkTarget] = useState<string | null>(null);
+  const aimAt = (id: string | null) => {
+    linkTargetRef.current = id;
+    showLinkTarget((was) => (was === id ? was : id));
+  };
+  /** Whether "into the region" was asked for, sampled while dragging. */
+  const joining = useRef(false);
+
+  /**
+   * What a node let go here would land on.
+   *
+   * An item before a region, because "a region is mostly the things it holds,
+   * and dropping on one of those means that one, not the box around it" — and
+   * never a region that already holds what is being dragged, which would be a
+   * line from a thing to itself drawn the long way round.
+   *
+   * Found by hit-testing the DOM rather than by arithmetic: every node carries
+   * its id, the topmost one wins by construction, and pointer capture makes
+   * hover events unreliable for the rest of a drag — the same reason
+   * `finishLink` reads `elementFromPoint`.
+   */
+  const dropTargetAt = (clientX: number, clientY: number, moving: string): string | null => {
+    const carried = new Set<string>(regions.find((rg) => rg.id === moving)?.memberIds ?? []);
+    const stack = document.elementsFromPoint(clientX, clientY) as HTMLElement[];
+    for (const el of stack) {
+      const node = el.closest<HTMLElement>("[data-block-id]");
+      const id = node?.dataset.blockId;
+      if (!id || id === moving || carried.has(id)) continue;
+      const region = regions.find((rg) => rg.id === id);
+      if (region && region.memberIds.includes(moving)) continue;
+      return id;
+    }
+    return null;
+  };
+
+  /**
+   * Join two things, or take the join off. The Mac's `link(from:to:)`.
+   *
+   * A toggle, and direction-blind: a line already there in either direction is
+   * the same line. This is the drop gesture's own verb — dragging out of a
+   * handle keeps Hermes' behavior, where landing on a pair that is already
+   * joined opens that line's settings, because there the gesture said "this
+   * line" rather than "these two".
+   */
+  /** Put a node back where a drag started. Notes and blocks are moved the same
+   *  way everywhere else in this file; this is that, in one place. */
+  const moveTo = (id: string, at: { x: number; y: number }) => {
+    if (id.startsWith("n:")) {
+      setNotes((ns) => ns.map((n) => (n.id === id ? { ...n, x: at.x, y: at.y } : n)));
+      return;
+    }
+    setLocal((prev) => {
+      const was = prev[id] ?? rectOf(id);
+      return was ? { ...prev, [id]: { ...(was as NodeCtx), x: at.x, y: at.y } } : prev;
+    });
+  };
+
+  /** Into the box rather than onto it — the held-down drop. The region grows by
+   *  itself, because it is the extent of what it holds. */
+  const joinRegion = (regionId: string, nodeId: string) => {
+    const next = regions.map((rg) =>
+      rg.id === regionId && !rg.memberIds.includes(nodeId)
+        ? { ...rg, memberIds: [...rg.memberIds, nodeId] }
+        : rg,
+    );
+    saveRegions(next);
+    if (nodeId.startsWith("n:")) persistProps({ canvas_notes: notes });
+    else {
+      const r = rectOf(nodeId);
+      if (r) persistMemberCtx(nodeId, r as NodeCtx);
+    }
+  };
+
+  const toggleLink = (from: string, to: string) => {
+    if (from === to) return;
+    const existing = edges.find(
+      (e) => (e.from === from && e.to === to) || (e.from === to && e.to === from),
+    );
+    if (existing) {
+      saveEdges(edges.filter((e) => e.id !== existing.id));
+      return;
+    }
+    const isRegion = (id: string) => regions.some((rg) => rg.id === id);
+    // A region has no id anything outside this canvas can address, and neither
+    // has a note — so a line touching either is canvas decoration rather than a
+    // relation, which is the distinction `finishLink` draws in the same words.
+    const eph = from.startsWith("n:") || to.startsWith("n:") || isRegion(from) || isRegion(to);
+    const fr = rectOf(from);
+    const tr = rectOf(to);
+    if (!fr || !tr) return;
+    // Meet on the sides that face each other.
+    const dx = fr.x + fr.w / 2 - (tr.x + tr.w / 2);
+    const dy = fr.y + fr.h / 2 - (tr.y + tr.h / 2);
+    const across = Math.abs(dx) / tr.w > Math.abs(dy) / tr.h;
+    const toSide: Side = across ? (dx > 0 ? "e" : "w") : dy > 0 ? "s" : "n";
+    const fromSide: Side = across ? (dx > 0 ? "w" : "e") : dy > 0 ? "n" : "s";
+    saveEdges([
+      ...edges,
+      {
+        id: uid(),
+        from,
+        to,
+        fromSide,
+        toSide,
+        arrow: "forward",
+        live: !eph,
+        ...(eph ? { dash: "dotted" as const } : {}),
+      },
+    ]);
+  };
+
 
   const rectsExcept = (ids: string[]): Rect[] => {
     const skip = new Set(ids);
@@ -851,9 +988,21 @@ export function CanvasView({
         }
       }
     }
-    // The grid only where a neighbour did not already claim the axis, which is
-    // what "loses every tie" means in practice: `bx` is still the tolerance
-    // when nothing matched.
+    /*
+     * The even-gap rule the Mac calls `spacingOffer` is **not here**, and that
+     * is deliberate: `evenSpacing` above already does it, and does more. The
+     * Mac continues a run's gap at either end; that one also centers a box
+     * between two neighbors, prefers the gap the row uses most so a single odd
+     * spacing cannot set the rhythm, and draws the measurements. It is applied
+     * where the axis is still free, after this — which is the same order the
+     * Mac uses, alignment first and the grid last.
+     *
+     * A port was written here before that was read, and it fired first and
+     * suppressed the better rule.
+     */
+    // The grid only where nothing else claimed the axis, which is what "loses
+    // every tie" means in practice: `bx` is still the tolerance when nothing
+    // matched.
     if (bx === tol) {
       const g = gridSnap(r.x, tol);
       if (g !== null) dx = g - r.x;
@@ -866,7 +1015,8 @@ export function CanvasView({
   };
 
   /**
-   * The dot grid, which is drawn at 26px and was never snapped to.
+   * The dot grid, drawn at 24px — the Mac's step — and snapped to at the same
+   * spacing, so a node lands on a dot rather than near one.
    *
    * Offered last everywhere it is offered, and losing every tie, so a box
    * already touching a neighbour's edge is not pulled off it by a grid line the
@@ -876,7 +1026,14 @@ export function CanvasView({
    * Only when the grid is showing. Snapping to lines nobody can see is a canvas
    * that moves in steps for no visible reason.
    */
-  const GRID = 26;
+  /*
+   * Twenty-four, which is the Mac's — `chrome.grid ? 24 : nil`, and its own
+   * grid is drawn at `24 * zoom`. Hermes draws and snaps to twenty-six. Two
+   * pixels sounds like nothing and is not: the same canvas opened on the two
+   * machines puts every snapped node on a different coordinate, and they drift
+   * further apart the further right you go.
+   */
+  const GRID = 24;
   const gridSnap = (v: number, tol: number): number | null => {
     if (!grid) return null;
     const near = Math.round(v / GRID) * GRID;
@@ -1086,7 +1243,16 @@ export function CanvasView({
   // ── pan / zoom ──
   const drag = useRef<
     | { kind: "pan"; sx: number; sy: number; ox: number; oy: number; moved: boolean }
-    | { kind: "node"; id: string; dx: number; dy: number; moved: boolean; startRegions: Record<string, Rect> }
+    | {
+        kind: "node";
+        id: string;
+        dx: number;
+        dy: number;
+        moved: boolean;
+        startRegions: Record<string, Rect>;
+        /** Where it started, for a drop that connects instead of moving. */
+        from: { x: number; y: number };
+      }
     | { kind: "resize"; id: string; corner: string; start: Rect; sx: number; sy: number }
     | { kind: "marquee" }
     | { kind: "region"; id: string; sx: number; sy: number; starts: Record<string, Rect>; moved: boolean }
@@ -1428,7 +1594,24 @@ export function CanvasView({
       setView((v) => ({ ...v, x: nx, y: ny }));
     } else if (d.kind === "node") {
       const p = toCanvas(e.clientX, e.clientY);
+      /*
+       * Three pixels before it counts as a drag — the Mac's threshold, and it
+       * matters more here than it did there. A press that travels one pixel
+       * used to be a move nobody could see; now a move that ends over another
+       * node connects them, so the difference between a click and a drag is the
+       * difference between selecting a card and rearranging the diagram.
+       */
+      if (!d.moved) {
+        const travel = Math.hypot((p.x - d.dx - d.from.x) * view.z, (p.y - d.dy - d.from.y) * view.z);
+        if (travel <= 3) return;
+      }
       d.moved = true;
+      // What letting go now would join this to — read every move, because that
+      // is what makes the highlight follow the pointer.
+      aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
+      // Sampled here rather than read on release: a pointerup does not always
+      // carry the modifier that was down a moment before it.
+      joining.current = e.metaKey || e.ctrlKey;
       const cur = rectOf(d.id);
       if (!cur) return;
       const free = { ...cur, x: p.x - d.dx, y: p.y - d.dy };
@@ -1464,6 +1647,11 @@ export function CanvasView({
     } else if (d.kind === "region" || d.kind === "group") {
       const p = toCanvas(e.clientX, e.clientY);
       d.moved = true;
+      // A region can be dropped on something too, and the target-finder already
+      // knows to skip whatever it is carrying: "its members travel under the
+      // pointer for the whole drag, so without this the likeliest outcome of
+      // moving a region is a line from the box to something already inside it."
+      if (d.kind === "region") aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
       const dx = p.x - d.sx;
       const dy = p.y - d.sy;
       for (const [mid, start] of Object.entries(d.starts)) {
@@ -1505,6 +1693,11 @@ export function CanvasView({
     drag.current = null;
     setGuides([]);
     setSpacings([]);
+    // Read before it is cleared: the branch below acts on it, and clearing it
+    // first is how the first version threw the target away a few lines before
+    // asking for it.
+    const onto = linkTargetRef.current;
+    aimAt(null);
     if (!d) return;
     if (d.kind === "marquee") {
       if (marquee) {
@@ -1548,6 +1741,14 @@ export function CanvasView({
       return;
     }
     if (d.kind === "region" && d.moved) {
+      if (onto) {
+        // Dropped on something: the box and everything it carries go back, and
+        // a line is what is left behind — the same trade a node makes.
+        for (const [mid, start] of Object.entries(d.starts)) moveTo(mid, start);
+        toggleLink(d.id, onto);
+        setSelected([]);
+        return;
+      }
       const rg = regions.find((r) => r.id === d.id);
       if (rg) {
         persistProps({ canvas_notes: notes });
@@ -1560,6 +1761,27 @@ export function CanvasView({
       return;
     }
     if (d.kind === "node" && d.moved) {
+      if (onto) {
+        /*
+         * Dropped on something, so this was a connection rather than a move.
+         *
+         * Held down, a drop onto a region means *into* it instead: the card
+         * stays where it was let go and the box grows to include it, which it
+         * does by itself because a region is the extent of what it holds. Plain,
+         * it connects — "one gesture, one meaning". The Mac reads ⌘ for that;
+         * here it is the same key by its own name.
+         */
+        const intoRegion = joining.current && regions.some((rg) => rg.id === onto);
+        if (intoRegion) {
+          joinRegion(onto, d.id);
+        } else {
+          moveTo(d.id, d.from);
+          toggleLink(d.id, onto);
+          setSelected([]);
+        }
+        joining.current = false;
+        return;
+      }
       const r = rectOf(d.id);
       if (!r) return;
       if (d.id.startsWith("n:")) persistProps({ canvas_notes: notes });
@@ -1619,7 +1841,14 @@ export function CanvasView({
       const rr = regionRect(rg);
       if (rr) startRegions[rg.id] = rr;
     }
-    drag.current = { kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false, startRegions };
+    // Where it came from. A drop that connects puts the node back: "the gesture
+    // said 'this one goes with that one', not 'this one goes here', so the box
+    // goes back where it came from and a line is what is left behind. Leaving it
+    // where it landed would mean every connection also rearranged the diagram."
+    drag.current = {
+      kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false, startRegions,
+      from: { x: r.x, y: r.y },
+    };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const startResize = (id: string, corner: string, e: ReactPointerEvent) => {
@@ -2177,8 +2406,22 @@ export function CanvasView({
     // Near enough to straight is straight. A line dragged out and pushed back
     // never quite returns, and a canvas slowly fills with connections that are
     // two points off straight and look like a mistake.
-    const snap = Math.hypot(nx, ny) < 6 / view.z;
-    patchEdge(d.id, { bendX: snap ? 0 : nx, bendY: snap ? 0 : ny });
+    /*
+     * Straight, and level, and plumb — three snaps rather than one.
+     *
+     * Hermes pulls a bend back to nothing when the whole offset is small, which
+     * catches "I dragged this out and changed my mind". The Mac catches two
+     * more, and says why: "a bend that is straight on one axis. Pulling a handle
+     * sideways along a horizontal line should be able to stay level." Without
+     * them a connector nudged along its own axis ends up a pixel or two off
+     * true, which is exactly the drift that makes a diagram look sloppy.
+     */
+    const tol = 6 / view.z;
+    const straight = Math.hypot(nx, ny) <= tol;
+    patchEdge(d.id, {
+      bendX: straight || Math.abs(nx) <= tol ? 0 : nx,
+      bendY: straight || Math.abs(ny) <= tol ? 0 : ny,
+    });
   };
   const endBend = () => {
     bendDrag.current = null;
@@ -2255,7 +2498,13 @@ export function CanvasView({
       data-shape={r.shape ?? undefined}
       className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}${
         groupWith(id) ? " cv-group" : ""
-      }${r.color ? " cv-shaded" : ""}${r.shape && SHAPES[r.shape] ? " cv-shaped" : ""}`}
+      }${r.color ? " cv-shaded" : ""}${r.shape && SHAPES[r.shape] ? " cv-shaped" : ""}${
+        // The strongest mark on the canvas, and the only filled one — the Mac's
+        // reasoning: "dropping a box on a box is a gesture whose outcome is
+        // invisible until it has happened … so what it is going to connect to
+        // has to be in no doubt before you let go."
+        linkTarget === id ? " cv-drop" : ""
+      }`}
       style={{
         left: r.x,
         top: r.y,

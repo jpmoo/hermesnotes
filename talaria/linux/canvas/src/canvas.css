@@ -78,3 +78,46 @@ body {
 .cv-node .cv-paper .longtext-area { height: auto; min-height: 1.4em; overflow: hidden; text-align: inherit; }
 /* A block's card follows the same rule — its title sits where the node says. */
 .tal-node { height: auto; }
+
+/*
+ * What a drop would connect to.
+ *
+ * The Mac's, in CSS: a filled accent wash and a two-pixel accent border, and it
+ * is the only filled mark on the canvas on purpose. `outline` rather than
+ * `border`, so it sits outside the box and cannot move the words inside it or
+ * fight a border somebody set from the menu.
+ */
+.cv-node.cv-drop {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 3px;
+}
+.cv-node.cv-drop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 3px;
+  pointer-events: none;
+  /* Above the paper, under the words — it is a mark on the node, not a veil
+   * over it. */
+  z-index: 1;
+}
+
+/*
+ * The dots, at the spacing that is actually snapped to.
+ *
+ * The forked stylesheet draws them every 26px because that was Hermes' step;
+ * the Mac's is 24 and the snapping here now matches it. A grid drawn at one
+ * spacing and snapped to another is worse than no grid at all — every node
+ * lands *near* a dot, which reads as the snapping being broken.
+ *
+ * The Mac draws its own at `24 * zoom` for the same reason this multiplies by
+ * `--cv-z`: the spacing carries the scale and the dot stays a pixel.
+ */
+.cv-wrap {
+  background:
+    radial-gradient(circle, var(--border) 1px, transparent 1px) var(--cv-x, 0px) var(--cv-y, 0px) /
+      calc(24px * var(--cv-z, 1)) calc(24px * var(--cv-z, 1)),
+    var(--surface-2);
+}

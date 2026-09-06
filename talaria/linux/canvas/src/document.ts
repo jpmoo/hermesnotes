@@ -139,12 +139,19 @@ function edgesOf(doc: CanvasDocument) {
 
 function endOut(doc: CanvasDocument, itemId: string) {
   const item = doc.items.find((i) => i.id === itemId);
-  return item?.blockId ? item.blockId : NOTE_ID(itemId);
+  if (item) return item.blockId ? item.blockId : NOTE_ID(itemId);
+  // A region, which is a legitimate end: dropping a node on a region connects
+  // to the region, and the component addresses one by its bare id — `rectOf`
+  // looks regions up directly. Prefixing it would make the line point at a note
+  // that does not exist, and the edge would silently not draw.
+  if (doc.regions.some((rg) => rg.id === itemId)) return itemId;
+  return NOTE_ID(itemId);
 }
 
 /** The other direction: what the component calls an end, as an item id. */
 export function endIn(doc: CanvasDocument, end: string) {
   if (isNoteId(end)) return noteIdOf(end);
+  if (doc.regions.some((rg) => rg.id === end)) return end;
   const item = doc.items.find((i) => i.blockId === end);
   return item?.id ?? end;
 }

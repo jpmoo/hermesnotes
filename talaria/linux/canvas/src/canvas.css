@@ -254,3 +254,43 @@ textarea {
   background: var(--surface); color: var(--text); cursor: pointer;
 }
 .chat-composer .go:disabled { opacity: .45; cursor: default; }
+
+/* --- The tool strip --------------------------------------------------------
+ * Down the left edge, the way the Mac has it. Each tool is a thing you drag
+ * onto the surface; the strip itself never covers the canvas's own chrome.
+ */
+.tools {
+  position: fixed; left: 12px; top: 12px; z-index: 25;
+  display: flex; flex-direction: column; gap: 6px; align-items: flex-start;
+}
+.tool-row { display: flex; align-items: center; gap: 3px; }
+.tools .tool, .tools .tool-shape {
+  display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .1);
+}
+.tools .tool { width: 32px; height: 32px; }
+.tools .tool-shape { width: 18px; height: 32px; }
+.tools .tool:hover, .tools .tool-shape:hover, .tools .tool-shape.open {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+/* While it is being dragged: the tool is somewhere else now. */
+.tools .tool.lifted { opacity: .45; }
+
+.tool-menu {
+  display: flex; flex-direction: column; min-width: 132px; padding: 4px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); box-shadow: 0 6px 18px rgba(0, 0, 0, .16);
+}
+.tool-menu.wide { min-width: 240px; }
+.tool-menu .menu-item.on { font-weight: 600; }
+.tool-menu .menu-item .fine { margin-left: auto; font-size: 10.5px; opacity: .6; }
+.tool-menu .menu-item { display: flex; gap: 8px; align-items: baseline; }
+.tool-find {
+  margin: 2px 4px 5px; padding: 5px 7px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface-2); color: var(--text);
+}
+.tools .tool:disabled { opacity: .4; cursor: default; }
+.tools .tool:disabled:hover { background: var(--surface); }

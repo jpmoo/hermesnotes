@@ -847,6 +847,37 @@ def only_one() -> object | None:
     return lock if lock.tryLock(100) else None
 
 
+def _save_as(download) -> None:
+    """
+    Somewhere to put a file the page is handing over.
+
+    The canvas saves a document by offering it as a download, which is the one
+    mechanism a page has for producing a file. Without this the offer is
+    declined in silence: Qt cancels every download a profile does not accept,
+    and "Save…" looks like a button that does nothing.
+
+    A dialog rather than a fixed directory, because this is Save *As* — the Mac
+    puts up the same panel and lets somebody say where their canvas lives. The
+    suggested name is whatever the page asked for.
+    """
+    from PySide6.QtWidgets import QFileDialog
+
+    suggested = os.path.join(
+        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+        or os.path.expanduser("~"),
+        download.suggestedFileName() or "canvas.json",
+    )
+    where, _filter = QFileDialog.getSaveFileName(None, "Save", suggested)
+    if not where:
+        # Dismissed, which is a decision and not a failure — the Mac's words for
+        # the same moment.
+        download.cancel()
+        return
+    download.setDownloadDirectory(os.path.dirname(where))
+    download.setDownloadFileName(os.path.basename(where))
+    download.accept()
+
+
 def main() -> int:
     if "--toggle" in sys.argv:
         action = sys.argv[sys.argv.index("--toggle") + 1]
@@ -889,7 +920,9 @@ def main() -> int:
     handler = scheme.DaemonScheme(app)
     from PySide6.QtWebEngineCore import QWebEngineProfile
 
-    QWebEngineProfile.defaultProfile().installUrlSchemeHandler(scheme.SCHEME, handler)
+    profile = QWebEngineProfile.defaultProfile()
+    profile.installUrlSchemeHandler(scheme.SCHEME, handler)
+    profile.downloadRequested.connect(_save_as)
 
     shell = Shell(app)
     _ = shell, lock  # both held for the life of the event loop

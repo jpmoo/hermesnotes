@@ -10,6 +10,7 @@ import { Component, StrictMode, useCallback, useEffect, useState, type ReactNode
 import { createRoot } from "react-dom/client";
 import { CanvasView } from "./components/CanvasView.tsx";
 import { CanvasChat } from "./components/CanvasChat.tsx";
+import { CanvasTools } from "./components/CanvasTools.tsx";
 import { api, flush, hold, type BlockType, type Collection, type Member } from "./api.ts";
 import { getDocument, getLinked, toCollection, toMembers } from "./document.ts";
 import "./canvas-forked.css";
@@ -67,9 +68,11 @@ function Canvas() {
         types={state.types}
         onChanged={() => void read()}
       />
-      {/* Over the canvas rather than inside it, which is where the Mac puts it
-          and for the reason it gives: the surface knows about items, links and
-          regions, and chat is none of those. */}
+      {/* The strip, and the chat, both over the canvas rather than inside it —
+          which is where the Mac puts them and for the reason it gives: the
+          surface knows about items, links and regions, and neither of these is
+          one of those. */}
+      <CanvasTools onPlaced={() => void read()} />
       <CanvasChat onDrawn={() => void read()} />
     </>
   );

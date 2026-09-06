@@ -4,14 +4,14 @@ import { call, DaemonDown, SOCKET } from "./client.js";
 import { dim, warn } from "./format.js";
 import {
   ADDRESSES,
-  frontmostBundleId,
   render,
   styleFor,
   SYNTAXES,
   type Address,
   type LinkStyle,
   type Syntax,
-} from "./link.js";
+} from "@talaria/canonical";
+import { frontmostBundleId } from "./frontmost.js";
 
 /**
  * `talaria` — the command-line face of the mirror.

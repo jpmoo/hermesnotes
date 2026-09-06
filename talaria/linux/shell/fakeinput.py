@@ -36,6 +36,7 @@ REQUEST = "org.freedesktop.portal.Request"
 #: behaviour wanted here: ctrl+c is a chord, not the letter C.
 KEY_LEFTCTRL = 29
 KEY_C = 46
+KEY_V = 47
 
 #: Modifiers released before the chord is sent.
 #:
@@ -87,13 +88,28 @@ class FakeInput:
 
     def copy(self, timeout: float = 6.0) -> tuple[bool, str]:
         """Send ctrl+c to whatever is focused. Returns (sent, why)."""
+        return self._chord(KEY_C, "ctrl+c", timeout)
+
+    def paste(self, timeout: float = 6.0) -> tuple[bool, str]:
+        """
+        Send ctrl+v to whatever is focused.
+
+        The other half of the same portal session, and the one the reference
+        picker needs: a link is chosen here and has to arrive *there*. Nothing
+        about it is riskier than the copy — the same permission, the same
+        session, one different keycode — but it is the direction that writes, so
+        it is only ever sent for a paste somebody just asked for.
+        """
+        return self._chord(KEY_V, "ctrl+v", timeout)
+
+    def _chord(self, code: int, name: str, timeout: float) -> tuple[bool, str]:
         self._start()
         if not self._ready.wait(timeout=timeout + 30):
             return False, self.failure or "the input portal did not answer"
         if self._session is None:
             return False, self.failure or "no input session"
         answer: queue.Queue = queue.Queue()
-        self._jobs.put(answer)
+        self._jobs.put((answer, code, name))
         try:
             return answer.get(timeout=timeout)
         except queue.Empty:
@@ -187,7 +203,9 @@ class FakeInput:
               file=sys.stderr, flush=True)
 
         while True:
-            answer = self._jobs.get()
+            # Each job says which chord it wants: ctrl+c for a read, ctrl+v for
+            # the reference picker's paste.
+            answer, want, name = self._jobs.get()
             def key(code: int, pressed: int) -> None:
                 bus.call_sync(
                     PORTAL, PORTAL_PATH, REMOTE, "NotifyKeyboardKeycode",
@@ -212,10 +230,10 @@ class FakeInput:
                 # modifiers held.
                 time.sleep(0.06)
                 for code, pressed in (
-                    (KEY_LEFTCTRL, 1), (KEY_C, 1), (KEY_C, 0), (KEY_LEFTCTRL, 0),
+                    (KEY_LEFTCTRL, 1), (want, 1), (want, 0), (KEY_LEFTCTRL, 0),
                 ):
                     key(code, pressed)
-                answer.put((True, "ctrl+c"))
+                answer.put((True, name))
             except Exception as err:  # noqa: BLE001
                 answer.put((False, f"the key press failed ({err})"))
 

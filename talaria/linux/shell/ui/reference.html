@@ -1,0 +1,134 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Link to a block</title>
+<link rel="stylesheet" href="/ui/panel.css">
+
+<!--
+  The reciprocal of capture.
+
+  Everyone builds capture; almost nobody builds this — putting a link *to* a
+  block into whatever you are writing in, in the shape that application wants.
+  `AMBIENT.md` says why it does not exist anywhere: "BTT knows the frontmost app.
+  Talaria knows the blocks. Neither knows both." The daemon knows both, so this
+  page is small: type, choose, and it is pasted where you were.
+-->
+
+<div class="chat">
+  <header class="chat-head">
+    <span class="dot"></span>
+    <span class="who-title">Link to…</span>
+    <span class="fine" id="style"></span>
+  </header>
+
+  <form class="composer" id="form">
+    <input id="q" placeholder="Find a block…" autocomplete="off" autofocus>
+  </form>
+
+  <div class="pane" id="hits" data-context></div>
+</div>
+
+<script type="module">
+import { get, post, el, typeLabel } from "/ui/api.js";
+
+const q = document.getElementById("q");
+const hits = document.getElementById("hits");
+const style = document.getElementById("style");
+
+/*
+ * Which application this is *for*.
+ *
+ * Handed in by the shell when it opens the picker, because by the time this page
+ * exists the frontmost window is Talaria — the same trap the CLI documents under
+ * `--for`. Asking now would always answer "the picker".
+ */
+let forApp = null;
+window.pickFor = (app) => {
+  forApp = app || null;
+  style.textContent = app ? `for ${app}` : "";
+  q.value = "";
+  q.focus();
+  draw([]);
+};
+
+/** Everything nameable, fetched once per summon. */
+let catalog = null;
+async function library() {
+  if (catalog) return catalog;
+  const spotlight = await get("/spotlight");
+  catalog = (spotlight.items ?? []).map((b) => ({
+    id: b.id, title: b.title || "(untitled)", typeName: b.typeName, kind: b.kind,
+  }));
+  return catalog;
+}
+
+const rank = (title, needle) => (title.toLowerCase().startsWith(needle) ? 0 : 1);
+
+let at = 0;
+let showing = [];
+
+function draw(rows) {
+  showing = rows;
+  at = Math.min(at, Math.max(0, rows.length - 1));
+  hits.replaceChildren();
+  if (!q.value.trim()) {
+    const hint = el("div", "placeholder");
+    hint.appendChild(el("p", null, "Type a few letters of a block's title."));
+    hint.appendChild(el("p", "fine",
+      "It arrives in the shape the application wants — a markdown link where you are writing " +
+      "markdown, a bare address in a terminal, an https link in mail, which is the one that " +
+      "works on somebody else's machine."));
+    hits.appendChild(hint);
+    return;
+  }
+  if (!rows.length) {
+    hits.appendChild(el("div", "note", "Nothing in the library by that name."));
+    return;
+  }
+  for (const [i, row] of rows.entries()) {
+    const card = el("div", "card opens" + (i === at ? " here" : ""));
+    card.appendChild(el("span", "title", row.title));
+    const label = typeLabel(row) || row.typeName || row.kind || "";
+    if (label) card.appendChild(el("span", "meta", label));
+    card.onclick = () => insert(row);
+    hits.appendChild(card);
+  }
+}
+
+async function search() {
+  const needle = q.value.trim().toLowerCase();
+  if (!needle) return draw([]);
+  const all = await library();
+  draw(
+    all
+      .filter((b) => b.title.toLowerCase().includes(needle))
+      .sort((a, b) => rank(a.title, needle) - rank(b.title, needle) || a.title.localeCompare(b.title))
+      .slice(0, 12),
+  );
+}
+
+/*
+ * Chosen. The daemon renders it, the shell delivers it.
+ *
+ * Two calls rather than one because they are two different jobs: what the link
+ * should say is a question about the library and the application, and putting it
+ * somewhere is a question about the desktop. The page is the only thing that
+ * knows both are wanted.
+ */
+async function insert(row) {
+  try {
+    const made = await get(`/link/${row.id}${forApp ? `?for=${encodeURIComponent(forApp)}` : ""}`);
+    await post("/shell/insert", { text: made.text });
+  } catch (err) {
+    hits.replaceChildren(el("div", "bad-box", String(err.message || err)));
+  }
+}
+
+q.addEventListener("input", () => void search());
+q.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { at = Math.min(at + 1, showing.length - 1); draw(showing); e.preventDefault(); }
+  if (e.key === "ArrowUp") { at = Math.max(at - 1, 0); draw(showing); e.preventDefault(); }
+  if (e.key === "Enter" && showing[at]) { insert(showing[at]); e.preventDefault(); }
+});
+document.getElementById("form").onsubmit = (e) => e.preventDefault();
+draw([]);
+</script>

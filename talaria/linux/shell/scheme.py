@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import mimetypes
 import os
+import sys
 import traceback
 
 from PySide6.QtCore import (QBuffer, QByteArray, QIODevice, QObject, QRunnable, Qt, QThreadPool,
@@ -109,6 +110,49 @@ class _Ask(QRunnable):
             self._reply.done.emit(status, data, mime)
         except Exception as err:  # noqa: BLE001 — the page gets the message, whatever it was
             self._reply.failed.emit(str(err))
+
+
+def _insert(text: str) -> None:
+    """
+    The clipboard, the retreat, and the paste — in that order. See the verb.
+
+    On the main thread throughout: it touches the clipboard and hides a window,
+    and both of those belong to the GUI.
+    """
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    board = app.clipboard()
+    if board is not None:
+        board.setText(text)
+
+    # Whatever of ours is showing goes away, so the paste has somewhere to land.
+    hidden = []
+    for widget in app.topLevelWidgets():
+        if widget.isVisible() and widget.metaObject().className().startswith("Panel"):
+            widget.hide()
+            hidden.append(widget)
+
+    def press() -> None:
+        try:
+            import fakeinput
+
+            # The same session Glance uses for its rung 6, rather than a second
+            # one: the portal asks for permission per session, and two sessions
+            # would be two dialogs for one feature.
+            sent, why = fakeinput.shared.paste(timeout=4.0)
+        except Exception as err:  # noqa: BLE001
+            sent, why = False, str(err)
+        print(
+            f"talaria: insert — {'pasted' if sent else 'on the clipboard only'} ({why})",
+            file=sys.stderr, flush=True,
+        )
+
+    # Long enough for the window manager to give focus back, short enough that
+    # nobody has started typing something else.
+    QTimer.singleShot(180, press)
 
 
 class _Piece(QObject):
@@ -473,6 +517,37 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
         """
         what = path.split("?")[0].removeprefix("/shell/")
         query = path.split("?", 1)[1] if "?" in path else ""
+        if what == "insert":
+            """
+            Put a link where somebody is writing.
+
+            Three moves, and the order is the whole thing: the text goes on the
+            clipboard, the picker gets out of the way, and *then* the paste is
+            sent — to whatever the picker was covering. Sent a moment later,
+            because focus takes a beat to travel back and a paste that arrives
+            first lands in the picker.
+
+            The clipboard is not a fallback here, it is the guarantee: if the
+            portal refuses, or nothing has focus, the link is still on the
+            clipboard and one keystroke away. A picker that fails by leaving you
+            able to paste is a picker that has not really failed.
+            """
+            text = ""
+            try:
+                for header, value in job.requestHeaders().items():
+                    if bytes(header).lower() == b"x-talaria-body":
+                        import json as _json
+
+                        text = str(_json.loads(bytes(value).decode("utf8")).get("text") or "")
+            except Exception:  # noqa: BLE001
+                text = ""
+            if not text:
+                self._reply_bytes(job, _error_json("nothing to insert"), "application/json")
+                return
+            QTimer.singleShot(0, lambda: _insert(text))
+            self._reply_bytes(job, b'{"ok":true}', "application/json")
+            return
+
         if what == "export":
             kind = "pdf" if "kind=pdf" in query else "png"
             import export

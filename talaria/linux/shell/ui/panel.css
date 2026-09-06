@@ -719,3 +719,9 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   width: 1px; height: 14px; margin: 0 2px;
   background: color-mix(in srgb, CanvasText 25%, transparent);
 }
+
+/* The row the keyboard is on, in the reference picker. */
+.pane .card.here {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}

@@ -49,6 +49,9 @@ PANELS = {
     "glance": ("Glance", "glance.html", "meta+shift+g"),
     # The desk. Full screen, and the one panel the others sit on top of.
     "desk": ("Desk", "desk.html", "meta+shift+t"),
+    # The reciprocal of capture — see `ui/reference.html`. On `l` for "link",
+    # which is the word for what it makes rather than for what it searches.
+    "reference": ("Link to a block", "reference.html", "meta+shift+l"),
 }
 
 
@@ -65,6 +68,7 @@ SHORT = {
     "compose": "New Block",
     "hermes": "Hermes",
     "glance": "Glance",
+    "reference": "Link to…",
 }
 
 
@@ -448,6 +452,7 @@ class Shell(QObject):
         menu.addAction(self._act("Ask Hermes Notes", lambda: self.toggle("assistant")))
         menu.addAction(self._act("Hermes Notes Collections", lambda: self.toggle("board")))
         menu.addAction(self._act("Glance", lambda: self.toggle("glance")))
+        menu.addAction(self._act("Link to a block…", lambda: self.toggle("reference")))
         menu.addAction(self._act("New Block…", lambda: self.toggle("compose")))
 
         menu.addSeparator()
@@ -513,12 +518,26 @@ class Shell(QObject):
             self._ask_our_own(self._summon_glance)
             return
 
+        # What was in front a moment ago, kept before this panel becomes the
+        # front window itself. The picker needs it to choose a link's shape, and
+        # asking after it is open answers "Talaria" — the trap `link.ts`
+        # documents under `--for`.
+        was_in_front = None
+        if action == "reference":
+            front = self.frontmost.current
+            was_in_front = front.window_class or front.resource_name if front else None
+
         if panel is None:
             panel = self._build(action)
             if panel is None:
                 return
             self.panels[action] = panel
         panel.summon()
+        if action == "reference":
+            import json as _json
+
+            told = _json.dumps(was_in_front)
+            panel.view.page().runJavaScript(f"window.pickFor && window.pickFor({told})")
 
     # ---------------------------------------------------------------- glance
 
@@ -680,6 +699,7 @@ class Shell(QObject):
             return panel
 
         size = {
+            "reference": QSize(560, 420),
             "glance": QSize(680, 380),
             "assistant": QSize(720, 460),
             "compose": QSize(620, 500),

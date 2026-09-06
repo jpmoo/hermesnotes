@@ -15,6 +15,8 @@ import {
   toCanonical,
   type InterchangeObject,
   type InterchangeType,
+  render,
+  styleFor,
 } from "@talaria/canonical";
 import { HOME, type Config } from "./config.js";
 import { readCanvas, sweepImages, writeCanvas, type CanvasDocument } from "./canvas.js";
@@ -602,6 +604,49 @@ export function buildServer(deps: {
     // indexer, never parsed. Declaring it an integer on the Swift side is what
     // silently stopped Spotlight reindexing for a fortnight.
     return { epoch: sync.cursor, count: items.length, items };
+  });
+
+  /**
+   * A link to a block, in the shape the application in front wants.
+   *
+   * The reciprocal of capture, and the thing that makes the library feel like it
+   * is inside every application rather than beside them: `AMBIENT.md` calls it
+   * "the smallest thing here" and names why it does not exist anywhere —
+   * "BTT knows the frontmost app. Talaria knows the blocks. Neither knows both."
+   * The daemon knows both: the blocks are in the mirror and what is in front is
+   * in the context record, put there by the compositor.
+   *
+   * `for` overrides that, and callers that know should always pass it. By the
+   * time a picker is on screen it *is* the frontmost window, so asking at the
+   * moment of the paste answers "Talaria" — the same trap the CLI documents.
+   */
+  app.get("/link/:id", async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const q = z
+      .object({
+        for: z.string().optional(),
+        syntax: z.enum(["markdown", "wiki", "bare", "title"]).optional(),
+        address: z.enum(["share", "here"]).optional(),
+      })
+      .parse(req.query);
+
+    const raw = mirror.rawBlock(id);
+    if (!raw) return reply.code(404).send({ error: "not in the mirror" });
+    const block = canon([raw])[0];
+    if (!block) return reply.code(404).send({ error: "not in the mirror" });
+
+    // What was in front before the picker opened, unless the caller said.
+    const app_ = q.for ?? context.working()?.app ?? undefined;
+    const chosen = styleFor(app_);
+    const style = { syntax: q.syntax ?? chosen.syntax, address: q.address ?? chosen.address };
+    return {
+      text: render(block, style),
+      title: block.title,
+      style,
+      // Said out loud so a picker can show *why* it chose this shape, which is
+      // the difference between a helpful default and a mysterious one.
+      app: app_ ?? null,
+    };
   });
 
   /** Every collection in the mirror, for the picker. */

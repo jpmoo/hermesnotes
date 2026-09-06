@@ -1,7 +1,13 @@
-import type { CanonicalBlock } from "@talaria/canonical";
+import type { CanonicalBlock } from "./types.js";
 
 /**
  * A link to a block, in the shape the destination wants.
+ *
+ * **In `canonical` rather than in the CLI**, because two things now need it and
+ * neither should own it: the `talaria link` command, and the daemon, which
+ * answers the shell's reference picker. A style table copied into a second place
+ * is a table that disagrees with itself the first time somebody adds an editor
+ * to one of them.
  *
  * The reciprocal of capture. Capture turns text into a block; this turns a block
  * into text, so the library can be referenced from inside whatever application
@@ -179,32 +185,4 @@ export function styleFor(app: string | undefined): LinkStyle {
   // A window class never looks like a bundle id and vice versa, so asking both
   // costs nothing and saves the caller a platform test.
   return BY_APP[app] ?? BY_WINDOW_CLASS[cls] ?? DEFAULT_STYLE;
-}
-
-/**
- * Ask the system what is in front.
- *
- * Best effort by design: this needs accessibility permission, and the answer is
- * wrong whenever a launcher is showing. It returns undefined rather than
- * throwing, so a missing permission degrades to the default style instead of
- * failing a command whose real job is to produce a string.
- */
-export async function frontmostBundleId(): Promise<string | undefined> {
-  // Off macOS there is nothing to ask yet, and the styles this picks between are
-  // keyed by bundle id anyway — so even a perfect Linux answer would be a window
-  // class that `BY_APP` has never heard of. Returning undefined lands on
-  // `DEFAULT_STYLE`, which is where that lookup would have landed regardless.
-  if (process.platform !== "darwin") return undefined;
-  const { execFile } = await import("node:child_process");
-  return new Promise((resolve) => {
-    execFile(
-      "/usr/bin/osascript",
-      [
-        "-e",
-        'tell application "System Events" to get bundle identifier of first application process whose frontmost is true',
-      ],
-      { timeout: 2000 },
-      (err, stdout) => resolve(err ? undefined : stdout.trim() || undefined),
-    );
-  });
 }

@@ -380,7 +380,8 @@ Named rather than implied, in the order they cost something.
   #2 the context record (the KWin script fills it) and #3 the ambient panel
   (Glance follows the focus signal while it is open) are done. #4, workspace
   binding, is skipped — nobody here works in workspaces. #5, background
-  inference, is not started.
+  inference, is done: `packages/daemon/src/propose.ts`, a queue at
+  `GET /proposals`, and Meta+Shift+I to read it.
 
   Worth knowing where this platform beat the design: AMBIENT asks for a panel
   "redrawn on the context signal rather than on a timer", and the Mac cannot do

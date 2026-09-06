@@ -134,6 +134,36 @@ CREATE TABLE IF NOT EXISTS context (
   block     TEXT
 );
 CREATE INDEX IF NOT EXISTS context_at ON context (at);
+
+/*
+ * Proposals: things the machine noticed, waiting to be looked at.
+ *
+ * Never a write. AMBIENT.md is explicit — "delivered as a review queue and
+ * never written" — so this table is the whole of the feature's power: a
+ * suggestion sits here until a person acts on it in Hermes, or dismisses it, or
+ * it decays.
+ *
+ * "about" is the block it concerns and "fingerprint" is what makes a proposal
+ * the same proposal across runs: dismissing "this task looks stale" has to mean
+ * it does not come back tomorrow, and a new row every night with a new id would
+ * make the queue an argument nobody wins.
+ *
+ * (No backticks in here: this comment lives inside a template literal, and one
+ * would end the string — which it did, and reported itself as three syntax
+ * errors on a line of prose.)
+ */
+CREATE TABLE IF NOT EXISTS proposals (
+  id          TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL UNIQUE,
+  kind        TEXT NOT NULL,
+  about       TEXT,
+  title       TEXT,
+  detail      TEXT,
+  source      TEXT NOT NULL,
+  made        TEXT NOT NULL,
+  dismissed   TEXT
+);
+CREATE INDEX IF NOT EXISTS proposals_made ON proposals (made);
 `;
 
 export interface ContextRow {
@@ -142,6 +172,19 @@ export interface ContextRow {
   title: string | null;
   workspace: string | null;
   block: string | null;
+}
+
+export interface Proposal {
+  id: string;
+  fingerprint: string;
+  kind: string;
+  about: string | null;
+  title: string | null;
+  detail: string | null;
+  /** `rules` or `model` — what noticed it, said out loud. */
+  source: string;
+  made: string;
+  dismissed: string | null;
 }
 
 export class Mirror {
@@ -685,6 +728,69 @@ export class Mirror {
   }
 
   /** Forget all of it, now. The off switch has to actually empty the drawer. */
+  /* ------------------------------------------------------------- proposals */
+
+  /**
+   * Keep a proposal, unless it is one somebody has already dismissed.
+   *
+   * The fingerprint decides sameness, so a nightly run that notices the same
+   * stale task does not fill the queue with copies of one observation — and a
+   * dismissal is permanent for as long as the row survives. Answers whether it
+   * was new, which is what lets a run report "three new" rather than "three".
+   */
+  proposeOne(p: Omit<Proposal, "made" | "dismissed">): boolean {
+    const seen = this.db
+      .prepare("SELECT dismissed FROM proposals WHERE fingerprint = ?")
+      .get(p.fingerprint) as { dismissed: string | null } | undefined;
+    if (seen) return false;
+    this.db
+      .prepare(
+        `INSERT INTO proposals (id, fingerprint, kind, about, title, detail, source, made)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(p.id, p.fingerprint, p.kind, p.about, p.title, p.detail, p.source, new Date().toISOString());
+    return true;
+  }
+
+  proposals(limit = 50): Proposal[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM proposals WHERE dismissed IS NULL ORDER BY made DESC LIMIT ?`,
+      )
+      .all(limit) as unknown as Proposal[];
+  }
+
+  /** How many are waiting, for a badge and for the budget. */
+  proposalCount(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM proposals WHERE dismissed IS NULL")
+      .get() as { n: number };
+    return row?.n ?? 0;
+  }
+
+  dismissProposal(id: string): boolean {
+    const out = this.db
+      .prepare("UPDATE proposals SET dismissed = ? WHERE id = ? AND dismissed IS NULL")
+      .run(new Date().toISOString(), id);
+    return Number(out.changes) > 0;
+  }
+
+  /**
+   * Decay.
+   *
+   * Two horizons, and they are different questions. An *undismissed* proposal
+   * that has sat for a fortnight is one nobody wants, and keeping it makes the
+   * queue a place where old suggestions accumulate — which is the failure
+   * `AMBIENT.md` names: "a review queue people stop opening is worse than no
+   * queue". A *dismissed* one is kept much longer, because forgetting it means
+   * offering the same thing again, which is worse than remembering.
+   */
+  pruneProposals(staleBefore: string, dismissedBefore: string): number {
+    const a = this.db.prepare("DELETE FROM proposals WHERE dismissed IS NULL AND made < ?").run(staleBefore);
+    const b = this.db.prepare("DELETE FROM proposals WHERE dismissed IS NOT NULL AND dismissed < ?").run(dismissedBefore);
+    return Number(a.changes) + Number(b.changes);
+  }
+
   forgetContext(): number {
     const n = (this.db.prepare("SELECT COUNT(*) AS n FROM context").get() as { n: number }).n;
     this.db.exec("DELETE FROM context");

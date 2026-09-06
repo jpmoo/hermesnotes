@@ -51,6 +51,19 @@ async function main(): Promise<void> {
   const queue = new Queue(ix, hermes, mirror);
   const app = buildServer({ config, mirror, hermes, ix, sync, socketPath: SOCKET_PATH });
 
+  /*
+   * When somebody last asked for something.
+   *
+   * The one signal this machine has for "in use": the daemon is only spoken to
+   * by things a person is looking at — a panel, the CLI, the canvas. Idle here
+   * means nobody has asked for two minutes, which is a cheaper and truer test
+   * than any of the desktop's idle timers, and it needs no permission.
+   */
+  let lastAsked = Date.now();
+  app.addHook("onRequest", async () => {
+    lastAsked = Date.now();
+  });
+
   await listen(app, SOCKET_PATH);
   log(`listening on ${SOCKET_PATH} — ${mirror.count()} blocks mirrored`);
   if (!sync.everSynced) log("no baseline yet: reads will be empty until Hermes can be reached");
@@ -112,6 +125,36 @@ async function main(): Promise<void> {
   };
   sweep();
   setInterval(sweep, 10 * 60 * 1000).unref();
+
+  /*
+   * Noticing things, quietly.
+   *
+   * `AMBIENT.md`'s fifth capability, and its two conditions: a budget and a
+   * decay. Both live in `propose.ts`; what lives here is *when*, and the answer
+   * is "rarely, and not while somebody is using the thing".
+   *
+   * Half an hour apart, and skipped whenever the daemon has answered a request
+   * in the last two minutes. A local model on a shared box is a fan spinning up,
+   * and doing that in the middle of somebody's search is precisely the way to
+   * make a helpful feature resented. The first pass waits a minute after start,
+   * so a machine coming out of sleep is not met with it.
+   */
+  const notice = async () => {
+    if (Date.now() - lastAsked < 2 * 60 * 1000) return;
+    try {
+      const res = await app.inject({ method: "POST", url: "/proposals/run" });
+      const out = res.json() as { added?: number; pruned?: number; skipped?: string | null };
+      if (out.added || out.pruned) {
+        log(`noticed ${out.added ?? 0} thing(s), forgot ${out.pruned ?? 0}`);
+      } else if (out.skipped) {
+        log(`noticed nothing — ${out.skipped}`);
+      }
+    } catch {
+      // A pass that fails is a pass that did not happen. Nothing depends on it.
+    }
+  };
+  setTimeout(notice, 60 * 1000).unref();
+  setInterval(notice, 30 * 60 * 1000).unref();
 
   const shutdown = async (signal: string) => {
     if (stopping) return;

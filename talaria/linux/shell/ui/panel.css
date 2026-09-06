@@ -725,3 +725,25 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
 }
+
+/* --- The noticed queue -----------------------------------------------------
+ * A proposal is three lines and two verbs, not a row of chips: what kind of
+ * observation it is, what it is about, and why it was raised. Borrowing the
+ * board's row shape put a title in a column two words wide.
+ */
+#body .card.noticed {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "kind actions" "title actions" "why actions";
+  gap: 2px 14px;
+  align-items: start;
+  padding: 10px 12px;
+}
+.card.noticed .kind {
+  grid-area: kind;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted);
+}
+.card.noticed .title { grid-area: title; font-weight: 600; }
+.card.noticed .why { grid-area: why; font-size: 12px; color: var(--muted); }
+.card.noticed .doing { grid-area: actions; display: flex; gap: 6px; align-items: center; }

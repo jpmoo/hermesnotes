@@ -26,6 +26,7 @@ import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
 import { applyRegionActions, Queue, type Intent } from "./queue.js";
+import { propose } from "./propose.js";
 import { describe, freshnessOf } from "./staleness.js";
 import type { Sync } from "./sync.js";
 
@@ -268,6 +269,107 @@ export function buildServer(deps: {
    * is one you cannot consent to, and "it only keeps a little" is a claim that
    * has to be checkable rather than believed.
    */
+  /**
+   * One pass of the noticing.
+   *
+   * The model half runs only when one is configured — the same one the canvas
+   * chat and Glance use — and the whole thing is bounded by `propose.ts`'s
+   * ceiling and per-run limit.
+   */
+  async function runProposals() {
+    return propose(
+      mirror,
+      () => canon(mirror.search({ limit: 1000 })),
+      config.inferenceModel
+        ? { url: config.inferenceUrl, model: config.inferenceModel }
+        : {},
+    );
+  }
+
+  /**
+   * The appointments around this minute.
+   *
+   * Read from the mirror, which is where they already are. Nothing is stored:
+   * ask again in an hour and the answer is different, which is the property a
+   * context signal is supposed to have.
+   */
+  function currentEvents(): { now: unknown[]; today: unknown[] } {
+    const at = new Date();
+    const day = at.toLocaleDateString("en-CA");
+    const rows = canon(mirror.search({ limit: 500 })).filter((b) => !b.archivedAt);
+    const on = rows.filter((b) => {
+      const start = b.schedule?.start?.value;
+      const end = b.schedule?.end?.value;
+      return (
+        (typeof start === "string" && start.slice(0, 10) === day) ||
+        (typeof end === "string" && end.slice(0, 10) === day)
+      );
+    });
+    const brackets = (b: (typeof on)[number]) => {
+      const start = b.schedule?.start?.value;
+      const end = b.schedule?.end?.value;
+      // A time of day on both ends, or this is an all-day entry and "now" is
+      // not a question it can answer.
+      if (typeof start !== "string" || !start.includes("T")) return false;
+      if (typeof end !== "string" || !end.includes("T")) return false;
+      return new Date(start) <= at && at <= new Date(end);
+    };
+    const brief = (b: (typeof on)[number]) => ({
+      id: b.id,
+      title: b.title,
+      typeName: b.typeName,
+      start: b.schedule?.start?.value ?? null,
+      end: b.schedule?.end?.value ?? null,
+      url: b.url,
+    });
+    return { now: on.filter(brackets).map(brief), today: on.map(brief) };
+  }
+
+  /* ------------------------------------------------------------- proposals */
+
+  /**
+   * What the machine noticed while nobody was asking.
+   *
+   * Read-only from here, on purpose: `AMBIENT.md` says the queue is "delivered
+   * as a review queue and **never written**", so the only verbs are look and
+   * dismiss. Acting on one happens in Hermes, by a person, through the paths
+   * that already exist.
+   */
+  app.get("/proposals", async (req) => {
+    const q = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }).parse(req.query);
+    const rows = mirror.proposals(q.limit ?? 50);
+    return envelope(
+      rows.map((p) => {
+        // The block it is about, so a queue can be read without a second call
+        // per row.
+        const raw = p.about ? mirror.rawBlock(p.about) : null;
+        const block = raw ? canon([raw])[0] : null;
+        return {
+          ...p,
+          block: block ? { id: block.id, title: block.title, url: block.url, typeName: block.typeName } : null,
+        };
+      }),
+    );
+  });
+
+  /** Not now, and not again. */
+  app.post("/proposals/:id/dismiss", async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    if (!mirror.dismissProposal(id)) return reply.code(404).send({ error: "no such proposal" });
+    return { ok: true, waiting: mirror.proposalCount() };
+  });
+
+  /**
+   * Look now, rather than waiting for the loop.
+   *
+   * For a person who has just asked "what have you noticed", and for the tests.
+   * The budget still applies — asking does not buy more than the ceiling.
+   */
+  app.post("/proposals/run", async () => {
+    const out = await runProposals();
+    return { ok: true, ...out, waiting: mirror.proposalCount() };
+  });
+
   app.get("/context", async (req) => {
     const q = z.object({ limit: z.coerce.number().int().optional() }).safeParse(req.query);
     return {
@@ -276,6 +378,21 @@ export function buildServer(deps: {
       excluded: config.contextExclude,
       working: context.working(),
       recent: context.recent(q.success ? (q.data.limit ?? 50) : 50),
+      /*
+       * What is on right now, derived rather than recorded.
+       *
+       * `AMBIENT.md` sets the constraint for this whole record: "context is a
+       * *query key, never a stored truth*. Derived, decaying, not a block." An
+       * appointment is the clearest case — it is already a block, with a time on
+       * it, and writing a second copy into a context table would be storing a
+       * fact that has an owner.
+       *
+       * So it is read at the moment somebody asks. Two answers, and they are
+       * different questions: `now` is what brackets this minute, which needs an
+       * event with a time of day, and `today` is everything on the day, which is
+       * what most of a library's events are — all-day entries with no clock.
+       */
+      calendar: currentEvents(),
     };
   });
 

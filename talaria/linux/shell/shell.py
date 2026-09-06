@@ -52,6 +52,8 @@ PANELS = {
     # The reciprocal of capture — see `ui/reference.html`. On `l` for "link",
     # which is the word for what it makes rather than for what it searches.
     "reference": ("Link to a block", "reference.html", "meta+shift+l"),
+    # What the machine noticed while nobody was asking. On `n` for noticed.
+    "proposals": ("Noticed", "proposals.html", "meta+shift+i"),
 }
 
 
@@ -69,6 +71,7 @@ SHORT = {
     "hermes": "Hermes",
     "glance": "Glance",
     "reference": "Link to…",
+    "proposals": "Noticed",
 }
 
 
@@ -460,6 +463,7 @@ class Shell(QObject):
         menu.addAction(self._act("Hermes Notes Collections", lambda: self.toggle("board")))
         menu.addAction(self._act("Glance", lambda: self.toggle("glance")))
         menu.addAction(self._act("Link to a block…", lambda: self.toggle("reference")))
+        menu.addAction(self._act("Noticed", lambda: self.toggle("proposals")))
         menu.addAction(self._act("New Block…", lambda: self.toggle("compose")))
 
         menu.addSeparator()
@@ -540,6 +544,8 @@ class Shell(QObject):
                 return
             self.panels[action] = panel
         panel.summon()
+        if action == "proposals":
+            panel.view.page().runJavaScript("window.proposalsRefresh && window.proposalsRefresh()")
         if action == "reference":
             import json as _json
 
@@ -770,6 +776,7 @@ class Shell(QObject):
             return panel
 
         size = {
+            "proposals": QSize(620, 460),
             "reference": QSize(560, 420),
             "glance": QSize(680, 380),
             "assistant": QSize(720, 460),

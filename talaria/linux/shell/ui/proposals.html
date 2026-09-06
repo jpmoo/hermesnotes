@@ -1,0 +1,101 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Noticed</title>
+<link rel="stylesheet" href="/ui/panel.css">
+
+<!--
+  What the machine noticed while nobody was asking.
+
+  AMBIENT's fifth capability, and its posture: "delivered as a review queue and
+  **never written**". So there are exactly two things to do with a row — look at
+  the block it is about, or say no. Acting on one happens in Hermes, by a
+  person, through the paths that already exist.
+-->
+
+<div class="chat">
+  <header class="chat-head">
+    <span class="dot"></span>
+    <span class="who-title">Noticed</span>
+    <span class="fine" id="count"></span>
+  </header>
+  <div class="pane" id="body" data-context>
+    <div class="note">Reading…</div>
+  </div>
+</div>
+
+<script type="module">
+import { get, post, complain, el } from "/ui/api.js";
+
+const body = document.getElementById("body");
+const count = document.getElementById("count");
+
+/* What each kind is, in the fewest words that are still true. Shown as the row's
+ * label, because "same-title" means nothing on its own and "2 blocks share this
+ * title" is the whole observation. */
+const KINDS = {
+  stale: "Overdue and untouched",
+  "same-title": "Two things, one name",
+  "to-task": "Sounds like something to do",
+};
+
+async function draw() {
+  let rows;
+  try {
+    rows = await get("/proposals");
+  } catch (err) {
+    return complain(body, err);
+  }
+  body.replaceChildren();
+  count.textContent = rows.length ? `${rows.length} waiting` : "";
+
+  if (!rows.length) {
+    const empty = el("div", "placeholder");
+    empty.appendChild(el("p", null, "Nothing to look at."));
+    empty.appendChild(el("p", "fine",
+      "This fills itself in the background — overdue tasks nobody has touched, two blocks " +
+      "wearing one name, a line in a note that reads like something you meant to do. " +
+      "Nothing here is ever written to the library; acting on one is your job, in Hermes."));
+    body.appendChild(empty);
+    return;
+  }
+
+  for (const row of rows) {
+    const card = el("div", "card noticed");
+    card.appendChild(el("span", "kind", KINDS[row.kind] ?? row.kind));
+    card.appendChild(el("span", "title", row.title || row.block?.title || "(untitled)"));
+    if (row.detail) card.appendChild(el("span", "why", row.detail));
+
+    const doing = el("div", "doing");
+    if (row.block?.url) {
+      const open = el("button", "quiet", "Open");
+      open.title = "Open it in Hermes Notes";
+      open.onclick = () => { window.location.href = row.block.url; };
+      doing.appendChild(open);
+    }
+    const no = el("button", "quiet", "Not this");
+    // Dismissal is permanent for as long as the row lives: the same observation
+    // arriving every night is the thing that makes a queue stop being read.
+    no.title = "Dismiss — and do not raise it again";
+    no.onclick = async () => {
+      no.disabled = true;
+      try {
+        await post(`/proposals/${row.id}/dismiss`, {});
+        card.remove();
+        const left = body.querySelectorAll(".card").length;
+        count.textContent = left ? `${left} waiting` : "";
+        if (!left) void draw();
+      } catch (err) {
+        complain(body, err);
+      }
+    };
+    doing.appendChild(no);
+    card.appendChild(doing);
+    body.appendChild(card);
+  }
+}
+
+// Re-read on every summon: the panel is hidden rather than closed, and a queue
+// showing what was there an hour ago is a queue arguing with itself.
+window.proposalsRefresh = () => void draw();
+void draw();
+</script>

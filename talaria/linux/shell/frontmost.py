@@ -93,11 +93,44 @@ class SelectionClock(QObject):
     Only the timestamp is kept. What the selection holds is never read here,
     which is not merely tidy: this fires on every highlight anywhere on the
     desktop, and the question is answered by a clock.
+
+    **And on this compositor it does not fire for anybody else.** Measured,
+    after the clock quietly broke the rung it was built to protect: a Qt client
+    with no focused window received *zero* `selectionChanged` events while
+    another application set the primary selection twice. Wayland offers the
+    primary selection to the focused client and to nobody else, so these ticks
+    are only ever about Talaria's own windows.
+
+    That makes the timestamp worse than missing. `selection_is_stale` reads a
+    tick older than the current focus as "this selection was made somewhere
+    else" — which is true of every external selection the moment any Talaria
+    panel has been used, because the clock stopped at the last thing selected
+    *here*. Glance then refused the primary selection for every non-browser
+    application and fell to the window title, and the failure had a signature
+    worth recognizing: it worked after a restart and stopped for good once you
+    selected anything inside a Talaria window.
+
+    So the clock says whether it can see anything but itself, and the ladder is
+    told to stop asking a question this platform cannot answer.
+
+    **Answered from the platform, not from a probe.** The first attempt was a
+    runtime one — a tick arriving while none of our windows was active would
+    prove the clock could observe other applications — and it was wrong within
+    the hour: a tray application with no window showing reports
+    `ApplicationInactive`, so Talaria's own first tick looked like somebody
+    else's and the clock declared itself sighted. The platform name is the fact
+    the behavior actually follows. X11 delivers selection notifications to
+    anyone who asks, and there the timestamps mean what `selection_is_stale`
+    thinks they mean.
     """
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.changed_at: float | None = None
+        #: True when the ticks are only ever about our own windows, so the
+        #: timestamps say nothing about anybody else's selection. Set in
+        #: `start`, from the platform.
+        self.blind: bool = False
 
     def start(self) -> None:
         from PySide6.QtGui import QGuiApplication
@@ -108,6 +141,7 @@ class SelectionClock(QObject):
         clipboard = app.clipboard()
         if clipboard is None:
             return
+        self.blind = app.platformName().startswith("wayland")
         clipboard.selectionChanged.connect(self._tick)
 
     def _tick(self) -> None:

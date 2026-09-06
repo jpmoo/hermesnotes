@@ -89,23 +89,38 @@ def primary_selection() -> tuple[str | None, str]:
     reliable enough to be the only vote when the fallback costs one failed
     spawn.
     """
-    # Qt first, when there is a Qt application to ask.
+    # **Qt cannot answer this on Wayland, and used to answer it anyway.**
     #
-    # Not an optimization. Every `wl-paste` is a new Wayland client, and KWin
-    # reports one as an activated window — sampling the selection on each focus
-    # change therefore fed itself and flashed the screen. In the shell there is
-    # already a client with the primary-selection protocol negotiated, and it
-    # can simply be asked.
+    # Asking our own clipboard was put here for a real reason: every `wl-paste`
+    # is a new Wayland client, KWin reports one as an activated window, and
+    # sampling on each focus change therefore fed itself and flashed the screen.
+    # But the primary selection is offered only to the *focused* client, and the
+    # shell is a tray application that is almost never focused — measured, after
+    # this quietly disabled the rung: a Qt client with no focused window
+    # received zero selection events while another application set the primary
+    # selection twice.
     #
-    # The subprocesses stay for the probes, which have no Qt application, and
-    # for X11 where `xclip` is the only answer.
+    # So on Wayland it returned an empty string and this function reported
+    # "nothing is selected" — an answer about the desktop, confidently wrong,
+    # which sent the ladder past rung 3 to the window title every time. Glance
+    # had been offering "Claude" instead of the paragraph somebody had
+    # highlighted.
+    #
+    # `wl-paste` gets it because it briefly takes focus to ask, which is also
+    # what made the old sampling loop flash. That cost is fine here and was
+    # never fine there: this runs once, when somebody presses a key, which is
+    # the same fence rung 6 is built behind.
+    on_wayland = False
     try:
         from PySide6.QtGui import QClipboard, QGuiApplication
 
         app = QGuiApplication.instance()
         if app is not None:
+            on_wayland = app.platformName().startswith("wayland")
             clipboard = app.clipboard()
-            if clipboard is not None:
+            # X11 hands every client the selection, so there Qt is both correct
+            # and free.
+            if not on_wayland and clipboard is not None:
                 text = clipboard.text(QClipboard.Mode.Selection)
                 return (text, "qt") if text else (None, "nothing is selected")
     except Exception:  # noqa: BLE001
@@ -126,6 +141,22 @@ def primary_selection() -> tuple[str | None, str]:
         # A non-zero exit here usually means the selection is empty, which is an
         # answer about the desktop rather than a failure of the tool.
         return None, "nothing is selected"
+
+    # Neither tool is installed. Qt is a poor answer on Wayland and it is the
+    # only one left, so it is taken rather than refused — with its own name on
+    # it, because a reading that came from our own clipboard is a different
+    # claim from one that came from the desktop.
+    try:
+        from PySide6.QtGui import QClipboard, QGuiApplication
+
+        app = QGuiApplication.instance()
+        clipboard = app.clipboard() if app is not None else None
+        if clipboard is not None:
+            text = clipboard.text(QClipboard.Mode.Selection)
+            if text:
+                return text, "qt"
+    except Exception:  # noqa: BLE001
+        pass
     return None, "no wl-paste or xclip installed"
 
 
@@ -402,9 +433,18 @@ def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bo
     return changed_at < focused_at
 
 
-def read(window, allow_copy: bool = False, changed_at=None, focused_at=None) -> Reading:
+def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
+         clock_blind: bool = False) -> Reading:
     """
     Climb until something answers.
+
+    `clock_blind` says the selection clock cannot see other applications at all
+    — which is the case on Wayland, where the primary selection is offered only
+    to the focused client. See `SelectionClock`. When it is set, the staleness
+    test is not answered wrongly, it is not answered: a browser is asked
+    directly (rung 6, as it already was) and everything else is allowed its
+    primary selection instead of being refused on the strength of a comparison
+    that could only ever come out one way.
 
     `window` is a `frontmost.Window` or None. The blindlist has already been
     applied to it, and a refused window stops here — before the primary
@@ -468,7 +508,11 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None) -> 
     # that exists and never fires.
     # Off unless asked for. A rung that presses keys in somebody else's window
     # should be a thing they turned on, not a thing they discover.
-    if allow_copy and copy_enabled() and _is_copyable(window) and selection_is_stale(changed_at, focused_at):
+    # `clock_blind` keeps this firing where it already did: a browser whose
+    # selection cannot be attributed is exactly the case rung 6 exists for, and
+    # a blind clock cannot attribute any of them.
+    if (allow_copy and copy_enabled() and _is_copyable(window)
+            and (clock_blind or selection_is_stale(changed_at, focused_at))):
         text, how = synthetic_copy(window)
         # Said out loud either way. A rung with a side effect that quietly
         # declines is the worst of both — it has already pressed the keys.
@@ -485,7 +529,12 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None) -> 
     # rather than the intent: 'Untitled' is a real filename and tells nobody
     # anything." Here the global selection answered first and always, so the
     # title was never reached and Glance kept offering text from an hour ago.
-    stale = selection_is_stale(changed_at, focused_at)
+    # Unanswerable is not the same as answered "no". Where the clock is blind
+    # this rung is allowed through with its usual honesty — the panel says it
+    # came from the primary selection, which cannot name its owner — rather than
+    # being skipped in favor of a window title, which is worse and looks
+    # deliberate.
+    stale = (not clock_blind) and selection_is_stale(changed_at, focused_at)
     if atspi_why != REACHED_NO_SELECTION and not stale:
         text, how = primary_selection()
         if text and text.strip():

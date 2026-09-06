@@ -654,6 +654,7 @@ class Shell(QObject):
             allow_copy=False,
             changed_at=self.frontmost.selection.changed_at,
             focused_at=self.frontmost.focused_at,
+            clock_blind=self.frontmost.selection.blind,
         )
         print(
             f"talaria: ambient — front={window.name if window else 'unknown'} "
@@ -725,6 +726,7 @@ class Shell(QObject):
                 allow_copy=True,
                 changed_at=self.frontmost.selection.changed_at,
                 focused_at=self.frontmost.focused_at,
+                clock_blind=self.frontmost.selection.blind,
             )
 
         # What it looked at and where it got it, but never the text itself:
@@ -759,21 +761,33 @@ class Shell(QObject):
         showing it before it has one would show an empty window. This one is a
         form that stands on its own, and the text is an improvement to it.
         """
-        text = None
-        if isinstance(found, dict) and str(found.get("text") or "").strip():
-            # Our own window, and only when something was actually selected in
-            # it — "everything showing in the desk" is not a block.
-            if found.get("how") == "selected":
-                text = str(found["text"])
+        text, rung = None, "none"
+        # Our own window, and only when something was actually selected in it —
+        # "everything showing in the desk" is not a block. A harvest that found
+        # the desk but no selection falls through to the ladder rather than
+        # stopping here, which is the difference between "nothing was selected
+        # in Talaria" and "nothing was selected".
+        if isinstance(found, dict) and found.get("how") == "selected" and str(found.get("text") or "").strip():
+            text, rung = str(found["text"]), "our own window"
         else:
             reading = glance.read(
                 self.frontmost.current,
                 allow_copy=True,
                 changed_at=self.frontmost.selection.changed_at,
                 focused_at=self.frontmost.focused_at,
+                clock_blind=self.frontmost.selection.blind,
             )
+            rung = reading.rung
             if reading.usable and reading.rung in self.CHOSEN:
                 text = reading.text
+
+        # What it looked at and which rung answered, never the text itself.
+        front = self.frontmost.current
+        print(
+            f"talaria: compose — front={front.name if front else 'unknown'} "
+            f"rung={rung} used={bool(text)} chars={len(text or '')}",
+            file=sys.stderr, flush=True,
+        )
 
         panel = self.panels.get("compose")
         if panel is None:

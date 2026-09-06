@@ -296,6 +296,36 @@ ladder of seven, each catching what the one above missed. Read
    selected" and "hasn't landed yet" are harder to separate than on macOS.
 7. Window title, blindlisted the same way.
 
+### The primary selection is offered only to the focused client
+
+Two bugs, one platform fact, and between them they had quietly disabled rung 3
+for every application that is not a browser — Glance answered with the window
+title and looked like it was working. Both were found by way of New Block
+arriving empty, which is the same rung read through a different panel.
+
+Measured before either was believed: a Qt client with no focused window received
+**zero** `selectionChanged` events while another application set the primary
+selection twice.
+
+- **`primary_selection()` asked Qt first**, which was put there for a good
+  reason — every `wl-paste` is a new Wayland client, KWin reports one as an
+  activated window, and sampling on each focus change fed itself and flashed the
+  screen. But on Wayland our clipboard holds nothing unless one of our windows
+  has focus, so it returned `""` and the function reported *"nothing is
+  selected"*: an answer about the desktop, confidently wrong. Qt is now used on
+  X11, where it is correct and free, and `wl-paste` on Wayland. It takes focus
+  for an instant to ask — the same cost that made the old sampling loop flash,
+  and it is fine here because this runs once, when somebody presses a key.
+- **`SelectionClock` cannot see anybody else's selection**, so its ticks are
+  only ever about Talaria's own windows. `selection_is_stale` then read a tick
+  older than the current focus as "made somewhere else", which is true of every
+  external selection the moment any panel has been used. The failure had a
+  signature worth recognizing: it worked after a restart and stopped for good
+  once you selected anything inside a Talaria window. The clock now says whether
+  it can see anything but itself — from the platform name, not from a runtime
+  probe, because the first probe was fooled within the hour by a tray
+  application with no window reporting `ApplicationInactive`.
+
 ### What the rungs actually returned here
 
 Measured, not assumed. Keep this up to date rather than re-deriving it.

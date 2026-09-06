@@ -17,6 +17,11 @@ X-KDE-ServiceTypes=Plasma/Runner
 X-KDE-PluginInfo-Name=talaria
 X-KDE-PluginInfo-Author=Talaria
 X-KDE-PluginInfo-License=MIT
+X-KDE-PluginInfo-Version=1.0
+# Without this a runner is installed and switched off, which looks exactly like
+# a runner that does not work: KRunner lists it in its settings and never calls
+# it. Every runner Plasma ships says the same thing.
+X-KDE-PluginInfo-EnabledByDefault=true
 X-Plasma-API=DBus
 X-Plasma-DBusRunner-Service=dev.talaria.Runner
 X-Plasma-DBusRunner-Path=/runner

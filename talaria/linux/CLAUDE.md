@@ -217,6 +217,13 @@ that bindings live in the portal's store rather than System Settings;
 
 ### Things that cost an hour here, so they do not cost another
 
+- **A runner without `X-KDE-PluginInfo-EnabledByDefault=true` is installed and
+  switched off.** KRunner reads the plugin file, lists it in its settings, and
+  never calls it — indistinguishable from a runner whose D-Bus service is
+  broken. Every runner Plasma ships carries the line. `dbus-monitor --session
+  "interface='org.kde.krunner1'"` is how to tell the two apart: if `Actions`
+  and `Match` never arrive, the problem is the plugin file, not the code.
+
 - **`job.requestBody()` on a GET is a segfault.** PySide tries to wrap the null
   `QIODevice*` and dies inside `getWrapperForQObject` — on the first request the
   page makes, after the window has already rendered. Ask for a body only when

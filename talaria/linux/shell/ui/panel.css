@@ -38,6 +38,17 @@ body {
 .frame { display: flex; height: 100vh; }
 .pane { flex: 1; overflow-y: auto; padding: 16px 20px; }
 
+/* A pane that *is* the page, rather than a column inside a `.frame`.
+ *
+ * `flex: 1` says nothing outside a flex container, so this sized itself to its
+ * content, grew past the bottom of a body that clips, and took its own scrollbar
+ * with it: `overflow-y: auto` on a box that is never taller than what is in it
+ * never scrolls. New Block on a type with several fields put its last field and
+ * its Create button below the edge, unreachable. Only compose is built this way
+ * today, which is why it took this long to show up.
+ */
+body > .pane { height: 100vh; }
+
 .side {
   width: 240px;
   flex: none;

@@ -13,9 +13,15 @@
  */
 export function usePanels() {
   return {
-    selectBlock: (id: string) => {
-      window.location.href = `talaria-app://daemon/open/block/${id}`;
-    },
+    /*
+     * Nothing. In Hermes this puts the block in the panel beside the canvas;
+     * here the only "elsewhere" is the Hermes window, and both callers reach it
+     * having *just made* the thing — a note converted into a block, a block
+     * created from the toolbar. Both are already on the canvas, drawn where the
+     * note was. Navigating away from a canvas somebody is arranging, at the
+     * moment they add to it, is the opposite of what the call means.
+     */
+    selectBlock: (_id: string) => {},
     /** No slot: the controls that would portal into it simply do not render. */
     bottomSlotEl: null as HTMLElement | null,
     selectedBlockId: null as string | null,

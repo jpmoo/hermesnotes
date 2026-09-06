@@ -1,4 +1,4 @@
-import { Grid2x2, GripHorizontal, Image as ImageIcon, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
+import { Grid2x2, GripHorizontal, Image as ImageIcon, Layers, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readableOn } from "../lib/display.ts";
@@ -360,6 +360,37 @@ export function CanvasView({
       return false;
     }
   });
+  /*
+   * Whether the desktop shows through — the Mac's `seeThrough`, and its reason:
+   * "off is for when the canvas is the work and the desktop is a distraction."
+   *
+   * Remembered per machine like the grid. A canvas is a place somebody settles
+   * into, and having to turn the blur off again every time it opens is the sort
+   * of small tax that makes a surface feel borrowed.
+   */
+  const [seeThrough, setSeeThrough] = useState(() => {
+    try {
+      return localStorage.getItem("talaria.canvas.frost") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleFrost = () => {
+    setSeeThrough((was) => {
+      const next = !was;
+      try {
+        localStorage.setItem("talaria.canvas.frost", next ? "1" : "0");
+      } catch { /* a private window still gets the toggle, just not the memory */ }
+      // The class goes on the root so the stylesheet can dress the whole page,
+      // not just the wrap — the surface *behind* the canvas is what changes.
+      document.documentElement.classList.toggle("solid", !next);
+      return next;
+    });
+  };
+  useEffect(() => {
+    document.documentElement.classList.toggle("solid", !seeThrough);
+  }, [seeThrough]);
+
   const [grid, setGrid] = useState(() => {
     try {
       return localStorage.getItem("hn.canvas.grid") !== "0";
@@ -780,11 +811,6 @@ export function CanvasView({
       saveEdges(edges.filter((e) => e.id !== existing.id));
       return;
     }
-    const isRegion = (id: string) => regions.some((rg) => rg.id === id);
-    // A region has no id anything outside this canvas can address, and neither
-    // has a note — so a line touching either is canvas decoration rather than a
-    // relation, which is the distinction `finishLink` draws in the same words.
-    const eph = from.startsWith("n:") || to.startsWith("n:") || isRegion(from) || isRegion(to);
     const fr = rectOf(from);
     const tr = rectOf(to);
     if (!fr || !tr) return;
@@ -803,8 +829,6 @@ export function CanvasView({
         fromSide,
         toSide,
         arrow: "forward",
-        live: !eph,
-        ...(eph ? { dash: "dotted" as const } : {}),
       },
     ]);
   };
@@ -1526,20 +1550,16 @@ export function CanvasView({
     const dyc = sa.y - (tr.y + tr.h / 2);
     const toSide: Side =
       Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
-    // A live link needs two real blocks — anything touching an ephemeral note
-    // or a region is forced ephemeral (dotted).
-    //
-    // A region is not a block: it is a box drawn round some, with no id anything
-    // outside this canvas can address. Filing a relation to one would be filing
-    // a relation to nothing, and the relation would outlive the region.
-    const isRegion = (id: string) => regions.some((r) => r.id === id);
-    const eph =
-      link.from.startsWith("n:") || target.startsWith("n:") || isRegion(link.from) || isRegion(target);
-    // A live link whose target type matches a relation field on the source sets
-    // that relation (and reveals it as a toggleable "existing connection")
-    // instead of drawing a standalone edge that would linger after the relation
-    // is removed. Otherwise, draw the edge.
-    if (!eph && fileUnderRelation(link.from, target)) return;
+    /*
+     * **No relation filing, and no live edges.**
+     *
+     * Hermes files a connection between two blocks under a reference field when
+     * their types have one, so the line *is* the relation. Talaria cannot: a
+     * relation is a fact about two blocks in the library, and writing one means
+     * writing to Hermes — which happens through the interchange or not at all,
+     * and `canvas.json` is not the interchange. Its lines are canvas decoration,
+     * and they say so by being nothing else.
+     */
     // Two things are either connected or they aren't — a second line between the
     // same pair says nothing the first doesn't, and they overlap so you can't
     // tell there are two. Drawing one again opens the existing line's settings,
@@ -1561,8 +1581,6 @@ export function CanvasView({
         fromSide: link.side,
         toSide,
         arrow: "forward",
-        live: !eph,
-        ...(eph ? { dash: "dotted" as const } : {}),
       },
     ]);
     // The line's own settings, where it was dropped: dashes, arrows and label
@@ -3117,6 +3135,13 @@ export function CanvasView({
         >
           <Grid2x2 size={14} />
         </button>
+        <button
+          className={`icon-btn cv-frost-toggle${seeThrough ? " on" : ""}`}
+          title={seeThrough ? "Hide what is behind" : "Let the desktop show through"}
+          onClick={toggleFrost}
+        >
+          <Layers size={14} />
+        </button>
         <span className="cv-tb-sep" />
         <button className="icon-btn" title="Zoom out" onClick={() => zoomBy(1 / 1.2, innerWidth / 2, innerHeight / 2)}>
           <Minus size={14} />
@@ -3598,27 +3623,21 @@ export function CanvasView({
               value={menuEdge.label ?? ""}
               onChange={(e) => patchEdge(menuEdge.id, { label: e.target.value })}
             />
-            <div className="cv-menu-row">
-              <button
-                className={`seg${menuEdge.live !== false ? " active" : ""}`}
-                disabled={menuEdge.from.startsWith("n:") || menuEdge.to.startsWith("n:")}
-                title={
-                  menuEdge.from.startsWith("n:") || menuEdge.to.startsWith("n:")
-                    ? "Ephemeral notes can't hold live links — convert the note to a block first"
-                    : "A real connection — shows in both blocks' info"
-                }
-                onClick={() => patchEdge(menuEdge.id, { live: true, dash: "solid" })}
-              >
-                Live
-              </button>
-              <button
-                className={`seg${menuEdge.live === false ? " active" : ""}`}
-                title="Canvas-only decoration — no system connection"
-                onClick={() => patchEdge(menuEdge.id, { live: false, dash: "dotted" })}
-              >
-                Ephemeral
-              </button>
-            </div>
+            {/*
+              * **No Live/Ephemeral here.**
+              *
+              * In Hermes the distinction is real: a live edge *is* a relation
+              * between two blocks and shows in both their info panels, while an
+              * ephemeral one is decoration on the collection. Talaria's canvas
+              * has only the second kind. Its lines live in `canvas.json`, which
+              * has no word for a relation and no business inventing one — the
+              * format is where a connection between blocks would be said, and
+              * saying it here would be Talaria writing to Hermes around the
+              * interchange.
+              *
+              * So the control is gone rather than disabled. A switch that can
+              * only ever be on one setting is a question with one answer.
+              */}
             <div className="cv-menu-row">
               {(["solid", "dashed", "dotted"] as const).map((d) => (
                 <button

@@ -9,7 +9,7 @@
 import { Component, StrictMode, useCallback, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { CanvasView } from "./components/CanvasView.tsx";
-import { api, hold, type BlockType, type Collection, type Member } from "./api.ts";
+import { api, flush, hold, type BlockType, type Collection, type Member } from "./api.ts";
 import { getDocument, getLinked, toCollection, toMembers } from "./document.ts";
 import "./canvas-forked.css";
 import "./canvas.css";
@@ -24,6 +24,20 @@ function Canvas() {
 
   const read = useCallback(async () => {
     try {
+      /*
+       * **Anything pending goes out first.**
+       *
+       * Edits are written on a pause, and `onChanged` fires the moment the
+       * component has finished changing things — well inside that pause. Reading
+       * then hands back the document as it was *before* the edit and `hold`
+       * replaces the live one with it, so the pending write lands on a document
+       * that has forgotten what it was about to say.
+       *
+       * Converting a note showed it plainly: the note was removed, the block was
+       * placed, both were thrown away by the re-read, and the canvas came back
+       * empty.
+       */
+      await flush();
       const doc = await getDocument();
       const linked = await getLinked(
         doc.items.map((i) => i.blockId).filter((id): id is string => Boolean(id)),
@@ -84,6 +98,16 @@ class Boundary extends Component<{ children: ReactNode }, { failure: Error | nul
     );
   }
 }
+
+/*
+ * Whether this canvas is a window or a surface on the desk.
+ *
+ * The shell's pages get this from `ui/api.js`, which every one of them imports;
+ * the canvas has its own transport and so never picked it up — which meant the
+ * frosting rules keyed on `.framed` sat in the stylesheet doing nothing, and the
+ * canvas painted itself solid inside a desk built to show through it.
+ */
+if (window.parent !== window) document.documentElement.classList.add("framed");
 
 createRoot(document.getElementById("canvas-root")!).render(
   <StrictMode>

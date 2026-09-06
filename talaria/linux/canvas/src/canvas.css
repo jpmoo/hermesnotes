@@ -1,13 +1,40 @@
 /* The canvas fills whatever it is put in, and paints nothing of its own behind
  * itself — on the desk it sits on the frosted sheet. */
 html, body, #canvas-root { height: 100%; margin: 0; }
-/* Hermes' own body face, which is the brand's and the Mac's: "Body/content:
- * Verdana. Interface chrome: Tahoma." The tokens come with the forked
- * stylesheet, so this only has to name them. */
+/*
+ * The canvas's typeface, in one place.
+ *
+ * Hermes' brand is explicit — "Body/content: Verdana. Interface chrome: Tahoma"
+ * — and the Mac copies it (`Theme.swift`: "The web app sets Verdana for body
+ * and Tahoma for chrome"), so that is what parity means and that is the default
+ * here. The other honest answer is the shell's own face, `system-ui, "Noto
+ * Sans"`, which every other Talaria panel uses and which is the desktop's
+ * choice rather than the app's. Swapping is a one-line change to these two
+ * declarations; both are sans.
+ */
 body {
   background: transparent;
   color: var(--text, CanvasText);
   font: 13px/1.5 var(--font-body, system-ui, sans-serif);
+}
+
+/*
+ * **And the controls inherit it**, which is the whole reason the canvas looked
+ * wrong.
+ *
+ * A button, an input, a select and a textarea do not inherit `font-family` from
+ * their page — the browser gives them its own, which is a serif. So the toolbar,
+ * the "Add a block" field, every menu item and every swatch label were rendered
+ * in Times while the prose beside them was not, which reads as two applications
+ * sharing a window. `panel.css` in the shell has had this rule all along; the
+ * fork of Hermes' stylesheet did not bring Hermes' copy of it, because its
+ * selector names no class and no `cv-` sweep could ever have found it.
+ */
+button,
+input,
+select,
+textarea {
+  font: inherit;
 }
 .canvas-waiting {
   height: 100%; display: flex; align-items: center; justify-content: center;
@@ -121,3 +148,35 @@ body {
       calc(24px * var(--cv-z, 1)) calc(24px * var(--cv-z, 1)),
     var(--surface-2);
 }
+
+/* --- Frosting, and the two layers of it ------------------------------------
+ * The Mac makes the canvas a pane like the four quadrants — an edge, and the
+ * blur showing through it — "because without one it is the whole screen and
+ * there is nothing to say where the surface stops and the desktop showing
+ * through it begins." Same construction here: the desk's sheet is the outer
+ * layer, and the canvas lays its own thin veil over it, exactly as a quadrant
+ * does.
+ *
+ * Only when framed. On its own the canvas is a window with nothing behind it,
+ * and a see-through window over a desktop nobody blurred is just hard to read.
+ */
+.framed .cv-wrap {
+  background:
+    radial-gradient(circle, var(--border) 1px, transparent 1px) var(--cv-x, 0px) var(--cv-y, 0px) /
+      calc(24px * var(--cv-z, 1)) calc(24px * var(--cv-z, 1)),
+    color-mix(in srgb, CanvasText 4%, transparent);
+}
+
+/* Frosting off: the surface is solid and the desktop is gone. The toggle is the
+ * Mac's, and so is the reason — the canvas is the work now. */
+.solid .cv-wrap,
+.solid body {
+  background-color: var(--surface-2);
+}
+.solid .cv-wrap {
+  background:
+    radial-gradient(circle, var(--border) 1px, transparent 1px) var(--cv-x, 0px) var(--cv-y, 0px) /
+      calc(24px * var(--cv-z, 1)) calc(24px * var(--cv-z, 1)),
+    var(--surface-2);
+}
+.cv-frost-toggle.on { color: var(--accent); }

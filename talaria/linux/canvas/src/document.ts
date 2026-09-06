@@ -116,7 +116,15 @@ function notesOf(doc: CanvasDocument) {
       hAlign: item.hAlign,
       vAlign: item.vAlign,
       textColor: item.textColor ?? null,
-      image: item.image ?? null,
+      /*
+       * **Not passed through, on purpose.** Hermes' note carries its picture as
+       * `{name, mime, data}` — the bytes, inline. Talaria stores a file name in
+       * `canvas-images/` beside the document. Handing the component a string
+       * where it expects an object makes it read `.data` off a string, and the
+       * failure lands in the middle of converting a note rather than anywhere
+       * near here. The file keeps its `image` either way; `itemFromNote` never
+       * overwrites it.
+       */
     }));
 }
 

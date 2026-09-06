@@ -407,6 +407,96 @@ async function route<T>(method: string, path: string, body?: unknown): Promise<T
     dropMember(decodeURIComponent(member[1]));
     return undefined as T;
   }
+  /*
+   * Making a real block out of a note — "Convert to…".
+   *
+   * The component builds Hermes' own create payload: a title, and prose in
+   * whichever property that type declares for it. **Talaria must not send
+   * that.** Reaching Hermes outside the interchange is the standing
+   * instruction, and guessing which property holds a body is precisely the kind
+   * of guess the format exists to answer.
+   *
+   * So the text is reassembled and handed to the daemon's `/capture`, which
+   * reads the type's *note profile* to decide where prose goes — `properties`
+   * when the profile names a slot, and the title when it names none, "which is
+   * ugly and is still better than a capture that silently ate most of what was
+   * selected". From there it goes out through `/write` and the binding, which
+   * is also what makes it survive being done offline: the write queues and
+   * leaves on reconnect.
+   *
+   * Whether the whole note is the body or only its first line is a title is the
+   * component's own distinction, and it has already made it: a text type gets
+   * `content`, anything else gets `properties`.
+   */
+  if (method === "POST" && at === "/blocks") {
+    const payload = (body ?? {}) as {
+      blockTypeId?: string;
+      content?: string;
+      properties?: Record<string, unknown>;
+    };
+    const props = payload.properties ?? {};
+    const title = typeof props.title === "string" ? props.title : "";
+    const prose = [payload.content, ...Object.entries(props).filter(([k]) => k !== "title").map(([, v]) => v)]
+      .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
+      .join("\n");
+    const text = payload.properties ? [title, prose].filter(Boolean).join("\n") : (payload.content ?? title);
+    if (!text.trim()) throw new Error("there is nothing written on that note to make a block out of");
+    const made = await ask<{ id?: string; queued?: string; note?: string }>("POST", "/capture", {
+      text,
+      // A text type keeps the whole note as its body; anything else has a title
+      // to split off. `/capture` says this in the same two words.
+      as: payload.properties ? "task" : "note",
+      ...(payload.blockTypeId ? { blockTypeId: payload.blockTypeId } : {}),
+    });
+    if (!made?.id) throw new Error("the daemon made no block");
+    // Enough of a `Block` for the caller, which wants an id and puts the rest
+    // on the canvas itself.
+    return {
+      id: made.id,
+      blockTypeId: payload.blockTypeId ?? "",
+      collectionKind: null,
+      content: payload.content ?? null,
+      properties: props,
+      embeddedAt: null,
+      embedPending: true,
+      version: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as T;
+  }
+
+  /*
+   * The types, which the daemon answers from the mirror.
+   *
+   * Forwarded rather than translated: the daemon's `/types` already returns the
+   * shape this needs. Its absence was invisible in the worst way — the fork asks
+   * for types once, on load, and swallows a failure, so "Convert to…" simply had
+   * nothing under it and looked like a menu that ended there.
+   */
+  if (method === "GET" && at === "/types") {
+    const types = await ask<
+      { id: string; name: string; icon?: string | null; bodySlot?: string | null }[]
+    >("GET", "/types");
+    /*
+     * The daemon has already read the profiles and hands back what they said —
+     * `bodySlot`, `titleKey`, `statusKey` — rather than the profile objects. So
+     * the two vocabularies are matched here, and `isText` is `bodySlot ===
+     * "content"`: a type whose body *is* its content has no title to split off,
+     * which is the same question `/capture` asks on the other side.
+     */
+    return (types ?? []).map((t) => ({
+      ...t,
+      iconKey: t.icon ?? null,
+      iconColor: null,
+      iconSource: "lucide",
+      showIcon: true,
+      propertySchema: null,
+      schemaVersion: 1,
+      builtin: false,
+      isText: t.bodySlot === "content",
+    })) as T;
+  }
+
   if (method === "GET" && at === "/tags") {
     // The tags are what the blocks are wearing, which is also the only list
     // worth offering: a tag nothing carries is not one to pick.

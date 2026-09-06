@@ -840,6 +840,10 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   background: none; border: 1px solid var(--line); border-radius: 6px;
   color: var(--fg); font: inherit; font-size: 12.5px; height: 26px; padding: 0 4px;
 }
+/* Each menu at its own width: a size list of two-digit numbers does not need
+ * the room "Heading 1" does. */
+.tools #font { min-width: 92px; }
+.tools #size { min-width: 52px; }
 .tools .tsep { width: 1px; height: 18px; background: var(--line); margin: 0 5px; flex: none; }
 .tools .grow { flex: 1 1 auto; }
 .tools .state { flex: none; font-size: 11.5px; color: var(--muted); min-width: 54px; text-align: right; }
@@ -857,14 +861,24 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .solid .sheet { background: var(--raised); }
 
 .page {
-  /* A measure, not a width. Long lines are the one typographic mistake that
-   * makes writing physically harder, and a full-screen surface is exactly where
-   * it happens. */
-  max-width: 46rem;
-  margin: 0 auto;
-  padding: 34px 30px 55vh;
+  /*
+   * The whole width, which is a decision rather than a default.
+   *
+   * This started with a 46rem measure, on the usual argument that long lines
+   * are the one typographic mistake that makes reading physically harder. That
+   * argument is about *reading* prose you did not write. A full-screen surface
+   * somebody chose to open is a desk, and a column down the middle of it with
+   * two empty thirds either side reads as a page that failed to load. The
+   * measure is the writer's to set now, with the size control below.
+   */
+  padding: 34px 46px 55vh;
   outline: none;
-  font: 15px/1.7 system-ui, "Noto Sans", sans-serif;
+  /* Both set from the toolbar and remembered per surface — they are how the
+   * page looks, not what the document says, and Markdown has no way to record
+   * either. */
+  font-family: var(--writing-font, system-ui, "Noto Sans", sans-serif);
+  font-size: var(--writing-size, 15px);
+  line-height: 1.7;
 }
 /* Room to write past the last line, so the caret is never pinned to the bottom
  * edge of the screen. That is what the tall bottom padding above is for. */

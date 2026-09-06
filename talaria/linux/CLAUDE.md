@@ -385,6 +385,18 @@ keeps of Talaria is the desk it sits on: every hotkey still works over it
 Glance can read it, because the page marks its content with `data-context` like
 every other page here.
 
+**The page is the whole width, and the typeface is the writer's.** The first
+version used a 46rem measure, on the usual argument that long lines are harder to
+read — which is an argument about reading prose you did not write. A full-screen
+surface somebody opened on purpose is a desk, and a column down the middle of it
+with two empty thirds either side reads as a page that failed to load. The
+toolbar carries a face and a size instead: four faces this project already has an
+opinion about (the system stack, a serif, Verdana because that is Hermes' body
+face, and a monospace) and a size list. Both live in the browser's own storage
+per surface rather than in the file, because what a document *says* and what it
+looks like while somebody writes it are different questions, and only the first
+belongs in something other programs will read.
+
 **Markdown, not HTML.** HTML would have made `richtext.js` twenty lines long and
 the directory worthless — a writing app whose work can only be read by itself is
 a trap. The cost is a serializer that has to be exact, because it runs on a timer

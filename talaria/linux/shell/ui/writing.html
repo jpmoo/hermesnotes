@@ -41,6 +41,23 @@
       <option value="pre">Code</option>
     </select>
 
+    <select id="font" title="Typeface" aria-label="Typeface">
+      <option value="system">System</option>
+      <option value="serif">Serif</option>
+      <option value="verdana">Verdana</option>
+      <option value="mono">Monospace</option>
+    </select>
+
+    <select id="size" title="Text size" aria-label="Text size">
+      <option value="13">13</option>
+      <option value="14">14</option>
+      <option value="15">15</option>
+      <option value="16">16</option>
+      <option value="18">18</option>
+      <option value="20">20</option>
+      <option value="24">24</option>
+    </select>
+
     <span class="tsep"></span>
 
     <button data-cmd="bold" title="Bold  (Ctrl+B)" aria-label="Bold"><b>B</b></button>
@@ -126,6 +143,57 @@ const framed = window.parent !== window;
  */
 document.execCommand("styleWithCSS", false, "false");
 document.execCommand("defaultParagraphSeparator", false, "p");
+
+/* ------------------------------------------------------- how it is set */
+
+/*
+ * The typeface and the size, which belong to the surface and not to the file.
+ *
+ * Markdown has nowhere to record either, and it should not: what a document
+ * *says* and what it looks like while somebody writes it are different
+ * questions, and only the first one is worth keeping in a file that other
+ * programs will read. So these live in the browser's own storage, per surface,
+ * and every document opens the way the last one was left.
+ *
+ * The four faces are the ones this project already has an opinion about. Verdana
+ * is Hermes' body face — the brand is explicit about it and `canvas.css` says so
+ * — and the system stack is the desktop's own choice, which is what the rest of
+ * the shell uses. Serif and monospace are here because writing is not chrome and
+ * some people cannot think in a UI font.
+ */
+const FACES = {
+  system: 'system-ui, "Noto Sans", sans-serif',
+  serif: 'Georgia, "Noto Serif", "Times New Roman", serif',
+  verdana: 'Verdana, "DejaVu Sans", sans-serif',
+  mono: 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace',
+};
+
+const font = document.getElementById("font");
+const size = document.getElementById("size");
+
+/** Remembered, and never fatal. A private window has no storage at all. */
+function remember(key, value) {
+  try { localStorage.setItem(`talaria.writing.${key}`, value); } catch { /* fine */ }
+}
+function remembered(key, fallback) {
+  try { return localStorage.getItem(`talaria.writing.${key}`) ?? fallback; } catch { return fallback; }
+}
+
+function dressed() {
+  const face = FACES[font.value] ? font.value : "system";
+  page.style.setProperty("--writing-font", FACES[face]);
+  page.style.setProperty("--writing-size", `${size.value}px`);
+  remember("font", face);
+  remember("size", size.value);
+}
+
+font.value = remembered("font", "system");
+size.value = remembered("size", "15");
+if (!FACES[font.value]) font.value = "system";
+if (![...size.options].some((o) => o.value === size.value)) size.value = "15";
+font.onchange = () => { dressed(); page.focus(); };
+size.onchange = () => { dressed(); page.focus(); };
+dressed();
 
 /* ---------------------------------------------------------------- saving */
 

@@ -548,6 +548,10 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
             self._reply_bytes(job, b'{"ok":true}', "application/json")
             return
 
+        if what == "writing":
+            self._writing(job, path, query)
+            return
+
         if what == "export":
             kind = "pdf" if "kind=pdf" in query else "png"
             import export
@@ -559,6 +563,143 @@ class DaemonScheme(QWebEngineUrlSchemeHandler):
             self._reply_bytes(job, b'{"ok":true}', "application/json")
             return
         self._reply_bytes(job, _error_json(f"the shell has no verb called {what}"), "application/json")
+
+    # ------------------------------------------------------------- writing
+
+    #: Where the writing surface keeps its documents. Beside the daemon's
+    #: things, because that is where Talaria's state lives — and a plain
+    #: directory of `.md` files rather than a database, because a writing app
+    #: whose work can only be read by itself is a trap.
+    @staticmethod
+    def _writing_dir() -> str:
+        base = (os.environ.get("XDG_DATA_HOME") or "").strip() or os.path.join(
+            os.path.expanduser("~"), ".local", "share"
+        )
+        where = os.path.join(base, "talaria", "writing")
+        os.makedirs(where, exist_ok=True)
+        return where
+
+    @staticmethod
+    def _writing_name(raw: str) -> str | None:
+        """
+        A document name, or nothing.
+
+        One path component, ending in `.md`. A name is a string that becomes a
+        path, and the rule `_serve_file` states applies with more force here
+        because this one is *written* to: `../../.ssh/authorized_keys` is a
+        perfectly good file name until somebody says otherwise.
+        """
+        name = (raw or "").strip()
+        if not name or len(name) > 120:
+            return None
+        if not name.endswith(".md"):
+            name += ".md"
+        if os.path.basename(name) != name or name.startswith("."):
+            return None
+        # Anything that is not plainly part of a file name somebody typed.
+        if any(ch in name for ch in '/\\\0:*?"<>|'):
+            return None
+        return name
+
+    def _writing(self, job: QWebEngineUrlRequestJob, path: str, query: str) -> None:
+        """
+        The writing surface's documents — files, and nothing else.
+
+        **This verb is the whole reason the surface can promise what it
+        promises.** It is a writing page with no connection to Hermes Notes: no
+        blocks, no types, no interchange, and nothing here reaches the daemon.
+        The text lives in `~/.local/share/talaria/writing` as Markdown, readable
+        by anything, and Talaria's only claim on it is that it put it there.
+        """
+        import json as _json
+        import urllib.parse
+
+        args = urllib.parse.parse_qs(query)
+        method = bytes(job.requestMethod()).decode("ascii", "replace").upper()
+        where = self._writing_dir()
+
+        def answer(payload) -> None:
+            self._reply_bytes(job, _json.dumps(payload).encode("utf8"), "application/json")
+
+        def sent() -> dict:
+            body = self._body_from_headers(job)
+            if not isinstance(body, bytes):
+                return {}
+            try:
+                return _json.loads(body.decode("utf8"))
+            except Exception:  # noqa: BLE001
+                return {}
+
+        if method == "GET" and not args.get("name"):
+            rows = []
+            for entry in os.scandir(where):
+                if not entry.is_file() or not entry.name.endswith(".md"):
+                    continue
+                stat = entry.stat()
+                rows.append({
+                    "name": entry.name,
+                    "bytes": stat.st_size,
+                    "updated": stat.st_mtime,
+                })
+            # Most recently written first: a writing surface is opened to carry
+            # on with something, and the thing you were carrying on with is
+            # almost always the last one you touched.
+            rows.sort(key=lambda row: row["updated"], reverse=True)
+            return answer({"data": rows})
+
+        name = self._writing_name((args.get("name") or [""])[0] or sent().get("name") or "")
+        if not name:
+            return self._reply_bytes(job, _error_json("that is not a usable name"), "application/json")
+        target = os.path.join(where, name)
+
+        if method == "GET":
+            try:
+                with open(target, encoding="utf8") as handle:
+                    return answer({"data": {"name": name, "text": handle.read()}})
+            except FileNotFoundError:
+                # Not an error. Asking for a document that is not there yet is
+                # what "new" looks like from this side.
+                return answer({"data": {"name": name, "text": "", "new": True}})
+            except OSError as err:
+                return self._reply_bytes(job, _error_json(str(err)), "application/json")
+
+        if method == "PUT":
+            text = str(sent().get("text") or "")
+            try:
+                # Written beside and moved into place, so an interrupted save
+                # cannot leave half a document where a whole one was.
+                temp = target + ".part"
+                with open(temp, "w", encoding="utf8") as handle:
+                    handle.write(text)
+                os.replace(temp, target)
+            except OSError as err:
+                return self._reply_bytes(job, _error_json(str(err)), "application/json")
+            return answer({"ok": True, "name": name, "updated": os.path.getmtime(target)})
+
+        if method == "POST":
+            do = (args.get("do") or [""])[0]
+            if do == "delete":
+                try:
+                    os.remove(target)
+                except FileNotFoundError:
+                    pass
+                except OSError as err:
+                    return self._reply_bytes(job, _error_json(str(err)), "application/json")
+                return answer({"ok": True})
+            if do == "rename":
+                to = self._writing_name(str(sent().get("to") or ""))
+                if not to:
+                    return self._reply_bytes(job, _error_json("that is not a usable name"), "application/json")
+                if os.path.exists(os.path.join(where, to)):
+                    return self._reply_bytes(
+                        job, _error_json(f"there is already a document called {to}"), "application/json"
+                    )
+                try:
+                    os.replace(target, os.path.join(where, to))
+                except OSError as err:
+                    return self._reply_bytes(job, _error_json(str(err)), "application/json")
+                return answer({"ok": True, "name": to})
+        self._reply_bytes(job, _error_json("the writing store has no such verb"), "application/json")
 
     def _serve_file(self, job: QWebEngineUrlRequestJob, path: str) -> None:
         # Without the query. A page may be asked for with one — the export view

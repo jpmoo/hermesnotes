@@ -75,6 +75,42 @@
    * half typed contributes the title. Today's note is a control too, and is the
    * reason this rule exists rather than a list of selectors to skip.
    */
+  /*
+   * A clone has no layout, and `innerText` needs one.
+   *
+   * The region is cloned so the controls can be dropped without touching the
+   * page — and a detached node's `innerText` quietly becomes `textContent`,
+   * which has no line breaks in it at all. Four paragraphs and a list came back
+   * as one unbroken string: readable enough to look fine in a log, and a
+   * markedly worse thing to hand a semantic search than the document somebody
+   * is actually looking at.
+   *
+   * So the breaks are put in by the shape of the tree rather than by the
+   * layout: every block element ends a line. That is what `innerText` would
+   * have said, decided from the markup and therefore free.
+   */
+  const BLOCK = new Set([
+    "P", "DIV", "SECTION", "ARTICLE", "HEADER", "FOOTER", "MAIN", "ASIDE",
+    "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "PRE", "BLOCKQUOTE",
+    "TABLE", "TR", "HR", "FIGURE", "FIELDSET", "LABEL", "FORM", "NAV",
+  ]);
+
+  function flatten(node, out) {
+    for (const child of node.childNodes) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        out.push(child.nodeValue.replace(/\s+/g, " "));
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      if (child.tagName === "BR") { out.push("\n"); continue; }
+      const block = BLOCK.has(child.tagName);
+      if (block) out.push("\n");
+      flatten(child, out);
+      if (block) out.push("\n");
+    }
+    return out;
+  }
+
   function contentOf(root, doc) {
     const marked = [...root.querySelectorAll("[data-context]")];
     const regions = marked.length ? marked : [root];
@@ -84,7 +120,8 @@
       for (const junk of copy.querySelectorAll("option, select, button, svg, summary")) {
         junk.remove();
       }
-      const said = copy.innerText?.trim();
+      const said = flatten(copy, []).join("").replace(/[ \t]+/g, " ")
+        .replace(/ ?\n ?/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
       if (said) parts.push(said);
       // Values live on the live nodes; a clone of an input carries the
       // attribute it was born with, not what somebody typed into it.

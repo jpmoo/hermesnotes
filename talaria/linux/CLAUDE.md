@@ -188,6 +188,7 @@ was a second toolkit's idea of a tray icon. Needs
 | `shortcuts.py` | hotkeys, through the portal. |
 | `krunner.py` | the library in KDE's search box — the entrance you reach by typing on the desktop. `org.kde.krunner1` on a GLib thread, answered out of the daemon; `dev.talaria.runner.desktop` is how Plasma finds it, and `install.sh` puts it in place on a Plasma session. |
 | `ui/` | the pages. `board.html` renders all six collection kinds; `desk.html` is the full-screen surface, with the canvas and a writing surface either side of it. |
+| `ui/writing.html` · `ui/richtext.js` | the writing surface — a blank page with a real toolbar, saving itself into `~/.local/share/talaria/writing` as Markdown. **No connection to Hermes Notes**: no blocks, no types, no interchange, no daemon. `/shell/writing` is answered by `scheme.py` out of a directory, so it works with the daemon stopped. |
 | `ui/notefield.js` · `ui/mentions.js` | the long-text editor — every block rendered except the one the caret is in, with `@`/`#`/`|` pickers. Used by the desk's Today pane *and*, imported at runtime, by canvas notes. |
 | `ui/compose.html` | New Block. Summoned with something selected, it arrives filled in — the first line as the title, the whole selection as the body, laid into whichever fields the *type* declares. `toggle` reads before it shows the panel, the order Glance keeps and for the same reason. |
 | `export.py` | a canvas to a PNG or a PDF. Opens the page off-screen with `?export=1` and photographs it, because a page cannot render itself to a PDF or ask where to put a file. |
@@ -375,6 +376,40 @@ side effect.
   `LinkGeometry` — anchors are side-centres, the control point is midpoint plus
   *twice* the bend, and the grip sits at midpoint plus the bend.
 
+## The writing surface
+
+The third surface, and the only one with nothing of the library in it. What it
+keeps of Talaria is the desk it sits on: every hotkey still works over it
+(those are the compositor's), the swipe between surfaces is handed up by
+`api.js`, the frosting switch reaches it the way it reaches the canvas, and
+Glance can read it, because the page marks its content with `data-context` like
+every other page here.
+
+**Markdown, not HTML.** HTML would have made `richtext.js` twenty lines long and
+the directory worthless — a writing app whose work can only be read by itself is
+a trap. The cost is a serializer that has to be exact, because it runs on a timer
+while somebody is typing and its output replaces the file they are typing into.
+Every construct round-trips byte-identically and is stable on a second pass;
+that was tested in a browser rather than reasoned about.
+
+Four things the browser said that the design had not:
+
+- **A first line typed into an empty page is a bare text node**, not a
+  paragraph, until Enter wraps it — and a walk over `children` skips it
+  entirely. One line, never saved. An empty `<p>` is also not something a caret
+  can go in, so it now carries a `<br>` the way browsers write one themselves.
+- **`execCommand("indent")` nests a list as a *sibling* of the item**, not
+  inside it, and strips the checklist marker on the way. Both shapes are read
+  back, and `tidy()` restores the marker rather than intercepting the command.
+- **`execCommand` leaves styled spans behind** — `outdent` wrapped an item's
+  text in the sheet's own translucent background, copied out of the computed
+  style. Nothing here makes a styled span, so any that appears is unwrapped.
+- **Indent and outdent are list operations only.** Outside a list
+  `execCommand("indent")` wraps the paragraph in a blockquote — a habit from
+  before CSS — which would write `>` into somebody's document because they
+  pressed Tab. Markdown has no indented paragraph to round-trip anyway, so the
+  buttons disable instead.
+
 ## Things that cost a day, so they do not cost another
 
 - **The web canvas crashed the Mac app.** `EXC_BAD_ACCESS` in `objc_release`
@@ -413,8 +448,6 @@ Named rather than implied, in the order they cost something.
   draws its document to a canvas, so the accessibility tree cannot see it and
   highlighting sets no primary selection. Everything else a browser shows is
   already covered by rung 3.
-- **The writing surface is a placeholder.** The third desk surface holds its
-  position in the order and says so on screen. Specified later.
 - **`AMBIENT.md` is partly built now.** #1 the reference picker (Meta+Shift+L),
   #2 the context record (the KWin script fills it) and #3 the ambient panel
   (Glance follows the focus signal while it is open) are done. #4, workspace

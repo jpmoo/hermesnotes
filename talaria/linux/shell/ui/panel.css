@@ -722,6 +722,20 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   overflow: hidden;
 }
 
+/*
+ * The writing surface fills its screen and draws no edge of its own.
+ *
+ * Unlike the canvas, whose page paints to the very edge and therefore needs the
+ * frame to give it a border, this one draws a toolbar and a sheet inside itself
+ * — two rounded boxes already. A third around them would be a box in a box in a
+ * box.
+ */
+.surface[data-name="Writing"] { display: flex; }
+.writing-frame {
+  flex: 1; width: 100%; height: 100%;
+  border: 0; background: transparent;
+}
+
 /* Frosting off: the desk is a surface rather than a window onto the desktop.
  * One class on the root, because the sheet, the panes and the chrome all have
  * to agree — a solid desk with a translucent pane on it reads as a bug. */
@@ -786,3 +800,141 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   border-color: var(--line);
   background: color-mix(in srgb, CanvasText 6%, transparent);
 }
+
+/* --- The writing surface ---------------------------------------------------
+ *
+ * A sheet with a strip of tools over it, and nothing else. The desk's other two
+ * surfaces are full of Hermes; this one has no library in it at all, and the
+ * look follows: one column, generous measure, and chrome that stays out of the
+ * way of the words.
+ */
+.writer { display: flex; flex-direction: column; height: 100%; position: relative; }
+
+.tools {
+  display: flex; align-items: center; gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, Canvas 55%, transparent);
+  margin-bottom: 14px;
+  flex: none;
+}
+.solid .tools { background: var(--raised); }
+/* A toolbar is a row of things at their own size. Without this the document
+ * name is squeezed to three letters and the style menu inherits the form
+ * stylesheet's `width: 100%`. */
+.tools > * { flex: none; }
+.tools button {
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  color: var(--fg); font: inherit; font-size: 13px;
+  min-width: 26px; height: 26px; padding: 0 6px; cursor: pointer;
+}
+.tools button svg { display: block; margin: 0 auto; }
+.tools button:hover:not(:disabled) { background: color-mix(in srgb, CanvasText 8%, transparent); }
+.tools button:disabled { opacity: .3; cursor: default; }
+/* On, meaning the caret is inside one — the toolbar answering rather than
+ * offering. */
+.tools button.on { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.tools select {
+  width: auto; min-width: 108px;
+  background: none; border: 1px solid var(--line); border-radius: 6px;
+  color: var(--fg); font: inherit; font-size: 12.5px; height: 26px; padding: 0 4px;
+}
+.tools .tsep { width: 1px; height: 18px; background: var(--line); margin: 0 5px; flex: none; }
+.tools .grow { flex: 1 1 auto; }
+.tools .state { flex: none; font-size: 11.5px; color: var(--muted); min-width: 54px; text-align: right; }
+.tools .state.bad { color: #d9534f; }
+.tools .doc { font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tools .doc .caret { color: var(--muted); margin-left: 5px; font-size: 11px; }
+
+/* The sheet is the thing that scrolls; the page inside it is the paper. */
+.sheet {
+  flex: 1; min-height: 0; overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, Canvas 55%, transparent);
+}
+.solid .sheet { background: var(--raised); }
+
+.page {
+  /* A measure, not a width. Long lines are the one typographic mistake that
+   * makes writing physically harder, and a full-screen surface is exactly where
+   * it happens. */
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 34px 30px 55vh;
+  outline: none;
+  font: 15px/1.7 system-ui, "Noto Sans", sans-serif;
+}
+/* Room to write past the last line, so the caret is never pinned to the bottom
+ * edge of the screen. That is what the tall bottom padding above is for. */
+.page > * { margin: 0 0 0.75em; }
+.page h1 { font-size: 1.7em; margin: 1.1em 0 .4em; font-weight: 650; }
+.page h2 { font-size: 1.35em; margin: 1em 0 .35em; font-weight: 650; }
+.page h3 { font-size: 1.12em; margin: .9em 0 .3em; font-weight: 650; }
+.page > :first-child { margin-top: 0; }
+.page blockquote {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  margin-left: 0; padding: 2px 0 2px 14px; color: var(--muted);
+}
+.page pre {
+  background: color-mix(in srgb, CanvasText 7%, transparent);
+  border-radius: 8px; padding: 10px 12px; overflow-x: auto;
+  font: 12.5px/1.55 ui-monospace, "JetBrains Mono", monospace;
+}
+.page code { font: .9em ui-monospace, "JetBrains Mono", monospace; }
+.page hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+.page ul, .page ol { padding-left: 1.6em; }
+.page li { margin: .2em 0; }
+.page a { color: var(--accent); }
+
+/*
+ * A checklist is a `ul` wearing `data-check`, and this is the whole of what
+ * makes it look like one.
+ *
+ * The box is drawn in the item's own left padding rather than being an element,
+ * because a real `<input>` inside a contenteditable can be caret-selected,
+ * dragged and backspaced away. `writing.html` hit-tests the same 22 pixels this
+ * rule reserves.
+ */
+.page ul[data-check] { list-style: none; padding-left: 1.55em; }
+.page ul[data-check] > li { position: relative; }
+.page ul[data-check] > li::before {
+  content: "";
+  position: absolute; left: -1.35em; top: .32em;
+  width: 13px; height: 13px;
+  border: 1.5px solid color-mix(in srgb, CanvasText 40%, transparent);
+  border-radius: 3.5px;
+  cursor: pointer;
+}
+.page ul[data-check] > li[data-done="1"]::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.page ul[data-check] > li[data-done="1"]::after {
+  content: "✓";
+  position: absolute; left: -1.28em; top: .2em;
+  font-size: 11px; color: var(--accent-fg); pointer-events: none;
+}
+.page ul[data-check] > li[data-done="1"] { color: var(--muted); }
+
+/* The documents, as a sheet that drops from the name. */
+.doclist {
+  position: absolute; top: 42px; left: 0; z-index: 5;
+  width: 340px; max-height: 60vh; overflow-y: auto;
+  background: var(--raised);
+  border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / .25);
+  padding: 6px;
+}
+.doc-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }
+.doc-head .fine { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-row { display: flex; align-items: center; gap: 4px; border-radius: 7px; }
+.doc-row:hover { background: color-mix(in srgb, CanvasText 7%, transparent); }
+.doc-row.here { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.doc-open {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  background: none; border: 0; color: inherit; font: inherit;
+  padding: 6px 8px; cursor: pointer; text-align: left; min-width: 0;
+}
+.doc-open .title { font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

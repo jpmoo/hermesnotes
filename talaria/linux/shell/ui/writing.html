@@ -1,0 +1,570 @@
+<!doctype html>
+<meta charset="utf8">
+<title>Writing</title>
+<link rel="stylesheet" href="/ui/panel.css">
+
+<!--
+  The third surface: somewhere to write.
+
+  It sits on the far side of the desk on purpose, and the placeholder it
+  replaces said why: "the canvas is where things are arranged and this is where
+  they are written, and putting them either side of home means one gesture
+  reaches each."
+
+  **Nothing here touches Hermes Notes.** No blocks, no types, no interchange,
+  and no daemon — `/shell/writing` is answered by `scheme.py` out of a directory
+  of Markdown files, so this surface works with the daemon stopped and the
+  network down. That is the whole specification: a blank page with real tools, a
+  document that saves itself, and no opinion about what you are writing.
+
+  What it *does* keep is the desk it lives on. Every Talaria hotkey still works
+  over it, because those are the compositor's; the swipe between surfaces is
+  handed up by `api.js`; and Glance can read it, because the page marks its
+  content with `data-context` like every other page here — so pressing the
+  Glance key while writing asks the library about what is on the page.
+-->
+
+<div class="writer">
+  <header class="tools" id="tools">
+    <button class="doc" id="doc" title="Documents">
+      <span id="docname">Untitled</span><span class="caret">⌄</span>
+    </button>
+
+    <span class="tsep"></span>
+
+    <select id="style" title="Paragraph style" aria-label="Paragraph style">
+      <option value="p">Normal</option>
+      <option value="h1">Heading 1</option>
+      <option value="h2">Heading 2</option>
+      <option value="h3">Heading 3</option>
+      <option value="blockquote">Quote</option>
+      <option value="pre">Code</option>
+    </select>
+
+    <span class="tsep"></span>
+
+    <button data-cmd="bold" title="Bold  (Ctrl+B)" aria-label="Bold"><b>B</b></button>
+    <button data-cmd="italic" title="Italic  (Ctrl+I)" aria-label="Italic"><i>I</i></button>
+    <button data-cmd="underline" title="Underline  (Ctrl+U)" aria-label="Underline"><u>U</u></button>
+    <button data-cmd="strikeThrough" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+
+    <span class="tsep"></span>
+
+    <button data-list="ul" title="Bulleted list" aria-label="Bulleted list">&bull;</button>
+    <button data-list="ol" title="Numbered list" aria-label="Numbered list">1.</button>
+    <button data-list="check" title="Checklist" aria-label="Checklist">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1.5" y="2" width="7" height="7" rx="1.6"/>
+        <path d="M3.2 5.6 4.6 7l2.4-2.7"/>
+        <path d="M11 4h3.5M11 11.5h3.5M1.5 11.5h7"/>
+      </svg>
+    </button>
+    <button data-cmd="outdent" title="Outdent  (Shift+Tab)" aria-label="Outdent">⇤</button>
+    <button data-cmd="indent" title="Indent  (Tab)" aria-label="Indent">⇥</button>
+
+    <span class="tsep"></span>
+
+    <button id="link" title="Link" aria-label="Link">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M6.6 9.4a2.6 2.6 0 0 0 3.7 0l2.3-2.3a2.6 2.6 0 0 0-3.7-3.7l-1 1"/>
+        <path d="M9.4 6.6a2.6 2.6 0 0 0-3.7 0L3.4 8.9a2.6 2.6 0 0 0 3.7 3.7l1-1"/>
+      </svg>
+    </button>
+    <button data-cmd="removeFormat" title="Clear formatting" aria-label="Clear formatting">✕</button>
+
+    <span class="grow"></span>
+    <span class="fine" id="count"></span>
+    <span class="state" id="state"></span>
+  </header>
+
+  <!-- `data-context` is the whole of Glance's access to this surface: the page
+       it holds, and none of the furniture above. -->
+  <div class="sheet" id="sheet">
+    <div class="page" id="page" contenteditable="true" spellcheck="true" data-context></div>
+  </div>
+
+  <div class="doclist" id="doclist" hidden></div>
+</div>
+
+<script type="module">
+import { get, post, put, el } from "/ui/api.js";
+import { fromMarkdown, toMarkdown } from "/ui/richtext.js";
+
+const page = document.getElementById("page");
+const state = document.getElementById("state");
+const count = document.getElementById("count");
+const docname = document.getElementById("docname");
+const doclist = document.getElementById("doclist");
+const style = document.getElementById("style");
+
+/** The document on screen. `text` is what was last written to disk. */
+let open = { name: "Untitled.md", text: "" };
+
+/*
+ * On the desk this page is a frame, and an off-screen one at that.
+ *
+ * Nothing here may take focus on load. `api.js` blurs whatever a framed panel
+ * autofocused, and states the reason: four panes race, one wins, and the browser
+ * scrolls to reveal a caret nobody was looking at — which is how the desk ended
+ * up 1599 pixels sideways. This surface is two screens over when the desk
+ * opens, so it would be the worst offender of the four.
+ */
+const framed = window.parent !== window;
+
+/*
+ * Semantic tags, not inline styles.
+ *
+ * `styleWithCSS` on turns Bold into `<span style="font-weight: bold">`, which
+ * serializes to nothing at all — the Markdown that comes back out is plain
+ * text, and the emphasis is gone the next time the file is opened. Off, the
+ * browser produces `<b>` and `<i>`, which `richtext.js` knows how to say.
+ *
+ * `defaultParagraphSeparator` for the same reason one level up: the default is
+ * `<div>`, and a document of divs round-trips as one unbroken paragraph.
+ */
+document.execCommand("styleWithCSS", false, "false");
+document.execCommand("defaultParagraphSeparator", false, "p");
+
+/* ---------------------------------------------------------------- saving */
+
+let timer = null;
+let dirty = false;
+
+function said(text, bad = false) {
+  state.textContent = text;
+  state.classList.toggle("bad", bad);
+}
+
+function counted() {
+  const words = (page.innerText.match(/\S+/g) || []).length;
+  count.textContent = words ? `${words} word${words === 1 ? "" : "s"}` : "";
+}
+
+/**
+ * Save, and say so.
+ *
+ * On a timer rather than on a button, because the one thing a writing surface
+ * must never do is lose what somebody wrote. The button exists anyway (Ctrl+S),
+ * for the feeling of it.
+ */
+async function save() {
+  clearTimeout(timer);
+  timer = null;
+  const text = toMarkdown(page);
+  if (!dirty && text === open.text) return;
+  said("Saving…");
+  try {
+    await put("/shell/writing", { name: open.name, text });
+    open.text = text;
+    dirty = false;
+    said("Saved");
+  } catch (err) {
+    // Loudly, and it stays on screen. A silent failure here is the difference
+    // between an afternoon's work and no afternoon's work — and the text is
+    // still in front of you, which is the one saving grace worth saying.
+    said(String(err.message || err), true);
+  }
+}
+
+/*
+ * The two invariants a checklist has, restored after every change.
+ *
+ * `execCommand("indent")` makes a plain `<ul>` even inside a checklist — it has
+ * no idea checklists exist — so a nested item lost its box the moment it was
+ * indented. Rather than intercepting every command that could do it, the shape
+ * is simply made true again afterwards: a list under a checklist is a checklist,
+ * and an item in one has a state.
+ */
+function tidy() {
+  /*
+   * Chromium leaves styled spans behind.
+   *
+   * `outdent` on a list item wrapped its text in
+   * `<span style="background-color: …">` — the sheet's own translucent fill,
+   * copied out of the computed style and pasted inline, so the words came back
+   * wearing a box. Nothing here ever makes a styled span, so any that turns up
+   * is the browser's and is unwrapped. It would serialize to plain text either
+   * way; this is about what the page looks like while it is open.
+   */
+  for (const span of page.querySelectorAll("span[style]")) {
+    span.replaceWith(...span.childNodes);
+  }
+  for (const list of page.querySelectorAll("ul")) {
+    if (list.parentElement?.closest('ul[data-check="1"]')) list.dataset.check = "1";
+  }
+  for (const li of page.querySelectorAll("li")) {
+    const checks = li.parentElement?.dataset.check === "1";
+    if (checks) li.dataset.done ||= "0";
+    else if ("done" in li.dataset) delete li.dataset.done;
+  }
+}
+
+function touched() {
+  tidy();
+  dirty = true;
+  counted();
+  said("…");
+  clearTimeout(timer);
+  timer = setTimeout(save, 700);
+}
+
+page.addEventListener("input", touched);
+
+/* ---------------------------------------------------------------- opening */
+
+async function load(name) {
+  await save();
+  let doc;
+  try {
+    doc = await get(`/shell/writing?name=${encodeURIComponent(name)}`);
+  } catch (err) {
+    said(String(err.message || err), true);
+    return;
+  }
+  open = { name: doc.name, text: doc.text || "" };
+  page.replaceChildren(fromMarkdown(open.text));
+  docname.textContent = open.name.replace(/\.md$/, "");
+  dirty = false;
+  counted();
+  said(doc.new ? "New" : "Saved");
+  // The caret goes where somebody would put it, which is the end of what they
+  // were last writing — but never on the desk, where this page is off-screen
+  // when it loads. There, a click is what says you are here.
+  if (framed) return;
+  page.focus();
+  const last = page.lastElementChild;
+  if (last) {
+    const range = document.createRange();
+    range.selectNodeContents(last);
+    range.collapse(false);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+/** A name nothing else is using. */
+function fresh(taken) {
+  const used = new Set(taken.map((row) => row.name));
+  if (!used.has("Untitled.md")) return "Untitled.md";
+  for (let n = 2; ; n += 1) if (!used.has(`Untitled ${n}.md`)) return `Untitled ${n}.md`;
+}
+
+const WHEN = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+async function documents() {
+  let rows = [];
+  try {
+    rows = await get("/shell/writing");
+  } catch (err) {
+    doclist.replaceChildren(el("div", "bad-box", String(err.message || err)));
+    return;
+  }
+
+  doclist.replaceChildren();
+  const head = el("div", "doc-head");
+  head.appendChild(el("span", "fine", "~/.local/share/talaria/writing"));
+  const add = el("button", "quiet", "New");
+  add.onclick = async () => {
+    await save();
+    open = { name: fresh(rows), text: "" };
+    page.replaceChildren(fromMarkdown(""));
+    docname.textContent = open.name.replace(/\.md$/, "");
+    dirty = true;             // so an empty new document still gets a file
+    doclist.hidden = true;
+    counted();
+    page.focus();
+    void save();
+  };
+  head.appendChild(add);
+  doclist.appendChild(head);
+
+  for (const row of rows) {
+    const item = el("div", "doc-row" + (row.name === open.name ? " here" : ""));
+    const pick = el("button", "doc-open");
+    pick.appendChild(el("span", "title", row.name.replace(/\.md$/, "")));
+    pick.appendChild(el("span", "fine", WHEN.format(new Date(row.updated * 1000))));
+    pick.onclick = () => { doclist.hidden = true; void load(row.name); };
+    item.appendChild(pick);
+
+    const rename = el("button", "quiet", "Rename");
+    rename.onclick = async () => {
+      const to = prompt("Call it:", row.name.replace(/\.md$/, ""));
+      if (!to) return;
+      try {
+        const done = await post("/shell/writing?do=rename", { name: row.name, to });
+        if (row.name === open.name) {
+          open.name = done.name;
+          docname.textContent = done.name.replace(/\.md$/, "");
+        }
+        void documents();
+      } catch (err) {
+        said(String(err.message || err), true);
+      }
+    };
+    item.appendChild(rename);
+
+    const drop = el("button", "quiet", "Delete");
+    drop.onclick = async () => {
+      if (!confirm(`Delete “${row.name.replace(/\.md$/, "")}”? This cannot be undone.`)) return;
+      try {
+        await post("/shell/writing?do=delete", { name: row.name });
+        if (row.name === open.name) {
+          // The one on screen went. Rather than leaving a document that no
+          // longer exists open and saving it back a moment later, start again.
+          const left = (await get("/shell/writing")).filter((r) => r.name !== row.name);
+          open = { name: left[0]?.name || "Untitled.md", text: "" };
+          dirty = false;
+          await load(open.name);
+        }
+        void documents();
+      } catch (err) {
+        said(String(err.message || err), true);
+      }
+    };
+    item.appendChild(drop);
+    doclist.appendChild(item);
+  }
+}
+
+document.getElementById("doc").onclick = () => {
+  doclist.hidden = !doclist.hidden;
+  if (!doclist.hidden) void documents();
+};
+document.addEventListener("click", (e) => {
+  if (!doclist.hidden && !doclist.contains(e.target) && e.target.closest("#doc") === null) {
+    doclist.hidden = true;
+  }
+});
+
+/* ------------------------------------------------------------- the tools */
+
+/** The block the caret is in, as far up as the page itself. */
+function block() {
+  let node = getSelection()?.anchorNode;
+  while (node && node !== page) {
+    if (node.nodeType === Node.ELEMENT_NODE && node.parentElement === page) return node;
+    node = node.parentNode;
+  }
+  return null;
+}
+
+/** The list the caret is in, if any. */
+function inList() {
+  let node = getSelection()?.anchorNode;
+  while (node && node !== page) {
+    if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === "UL" || node.tagName === "OL")) return node;
+    node = node.parentNode;
+  }
+  return null;
+}
+
+for (const button of document.querySelectorAll("[data-cmd]")) {
+  // `mousedown` rather than `click`, and prevented: a button that takes focus
+  // first has already collapsed the selection it was about to act on.
+  button.addEventListener("mousedown", (e) => e.preventDefault());
+  button.addEventListener("click", () => {
+    const cmd = button.dataset.cmd;
+    /*
+     * Indent and outdent are list operations here, and only that.
+     *
+     * `execCommand("indent")` outside a list wraps the paragraph in a
+     * blockquote — a browser habit from before CSS, and one that would write
+     * `>` into somebody's document because they pressed Tab. Markdown has no
+     * indented paragraph to round-trip anyway, so the honest behavior is to do
+     * nothing and let the buttons show it.
+     */
+    if ((cmd === "indent" || cmd === "outdent") && !inList()) return;
+    document.execCommand(cmd, false, null);
+    page.focus();
+    touched();
+    reflect();
+  });
+}
+
+/*
+ * The three list kinds, as one control each and a toggle.
+ *
+ * A checklist is an unordered list wearing `data-check`, not a third kind of
+ * node — which is what lets the two conversions be a flag rather than a rebuild,
+ * and what lets `richtext.js` write `- [ ]` for one and `-` for the other.
+ * `execCommand` has no idea checklists exist; everything else about them is
+ * `panel.css` drawing a box and the click handler below toggling it.
+ */
+for (const button of document.querySelectorAll("[data-list]")) {
+  button.addEventListener("mousedown", (e) => e.preventDefault());
+  button.addEventListener("click", () => {
+    const want = button.dataset.list;
+    const list = inList();
+    const checks = want === "check";
+    const wanted = want === "ol" ? "OL" : "UL";
+
+    if (list && list.tagName === wanted && (list.dataset.check === "1") === checks) {
+      // Pressing the kind it already is turns the list off.
+      document.execCommand(wanted === "OL" ? "insertOrderedList" : "insertUnorderedList", false, null);
+    } else if (list && list.tagName === wanted) {
+      // Same shape, different marker: a bulleted list becoming a checklist.
+      list.dataset.check = checks ? "1" : "";
+      if (!checks) for (const li of list.children) delete li.dataset.done;
+      else for (const li of list.children) li.dataset.done ||= "0";
+    } else {
+      document.execCommand(wanted === "OL" ? "insertOrderedList" : "insertUnorderedList", false, null);
+      const made = inList();
+      if (made) {
+        if (checks) {
+          made.dataset.check = "1";
+          for (const li of made.children) li.dataset.done ||= "0";
+        } else {
+          delete made.dataset.check;
+        }
+      }
+    }
+    page.focus();
+    touched();
+    reflect();
+  });
+}
+
+style.onchange = () => {
+  // `formatBlock` takes the tag in angle brackets, and "p" is how you get back
+  // out of a heading.
+  document.execCommand("formatBlock", false, `<${style.value}>`);
+  page.focus();
+  touched();
+  reflect();
+};
+
+document.getElementById("link").addEventListener("mousedown", (e) => e.preventDefault());
+document.getElementById("link").onclick = () => {
+  const sel = getSelection();
+  if (!sel || sel.isCollapsed) return said("Select the words the link should be on.", true);
+  const href = prompt("Link to:", "https://");
+  if (!href) return;
+  // The same two schemes `richtext.js` will read back. Anything else would be
+  // written to the file and silently dropped on the way in, which is worse than
+  // refusing it here.
+  if (!/^(https?:\/\/|mailto:)/.test(href)) return said("Links can be http, https or mailto.", true);
+  document.execCommand("createLink", false, href);
+  touched();
+};
+
+/** Toolbar state, from wherever the caret is. */
+function reflect() {
+  for (const button of document.querySelectorAll("[data-cmd]")) {
+    const cmd = button.dataset.cmd;
+    if (cmd === "indent" || cmd === "outdent") {
+      button.disabled = !inList();
+      continue;
+    }
+    try {
+      button.classList.toggle("on", document.queryCommandState(cmd));
+    } catch { /* removeFormat has no state */ }
+  }
+  const list = inList();
+  for (const button of document.querySelectorAll("[data-list]")) {
+    const want = button.dataset.list;
+    const is = list && (want === "ol" ? list.tagName === "OL"
+      : want === "check" ? list.tagName === "UL" && list.dataset.check === "1"
+      : list.tagName === "UL" && list.dataset.check !== "1");
+    button.classList.toggle("on", Boolean(is));
+  }
+  const at = block();
+  style.value = at && ["H1", "H2", "H3", "BLOCKQUOTE", "PRE"].includes(at.tagName)
+    ? at.tagName.toLowerCase()
+    : "p";
+}
+
+document.addEventListener("selectionchange", () => {
+  if (document.activeElement === page) reflect();
+});
+
+/*
+ * Ticking a box.
+ *
+ * The box is drawn by CSS in the item's left padding, so there is no element to
+ * click — the hit test is where in the item the click landed. Which sounds
+ * fragile and is not: it is one number, it is the same number the stylesheet
+ * uses, and the alternative is a real `<input>` living inside a contenteditable,
+ * where the caret can be placed beside it and it can be deleted by backspace.
+ */
+page.addEventListener("click", (e) => {
+  const li = e.target.closest?.("li");
+  if (!li || li.parentElement?.dataset.check !== "1") return;
+  const box = li.getBoundingClientRect();
+  if (e.clientX - box.left > 22) return;
+  li.dataset.done = li.dataset.done === "1" ? "0" : "1";
+  touched();
+});
+
+page.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    void save();
+    return;
+  }
+  // Tab is the list key. Outside a list it is left alone, so the toolbar and
+  // the rest of the desk stay reachable from the keyboard.
+  if (e.key === "Tab" && inList()) {
+    e.preventDefault();
+    document.execCommand(e.shiftKey ? "outdent" : "indent", false, null);
+    touched();
+    reflect();
+  }
+});
+
+/*
+ * Pasted text arrives as text.
+ *
+ * A paste from a browser brings fonts, colors, class names and occasionally a
+ * whole stylesheet, none of which survives the trip to Markdown and all of which
+ * makes the page look wrong in the meantime. The plain text is what round-trips,
+ * so that is what is kept — and a paste that is itself Markdown is parsed,
+ * which is how a note from somewhere else arrives with its headings intact.
+ */
+page.addEventListener("paste", (e) => {
+  const text = e.clipboardData?.getData("text/plain");
+  if (text === undefined) return;
+  e.preventDefault();
+  const looksMarked = /(^|\n)\s*(#{1,3} |[-*+] |\d+[.)] |> |```)/.test(text);
+  if (looksMarked) {
+    const frag = fromMarkdown(text);
+    const range = getSelection().getRangeAt(0);
+    range.deleteContents();
+    range.insertNode(frag);
+    getSelection().collapseToEnd();
+  } else {
+    document.execCommand("insertText", false, text);
+  }
+  touched();
+});
+
+/* ------------------------------------------------------------- the desk */
+
+/*
+ * Frosting is the desk's, not this surface's — the same arrangement the canvas
+ * has, down to asking rather than waiting to be told, because the desk's
+ * announcement can happen before this listener exists.
+ */
+addEventListener("message", (e) => {
+  if (e.data?.talaria !== "frost") return;
+  document.documentElement.classList.toggle("solid", !e.data.on);
+});
+if (window.parent !== window) window.parent.postMessage({ talaria: "frost?" }, "*");
+
+// Whatever was last written, which is almost always what somebody came back for.
+(async () => {
+  try {
+    const rows = await get("/shell/writing");
+    await load(rows[0]?.name || "Untitled.md");
+  } catch (err) {
+    said(String(err.message || err), true);
+    page.replaceChildren(fromMarkdown(""));
+  }
+  reflect();
+})();
+
+// Nothing in flight when the desk moves on.
+addEventListener("blur", () => { if (dirty) void save(); });
+</script>

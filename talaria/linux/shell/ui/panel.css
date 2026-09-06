@@ -491,7 +491,23 @@ html, body { background: transparent; }
  * whole window, and the panes sit *in* it rather than on top of it.
  */
 .desk {
-  position: fixed; inset: 0; overflow: hidden;
+  position: fixed; inset: 0;
+  /*
+   * `clip`, not `hidden`, and the difference is the whole bug.
+   *
+   * `overflow: hidden` still makes a scroll container — it just has no bars.
+   * Anything the browser decides to scroll into view scrolls it, and a field
+   * inside a quadrant taking focus on load did exactly that: the desk sat at
+   * `scrollLeft: 1599` with the rail still saying `translateX(0)`, so the
+   * surface on screen was not the one the rail thought it was showing and the
+   * canvas was 1577 pixels off to the left. Every swipe over "the canvas" was a
+   * swipe over the rail.
+   *
+   * `overflow: clip` creates no scroll container, so there is nothing to
+   * scroll. The `scroll` guard in `desk.html` is the second lock on the same
+   * door.
+   */
+  overflow: clip;
   /* Exactly the window's own frosting, across the whole screen. Not a fraction
    * of it: `--surface-alpha` is 1 when frosting is off, and any fraction would
    * leave the desk milky over an unblurred desktop — see-through with nothing

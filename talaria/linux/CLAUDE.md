@@ -209,6 +209,16 @@ that bindings live in the portal's store rather than System Settings;
   every name. Navigation and subresources still work, so the pages render
   perfectly and every request fails as "Failed to fetch", which looks exactly
   like a dead daemon. See the note in `ui/api.js`.
+- **`overflow: hidden` is still a scroll container.** The desk moves its rail by
+  transform and clips it — with `hidden`, which has no bars and scrolls
+  perfectly well when the browser decides to reveal a focused element. A field
+  autofocusing inside a quadrant left the desk at `scrollLeft: 1599` while the
+  rail still said `translateX(0)`, so the surface on screen was not the one the
+  rail thought it was showing and the canvas sat 1577 pixels off to the left.
+  Everything downstream looked like an input-routing bug: swipes over "the
+  canvas" were swipes over the rail, and the canvas never saw a wheel event at
+  all. `overflow: clip` creates no scroll container. Measure `scrollLeft` before
+  believing a hit-test.
 - **A header cannot carry an em dash.** The request body rides in
   `x-talaria-body` because `requestBody()` segfaults, and `setRequestHeader`
   refuses anything outside Latin-1 — "String contains non ISO-8859-1 code

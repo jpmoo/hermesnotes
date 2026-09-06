@@ -1339,6 +1339,35 @@ export function CanvasView({
       // The note scrolls itself (and stops at its end — overscroll-behavior
       // keeps the page out of it too).
       if (wheelGesture.current.el?.isConnected) return;
+
+      /*
+       * A sideways swipe belongs to the desk, not to the canvas.
+       *
+       * On the desk this canvas is one surface of several and a two-finger
+       * swipe is how you leave it. Panning with that gesture makes the canvas a
+       * room with no door: the swipe is consumed here, the desk never sees it —
+       * a frame's wheel events do not cross the boundary — and the only way out
+       * is the pointer.
+       *
+       * So the gesture is handed back, by the only route there is. The test is
+       * the Mac's: decisively sideways rather than merely more sideways than
+       * not, so a diagonal on the way to scrolling something still pans. Nothing
+       * is prevented, and nothing pans, which is what makes it *given up*
+       * rather than copied.
+       *
+       * The canvas still pans in every other way — dragging empty space, the
+       * arrow keys, a vertical swipe, and sideways with a modifier held.
+       */
+      const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.6 && Math.abs(e.deltaX) > 1;
+      if (sideways && !e.shiftKey && window.parent !== window) {
+        // Prevented *and* forwarded. Without the prevent the browser may also
+        // chain the unconsumed scroll to the page holding this frame, which
+        // would count the same swipe twice and turn one page turn into two.
+        e.preventDefault();
+        window.parent.postMessage({ talaria: "swipe", dx: e.deltaX, dy: e.deltaY }, "*");
+        return;
+      }
+
       e.preventDefault();
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };

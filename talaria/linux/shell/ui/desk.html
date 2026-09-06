@@ -22,15 +22,6 @@
 
 <div class="desk">
   <div class="rail" id="rail">
-    <div class="surface" data-name="Desk">
-      <div class="quadrants">
-        <section class="pane"><header>Today</header><div class="today" id="today"></div></section>
-        <section class="pane"><header>New block</header><iframe src="/ui/compose.html" title="New block"></iframe></section>
-        <section class="pane"><header>Glance</header><iframe id="glance" src="/ui/glance.html" title="Glance"></iframe></section>
-        <section class="pane"><header>Chat</header><iframe src="/ui/assistant.html" title="Chat"></iframe></section>
-      </div>
-    </div>
-
     <div class="surface" data-name="Canvas">
       <!--
         The canvas, as a web view — which is how the Mac holds its own.
@@ -41,6 +32,15 @@
         always a file server, and a bundle is more files in it.
       -->
       <iframe class="canvas-frame" src="/ui/canvas/index.html" title="Canvas"></iframe>
+    </div>
+
+    <div class="surface" data-name="Desk">
+      <div class="quadrants">
+        <section class="pane"><header>Today</header><div class="today" id="today"></div></section>
+        <section class="pane"><header>New block</header><iframe src="/ui/compose.html" title="New block"></iframe></section>
+        <section class="pane"><header>Glance</header><iframe id="glance" src="/ui/glance.html" title="Glance"></iframe></section>
+        <section class="pane"><header>Chat</header><iframe src="/ui/assistant.html" title="Chat"></iframe></section>
+      </div>
     </div>
 
     <div class="surface" data-name="Writing">
@@ -78,7 +78,13 @@ const surfaces = [...rail.querySelectorAll(".surface")];
  *
  * The desk is the surface somebody summoned; the canvas is to its left and the
  * writing surface to its right, so a single gesture in either direction reaches
- * one of them and the way back is the same gesture reversed. The Mac has two
+ * one of them and the way back is the same gesture reversed.
+ *
+ * **The markup has to agree with that**, and for a while it did not: the desk
+ * was written first and sat at the left edge, so the canvas was one swipe to the
+ * right, the writing surface two, and there was nothing on the other side at
+ * all. `HOME` found the desk wherever it was, which is exactly why the mistake
+ * was invisible until somebody swiped. The Mac has two
  * surfaces and a swipe between them; this is that arrangement with a third, and
  * the third is the reason home is in the middle rather than at the start.
  */
@@ -107,22 +113,65 @@ for (const [i, s] of surfaces.entries()) {
 document.getElementById("back").onclick = () => slide(at - 1);
 document.getElementById("next").onclick = () => slide(at + 1);
 
-// Horizontal scroll moves between surfaces, which is the Mac's swipe. Wheel
-// events with a horizontal component are what a trackpad sends for one.
+/*
+ * A sideways two-finger swipe moves between surfaces. It is the Mac's gesture
+ * and the desk's only continuous one, so nothing on a surface may keep it: the
+ * canvas hands it back rather than panning with it (see `canvas/src/main.tsx`),
+ * because a canvas you can pan is one you can never swipe off.
+ *
+ * The rules are the Mac's, from the scroll monitor in `main.swift`:
+ * **decisively** sideways — `|dx| > |dy| * 1.6`, not merely more — so a
+ * diagonal on the way to scrolling something else is left alone, and ninety
+ * points of travel before anything moves, "enough to be a decision rather than
+ * a wobble". A gesture that stops short is not the beginning of the next one,
+ * so the tally is dropped after a pause.
+ */
 let travelled = 0;
 let settle;
-addEventListener("wheel", (e) => {
-  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
-  travelled += e.deltaX;
+function swipeBy(dx, dy) {
+  if (Math.abs(dx) <= Math.abs(dy) * 1.6 || Math.abs(dx) <= 1) return;
+  travelled += dx;
   clearTimeout(settle);
-  // A threshold, because a swipe is a continuous thing and a surface change is
-  // not: without one, an ordinary two-finger drift walks the whole rail.
   if (Math.abs(travelled) > 90) {
     slide(at + (travelled > 0 ? 1 : -1));
     travelled = 0;
   }
-  settle = setTimeout(() => { travelled = 0; }, 220);
+  settle = setTimeout(() => { travelled = 0; }, 350);
+}
+
+addEventListener("wheel", (e) => swipeBy(e.deltaX, e.deltaY), { passive: true });
+
+/*
+ * The rail is moved by transform and by nothing else.
+ *
+ * Belt and braces over `overflow: clip`: if anything ever scrolls this surface
+ * — a field taking focus, a `scrollIntoView` inside a pane, a future browser
+ * with its own opinion — the desk silently stops agreeing with itself about
+ * which surface is showing, and the pointer lands on a different one from the
+ * one you can see. Cheap to prevent, very confusing to diagnose.
+ */
+const deskEl = document.querySelector(".desk");
+deskEl.addEventListener("scroll", () => {
+  if (deskEl.scrollLeft || deskEl.scrollTop) {
+    deskEl.scrollLeft = 0;
+    deskEl.scrollTop = 0;
+  }
 }, { passive: true });
+
+/*
+ * The same gesture, forwarded from inside a surface.
+ *
+ * A wheel event in a frame never reaches this document — that is the frame
+ * boundary doing its job — so a surface that is a whole application of its own
+ * has to say when a gesture was not for it. Only the swipe is forwarded, and
+ * only from our own frames.
+ */
+addEventListener("message", (e) => {
+  if (e.source === window || !e.data || e.data.talaria !== "swipe") return;
+  const from = [...document.querySelectorAll("iframe")].some((f) => f.contentWindow === e.source);
+  if (!from) return;
+  swipeBy(Number(e.data.dx) || 0, Number(e.data.dy) || 0);
+});
 
 addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") slide(at - 1);

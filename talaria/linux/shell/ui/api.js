@@ -209,4 +209,43 @@ export function el(tag, className, text) {
  * two nested boxes saying "New Block" reads as a mistake. Marked here, once,
  * because every page imports this module; the styling is in `panel.css`.
  */
-if (window.parent !== window) document.documentElement.classList.add("framed");
+if (window.parent !== window) {
+  document.documentElement.classList.add("framed");
+
+  /*
+   * And a sideways swipe belongs to the desk, not to the pane it landed on.
+   *
+   * A wheel event inside a frame never reaches the page holding it, so a swipe
+   * that happens to start over Glance or the composer would be swallowed and
+   * the desk would not move. Handed up instead, by the only route across the
+   * boundary — the canvas does the same thing for the same reason, in its own
+   * copy of this.
+   *
+   * Decisively sideways, the Mac's test, and never when something under the
+   * pointer scrolls that way itself: a row of columns is a thing you scroll,
+   * not a page you turn.
+   */
+  /*
+   * And a framed pane does not grab the caret.
+   *
+   * Every panel page autofocuses something, which is right when it *is* the
+   * window and wrong in a quadrant: four panes race and one wins, the desk
+   * opens with a caret in a field nobody was looking at, and the browser scrolls
+   * to reveal it — which is how the desk ended up 1599 pixels sideways.
+   */
+  addEventListener("DOMContentLoaded", () => {
+    const held = document.activeElement;
+    if (held && held !== document.body && typeof held.blur === "function") held.blur();
+  });
+
+  addEventListener("wheel", (event) => {
+    if (Math.abs(event.deltaX) <= Math.abs(event.deltaY) * 1.6 || Math.abs(event.deltaX) <= 1) return;
+    for (let el = event.target; el && el !== document.body; el = el.parentElement) {
+      if (el.scrollWidth > el.clientWidth + 1) {
+        const style = getComputedStyle(el).overflowX;
+        if (style === "auto" || style === "scroll") return;
+      }
+    }
+    window.parent.postMessage({ talaria: "swipe", dx: event.deltaX, dy: event.deltaY }, "*");
+  }, { passive: true });
+}

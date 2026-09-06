@@ -118,9 +118,67 @@ const LAUNCHERS = new Set([
   "com.stairways.keyboardmaestro.engine",
 ]);
 
-export function styleFor(bundleId: string | undefined): LinkStyle {
-  if (!bundleId || LAUNCHERS.has(bundleId)) return DEFAULT_STYLE;
-  return BY_APP[bundleId] ?? DEFAULT_STYLE;
+/**
+ * The same table, for a desktop that names its applications differently.
+ *
+ * A window class is what X and Wayland call an application, and it is what KWin
+ * reports — so it is this platform's bundle id, and it belongs in the same
+ * table rather than in a second copy of this file. The keys are lowercased on
+ * the way in because a window class is `Code`, `code` or `code-oss` depending on
+ * how it was packaged, and none of those distinctions mean anything here.
+ *
+ * Kept as short as the other one, for the same reason: a long table pretends to
+ * knowledge it does not have, and everything absent takes the default.
+ */
+const BY_WINDOW_CLASS: Record<string, LinkStyle> = {
+  // Writing to yourself, in something that renders or authors markdown.
+  obsidian: { syntax: "markdown", address: "here" },
+  code: { syntax: "markdown", address: "here" },
+  "code-oss": { syntax: "markdown", address: "here" },
+  vscodium: { syntax: "markdown", address: "here" },
+  cursor: { syntax: "markdown", address: "here" },
+  logseq: { syntax: "markdown", address: "here" },
+  zettlr: { syntax: "markdown", address: "here" },
+  ghostwriter: { syntax: "markdown", address: "here" },
+  // A terminal takes a bare address and would show brackets as brackets.
+  konsole: { syntax: "bare", address: "here" },
+  alacritty: { syntax: "bare", address: "here" },
+  kitty: { syntax: "bare", address: "here" },
+  "org.wezfurlong.wezterm": { syntax: "bare", address: "here" },
+  "gnome-terminal-server": { syntax: "bare", address: "here" },
+  kate: { syntax: "markdown", address: "here" },
+  kwrite: { syntax: "bare", address: "here" },
+  // Leaving the machine: an address that works on somebody else's.
+  thunderbird: { syntax: "bare", address: "share" },
+  evolution: { syntax: "bare", address: "share" },
+  "org.kde.kmail2": { syntax: "bare", address: "share" },
+  slack: { syntax: "bare", address: "share" },
+  element: { syntax: "bare", address: "share" },
+  signal: { syntax: "bare", address: "share" },
+  firefox: { syntax: "bare", address: "share" },
+  chromium: { syntax: "bare", address: "share" },
+  "google-chrome": { syntax: "bare", address: "share" },
+};
+
+/** Launchers, here as there — including Talaria's own picker. */
+const LAUNCHER_CLASSES = new Set(["krunner", "plasmashell", "rofi", "wofi", "ulauncher"]);
+
+/**
+ * What to write, given whatever the system calls the application in front.
+ *
+ * One function for both worlds: a bundle id on macOS, a window class on Linux.
+ * The caller does not have to know which it holds, which matters because the
+ * daemon serves both and the context record stores whichever its platform
+ * reported.
+ */
+export function styleFor(app: string | undefined): LinkStyle {
+  if (!app) return DEFAULT_STYLE;
+  if (LAUNCHERS.has(app)) return DEFAULT_STYLE;
+  const cls = app.toLowerCase();
+  if (LAUNCHER_CLASSES.has(cls)) return DEFAULT_STYLE;
+  // A window class never looks like a bundle id and vice versa, so asking both
+  // costs nothing and saves the caller a platform test.
+  return BY_APP[app] ?? BY_WINDOW_CLASS[cls] ?? DEFAULT_STYLE;
 }
 
 /**

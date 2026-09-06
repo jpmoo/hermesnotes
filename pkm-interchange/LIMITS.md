@@ -51,12 +51,25 @@ two applications on one machine, sharing a disk, that may be survivable. Between
 two that have never heard of each other — the test this file exists to serve —
 it is not: the receiving side gets a library full of names pointing at nothing.
 
-Hermes closes the question from the other end besides. Its manifest declares
-`"unsupported": ["attachments"]`, and `fixtures/roundtrip.json` case 7 makes an
-export carrying an attachment value against such a manifest **invalid** —
-"the manifest is a promise about the export, not an aspiration." So there is
-today no valid way for Talaria to attach anything to a Hermes block through the
-format, whether or not it has the bytes.
+**Hermes says the same thing from the other end, and says it better.** An
+earlier version of this entry claimed its manifest declared attachments
+unsupported. It does not — `features` includes `attachments`, and the deployed
+instance reports it. What Hermes does instead is emit a *finding* whenever a type
+declares an attachment field, in `packages/interchange/src/map.ts`:
+
+> `attachments.contents-do-not-travel` — "A type declares an attachment field,
+> and the format has no story for the bytes behind one — no encoding, no
+> side-car, no reference to fetch it by. The field travels and the file it
+> stands for does not, which is worse than either declaring the feature honestly
+> or leaving it out."
+
+That is this entry, arrived at independently by the producer, at export time,
+about its own data. Two implementations reaching the same conclusion from
+opposite ends is the strongest evidence this file collects.
+
+It also sharpens what is missing. The gap is not permission and not a
+declaration: an attachment *value* travels fine and says which file it means.
+There is nowhere to put the file.
 
 What Talaria does instead, and this is the whole of it: **the picture stays on
 the canvas.** It lives beside `canvas.json` in `canvas-images/`, the node names

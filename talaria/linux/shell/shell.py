@@ -124,8 +124,10 @@ class RoutedPage(QWebEnginePage):
     `location.href =`, which is one hook rather than two.
     """
 
-    def __init__(self, route, parent=None) -> None:
-        super().__init__(parent)
+    def __init__(self, route, profile, parent=None) -> None:
+        # The profile is passed in rather than taken from the default, because
+        # the default keeps nothing: see `_profile`.
+        super().__init__(profile, parent)
         self._route = route
 
     def acceptNavigationRequest(self, url: QUrl, kind, is_main_frame: bool) -> bool:  # noqa: N802
@@ -207,11 +209,16 @@ class Panel(QWidget):
         self.setWindowTitle(f"Talaria — {title}")
         self.resize(size)
         self.view = QWebEngineView(self)
+        # On the shell's own profile, not the default one — which is off the
+        # record, and would hand each window its own amnesiac cookie jar.
+        if route is None:
+            self._page = QWebEnginePage(_profile(QApplication.instance()), self.view)
+            self.view.setPage(self._page)
         if route is not None:
             # Held on the view: a page the widget does not own is collected out
             # from under the engine, which is the same lifetime trap as the
             # request jobs in `scheme.py`.
-            self._page = RoutedPage(route, self.view)
+            self._page = RoutedPage(route, _profile(QApplication.instance()), self.view)
             self.view.setPage(self._page)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -847,6 +854,49 @@ def only_one() -> object | None:
     return lock if lock.tryLock(100) else None
 
 
+#: The one profile every page in the shell uses. Held for the life of the
+#: process — a profile collected while a page still points at it takes the page
+#: with it.
+PROFILE = None
+
+
+def _profile(app):
+    """
+    A profile that remembers being logged in.
+
+    `QWebEngineProfile.defaultProfile()` is **off the record**: no cookie jar on
+    disk, no cache, nothing kept past the process. So the Hermes window asked for
+    a password on every start — not because anything logged you out, but because
+    nothing had ever written the session down.
+
+    A named profile is persistent by default, and `ForcePersistentCookies` keeps
+    even a session cookie across a restart. That last part is the one that
+    matters here: a login that lasts until the window closes is exactly the
+    behavior being complained about, and it is what an ordinary persistent jar
+    would still give you.
+
+    Under the same directory as everything else Talaria keeps, so "where is my
+    state" has one answer, and so removing it is removing a folder.
+    """
+    global PROFILE
+    from PySide6.QtWebEngineCore import QWebEngineProfile
+
+    if PROFILE is not None:
+        return PROFILE
+    home = os.path.join(
+        (os.environ.get("XDG_DATA_HOME") or "").strip()
+        or os.path.join(os.path.expanduser("~"), ".local", "share"),
+        "talaria",
+    )
+    PROFILE = QWebEngineProfile("talaria", app)
+    PROFILE.setPersistentStoragePath(os.path.join(home, "web"))
+    PROFILE.setCachePath(os.path.join(home, "web-cache"))
+    PROFILE.setPersistentCookiesPolicy(
+        QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies
+    )
+    return PROFILE
+
+
 def _save_as(download) -> None:
     """
     Somewhere to put a file the page is handing over.
@@ -920,7 +970,7 @@ def main() -> int:
     handler = scheme.DaemonScheme(app)
     from PySide6.QtWebEngineCore import QWebEngineProfile
 
-    profile = QWebEngineProfile.defaultProfile()
+    profile = _profile(app)
     profile.installUrlSchemeHandler(scheme.SCHEME, handler)
     profile.downloadRequested.connect(_save_as)
 

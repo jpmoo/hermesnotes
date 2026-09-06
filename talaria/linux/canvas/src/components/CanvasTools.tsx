@@ -17,7 +17,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, FileText, Image as ImageIcon, Search, Type } from "lucide-react";
-import { ask, document_, keep, pictureAt } from "../api.ts";
+import { ask, document_, keep, keepResized, pictureAt } from "../api.ts";
 import { putDocument, type CanvasItem } from "../document.ts";
 
 /** The six the format has, in the Mac's order. */
@@ -127,82 +127,19 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
    * a header capped at 96 KB — so the quality steps down until it does, rather
    * than failing at the last moment on a picture somebody has already chosen.
    */
+  /** The tool's own way in; the same road a paste takes. */
   async function addPicture(file: File) {
-    const LONG_EDGE = 380;
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, LONG_EDGE / Math.max(bitmap.width, bitmap.height));
-    const w = Math.round(bitmap.width * scale);
-    const h = Math.round(bitmap.height * scale);
-    const sheet = window.document.createElement("canvas");
-    sheet.width = w;
-    sheet.height = h;
-    sheet.getContext("2d")?.drawImage(bitmap, 0, 0, w, h);
-
-    // PNG keeps a screenshot crisp; a photograph is far smaller as a JPEG. Try
-    // the faithful one first and fall back by quality, so what lands is the
-    // best that fits rather than the first that does.
-    const blobs: Blob[] = [];
-    for (const [type, quality] of [["image/png", undefined], ["image/jpeg", 0.85], ["image/jpeg", 0.7], ["image/jpeg", 0.5]] as const) {
-      const blob = await new Promise<Blob | null>((r) => sheet.toBlob(r, type, quality));
-      if (blob) blobs.push(blob);
-    }
-    // Base64 costs a third more than the bytes it carries.
-    const fits = blobs.find((b) => b.size * 1.37 < 96 * 1024) ?? blobs[blobs.length - 1];
-    if (!fits) return;
-
-    const name = await keep(fits);
+    const kept = await keepResized(file);
     const middle = window.document.querySelector(".cv-wrap")?.getBoundingClientRect();
     const at = atPoint((middle?.width ?? 900) / 2, (middle?.height ?? 600) / 2);
     await place({
       id: id(),
-      x: at.x - Math.round(w / 2), y: at.y - Math.round(h / 2), w, h,
-      image: name, images: [name],
+      x: at.x - Math.round(kept.w / 2), y: at.y - Math.round(kept.h / 2), w: kept.w, h: kept.h,
+      image: kept.name, images: [kept.name], showImage: true,
       // A picture is the node. No paper behind it and no line around it — the
       // photograph has its own edges.
       shape: "plain", fill: null, strokeWidth: 0,
     });
-  }
-
-  /* Save is a download, which is the only way a page can hand over a file; the
-   * shell puts up the panel that says where. The shape is the Mac's
-   * `CanvasExport` — the document, and the pictures it names, in one file,
-   * "which is what makes this one file rather than a folder". */
-  async function save() {
-    const doc = document_();
-    /*
-     * The pictures come too, as bytes.
-     *
-     * `{document, images}` is the Mac's shape and its comment says why the
-     * second half exists: "`Data` is base64 in JSON, which is what makes this
-     * one file rather than a folder." Without them a saved canvas is a list of
-     * file names pointing into a directory on one machine, which is not a saved
-     * canvas at all — it is a saved canvas *if nothing changes here*.
-     */
-    const names = new Set<string>();
-    for (const item of doc.items) {
-      if (item.image) names.add(item.image);
-      for (const name of item.images ?? []) names.add(name);
-    }
-    const images: Record<string, string> = {};
-    for (const name of names) {
-      try {
-        images[name] = await asBase64(pictureAt(name));
-      } catch {
-        // A picture that will not come is left out rather than left to break the
-        // file: everything else in the canvas is still worth saving.
-      }
-    }
-
-    const when = new Date().toISOString().slice(0, 10);
-    const blob = new Blob([JSON.stringify({ document: doc, images }, null, 2)], {
-      type: "application/json",
-    });
-    const link = window.document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `canvas-${when}.json`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 4000);
-    setFileOpen(false);
   }
 
   /** One kept picture, as base64 — the shape a saved canvas carries. */

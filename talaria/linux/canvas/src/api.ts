@@ -205,6 +205,48 @@ export async function keep(bytes: Blob): Promise<string> {
   });
 }
 
+/**
+ * A picture, made small enough to be one node among many, and kept.
+ *
+ * Both ways a picture arrives use this — the tool in the strip, and a paste or a
+ * drop onto the canvas — because both have to end in the same place: bytes
+ * beside the document and a name on the item. Hermes' own path ends in a data
+ * URI on the collection, which is right there and wrong here; a note carrying
+ * one would show its picture until the page was reloaded and then point at a
+ * file that had never existed.
+ *
+ * 380 on the long edge is the Mac's, "big enough to see, small enough that a
+ * screenshot of a whole display does not become the canvas". The quality steps
+ * down until the base64 fits the 96 KB a header can carry, so what lands is the
+ * best that fits rather than the first that does.
+ */
+export async function keepResized(file: Blob): Promise<{ name: string; w: number; h: number }> {
+  const LONG_EDGE = 380;
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, LONG_EDGE / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const sheet = document.createElement("canvas");
+  sheet.width = w;
+  sheet.height = h;
+  sheet.getContext("2d")?.drawImage(bitmap, 0, 0, w, h);
+
+  const tries: [string, number | undefined][] = [
+    ["image/png", undefined],
+    ["image/jpeg", 0.85],
+    ["image/jpeg", 0.7],
+    ["image/jpeg", 0.5],
+  ];
+  const blobs: Blob[] = [];
+  for (const [type, quality] of tries) {
+    const blob = await new Promise<Blob | null>((r) => sheet.toBlob(r, type, quality));
+    if (blob) blobs.push(blob);
+  }
+  const fits = blobs.find((b) => b.size * 1.37 < 96 * 1024) ?? blobs[blobs.length - 1];
+  if (!fits) throw new Error("that picture could not be made small enough");
+  return { name: await keep(fits), w, h };
+}
+
 /** Where a kept picture can be seen. */
 export const pictureAt = (name: string) => `${ORIGIN}/canvas/image/${encodeURIComponent(name)}`;
 

@@ -62,6 +62,17 @@
     <button class="step" id="back" title="Previous surface" aria-label="Previous surface">‹</button>
     <span class="dots" id="dots"></span>
     <button class="step" id="next" title="Next surface" aria-label="Next surface">›</button>
+    <span class="chrome-sep"></span>
+    <!--
+      Whether the desktop shows through, for the whole desk.
+
+      One switch rather than one per surface, and it lives here because this is
+      the only chrome all three share. The Mac keeps the same state in
+      `DeskChrome` — `seeThrough`, set from the canvas's toolbar and read by
+      every pane — so turning the desk solid on the canvas and finding it still
+      see-through on the quadrants would be a difference nobody asked for.
+    -->
+    <button class="step frost" id="frost" title="Let the desktop show through" aria-label="Frosting">◑</button>
   </nav>
 </div>
 
@@ -200,6 +211,59 @@ addEventListener("message", (e) => {
   if (!from) return;
   swipeBy(Number(e.data.dx) || 0, Number(e.data.dy) || 0);
 });
+
+/*
+ * Frosting, for the desk and everything on it.
+ *
+ * Remembered, because a canvas is a place somebody settles into and having to
+ * turn the blur off again on every visit is the sort of small tax that makes a
+ * surface feel borrowed. The Mac's reason for the switch existing at all is
+ * worth keeping in view: "off is for when the canvas is the work and the desktop
+ * is a distraction."
+ *
+ * The quadrants need nothing — they are transparent and sit on this page's own
+ * sheet — but the canvas is a frame with its own document and its own
+ * background, so it is told.
+ */
+const frost = document.getElementById("frost");
+let seeThrough = true;
+try {
+  seeThrough = localStorage.getItem("talaria.desk.frost") !== "0";
+} catch { /* a private window still gets the switch, just not the memory */ }
+
+function applyFrost(on) {
+  seeThrough = on;
+  document.documentElement.classList.toggle("solid", !on);
+  frost.classList.toggle("on", on);
+  frost.title = on ? "Hide what is behind" : "Let the desktop show through";
+  try {
+    localStorage.setItem("talaria.desk.frost", on ? "1" : "0");
+  } catch { /* nothing to remember it with */ }
+  for (const f of document.querySelectorAll("iframe")) {
+    f.contentWindow?.postMessage({ talaria: "frost", on }, "*");
+  }
+}
+frost.onclick = () => applyFrost(!seeThrough);
+applyFrost(seeThrough);
+
+/*
+ * A frame that asks is answered.
+ *
+ * Announcing it on load is not enough on its own: a frame can finish loading
+ * before this page's own module has run, and then it never hears the
+ * announcement. Anything inside can ask at any time instead, which cannot be
+ * early — the canvas does this when it mounts.
+ */
+addEventListener("message", (e) => {
+  if (e.data?.talaria !== "frost?" || !e.source) return;
+  const ours = [...document.querySelectorAll("iframe")].some((f) => f.contentWindow === e.source);
+  if (ours) e.source.postMessage({ talaria: "frost", on: seeThrough }, "*");
+});
+
+// And told again when one arrives, for anything that does not think to ask.
+for (const f of document.querySelectorAll("iframe")) {
+  f.addEventListener("load", () => f.contentWindow?.postMessage({ talaria: "frost", on: seeThrough }, "*"));
+}
 
 addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") slide(at - 1);

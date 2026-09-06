@@ -2,7 +2,7 @@ import { Grid2x2, GripHorizontal, Image as ImageIcon, Layers, Minus, Pipette, Pl
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readableOn } from "../lib/display.ts";
-import { pictureAt } from "../api.ts";
+import { keepResized, pictureAt } from "../api.ts";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import {
   useEffect,
@@ -395,6 +395,34 @@ export function CanvasView({
   useEffect(() => {
     document.documentElement.classList.toggle("solid", !seeThrough);
   }, [seeThrough]);
+
+  /*
+   * On the desk, frosting is the desk's business.
+   *
+   * It is one setting across three surfaces — the Mac keeps it in `DeskChrome`
+   * for exactly that reason — so the switch lives in the chrome every surface
+   * shares and this listens. A canvas opened on its own still has its own
+   * button, because then there is no desk to ask.
+   */
+  useEffect(() => {
+    if (window.parent === window) return;
+    const heard = (e: MessageEvent) => {
+      if (e.data?.talaria !== "frost") return;
+      setSeeThrough(Boolean(e.data.on));
+    };
+    addEventListener("message", heard);
+    /*
+     * And it asks, rather than waiting to be told.
+     *
+     * The desk announces the setting when it loads and again when a frame
+     * loads, and both of those can happen before this listener exists — on a
+     * reload the frame's `load` had already fired by the time the desk's module
+     * ran, so the canvas came back see-through on a desk that was not. A
+     * question from this side cannot be early.
+     */
+    window.parent.postMessage({ talaria: "frost?" }, "*");
+    return () => removeEventListener("message", heard);
+  }, []);
 
   const [grid, setGrid] = useState(() => {
     try {
@@ -2282,44 +2310,53 @@ export function CanvasView({
    */
   const IMAGE_CAP = 4 * 1024 * 1024;
 
+  /**
+   * A picture, pasted or dropped.
+   *
+   * Hermes reads the file into a data URI and hangs it on the collection, with
+   * its own comment calling that a cost it pays until conversion: "a canvas file
+   * is something a person can open and read, and a megabyte of base64 on one
+   * line is technically readable and never read again — the same argument
+   * Talaria's canvas made for keeping its pictures beside the document rather
+   * than in it."
+   *
+   * Here it is kept beside the document from the start, by the same route the
+   * tool strip uses. Anything else would produce a note whose picture is visible
+   * until the page is read again and points at a file that never existed.
+   */
   const addImageNote = async (file: File, at?: { x: number; y: number }) => {
     if (!file.type.startsWith("image/")) return;
-    if (file.size > IMAGE_CAP) {
-      window.alert("That picture is too large to put on a canvas before it belongs to a block. Add it to a block first.");
+    let kept: { name: string; w: number; h: number };
+    try {
+      kept = await keepResized(file);
+    } catch (err) {
+      window.alert(String((err as Error).message || err));
       return;
     }
-    const data = await new Promise<string>((done, fail) => {
-      const r = new FileReader();
-      r.onload = () => done(String(r.result));
-      r.onerror = () => fail(r.error);
-      r.readAsDataURL(file);
-    });
     const c = at ?? viewCenter();
-    const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, IMAGE_W, IMAGE_H, allRects());
+    const spot = at
+      ? { x: at.x - kept.w / 2, y: at.y - kept.h / 2 }
+      : findSpot(c.x, c.y, kept.w, kept.h, allRects());
     saveNotes([
       ...notes,
       {
         id: `n:${uid()}`,
-        ...spot,
-        w: IMAGE_W,
-        h: IMAGE_H,
+        x: Math.round(spot.x),
+        y: Math.round(spot.y),
+        w: kept.w,
+        h: kept.h,
         text: "",
-        // No paper behind a picture: a sticky's colour would show as a border
-        // round it and read as a mount nobody asked for.
+        // The name is what the file stores; the object is what this component
+        // reads. `imageName` is the one the seam writes down.
+        imageName: kept.name,
+        image: { name: kept.name, mime: file.type, data: pictureAt(kept.name) },
+        images: [kept.name],
+        showImage: true,
+        // A picture is the node: no paper behind it and no line round it.
+        shape: "plain",
         color: null,
-        image: { name: file.name || "image", mime: file.type, data },
-      },
+      } as CanvasNote,
     ]);
-  };
-
-  const addNote = (at?: { x: number; y: number }) => {
-    const c = at ?? viewCenter();
-    const spot = at ? { x: at.x, y: at.y } : findSpot(c.x, c.y, NOTE_W, NOTE_H, allRects());
-    const id = `n:${uid()}`;
-    saveNotes([...notes, { id, ...spot, w: NOTE_W, h: NOTE_H, text: "", color: NOTE_COLOR }]);
-    // An empty sticky exists to be written on, so put the caret in it rather
-    // than making the next act a click on what was just asked for.
-    setFocusNote(id);
   };
 
   const convertNote = async (note: CanvasNote, type: BlockType) => {
@@ -2605,7 +2642,20 @@ export function CanvasView({
      * daemon serves it at. A canvas that shows a photograph therefore shows it
      * with the network down, which the other way round could not.
      */
-    const named = r.showImage ? r.image ?? null : null;
+    /*
+     * …in whichever of the two shapes it arrives in.
+     *
+     * A member's picture comes through the seam as a URL; a note's is Hermes'
+     * own `{name, mime, data}`, because that is what the component builds when
+     * one is pasted and what every other line here reads. Treating both as a
+     * URL put `[object Object]` in the `src` — visible only after a reload,
+     * because a freshly pasted picture is drawn by the other path.
+     */
+    const picture = r.showImage ? r.image : null;
+    const named =
+      typeof picture === "string"
+        ? picture
+        : ((picture as { data?: string } | null | undefined)?.data ?? null);
     const shown: ReactNode = named ? (
       <img className="cv-node-image" src={named} alt="" draggable={false} />
     ) : (
@@ -3182,7 +3232,10 @@ export function CanvasView({
         >
           <Grid2x2 size={14} />
         </button>
+        {/* Hidden on the desk: the desk's own chrome carries it there, for all
+          * three surfaces at once. */}
         <button
+          hidden={window.parent !== window}
           className={`icon-btn cv-frost-toggle${seeThrough ? " on" : ""}`}
           title={seeThrough ? "Hide what is behind" : "Let the desktop show through"}
           onClick={toggleFrost}

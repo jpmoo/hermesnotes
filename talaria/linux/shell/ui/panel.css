@@ -698,3 +698,15 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
    * canvas's grid runs out past the rounded edge. */
   overflow: hidden;
 }
+
+/* Frosting off: the desk is a surface rather than a window onto the desktop.
+ * One class on the root, because the sheet, the panes and the chrome all have
+ * to agree — a solid desk with a translucent pane on it reads as a bug. */
+.solid .desk { background: Canvas; }
+.solid .quadrants .pane { background: color-mix(in srgb, CanvasText 3%, Canvas); }
+.chrome .frost { font-size: 13px; opacity: .55; }
+.chrome .frost.on { opacity: 1; color: var(--accent); }
+.chrome-sep {
+  width: 1px; height: 14px; margin: 0 2px;
+  background: color-mix(in srgb, CanvasText 25%, transparent);
+}

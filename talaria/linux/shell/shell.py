@@ -304,9 +304,22 @@ class Panel(QWidget):
         """
         from PySide6.QtCore import QEvent
 
+        # **Losing focus only means something if it was ever held.**
+        #
+        # On Wayland a window that asks to be activated usually is not, so a
+        # panel summoned over the desk comes up without focus while the desk
+        # keeps it — and a deactivation arriving in that state is not somebody
+        # looking away, it is the summon itself. Remembering whether this window
+        # was ever the active one tells the two apart, which "is anything of ours
+        # active?" could not: that question answers the same way whether you just
+        # opened the panel or just clicked off it.
+        if e.type() == QEvent.Type.WindowActivate:
+            self._had_focus = True
+
         if (
             e.type() == QEvent.Type.WindowDeactivate
             and getattr(self, "dismisses", False)
+            and getattr(self, "_had_focus", False)
             and self.isVisible()
         ):
             # Deferred: a deactivation arrives while a menu or a file dialog of
@@ -317,24 +330,16 @@ class Panel(QWidget):
 
     def _hide_if_still_inactive(self) -> None:
         """
-        Gone, unless what took the focus was also ours.
+        Gone, if the focus really has gone somewhere else.
 
-        "Somebody looked elsewhere" has to mean *out of Talaria*. Over the desk
-        it did not: summoning Ask put it above the desk, the desk stayed the
-        active window — a panel that is not granted focus is the ordinary case
-        on Wayland — and this hid the panel a moment later. The desk survived
-        and the thing summoned onto it did not, which is the same bug as the
-        one before it seen from the other side.
-
-        `activeWindow()` is our own application's, so it is None exactly when
-        the focus has gone to somebody else's window, which is the question
-        being asked.
+        Clicking off Glance or Ask dismisses it — onto the desk, onto another
+        panel, or out of Talaria entirely. All three are "somebody looked
+        elsewhere", and the one case that is not is handled before this ever
+        runs: `event` only schedules a hide for a window that had the focus to
+        lose.
         """
-        if self.isActiveWindow():
-            return
-        if QApplication.activeWindow() is not None:
-            return
-        self.hide()
+        if not self.isActiveWindow():
+            self.hide()
 
     def _frost(self) -> None:
         """
@@ -365,6 +370,11 @@ class Panel(QWidget):
         place its own windows, so that intent is the compositor's to honour and
         this asks for nothing.
         """
+        # A fresh summon starts having held nothing. Without this a panel that
+        # was clicked into, dismissed and summoned again would still be carrying
+        # the focus it had the last time and could vanish on the deactivation
+        # that comes with its own reappearance.
+        self._had_focus = False
         self.show()
         self.raise_()
         self.activateWindow()

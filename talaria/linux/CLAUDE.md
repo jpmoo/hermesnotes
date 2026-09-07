@@ -308,12 +308,16 @@ that bindings live in the portal's store rather than System Settings;
   Dismissal is its own flag now (`Panel.dismisses`), because it is not the same
   question as whether something *looks* like a panel — `view_is_panel` still
   governs the frosting and the appearance.
-- **"Looked elsewhere" has to mean out of Talaria.** With the desk staying put,
-  the panel summoned onto it hid instead: a Wayland client is usually not
-  granted focus when it asks, so the desk remained the active window and the
-  panel read that as being dismissed. `_hide_if_still_inactive` now asks
-  `QApplication.activeWindow()`, which is None exactly when the focus has gone
-  to somebody else's window.
+- **Losing focus only means something if it was ever held.** With the desk
+  staying put, the panel summoned onto it hid instead: a Wayland client is
+  usually not granted focus when it asks, so the desk remained active and the
+  panel read that as being dismissed. The first answer — "hide only if nothing
+  of ours is active" — kept the panel up and cost the gesture it exists for,
+  because clicking off Glance onto the desk then dismissed nothing. The question
+  those two were confusing is whether this window ever *had* the focus it just
+  lost: `Panel._had_focus`, set on `WindowActivate` and cleared by every summon.
+  A deactivation without it is the summon itself; with it, somebody looked
+  away.
 - **`WindowStaysOnTopHint` does nothing on Wayland.** It is set on every panel
   and the probe read `keepAbove=false` on all of them — there is no protocol for
   a client to raise itself out of its layer, the same reason placement and

@@ -138,7 +138,13 @@ if (forExport) {
    * centred on the origin — the size of the *stage*, not of what is on it.
    */
   (window as unknown as { __exportSize: () => { w: number; h: number } }).__exportSize = () => {
-    const boxes = [...document.querySelectorAll<HTMLElement>(".cv-node, .cv-region")];
+    // The connections as well as the things they connect. A curve is pulled off
+    // the straight line between its ends and can bow well outside both of them,
+    // so a window sized on the nodes alone is a window the drawing does not fit
+    // in — and the fit then has to shrink everything to compensate.
+    const boxes = [...document.querySelectorAll<HTMLElement | SVGGraphicsElement>(
+      ".cv-node, .cv-region, .cv-svg path",
+    )].filter((el) => !el.closest("defs"));
     if (!boxes.length) return { w: 900, h: 600 };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const el of boxes) {

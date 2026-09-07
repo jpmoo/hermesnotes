@@ -235,6 +235,24 @@ that bindings live in the portal's store rather than System Settings;
   rounded default is an *absent key*, not a name — `document.ts` reads it that
   way and writing a name for it would put a shape in the file nothing there has
   ever meant.
+- **An export is framed three times, and each one was wrong differently.** The
+  window is sized to the drawing, so the page has to be measured *before* the
+  window exists — and then re-fitted after, which the page's own `resize`
+  handler did not do in time on Wayland: correctly sized, framed for the old
+  window, right-hand side outside the picture. The shell calls `__exportFit()`
+  and waits for the answer now; asking is deterministic, an event is a hope.
+  Then the bounds were taken from the nodes alone, and a connection is a curve
+  through a control point pulled off the line between its ends — it bows well
+  outside both, and got clipped while every node sat comfortably inside. And
+  including `.cv-svg path` to fix that swept up the **arrowheads in `<defs>`**,
+  whose bbox is a 10×10 box at the origin in the marker's own coordinates: the
+  drawing's bounds sprang back to 0,0 and the export came out half again as wide
+  with everything crowded into a corner. `getBBox` is exact and free, and the
+  filter is `closest("defs")`.
+- **`printToPdf` with no page layout prints A4.** It re-lays the web page out
+  for the paper rather than photographing it, so anything past the page width is
+  simply gone. The layout is the window's own size now, in points at the 96dpi
+  the engine lays out in — the PDF is the picture rather than a print of it.
 - **The shell is `__main__`, so `import shell` builds a second copy of it.**
   The fix below reached for the profile with `import shell` from `export.py` —
   and `talaria-shell` runs `python3 shell.py`, so that module is `__main__` and

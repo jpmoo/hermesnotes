@@ -86,7 +86,16 @@ def canvas(kind: str, done=None) -> None:
 
     def measure() -> None:
         say("loaded, asking how big the drawing is")
-        view.page().runJavaScript("window.__exportSize && JSON.stringify(window.__exportSize())", fit)
+        # `__exportFit` answers in document units and pads as it goes, which is
+        # the size the window wants to be. `__exportSize` measures the *rendered*
+        # page — screen pixels at whatever scale it is currently showing — and so
+        # under-reports by exactly the amount that matters, on a drawing too big
+        # for the window it is being measured in. It stays as the fallback.
+        view.page().runJavaScript(
+            "JSON.stringify((window.__exportFit && window.__exportFit())"
+            " || (window.__exportSize && {...window.__exportSize(), pad: true}) || null)",
+            fit,
+        )
 
     def fit(answer) -> None:
         import json
@@ -100,18 +109,55 @@ def canvas(kind: str, done=None) -> None:
             # nothing at all — a picture of the visible canvas is still a
             # picture of the canvas.
             return QTimer.singleShot(300, shoot)
-        w = min(MAX_EDGE, max(320, int(size.get("w", 1200)) + MARGIN * 2))
-        h = min(MAX_EDGE, max(240, int(size.get("h", 800)) + MARGIN * 2))
+        # `__exportFit` has already put the margin in; the fallback has not.
+        pad = MARGIN * 2 if size.get("pad") else 0
+        w = min(MAX_EDGE, max(320, int(size.get("w", 1200)) + pad))
+        h = min(MAX_EDGE, max(240, int(size.get("h", 800)) + pad))
         say(f"drawing is {w}x{h}")
         view.resize(QSize(w, h))
-        # A resize is a re-layout; the canvas re-fits itself and needs a moment
-        # before it is worth photographing.
-        QTimer.singleShot(500, shoot)
+        held["size"] = (w, h)
+        # **Told to re-fit, rather than trusted to notice.**
+        #
+        # The window is resized after the drawing has been measured — it has to
+        # be, since the drawing's size is what decides the window's — and the
+        # page's own `resize` handler did not run before the picture was taken.
+        # So an export came out at exactly the right size and framed for the old
+        # one: laid out for 1400x900, photographed at 1096x725, with the right of
+        # the drawing outside the frame. Asking is deterministic; an event is a
+        # hope.
+        QTimer.singleShot(450, refit)
+
+    def refit() -> None:
+        say("asking the page to fit itself to the new window")
+        view.page().runJavaScript(
+            "String(!!(window.__exportFit && (window.__exportFit(), true)))",
+            lambda answered: (
+                say(f"fitted={answered}"),
+                QTimer.singleShot(350, shoot),
+            ),
+        )
 
     def shoot() -> None:
         say("taking the picture")
         if kind == "pdf":
-            view.page().printToPdf(where)
+            # **A page the size of the drawing, and one page of it.**
+            #
+            # `printToPdf` with no layout uses A4 and re-lays the web page out
+            # for it, which is not a photograph of anything — it is the canvas
+            # reflowed onto stationery, with whatever does not fit simply gone.
+            # The layout is the window's own size, converted to points at the
+            # 96dpi the engine lays out in, so the PDF is the picture rather than
+            # a print of it.
+            from PySide6.QtCore import QMarginsF, QSizeF
+            from PySide6.QtGui import QPageLayout, QPageSize
+
+            pw, ph = held.get("size", (1400, 900))
+            layout = QPageLayout(
+                QPageSize(QSizeF(pw * 0.75, ph * 0.75), QPageSize.Unit.Point),
+                QPageLayout.Orientation.Portrait,
+                QMarginsF(0, 0, 0, 0),
+            )
+            view.page().printToPdf(where, layout)
             # `printToPdf` answers on a signal; the file is not there until it
             # does, and the view may not be released before it is.
             view.page().pdfPrintingFinished.connect(lambda *_: finish())

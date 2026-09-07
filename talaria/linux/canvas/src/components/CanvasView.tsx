@@ -895,13 +895,38 @@ export function CanvasView({
   const exporting = typeof location !== "undefined" && new URLSearchParams(location.search).has("export");
   useEffect(() => {
     if (!exporting) return;
-    const fit = () => {
+    const fit = (): { w: number; h: number } | null => {
       const boxes = [
         ...notes.map((n) => ({ x: n.x, y: n.y, w: n.w, h: n.h })),
         ...members.map((m) => local[m.id] ?? ctxOf(m)).filter((r): r is NodeCtx => r !== null),
         ...regions.map((rg) => regionRect(rg)).filter((r): r is Rect => r !== null),
       ];
-      if (!boxes.length) return;
+      /*
+       * The lines count too, and they go where the nodes do not.
+       *
+       * A connection is a curve through a control point pulled off the straight
+       * line between its ends, so it can bow a long way outside both of them —
+       * and an export framed on the nodes alone cut one off at the edge while
+       * every node sat comfortably inside. `.cv-svg` has a viewBox in canvas
+       * coordinates, which is what makes this a two-line fix instead of a second
+       * implementation of the curve maths: `getBBox` is the exact extent of what
+       * was actually drawn, in the same units as everything above.
+       */
+      for (const drawn of document.querySelectorAll<SVGGraphicsElement>(".cv-svg path")) {
+        // **Not the arrowheads.** A marker's path lives in `<defs>` in its own
+        // little coordinate system, so its bbox is a 10x10 box at the origin —
+        // which dragged the drawing's bounds back to 0,0 and made the export
+        // half again as wide as the picture, with the whole thing pushed into
+        // the bottom right of it.
+        if (drawn.closest("defs")) continue;
+        try {
+          const b = drawn.getBBox();
+          if (b.width || b.height) boxes.push({ x: b.x, y: b.y, w: b.width, h: b.height });
+        } catch {
+          // Not rendered, so it is not in the picture either.
+        }
+      }
+      if (!boxes.length) return null;
       const minX = Math.min(...boxes.map((b) => b.x));
       const minY = Math.min(...boxes.map((b) => b.y));
       const maxX = Math.max(...boxes.map((b) => b.x + b.w));
@@ -915,8 +940,25 @@ export function CanvasView({
         x: (innerWidth - w * z) / 2 - (minX - pad) * z,
         y: (innerHeight - h * z) / 2 - (minY - pad) * z,
       });
+      // The padded extent of the drawing, in document units — the size the
+      // window wants to be. Said from here because this is the one place that
+      // knows it without the current zoom in the way: measuring the rendered
+      // page instead answers in screen pixels at whatever scale it is currently
+      // showing, which is smaller than the truth exactly when it matters.
+      return { w: Math.ceil(w), h: Math.ceil(h) };
     };
     fit();
+    /*
+     * And the shell can ask, rather than the resize event being trusted.
+     *
+     * The window is resized *after* the drawing has been measured — it has to
+     * be, since the size of the window is the answer — and on Wayland the
+     * `resize` event that should re-fit it did not arrive before the picture was
+     * taken. So the export came out correctly sized and wrongly framed: laid out
+     * for 1400x900, photographed at 1096x725, with the right-hand side of the
+     * drawing outside the frame. The shell calls this and then shoots.
+     */
+    (window as unknown as { __exportFit: () => { w: number; h: number } | null }).__exportFit = fit;
     addEventListener("resize", fit);
     return () => removeEventListener("resize", fit);
     // eslint-disable-next-line react-hooks/exhaustive-deps

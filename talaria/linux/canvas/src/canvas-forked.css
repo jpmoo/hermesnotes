@@ -1408,6 +1408,24 @@ input.typed-title:focus {
   inset: 0;
   border-radius: 2px;
   overflow: hidden;
+}
+
+/* **The turned corner is the post-it's, and only the post-it's.**
+
+   It was on every `.cv-note .cv-paper`, from before a note could be any shape
+   but a sticky. When shapes arrived, only some of them re-declared `clip-path`
+   — ellipse, triangle and the post-it itself — so a note asked to be a
+   rectangle, or left rounded, kept the sticky's cut lower-right corner with no
+   rule anywhere to take it off. "Rectangle has its corner cut out" and "rounded
+   rectangle is a post-it" were this one declaration.
+
+   The rule beside the fold below already said the intent — "only a post-it has
+   a folded corner" — and assumed "the clip a shape sets already overrides the
+   note's", which is true of the three that set one and false of the two that do
+   not. So the cut moves to where the fold already is, on the shape itself, and
+   the default is untouched: a new node is a post-it, which is what the tool
+   strip starts on. */
+.cv-note[data-shape="postIt"] .cv-paper {
   /* The turned corner, cut from the sheet rather than drawn on it. */
   clip-path: polygon(
     0 0,
@@ -1420,7 +1438,7 @@ input.typed-title:focus {
 
 /* The underside of the turned corner. A square, which the clip above cuts into
    the triangle — so the fold and the cut can't disagree about where they are. */
-.cv-note .cv-paper::after {
+.cv-note[data-shape="postIt"] .cv-paper::after {
   content: "";
   position: absolute;
   right: 0;

@@ -218,6 +218,23 @@ that bindings live in the portal's store rather than System Settings;
 
 ### Things that cost an hour here, so they do not cost another
 
+- **A sticky's cut corner was on every note, whatever shape it was.**
+  `.cv-note .cv-paper` carried the post-it clip from before a note could be any
+  shape but a sticky. When shapes arrived only three of them re-declared
+  `clip-path` — ellipse, triangle, post-it — so a note asked to be a rectangle,
+  or left rounded, kept the cut lower-right corner and nothing anywhere took it
+  off. The rule beside it already stated the intent ("only a post-it has a
+  folded corner") on the assumption that "the clip a shape sets already
+  overrides the note's", which is true of the three that set one and false of
+  the two that do not.
+- **The tool strip and the renderer had different shape vocabularies.** The
+  strip offered `roundedRectangle` and `plain`; `CanvasView` knows an absent
+  shape (rounded), `rectangle`, `ellipse`, `triangle` and `postIt`. A node
+  dropped as a `roundedRectangle` matched no rule and fell through to the sticky
+  styling underneath, which is how choosing Rounded produced a post-it. The
+  rounded default is an *absent key*, not a name — `document.ts` reads it that
+  way and writing a name for it would put a shape in the file nothing there has
+  ever meant.
 - **`vite build` does not typecheck, and two live handlers were undefined.** The
   canvas's "Save…" pointed at a bare `save` that is not a function, not an
   import and not a global, so clicking it threw — and the shipped bundle carried

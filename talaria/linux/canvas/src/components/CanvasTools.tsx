@@ -21,14 +21,42 @@ import { ask, document_, keep, keepResized, pictureAt } from "../api.ts";
 import { putDocument, type CanvasItem } from "../document.ts";
 
 /** The six the format has, in the Mac's order. */
+/*
+ * The shapes, in the renderer's own names.
+ *
+ * This list used to carry `roundedRectangle` and `plain`, and `CanvasView` has
+ * never heard of either: its vocabulary is an absent shape for the rounded
+ * default, then `rectangle`, `ellipse`, `triangle` and `postIt`. A node dropped
+ * as a "roundedRectangle" matched no rule at all and fell through to the sticky
+ * styling underneath — which is how choosing Rounded produced a post-it.
+ *
+ * `""` is the absent one. It is stored as `null`, because that is what the
+ * document says and what every reader of it expects.
+ */
 const SHAPES: { key: string; name: string }[] = [
-  { key: "plain", name: "Plain" },
+  { key: "", name: "Rounded" },
   { key: "rectangle", name: "Rectangle" },
-  { key: "roundedRectangle", name: "Rounded" },
   { key: "ellipse", name: "Ellipse" },
   { key: "triangle", name: "Triangle" },
   { key: "postIt", name: "Post-it" },
 ];
+
+/** A small drawing of a shape, for the button that will drop it. */
+function ShapeMark({ shape }: { shape: string }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.6 } as const;
+  if (shape === "ellipse") return <svg viewBox="0 0 16 16" width="15" height="15"><circle cx="8" cy="8" r="6" {...common} /></svg>;
+  if (shape === "triangle") return <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2.2 14 13.4H2z" {...common} strokeLinejoin="round" /></svg>;
+  if (shape === "rectangle") return <svg viewBox="0 0 16 16" width="15" height="15"><rect x="2" y="3" width="12" height="10" {...common} /></svg>;
+  if (shape === "postIt") {
+    return (
+      <svg viewBox="0 0 16 16" width="15" height="15">
+        <path d="M2.5 3h11v6.5L10 13H2.5z" {...common} strokeLinejoin="round" />
+        <path d="M13.5 9.5H10V13" {...common} strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  return <svg viewBox="0 0 16 16" width="15" height="15"><rect x="2" y="3" width="12" height="10" rx="3" {...common} /></svg>;
+}
 
 /** What the daemon gives a shape when nobody has said otherwise. */
 function defaults(shape: string): { fill: string | null; strokeWidth: number } {
@@ -100,7 +128,10 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
     void place({
       id: id(),
       x: at.x - 110, y: at.y - 65, w: 220, h: 130,
-      text: "", shape, fill, strokeWidth,
+      // The rounded default is an *absent* key, not a value — `canvas.json` says
+      // so and `document.ts` reads it that way. Writing a name for the default
+      // would put a shape in the file that nothing there has ever meant.
+      text: "", ...(shape ? { shape } : {}), fill, strokeWidth,
     });
   }
 
@@ -322,23 +353,22 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
   return (
     <div className="tools">
       <div className="tool-row">
-        {tool("text", `Drag onto the canvas — ${SHAPES.find((s) => s.key === shape)?.name}`, <Type size={15} />,
-          () => { /* the drag does the work; a bare click opens the shapes */ setShapesOpen((o) => !o); })}
         {/*
-          * The shape this tool will drop, and a way to change it.
+          * One button, and it is a picture of what it will drop.
           *
-          * It was a square icon in an eighteen-pixel slot, which read as a
-          * button someone had cut in half. A chevron says "there is a list here"
-          * without pretending to be one of the shapes, and the shape itself is
-          * named in the text tool's own tooltip where there is room for a word.
+          * There were two: a `Type` glyph you dragged, and a chevron beside it
+          * that opened the list. Which meant the tool never showed what it was
+          * about to make, and the list was a second target the width of a
+          * thumbnail. Now the button wears the shape — drag it to place one,
+          * click it to choose a different one — and there is nothing to aim at
+          * twice.
           */}
-        <button
-          className={`tool-shape${shapesOpen ? " open" : ""}`}
-          title={`New nodes are ${SHAPES.find((s) => s.key === shape)?.name ?? shape}`}
-          onClick={() => setShapesOpen((o) => !o)}
-        >
-          <ChevronDown size={12} />
-        </button>
+        {tool(
+          "text",
+          `Drag onto the canvas — ${SHAPES.find((s) => s.key === shape)?.name}`,
+          <ShapeMark shape={shape} />,
+          () => setShapesOpen((o) => !o),
+        )}
       </div>
       {shapesOpen && (
         <div className="tool-menu">

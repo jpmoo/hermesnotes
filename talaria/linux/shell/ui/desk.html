@@ -60,9 +60,28 @@
   <!-- Where you are, and the two ways to move. Hidden until the pointer comes
        near, because a full-screen surface with permanent chrome is a window. -->
   <nav class="chrome" id="chrome">
-    <button class="step" id="back" title="Previous surface" aria-label="Previous surface">‹</button>
+    <!--
+      Drawn rather than typed.
+      
+      These were `‹`, `›` and `◑`, and every one of them sat at a different
+      height beside the dots: a glyph is centered on its own baseline and
+      x-height, not on its box, so aligning the boxes — which they were, to the
+      half pixel — bought nothing anybody could see. A path in a square viewBox
+      has no opinion of its own.
+    -->
+    <button class="step" id="back" title="Previous surface" aria-label="Previous surface">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 3.5 5.5 8l4.5 4.5"/>
+      </svg>
+    </button>
     <span class="dots" id="dots"></span>
-    <button class="step" id="next" title="Next surface" aria-label="Next surface">›</button>
+    <button class="step" id="next" title="Next surface" aria-label="Next surface">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 3.5 10.5 8 6 12.5"/>
+      </svg>
+    </button>
     <span class="chrome-sep"></span>
     <!--
       Whether the desktop shows through, for the whole desk.
@@ -73,7 +92,12 @@
       every pane — so turning the desk solid on the canvas and finding it still
       see-through on the quadrants would be a difference nobody asked for.
     -->
-    <button class="step frost" id="frost" title="Let the desktop show through" aria-label="Frosting">◑</button>
+    <button class="step frost" id="frost" title="Let the desktop show through" aria-label="Frosting">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.1" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M8 1.9a6.1 6.1 0 0 1 0 12.2z" fill="currentColor"/>
+      </svg>
+    </button>
   </nav>
 </div>
 

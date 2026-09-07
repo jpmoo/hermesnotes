@@ -600,14 +600,22 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
 }
 .chrome .step {
   background: none; border: 0; color: inherit; cursor: pointer;
-  font-size: 17px; line-height: 1; padding: 0 4px;
+  /* A box the icon sits in the middle of, rather than a line of text that
+   * happens to be a glyph. */
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0; border-radius: 6px;
 }
+.chrome .step:hover { background: color-mix(in srgb, CanvasText 12%, transparent); }
+.chrome .step svg { display: block; }
 .dots { display: flex; gap: 7px; }
 .dots .dot {
   width: 7px; height: 7px; padding: 0; border: 0; border-radius: 99px;
   background: color-mix(in srgb, CanvasText 35%, Canvas); cursor: pointer;
 }
-.dots .dot.here { background: var(--accent); }
+/* The grey is declared first so that a browser without `AccentColor` keeps a
+ * visible dot rather than an invisible one: an invalid `var()` makes the whole
+ * declaration unset, and this is the only thing on screen saying where you are. */
+.dots .dot.here { background: CanvasText; background: var(--accent); }
 
 /* --- Today's page, and the long-text field it is made of -------------------
  * Hermes' own editor cannot be framed here (`frame-ancestors`), so this is the
@@ -741,7 +749,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
  * to agree — a solid desk with a translucent pane on it reads as a bug. */
 .solid .desk { background: Canvas; }
 .solid .quadrants .pane { background: color-mix(in srgb, CanvasText 3%, Canvas); }
-.chrome .frost { font-size: 13px; opacity: .55; }
+.chrome .frost { opacity: .55; }
 .chrome .frost.on { opacity: 1; color: var(--accent); }
 .chrome-sep {
   width: 1px; height: 14px; margin: 0 2px;

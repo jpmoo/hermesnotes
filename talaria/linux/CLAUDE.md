@@ -218,6 +218,19 @@ that bindings live in the portal's store rather than System Settings;
 
 ### Things that cost an hour here, so they do not cost another
 
+- **`vite build` does not typecheck, and two live handlers were undefined.** The
+  canvas's "Save…" pointed at a bare `save` that is not a function, not an
+  import and not a global, so clicking it threw — and the shipped bundle carried
+  `onClick:save` with nothing behind it. `tsc --noEmit -p linux/canvas` names it
+  in one line, along with `addNote`, which is what double-clicking blank canvas
+  calls. Run it after touching the fork; the build will not.
+- **The primary selection is global, so it is the wrong answer to an ambient
+  question.** Once rung 3 worked again it started answering every ambient read,
+  and it does not change when the focus does — so Glance followed the window and
+  said the same thing about each one. A summon may have it ("read what I have
+  selected"); a tick nobody asked for may not, and falls to a rung that is about
+  *this* window. That is what `asked` is for in `glance.read`.
+
 - **`runJavaScript` cannot return an object.** Measured, after rung 2 spent this
   long looking like an empty desk: `"hello"` comes back `'hello'`, `2 + 2` comes
   back `4.0`, `document.title` comes back fine — and `({a: 1})` and `[1, 2, 3]`

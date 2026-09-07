@@ -434,9 +434,18 @@ def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bo
 
 
 def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
-         clock_blind: bool = False) -> Reading:
+         clock_blind: bool = False, asked: bool = False) -> Reading:
     """
     Climb until something answers.
+
+    `asked` says somebody pressed a key. It matters to rung 3 on a platform
+    where the clock is blind: the primary selection is *global* and does not
+    change when the focus does, so on an ambient tick — a read nobody asked for,
+    answering "what am I looking at now" — it hands back whatever was last
+    highlighted anywhere and keeps handing it back through every window you move
+    to. Glance followed the focus and said the same thing each time. A summon is
+    different: it means "read what I have selected", and there the buffer is the
+    answer rather than an impostor of one.
 
     `clock_blind` says the selection clock cannot see other applications at all
     — which is the case on Wayland, where the primary selection is offered only
@@ -535,7 +544,10 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
     # being skipped in favor of a window title, which is worse and looks
     # deliberate.
     stale = (not clock_blind) and selection_is_stale(changed_at, focused_at)
-    if atspi_why != REACHED_NO_SELECTION and not stale:
+    # Where the clock can vouch for it, staleness is the whole test and this
+    # rung serves both kinds of read. Where it cannot, only a summon may have
+    # it — see `asked`.
+    if atspi_why != REACHED_NO_SELECTION and not stale and (asked or not clock_blind):
         text, how = primary_selection()
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "primary selection", how)

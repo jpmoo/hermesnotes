@@ -189,7 +189,19 @@ document.execCommand("defaultParagraphSeparator", false, "p");
  */
 const FACES = {
   system: 'system-ui, "Noto Sans", sans-serif',
-  serif: 'Georgia, "Noto Serif", "Times New Roman", serif',
+  /*
+   * The reading face, and `P052` is the load-bearing name in it.
+   *
+   * Chromium does not honour fontconfig's aliases for a CSS family it does not
+   * know: `Palatino` resolves to P052 at the `fc-match` level and to *nothing*
+   * in the browser, so the stack fell through to the generic serif — measured,
+   * by rendering the same string in each and comparing widths. P052 is URW's
+   * Palatino, it ships in `fonts-urw-base35`, and naming it outright is what
+   * makes this actually Palatino on Linux rather than Noto Serif wearing the
+   * request. The Mac and Windows names stay in front of it, where they are the
+   * real thing.
+   */
+  serif: '"Iowan Old Style", "Palatino Linotype", Palatino, P052, Georgia, "Noto Serif", serif',
   verdana: 'Verdana, "DejaVu Sans", sans-serif',
   mono: 'ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace',
 };

@@ -791,6 +791,7 @@ class Shell(QObject):
             reading = glance.read(
                 self.frontmost.current,
                 allow_copy=True,
+                asked=True,
                 changed_at=self.frontmost.selection.changed_at,
                 focused_at=self.frontmost.focused_at,
                 clock_blind=self.frontmost.selection.blind,
@@ -840,6 +841,7 @@ class Shell(QObject):
             reading = glance.read(
                 self.frontmost.current,
                 allow_copy=True,
+                asked=True,
                 changed_at=self.frontmost.selection.changed_at,
                 focused_at=self.frontmost.focused_at,
                 clock_blind=self.frontmost.selection.blind,

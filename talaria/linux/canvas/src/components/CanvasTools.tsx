@@ -191,6 +191,59 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
     });
   }
 
+  /**
+   * This canvas, as one file somebody can keep.
+   *
+   * The counterpart of `load`, and it was never written — the menu item pointed
+   * at a bare `save` that is not a function, not an import and not a global, so
+   * clicking it threw. `vite build` does not typecheck, so nothing said so; a
+   * `tsc --noEmit` names it in one line.
+   *
+   * The pictures travel inside the file rather than beside it. A canvas whose
+   * images live in the daemon's store is a canvas that means nothing on another
+   * machine, and `load` already expects them carried this way and renames them
+   * on the way back in.
+   */
+  async function save() {
+    setFileOpen(false);
+    const doc = document_();
+    if (!doc) return;
+
+    const wanted = new Set<string>();
+    for (const item of doc.items ?? []) {
+      if (typeof item.image === "string") wanted.add(item.image);
+      for (const name of item.images ?? []) wanted.add(name);
+    }
+    const images: Record<string, string> = {};
+    for (const name of wanted) {
+      try {
+        images[name] = await asBase64(pictureAt(name));
+      } catch {
+        // A picture that will not read is not a reason to refuse the canvas.
+        // `load` shows nothing for a name it cannot find, which is the same
+        // answer arrived at from the other side.
+      }
+    }
+
+    /*
+     * Offered as a download, which is the one way a page can produce a file —
+     * and the shell is waiting for it: `_save_as` puts up the Save dialog and
+     * says in its own comment that "the canvas saves a document by offering it
+     * as a download". That half has been built the whole time.
+     */
+    const blob = new Blob([JSON.stringify({ document: doc, images }, null, 2)],
+                          { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = "canvas.json";
+    window.document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Let the download start before the blob is let go of.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
   async function load(file: File) {
     setFileOpen(false);
     const text = await file.text();

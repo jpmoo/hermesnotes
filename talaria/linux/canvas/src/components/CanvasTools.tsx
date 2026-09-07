@@ -16,7 +16,7 @@
  * having to know anything else about the surface it sits on.
  */
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, FileText, Image as ImageIcon, Search, SquareDashed, Type } from "lucide-react";
+import { FileText, Image as ImageIcon, Search, SquareDashed, Type } from "lucide-react";
 import { ask, document_, keep, keepResized, pictureAt } from "../api.ts";
 import { putDocument, type CanvasItem } from "../document.ts";
 
@@ -34,6 +34,11 @@ import { putDocument, type CanvasItem } from "../document.ts";
  * document says and what every reader of it expects.
  */
 const SHAPES: { key: string; name: string }[] = [
+  // Words on the canvas and nothing else. It is a real value in the document —
+  // a picture is placed as one, meaning no paper behind and no line around —
+  // and it differs from the rounded default only in wearing no border, which is
+  // what `defaults` gives it.
+  { key: "plain", name: "Plain text" },
   { key: "", name: "Rounded" },
   { key: "rectangle", name: "Rectangle" },
   { key: "ellipse", name: "Ellipse" },
@@ -44,6 +49,9 @@ const SHAPES: { key: string; name: string }[] = [
 /** A small drawing of a shape, for the button that will drop it. */
 function ShapeMark({ shape }: { shape: string }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.6 } as const;
+  // Plain text wears the letter it is, which is also the glyph this button had
+  // before it started showing shapes.
+  if (shape === "plain") return <Type size={15} />;
   if (shape === "ellipse") return <svg viewBox="0 0 16 16" width="15" height="15"><circle cx="8" cy="8" r="6" {...common} /></svg>;
   if (shape === "triangle") return <svg viewBox="0 0 16 16" width="15" height="15"><path d="M8 2.2 14 13.4H2z" {...common} strokeLinejoin="round" /></svg>;
   if (shape === "rectangle") return <svg viewBox="0 0 16 16" width="15" height="15"><rect x="2" y="3" width="12" height="10" {...common} /></svg>;
@@ -60,7 +68,12 @@ function ShapeMark({ shape }: { shape: string }) {
 
 /** What the daemon gives a shape when nobody has said otherwise. */
 function defaults(shape: string): { fill: string | null; strokeWidth: number } {
-  return shape === "postIt" ? { fill: "#fdf3b6", strokeWidth: 0 } : { fill: null, strokeWidth: 1.5 };
+  if (shape === "postIt") return { fill: "#fdf3b6", strokeWidth: 0 };
+  // Zero is not the same as unset here — `borderOf` reads an explicit zero as
+  // "no border" and an absent one as "whatever the stylesheet says". Plain text
+  // means the first.
+  if (shape === "plain") return { fill: null, strokeWidth: 0 };
+  return { fill: null, strokeWidth: 1.5 };
 }
 
 const id = () => `i${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;

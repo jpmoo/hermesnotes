@@ -450,6 +450,24 @@ per surface rather than in the file, because what a document *says* and what it
 looks like while somebody writes it are different questions, and only the first
 belongs in something other programs will read.
 
+**Arithmetic is Calca's notation, because it is the only one that is also a
+file.** Soulver, Numi and Tydlig are line calculators with their own document
+formats; Calca's documents are Markdown, `rent = 1850` names a value, and a line
+carrying `=>` is answered after the arrow. So that is what `calc.js` implements,
+and the answers are written *into* the line — somebody opening the file in
+anything else sees the arithmetic and its results. A fenced ```calc block is the
+same thing for a column of workings, where every line is a question and the
+arrow can be left off. One scope, in reading order.
+
+Two things it must not do, both of which it did first: escape the expression
+(`say()` turns `rent * 12` into `rent \* 12`, so a calculation line is written
+verbatim and is marked in the DOM for that reason), and answer prose. `=>` is
+not rare in a note — implication, quoted code, an arrow somebody drew — and
+"A sentence with an arrow => that is not arithmetic" came back answered
+*nothing called “A” yet*. A question now has to carry an operator, or be a single
+term, before it is treated as one; a typo in a real sum falls through that and
+simply gets no answer, which is the quieter way to be wrong.
+
 **Markdown, not HTML.** HTML would have made `richtext.js` twenty lines long and
 the directory worthless — a writing app whose work can only be read by itself is
 a trap. The cost is a serializer that has to be exact, because it runs on a timer

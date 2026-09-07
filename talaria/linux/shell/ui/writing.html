@@ -39,6 +39,7 @@
       <option value="h3">Heading 3</option>
       <option value="blockquote">Quote</option>
       <option value="pre">Code</option>
+      <option value="calc">Calculation</option>
     </select>
 
     <select id="font" title="Typeface" aria-label="Typeface">
@@ -134,6 +135,7 @@
 <script type="module">
 import { get, post, put, el } from "/ui/api.js";
 import { fromMarkdown, toMarkdown } from "/ui/richtext.js";
+import { run as reckon, looksArithmetic } from "/ui/calc.js";
 
 const page = document.getElementById("page");
 const state = document.getElementById("state");
@@ -320,6 +322,8 @@ function tidy() {
 
 function touched() {
   tidy();
+  markCalc();
+  recalc();
   dirty = true;
   counted();
   said("…");
@@ -344,6 +348,8 @@ async function load(name) {
   page.replaceChildren(fromMarkdown(open.text));
   docname.textContent = open.name.replace(/\.md$/, "");
   dirty = false;
+  markCalc();
+  recalc();
   counted();
   said(doc.new ? "New" : "Saved");
   // The caret goes where somebody would put it, which is the end of what they
@@ -544,6 +550,117 @@ for (const button of document.querySelectorAll("[data-list]")) {
   });
 }
 
+/* --------------------------------------------------------- arithmetic */
+
+/*
+ * The document's sums, worked out top to bottom.
+ *
+ * Two shapes, both Calca's, both plain Markdown: a line `rent = 1850` names a
+ * value, and any line carrying `=>` is answered after the arrow. A fenced
+ * ```calc block is the same thing for a column of workings, where every line is
+ * a question and the arrow can be left off.
+ *
+ * The answer is written into the line rather than drawn beside it. That is what
+ * puts it in the *file* — somebody opening the document in anything else sees
+ * the arithmetic and its results — and it is why this must not disturb the
+ * caret: the expression's length never changes when only the answer does, so a
+ * caret inside the expression stays exactly where it was, and the one case that
+ * moves is a caret parked in the answer, which is not a place to type.
+ */
+function recalc() {
+  const units = [];
+  const collect = (root) => {
+    for (const node of root.children) {
+      if (node.tagName === "PRE") {
+        const code = node.querySelector("code");
+        if (code?.dataset.language === "calc") units.push({ node: code, block: true });
+        continue;
+      }
+      if (node.classList?.contains("calc")) { units.push({ node, block: false }); continue; }
+      // A calculation can live inside a quote or a list item, so this goes down.
+      if (["BLOCKQUOTE", "UL", "OL", "LI", "DIV"].includes(node.tagName)) collect(node);
+    }
+  };
+  collect(page);
+  if (!units.length) return;
+
+  // One scope across the whole document, in reading order: a name means
+  // whatever it was last set to above the line using it.
+  const source = [];
+  const owns = [];
+  for (const unit of units) {
+    const lines = unit.block ? unit.node.textContent.split("\n") : [unit.node.textContent];
+    for (const line of lines) { source.push(line); owns.push(unit); }
+    unit.lines = lines;
+  }
+  const answers = reckon(source, { bare: true });
+
+  // Put each unit back together, and only touch the ones that changed.
+  let at = 0;
+  for (const unit of units) {
+    const rebuilt = unit.lines.map((line) => {
+      const answer = answers[at++];
+      if (!answer) return line;
+      const head = line.split("=>")[0].replace(/\s+$/, "");
+      if (answer.error) {
+        // A line that was *asked* — it carries an arrow — says why it cannot be
+        // worked out. A bare line inside a block that is simply not arithmetic
+        // says nothing at all.
+        return answer.quiet ? line : `${head} => ${answer.error}`;
+      }
+      return `${head} => ${answer.text}`;
+    });
+    const next = rebuilt.join("\n");
+    if (next === unit.node.textContent) continue;
+    keepingCaret(unit.node, () => { unit.node.textContent = next; });
+  }
+}
+
+/**
+ * Rewrite a node's text without losing the caret.
+ *
+ * The offset is counted from the start of the node, and the part of the line in
+ * front of the answer never moves — so a caret in the expression lands back on
+ * the same character. One clamped to the new length is the honest answer for a
+ * caret that was sitting in an answer that has since got shorter.
+ */
+function keepingCaret(node, change) {
+  const sel = getSelection();
+  const inside = sel && sel.anchorNode && node.contains(sel.anchorNode);
+  let offset = 0;
+  if (inside) {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    range.setEnd(sel.anchorNode, sel.anchorOffset);
+    offset = range.toString().length;
+  }
+  change();
+  if (!inside) return;
+  const text = node.firstChild;
+  if (!text) return;
+  const range = document.createRange();
+  range.setStart(text, Math.min(offset, text.length ?? 0));
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+/*
+ * A line becomes arithmetic the moment it reads as arithmetic.
+ *
+ * Marked on the paragraph rather than decided line by line at save time, so the
+ * serializer can write it verbatim — an expression is made of the characters
+ * Markdown escapes, and `rent \* 12` is not what anybody typed.
+ */
+function markCalc() {
+  for (const node of page.querySelectorAll("p, li")) {
+    const text = node.textContent;
+    const arithmetic = /^\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)/.test(text)
+      || (text.includes("=>") && looksArithmetic(text.split("=>")[0]));
+    node.classList.toggle("calc", arithmetic && node.tagName === "P");
+  }
+}
+
 /* ------------------------------------------------------------- tables */
 
 /*
@@ -728,6 +845,29 @@ document.getElementById("table").addEventListener("mousedown", (e) => e.preventD
 document.getElementById("table").onclick = () => insertTable();
 
 style.onchange = () => {
+  /*
+   * A calculation block is a fenced code block with a language, and
+   * `formatBlock` cannot set an attribute — so this one is built rather than
+   * commanded. It is the same `pre` the Code style makes, wearing the one word
+   * that tells the calculation pass to answer every line in it.
+   */
+  if (style.value === "calc") {
+    const here = block();
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.dataset.language = "calc";
+    code.textContent = here?.textContent.trim() || "";
+    pre.appendChild(code);
+    if (here) here.replaceWith(pre); else page.appendChild(pre);
+    if (!pre.nextElementSibling) {
+      const after = document.createElement("p");
+      after.appendChild(document.createElement("br"));
+      pre.after(after);
+    }
+    caretInto(code);
+    touched();
+    return reflect();
+  }
   // `formatBlock` takes the tag in angle brackets, and "p" is how you get back
   // out of a heading.
   document.execCommand("formatBlock", false, `<${style.value}>`);
@@ -781,8 +921,9 @@ function reflect() {
   }
 
   const at = block();
-  style.value = at && ["H1", "H2", "H3", "BLOCKQUOTE", "PRE"].includes(at.tagName)
-    ? at.tagName.toLowerCase()
+  const language = at?.querySelector?.("code")?.dataset.language;
+  style.value = at && language === "calc" ? "calc"
+    : at && ["H1", "H2", "H3", "BLOCKQUOTE", "PRE"].includes(at.tagName) ? at.tagName.toLowerCase()
     : "p";
 }
 

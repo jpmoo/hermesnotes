@@ -242,6 +242,28 @@ export function fromMarkdown(source) {
       continue;
     }
 
+    /*
+     * A line of arithmetic, kept as characters rather than parsed as prose.
+     *
+     * `name = value` and anything carrying `=>` are the notation's two shapes.
+     * They are given their own paragraph so the editor can find them and so the
+     * serializer writes them back untouched; the answer is put on by the
+     * calculation pass, which owns it.
+     */
+    // The same two shapes `calc.js` recognizes, and the same guard against
+    // prose: an arrow only makes a line arithmetic when what precedes it could
+    // be a sum. See `looksArithmetic` there for why.
+    const asks = line.includes("=>")
+      && /[+\-*/^%×÷()]|^\s*[\d.,]+\s*$|^\s*[A-Za-z_][A-Za-z0-9_]*\s*$/.test(line.split("=>")[0]);
+    if (/^\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)/.test(line) || asks) {
+      const calc = document.createElement("p");
+      calc.className = "calc";
+      calc.textContent = line;
+      frag.appendChild(calc);
+      at += 1;
+      continue;
+    }
+
     // A paragraph: every line up to the next blank one or the next block.
     const body = [];
     while (at < lines.length && lines[at].trim() && !bullet(lines[at])
@@ -400,6 +422,20 @@ function blocks(root, out) {
         out.push("---", "");
         break;
       default: {
+        /*
+         * A calculation line goes out as it stands.
+         *
+         * `say()` escapes the characters that would otherwise become markup,
+         * and arithmetic is made of them: `rent * 12` would be written
+         * `rent \* 12`, which is still true Markdown and is not what anybody
+         * typed. The line is marked as arithmetic by the editor, holds no inline
+         * formatting by construction, and is therefore safe to write verbatim.
+         */
+        if (node.classList?.contains("calc")) {
+          const text = node.textContent.replace(/\s+$/, "");
+          out.push(...(text ? [text] : [""]), "");
+          break;
+        }
         // A wrapper holding blocks is not a paragraph, whatever its tag says.
         if ([...node.children].some((c) => BLOCKS.has(c.tagName))) {
           blocks(node, out);

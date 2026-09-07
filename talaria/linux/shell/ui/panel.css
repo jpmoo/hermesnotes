@@ -1001,6 +1001,11 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 /* The strip that appears with the caret in a table. It sits under the toolbar
  * rather than inside it: seven controls that mean nothing the rest of the time
  * would be seven dead buttons on every other line of the document. */
+/* `display: flex` outranks the `hidden` attribute's rule in the browser's own
+ * stylesheet, so without this the strip was on screen at all times — hidden in
+ * the markup, visible on the page, and no amount of toggling the attribute made
+ * any difference. */
+.tabletools[hidden] { display: none; }
 .tabletools {
   display: flex; align-items: center; gap: 3px;
   padding: 5px 8px;
@@ -1017,3 +1022,11 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   height: 24px; padding: 0 8px; cursor: pointer; white-space: nowrap;
 }
 .tabletools button:hover { background: color-mix(in srgb, CanvasText 8%, transparent); }
+
+/* A line that is arithmetic reads as arithmetic: figures line up, and the
+ * answer after the arrow is the machine's rather than the writer's. */
+.page p.calc {
+  font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  font-size: .92em;
+}
+.page pre code[data-language="calc"] { display: block; }

@@ -118,6 +118,57 @@ export function fromMarkdown(source) {
       continue;
     }
 
+    /*
+     * A pipe table, which is the one block here with a shape rather than a
+     * prefix: it is recognized by the *second* line, the `|---|:-:|` rule that
+     * separates the heading from the body and carries the column alignment.
+     * `markdown.js` renders these already; this is the same grammar, read back
+     * into something editable.
+     */
+    if (line.includes("|") && at + 1 < lines.length && /^[\s|:-]*-[\s|:-]*$/.test(lines[at + 1])
+        && lines[at + 1].includes("-")) {
+      const cells = (row) => {
+        const trimmed = row.trim().replace(/^\|/, "").replace(/\|$/, "");
+        // A pipe somebody meant literally is written `\|` and must not split.
+        return trimmed.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
+      };
+      const head = cells(lines[at]);
+      const align = cells(lines[at + 1]).map((rule) => {
+        const left = rule.startsWith(":");
+        const right = rule.endsWith(":");
+        return right && left ? "center" : right ? "right" : left ? "left" : "";
+      });
+      at += 2;
+      const body = [];
+      while (at < lines.length && lines[at].includes("|") && lines[at].trim()) body.push(cells(lines[at++]));
+
+      const table = document.createElement("table");
+      const thead = document.createElement("thead");
+      const hrow = document.createElement("tr");
+      head.forEach((text, i) => {
+        const th = html("th", inline(escape(text)));
+        if (align[i]) th.dataset.align = align[i];
+        hrow.appendChild(th);
+      });
+      thead.appendChild(hrow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      for (const row of body) {
+        const tr = document.createElement("tr");
+        // Ragged rows are made square: a table with a short row is a table the
+        // editor cannot put a caret in the missing half of.
+        for (let i = 0; i < head.length; i += 1) {
+          const td = html("td", inline(escape(row[i] ?? "")));
+          if (align[i]) td.dataset.align = align[i];
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      frag.appendChild(table);
+      continue;
+    }
+
     const heading = /^(#{1,3})\s+(.*)$/.exec(line);
     if (heading) {
       frag.appendChild(html(`h${heading[1].length}`, inline(escape(heading[2]))));
@@ -131,10 +182,21 @@ export function fromMarkdown(source) {
       continue;
     }
 
-    if (/^>\s?/.test(line)) {
+    if (/^>/.test(line)) {
+      /*
+       * One level peeled, then the rest parsed as a document of its own.
+       *
+       * `> > deeper` is a quote inside a quote, and that nesting is what an
+       * indented paragraph *is* in Markdown — the format has no other way to
+       * shift a block right, and this is the one it has. Recursion handles the
+       * depth and everything inside it: a list in a quote, a quote in a quote,
+       * a heading somebody indented.
+       */
       const body = [];
-      while (at < lines.length && /^>\s?/.test(lines[at])) body.push(lines[at++].replace(/^>\s?/, ""));
-      frag.appendChild(html("blockquote", body.map((l) => inline(escape(l))).join("<br>")));
+      while (at < lines.length && /^>/.test(lines[at])) body.push(lines[at++].replace(/^> ?/, ""));
+      const quoted = document.createElement("blockquote");
+      quoted.appendChild(fromMarkdown(body.join("\n")));
+      frag.appendChild(quoted);
       continue;
     }
 
@@ -259,7 +321,7 @@ function list(node, depth, out) {
 }
 
 /** The block kinds that are never inline, whoever produced them. */
-const BLOCKS = new Set(["H1", "H2", "H3", "UL", "OL", "PRE", "BLOCKQUOTE", "HR", "P", "DIV"]);
+const BLOCKS = new Set(["H1", "H2", "H3", "UL", "OL", "PRE", "BLOCKQUOTE", "HR", "P", "DIV", "TABLE"]);
 
 export function toMarkdown(root) {
   const out = [];
@@ -302,10 +364,38 @@ function blocks(root, out) {
       case "PRE":
         out.push("```" + (node.querySelector("code")?.dataset.language || ""), node.textContent.replace(/\n$/, ""), "```", "");
         break;
-      case "BLOCKQUOTE":
-        for (const line of [...node.childNodes].map(say).join("").split("\n")) out.push(`> ${line}`.trimEnd());
+      case "TABLE": {
+        const rows = [...node.querySelectorAll("tr")];
+        if (!rows.length) break;
+        // A pipe inside a cell is escaped, or it would become a column border.
+        const say_ = (cell) => [...cell.childNodes].map(say).join("").replace(/\|/g, "\\|").trim();
+        const head = [...rows[0].children];
+        const width = head.length;
+        out.push(`| ${head.map(say_).join(" | ")} |`);
+        out.push(`| ${head.map((cell) => {
+          const a = cell.dataset.align;
+          return a === "center" ? ":---:" : a === "right" ? "---:" : a === "left" ? ":---" : "---";
+        }).join(" | ")} |`);
+        for (const row of rows.slice(1)) {
+          const cells = [...row.children].map(say_);
+          while (cells.length < width) cells.push("");
+          out.push(`| ${cells.slice(0, width).join(" | ")} |`);
+        }
         out.push("");
         break;
+      }
+
+      case "BLOCKQUOTE": {
+        // Whatever is inside, said as itself and then shifted right one level.
+        // A nested blockquote lands here again and is prefixed twice, which is
+        // exactly how `> > ` is written.
+        const inner = [];
+        blocks(node, inner);
+        while (inner.length && !inner[inner.length - 1]) inner.pop();
+        for (const line of inner) out.push(line ? `> ${line}` : ">");
+        out.push("");
+        break;
+      }
       case "HR":
         out.push("---", "");
         break;

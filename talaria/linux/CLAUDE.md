@@ -456,11 +456,21 @@ Four things the browser said that the design had not:
 - **`execCommand` leaves styled spans behind** — `outdent` wrapped an item's
   text in the sheet's own translucent background, copied out of the computed
   style. Nothing here makes a styled span, so any that appears is unwrapped.
-- **Indent and outdent are list operations only.** Outside a list
-  `execCommand("indent")` wraps the paragraph in a blockquote — a habit from
-  before CSS — which would write `>` into somebody's document because they
-  pressed Tab. Markdown has no indented paragraph to round-trip anyway, so the
-  buttons disable instead.
+- **An indented block and a quote are the same thing, so they look the same.**
+  Indent was list-only at first, on the argument that Markdown has no indented
+  paragraph. It has exactly one: `>` nests, and nesting it is what shifting a
+  block right *means* in this format. So `execCommand("indent")` outside a list
+  is allowed to do what it already does — wrap in a blockquote — and the
+  stylesheet draws that as indentation with a light rule rather than as a pull
+  quote. The two are indistinguishable in the file because in Markdown they are
+  the same construct; pretending otherwise would mean an indent that came back
+  as a quotation on the next open.
+- **The browser styles what it builds.** `execCommand("indent")` writes
+  `margin: 0 0 0 40px; border: none` onto its blockquote, which overrides the
+  stylesheet — so an indent looked one way while you made it and another way
+  after the file was reopened, since the copy that comes back from Markdown
+  carries no styles. Nothing here ever sets an inline style, so `tidy()` strips
+  every one of them.
 
 ## Things that cost a day, so they do not cost another
 

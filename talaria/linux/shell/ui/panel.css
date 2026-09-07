@@ -887,10 +887,21 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .page h2 { font-size: 1.35em; margin: 1em 0 .35em; font-weight: 650; }
 .page h3 { font-size: 1.12em; margin: .9em 0 .3em; font-weight: 650; }
 .page > :first-child { margin-top: 0; }
+/*
+ * A quote and an indented block are the same thing here, because in Markdown
+ * they are the same thing: `>` is the one construct the format has for shifting
+ * a block right, and it nests. So this is styled as indentation with a rule
+ * rather than as a pull quote — light enough to read as a margin, present enough
+ * to show the level. The text keeps its own color: greying it would be right for
+ * a quotation and wrong for the paragraph somebody simply moved over.
+ */
 .page blockquote {
-  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  margin-left: 0; padding: 2px 0 2px 14px; color: var(--muted);
+  border-left: 2px solid color-mix(in srgb, CanvasText 16%, transparent);
+  margin: 0 0 .75em; padding: 0 0 0 18px;
 }
+/* Nested levels indent by nesting, so the padding compounds on its own. */
+.page blockquote > * { margin: 0 0 .55em; }
+.page blockquote > :last-child { margin-bottom: 0; }
 .page pre {
   background: color-mix(in srgb, CanvasText 7%, transparent);
   border-radius: 8px; padding: 10px 12px; overflow-x: auto;
@@ -952,3 +963,49 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   padding: 6px 8px; cursor: pointer; text-align: left; min-width: 0;
 }
 .doc-open .title { font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* --- Tables on the writing surface -----------------------------------------
+ * A Markdown table is a rectangle of text, so this draws a rectangle: rules
+ * rather than fills, a heading row that is only heavier by its weight, and
+ * enough padding that a cell can be clicked into without aiming.
+ */
+.page table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 .9em;
+  font-size: .96em;
+}
+.page th, .page td {
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  padding: 6px 10px;
+  vertical-align: top;
+  /* A cell has to be clickable when it is empty, which it is not if it has no
+   * height of its own. */
+  min-width: 3em;
+}
+.page th { font-weight: 650; background: color-mix(in srgb, CanvasText 5%, transparent); }
+/* Alignment is the column's, and is carried on every cell in it because that is
+ * the only way Markdown can say it — one rule under the heading. */
+.page [data-align="left"] { text-align: left; }
+.page [data-align="center"] { text-align: center; }
+.page [data-align="right"] { text-align: right; }
+
+/* The strip that appears with the caret in a table. It sits under the toolbar
+ * rather than inside it: seven controls that mean nothing the rest of the time
+ * would be seven dead buttons on every other line of the document. */
+.tabletools {
+  display: flex; align-items: center; gap: 3px;
+  padding: 5px 8px;
+  margin: -8px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: color-mix(in srgb, Canvas 55%, transparent);
+  flex: none;
+}
+.solid .tabletools { background: var(--raised); }
+.tabletools button {
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  color: var(--fg); font: inherit; font-size: 12px;
+  height: 24px; padding: 0 8px; cursor: pointer; white-space: nowrap;
+}
+.tabletools button:hover { background: color-mix(in srgb, CanvasText 8%, transparent); }

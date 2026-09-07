@@ -77,6 +77,13 @@
         <path d="M11 4h3.5M11 11.5h3.5M1.5 11.5h7"/>
       </svg>
     </button>
+    <button id="table" title="Insert a table" aria-label="Insert a table">
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="1.3">
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/>
+        <path d="M1.5 6.2h13M6 6.2v7.3M10.5 6.2v7.3"/>
+      </svg>
+    </button>
     <button data-cmd="outdent" title="Outdent  (Shift+Tab)" aria-label="Outdent">⇤</button>
     <button data-cmd="indent" title="Indent  (Tab)" aria-label="Indent">⇥</button>
 
@@ -95,6 +102,25 @@
     <span class="fine" id="count"></span>
     <span class="state" id="state"></span>
   </header>
+
+  <!--
+    Shown only with the caret in a table. A row of seven controls that are
+    meaningless the rest of the time is worse than a row that appears when it
+    applies — and a table is the one thing here you cannot edit with the
+    keyboard alone.
+  -->
+  <div class="tabletools" id="tabletools" hidden>
+    <button data-table="row-above" title="Insert a row above">Row ↑</button>
+    <button data-table="row-below" title="Insert a row below">Row ↓</button>
+    <button data-table="col-left" title="Insert a column to the left">Col ←</button>
+    <button data-table="col-right" title="Insert a column to the right">Col →</button>
+    <span class="tsep"></span>
+    <button data-table="align" title="Align this column: left, center, right">Align</button>
+    <span class="tsep"></span>
+    <button data-table="drop-row" title="Delete this row">Delete row</button>
+    <button data-table="drop-col" title="Delete this column">Delete column</button>
+    <button data-table="drop" title="Delete the whole table">Delete table</button>
+  </div>
 
   <!-- `data-context` is the whole of Glance's access to this surface: the page
        it holds, and none of the furniture above. -->
@@ -259,6 +285,17 @@ function tidy() {
   for (const span of page.querySelectorAll("span[style]")) {
     span.replaceWith(...span.childNodes);
   }
+  /*
+   * And it styles the blocks it makes, too.
+   *
+   * `execCommand("indent")` writes `margin: 0 0 0 40px; border: none` onto the
+   * blockquote it creates, which overrides the stylesheet — so an indent looked
+   * one way while you made it and another way after the file was reopened,
+   * because the copy that comes back from Markdown carries no styles at all.
+   * Nothing here ever sets an inline style, so every one of them is the
+   * browser's and every one goes.
+   */
+  for (const styled of page.querySelectorAll("[style]")) styled.removeAttribute("style");
   for (const list of page.querySelectorAll("ul")) {
     if (list.parentElement?.closest('ul[data-check="1"]')) list.dataset.check = "1";
   }
@@ -419,6 +456,16 @@ function block() {
   return null;
 }
 
+/** The blockquote the caret is in, if any. */
+function inQuote() {
+  let node = getSelection()?.anchorNode;
+  while (node && node !== page) {
+    if (node.nodeType === Node.ELEMENT_NODE && node.tagName === "BLOCKQUOTE") return node;
+    node = node.parentNode;
+  }
+  return null;
+}
+
 /** The list the caret is in, if any. */
 function inList() {
   let node = getSelection()?.anchorNode;
@@ -435,16 +482,6 @@ for (const button of document.querySelectorAll("[data-cmd]")) {
   button.addEventListener("mousedown", (e) => e.preventDefault());
   button.addEventListener("click", () => {
     const cmd = button.dataset.cmd;
-    /*
-     * Indent and outdent are list operations here, and only that.
-     *
-     * `execCommand("indent")` outside a list wraps the paragraph in a
-     * blockquote — a browser habit from before CSS, and one that would write
-     * `>` into somebody's document because they pressed Tab. Markdown has no
-     * indented paragraph to round-trip anyway, so the honest behavior is to do
-     * nothing and let the buttons show it.
-     */
-    if ((cmd === "indent" || cmd === "outdent") && !inList()) return;
     document.execCommand(cmd, false, null);
     page.focus();
     touched();
@@ -495,6 +532,189 @@ for (const button of document.querySelectorAll("[data-list]")) {
   });
 }
 
+/* ------------------------------------------------------------- tables */
+
+/*
+ * Tables, which are the one block here with a shape rather than a prefix.
+ *
+ * `execCommand` has nothing for them — no insertTable, no row or column verbs —
+ * so every one of these is DOM work. That is fine and even preferable: a table
+ * in Markdown is a rectangle, and keeping it rectangular is most of the job.
+ * Every operation below ends by making sure every row is the same width.
+ */
+const tabletools = document.getElementById("tabletools");
+
+/** The cell the caret is in, and the table around it. */
+function inCell() {
+  let node = getSelection()?.anchorNode;
+  while (node && node !== page) {
+    if (node.nodeType === Node.ELEMENT_NODE && (node.tagName === "TD" || node.tagName === "TH")) {
+      return node;
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
+function caretInto(cell) {
+  if (!cell) return;
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  range.collapse(true);
+  const sel = getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  page.focus();
+}
+
+/** A blank cell of the right kind, carrying the column's alignment. */
+function blank(kind, align) {
+  const cell = document.createElement(kind);
+  if (align) cell.dataset.align = align;
+  cell.appendChild(document.createElement("br"));
+  return cell;
+}
+
+function insertTable(columns = 3, rows = 2) {
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const hrow = document.createElement("tr");
+  for (let c = 0; c < columns; c += 1) hrow.appendChild(blank("th"));
+  thead.appendChild(hrow);
+  const tbody = document.createElement("tbody");
+  for (let r = 0; r < rows; r += 1) {
+    const tr = document.createElement("tr");
+    for (let c = 0; c < columns; c += 1) tr.appendChild(blank("td"));
+    tbody.appendChild(tr);
+  }
+  table.append(thead, tbody);
+
+  // In place of the block the caret is in when that block is empty, and after
+  // it otherwise — the same thing a word processor does, and it stops a table
+  // from swallowing the sentence somebody was in the middle of.
+  const here = block();
+  if (here && !here.textContent.trim() && here.tagName !== "TABLE") here.replaceWith(table);
+  else if (here) here.after(table);
+  else page.appendChild(table);
+
+  // Somewhere to go after it, or a table at the end of the document is a trap.
+  if (!table.nextElementSibling) {
+    const after = document.createElement("p");
+    after.appendChild(document.createElement("br"));
+    table.after(after);
+  }
+  caretInto(table.querySelector("th"));
+  touched();
+  reflect();
+}
+
+/** Every row the same width, whatever was just done to it. */
+function square(table) {
+  const rows = [...table.querySelectorAll("tr")];
+  const width = Math.max(...rows.map((r) => r.children.length));
+  for (const row of rows) {
+    const kind = row.parentElement?.tagName === "THEAD" ? "th" : "td";
+    while (row.children.length < width) row.appendChild(blank(kind));
+  }
+}
+
+const TABLE_DOES = {
+  "row-above": (cell, row, table) => {
+    // Never above the heading: a Markdown table's first row *is* the heading,
+    // and a body row put in front of it would silently become one.
+    const copy = document.createElement("tr");
+    for (const c of row.children) copy.appendChild(blank("td", c.dataset.align));
+    if (row.parentElement.tagName === "THEAD") table.querySelector("tbody").prepend(copy);
+    else row.before(copy);
+    caretInto(copy.firstElementChild);
+  },
+  "row-below": (cell, row, table) => {
+    const copy = document.createElement("tr");
+    for (const c of row.children) copy.appendChild(blank("td", c.dataset.align));
+    if (row.parentElement.tagName === "THEAD") table.querySelector("tbody").prepend(copy);
+    else row.after(copy);
+    caretInto(copy.firstElementChild);
+  },
+  "col-left": (cell, row, table) => {
+    const at = [...row.children].indexOf(cell);
+    for (const r of table.querySelectorAll("tr")) {
+      const kind = r.parentElement.tagName === "THEAD" ? "th" : "td";
+      r.children[at].before(blank(kind));
+    }
+    caretInto(row.children[at]);
+  },
+  "col-right": (cell, row, table) => {
+    const at = [...row.children].indexOf(cell);
+    for (const r of table.querySelectorAll("tr")) {
+      const kind = r.parentElement.tagName === "THEAD" ? "th" : "td";
+      r.children[at].after(blank(kind));
+    }
+    caretInto(row.children[at + 1]);
+  },
+  align: (cell, row, table) => {
+    const at = [...row.children].indexOf(cell);
+    const order = ["", "left", "center", "right"];
+    const next = order[(order.indexOf(cell.dataset.align || "") + 1) % order.length];
+    // Markdown carries alignment per *column*, in the rule under the heading,
+    // so setting it on one cell and not the rest would be a thing this file
+    // cannot say.
+    for (const r of table.querySelectorAll("tr")) {
+      const c = r.children[at];
+      if (!c) continue;
+      if (next) c.dataset.align = next;
+      else delete c.dataset.align;
+    }
+    caretInto(cell);
+  },
+  "drop-row": (cell, row, table) => {
+    if (row.parentElement.tagName === "THEAD") {
+      // The heading cannot go on its own — the first body row is promoted into
+      // it, and a one-row table is deleted outright.
+      const first = table.querySelector("tbody tr");
+      if (!first) return table.remove();
+      for (const c of [...first.children]) {
+        const th = document.createElement("th");
+        if (c.dataset.align) th.dataset.align = c.dataset.align;
+        th.append(...c.childNodes);
+        c.replaceWith(th);
+      }
+      row.replaceWith(first);
+      return caretInto(first.firstElementChild);
+    }
+    const next = row.nextElementSibling || row.previousElementSibling;
+    row.remove();
+    caretInto((next || table.querySelector("th"))?.firstElementChild);
+  },
+  "drop-col": (cell, row, table) => {
+    const at = [...row.children].indexOf(cell);
+    if (row.children.length <= 1) return table.remove();
+    for (const r of table.querySelectorAll("tr")) r.children[at]?.remove();
+    caretInto(row.children[Math.min(at, row.children.length - 1)]);
+  },
+  drop: (cell, row, table) => {
+    const after = table.nextElementSibling;
+    table.remove();
+    if (after) caretInto(after);
+  },
+};
+
+for (const button of tabletools.querySelectorAll("[data-table]")) {
+  button.addEventListener("mousedown", (e) => e.preventDefault());
+  button.addEventListener("click", () => {
+    const cell = inCell();
+    if (!cell) return;
+    const row = cell.parentElement;
+    const table = cell.closest("table");
+    TABLE_DOES[button.dataset.table]?.(cell, row, table);
+    if (table.isConnected) square(table);
+    touched();
+    reflect();
+  });
+}
+
+document.getElementById("table").addEventListener("mousedown", (e) => e.preventDefault());
+document.getElementById("table").onclick = () => insertTable();
+
 style.onchange = () => {
   // `formatBlock` takes the tag in angle brackets, and "p" is how you get back
   // out of a heading.
@@ -522,8 +742,11 @@ document.getElementById("link").onclick = () => {
 function reflect() {
   for (const button of document.querySelectorAll("[data-cmd]")) {
     const cmd = button.dataset.cmd;
-    if (cmd === "indent" || cmd === "outdent") {
-      button.disabled = !inList();
+    if (cmd === "indent") continue;                       // always available
+    if (cmd === "outdent") {
+      // Nothing to come back from at the left margin, and that is worth
+      // showing rather than letting the button look live and do nothing.
+      button.disabled = !inList() && !inQuote();
       continue;
     }
     try {
@@ -538,6 +761,13 @@ function reflect() {
       : list.tagName === "UL" && list.dataset.check !== "1");
     button.classList.toggle("on", Boolean(is));
   }
+  const cell = inCell();
+  tabletools.hidden = !cell;
+  if (cell) {
+    const how = cell.dataset.align || "as written";
+    tabletools.querySelector('[data-table="align"]').textContent = `Align: ${how}`;
+  }
+
   const at = block();
   style.value = at && ["H1", "H2", "H3", "BLOCKQUOTE", "PRE"].includes(at.tagName)
     ? at.tagName.toLowerCase()
@@ -572,9 +802,35 @@ page.addEventListener("keydown", (e) => {
     void save();
     return;
   }
-  // Tab is the list key. Outside a list it is left alone, so the toolbar and
-  // the rest of the desk stay reachable from the keyboard.
-  if (e.key === "Tab" && inList()) {
+  /*
+   * Tab indents, and Shift+Tab at the left margin gives the keyboard back.
+   *
+   * Trapping Tab everywhere would leave somebody working without a mouse stuck
+   * inside the page, so the one gesture that has nothing to do — outdenting a
+   * block already at level zero — is allowed through to move focus instead.
+   */
+  /*
+   * Tab in a table moves to the next cell, which is what Tab means in every
+   * table anybody has used — and it beats indenting a cell, which Markdown
+   * could not write down anyway. Off the end it makes a new row, so a table can
+   * be filled in without touching the mouse.
+   */
+  const cell = inCell();
+  if (e.key === "Tab" && cell) {
+    e.preventDefault();
+    const cells = [...page.querySelectorAll("th, td")].filter((c) => c.closest("table") === cell.closest("table"));
+    const at = cells.indexOf(cell);
+    const next = e.shiftKey ? cells[at - 1] : cells[at + 1];
+    if (next) return caretInto(next);
+    if (e.shiftKey) return;
+    TABLE_DOES["row-below"](cell, cell.parentElement, cell.closest("table"));
+    square(cell.closest("table"));
+    touched();
+    return reflect();
+  }
+
+  if (e.key === "Tab") {
+    if (e.shiftKey && !inList() && !inQuote()) return;
     e.preventDefault();
     document.execCommand(e.shiftKey ? "outdent" : "indent", false, null);
     touched();

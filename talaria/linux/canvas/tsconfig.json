@@ -9,7 +9,12 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "react-router-dom": ["src/shims/router.tsx"],
+      "@hermes/shared": ["src/shims/shared.ts"]
+    }
   },
   "include": ["src"]
 }

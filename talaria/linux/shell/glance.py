@@ -80,7 +80,7 @@ class Reading:
         return bool(self.text and self.text.strip())
 
 
-def primary_selection() -> tuple[str | None, str]:
+def primary_selection(allow_qt: bool = True) -> tuple[str | None, str]:
     """
     Rung 3. Select-to-copy, which both X11 and Wayland keep.
 
@@ -119,8 +119,11 @@ def primary_selection() -> tuple[str | None, str]:
             on_wayland = app.platformName().startswith("wayland")
             clipboard = app.clipboard()
             # X11 hands every client the selection, so there Qt is both correct
-            # and free.
-            if not on_wayland and clipboard is not None:
+            # and free — but only from the thread that owns the GUI. `allow_qt`
+            # is false when this is running on a worker, where `xclip` is the
+            # answer instead: a subprocess is safe anywhere, which is the whole
+            # reason the read moved off the main thread.
+            if allow_qt and not on_wayland and clipboard is not None:
                 text = clipboard.text(QClipboard.Mode.Selection)
                 return (text, "qt") if text else (None, "nothing is selected")
     except Exception:  # noqa: BLE001
@@ -434,7 +437,8 @@ def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bo
 
 
 def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
-         clock_blind: bool = False, asked: bool = False) -> Reading:
+         clock_blind: bool = False, asked: bool = False,
+         on_gui_thread: bool = True) -> Reading:
     """
     Climb until something answers.
 
@@ -548,7 +552,7 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
     # rung serves both kinds of read. Where it cannot, only a summon may have
     # it — see `asked`.
     if atspi_why != REACHED_NO_SELECTION and not stale and (asked or not clock_blind):
-        text, how = primary_selection()
+        text, how = primary_selection(allow_qt=on_gui_thread)
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "primary selection", how)
 

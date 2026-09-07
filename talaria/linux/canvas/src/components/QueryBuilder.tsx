@@ -12,9 +12,14 @@
  * later. The slot it would render into does not exist anyway — see
  * `lib/right-panel.tsx`.
  */
+import type { FilterGroup } from "@hermes/shared";
+
 export function QueryBuilder(_props: {
-  value: unknown;
-  onChange: (next: unknown) => void;
+  // Typed as what it is handed rather than as `unknown`. A shim that renders
+  // nothing still has to describe the thing it stands in for, or it lies about
+  // the caller — which is what the checker caught here.
+  value: FilterGroup;
+  onChange: (next: FilterGroup) => void;
   types: unknown[];
   tags: string[];
 }) {

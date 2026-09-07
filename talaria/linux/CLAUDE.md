@@ -272,9 +272,20 @@ that bindings live in the portal's store rather than System Settings;
 - **`vite build` does not typecheck, and two live handlers were undefined.** The
   canvas's "Save…" pointed at a bare `save` that is not a function, not an
   import and not a global, so clicking it threw — and the shipped bundle carried
-  `onClick:save` with nothing behind it. `tsc --noEmit -p linux/canvas` names it
-  in one line, along with `addNote`, which is what double-clicking blank canvas
-  calls. Run it after touching the fork; the build will not.
+  `onClick:save` with nothing behind it. `addNote`, which double-clicking blank
+  canvas calls, was the same. `install.sh` runs `tsc --noEmit` before the build
+  now and fails on it: a canvas that compiles to a `ReferenceError` is not a
+  canvas that built.
+
+  Turning the check on found more than the two. The `@hermes/shared` shim had
+  **invented** `FilterGroup` as `{op, rules, groups}` where Hermes and every use
+  of it say `{kind, match, items}`; `BlockSearchResult` was imported from a
+  module that never exported it; and `NodeCtx.image` — read on every render to
+  decide whether a node draws as its photograph — was never declared, which is
+  why nobody noticed `ctxOf` was not carrying it. A placed block shown as its
+  picture came back as a card after a reload, along with its alignment and its
+  ink. A shim that renders nothing still has to describe the thing it stands in
+  for, or it lies about its caller.
 - **The primary selection is global, so it is the wrong answer to an ambient
   question.** Once rung 3 worked again it started answering every ambient read,
   and it does not change when the focus does — so Glance followed the window and
@@ -404,6 +415,26 @@ ladder of seven, each catching what the one above missed. Read
    filling in a form. Note Wayland has no `changeCount`, so "nothing was
    selected" and "hasn't landed yet" are harder to separate than on macOS.
 7. Window title, blindlisted the same way.
+
+### The ladder does not run on the thread that draws
+
+Every rung below our own windows blocks: `wl-paste` is a process to spawn and
+wait for, the accessibility walk is synchronous D-Bus, and the synthetic copy
+presses a key and waits to see what lands. On the GUI thread — which is where a
+hotkey arrives — that freezes the application for as long as they take, and KWin
+marks the window *(Not Responding)* while the panel that was summoned sits
+unpainted. It only became visible when panels stopped dismissing themselves and
+stayed on screen long enough to be seen doing it.
+
+`Reader` runs the read on a worker and hands the answer back on a queued signal,
+which is how it re-enters the GUI thread: the reading is a value and the panel is
+a window, and only one of those may be touched from there. Two things this needs
+that are easy to miss. The reader is **held on `self`** for the length of the
+read — a `QObject` whose only reference is a local is collected when the method
+returns, and a collected reader emits nothing. And `primary_selection` takes
+`allow_qt`, false off the main thread: on X11 it would otherwise reach for
+`QClipboard`, which belongs to the GUI thread. `xclip` is the answer there, and a
+subprocess is safe anywhere — which is the whole reason the read moved.
 
 ### The primary selection is offered only to the focused client
 

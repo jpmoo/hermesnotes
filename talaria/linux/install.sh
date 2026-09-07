@@ -45,7 +45,21 @@ TSX="$ROOT/packages/daemon/node_modules/tsx/dist/cli.mjs"
 # rule: "nothing here is installed or started until the things that can fail have
 # been tried."
 CANVAS_BUILD="$ROOT/linux/canvas/node_modules/.bin/vite"
+CANVAS_TSC="$ROOT/linux/canvas/node_modules/.bin/tsc"
 if [ -x "$CANVAS_BUILD" ]; then
+  # **Typecheck before building, because the build does not.**
+  #
+  # `vite build` transpiles and never checks, so the fork shipped two handlers
+  # bound to identifiers that do not exist anywhere — "Save…" threw on every
+  # click and double-clicking bare canvas threw on every double-click, for as
+  # long as each had been there. `tsc --noEmit` names that class of thing in one
+  # line. It is a hard failure: a canvas that compiles to a ReferenceError is
+  # not a canvas that built.
+  if [ -x "$CANVAS_TSC" ]; then
+    echo "-- checking the canvas"
+    ( cd "$ROOT/linux/canvas" && "$CANVAS_TSC" --noEmit -p tsconfig.json ) \
+      || { echo "!! the canvas does not typecheck"; exit 1; }
+  fi
   echo "-- building the canvas"
   ( cd "$ROOT/linux/canvas" && "$CANVAS_BUILD" build >/dev/null ) \
     || { echo "!! the canvas would not build"; exit 1; }

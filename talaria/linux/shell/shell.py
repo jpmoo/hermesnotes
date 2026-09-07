@@ -17,12 +17,15 @@ import os
 import subprocess
 import sys
 
-from PySide6.QtCore import QObject, QSettings, QSize, QStandardPaths, Qt, QUrl, QTimer
+from PySide6.QtCore import (QObject, QSettings, QSize, QStandardPaths, Qt, QTimer, QUrl,
+                            Signal)
 from PySide6.QtGui import QAction, QActionGroup, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout, QWidget
+
+import threading
 
 import daemon
 import glance
@@ -381,6 +384,43 @@ class Panel(QWidget):
         self._frost()
 
 
+class Reader(QObject):
+    """
+    The Glance ladder, off the thread that draws.
+
+    Every rung below our own windows is a blocking call: `wl-paste` is a process
+    to spawn and wait for, the accessibility walk is synchronous D-Bus, and the
+    synthetic copy presses a key and waits to see what lands. Run on the GUI
+    thread — which is where a hotkey arrives — they freeze the application for as
+    long as they take, and KWin marks the window *(Not Responding)* while a panel
+    that was summoned sits there unpainted. That was visible the moment panels
+    stopped dismissing themselves and stayed on screen long enough to be seen
+    doing it.
+
+    One thread per read, not a pool: these happen when somebody presses a key,
+    the ladder is bounded by its own timeouts, and a queue would only add the
+    chance of two of them overlapping on the same clipboard.
+
+    The answer comes back on a signal, which is how it re-enters the GUI thread —
+    the reading is a value and the panel is a window, and only one of those may
+    be touched from here.
+    """
+
+    done = Signal(object)
+
+    def read(self, **kwargs) -> None:
+        def work() -> None:
+            try:
+                reading = glance.read(on_gui_thread=False, **kwargs)
+            except Exception as err:  # noqa: BLE001
+                # A ladder that fell over is a reading of nothing, not a dead
+                # panel: the caller has a window to open either way.
+                reading = glance.Reading(None, "nothing", f"the read failed — {err}")
+            self.done.emit(reading)
+
+        threading.Thread(target=work, name="talaria-glance", daemon=True).start()
+
+
 class Shell(QObject):
     """
     The tray item and everything it opens.
@@ -400,6 +440,9 @@ class Shell(QObject):
         self.app = app
         self.settings = QSettings("talaria", "shell")
         self.panels: dict[str, Panel] = {}
+        #: Readers in flight. Held because a QObject with no Python reference is
+        #: collected, and a collected reader emits nothing.
+        self._readers: list[Reader] = []
         self._settings_window = None
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(self._icon())
@@ -706,13 +749,15 @@ class Shell(QObject):
         window = getattr(self, "_ambient_at", None)
         if not self._following():
             return
-        reading = glance.read(
+        self._reading(
+            lambda reading, w=window: self._ambient_drew(w, reading),
             window,
             allow_copy=False,
-            changed_at=self.frontmost.selection.changed_at,
-            focused_at=self.frontmost.focused_at,
-            clock_blind=self.frontmost.selection.blind,
         )
+
+    def _ambient_drew(self, window, reading) -> None:
+        if not self._following():
+            return
         print(
             f"talaria: ambient — front={window.name if window else 'unknown'} "
             f"rung={reading.rung} chars={len(reading.text or '')}",
@@ -781,6 +826,32 @@ class Shell(QObject):
 
         panel.view.page().runJavaScript(_harvest(), answered)
 
+    def _reading(self, then, window, allow_copy: bool) -> None:
+        """
+        Climb the ladder on a worker, and hand the answer back here.
+
+        The reader is held on `self` for the length of the read: a `QObject`
+        whose only Python reference is a local goes away when the method
+        returns, taking the signal that was about to be emitted with it.
+        """
+        reader = Reader()
+        self._readers.append(reader)
+
+        def landed(reading, r=reader) -> None:
+            if r in self._readers:
+                self._readers.remove(r)
+            then(reading)
+
+        reader.done.connect(landed, Qt.ConnectionType.QueuedConnection)
+        reader.read(
+            window=window,
+            allow_copy=allow_copy,
+            asked=allow_copy,
+            changed_at=self.frontmost.selection.changed_at,
+            focused_at=self.frontmost.focused_at,
+            clock_blind=self.frontmost.selection.blind,
+        )
+
     def _summon_glance(self, found, from_key) -> None:
         """The reading, then the panel — in that order, and never the reverse."""
         if isinstance(found, dict) and str(found.get("text") or "").strip():
@@ -788,26 +859,23 @@ class Shell(QObject):
             # title is "Talaria — Desk" and this sentence is already inside
             # Talaria.
             where = SHORT.get(from_key, from_key or "a Talaria window")
-            reading = glance.Reading(
+            return self._glance_read(glance.Reading(
                 text=str(found["text"]),
                 rung="our own window",
                 why=(f"selected in {where}" if found.get("how") == "selected"
                      else f"everything showing in {where}"),
-            )
-        else:
-            # `allow_copy` for this read and no other. Glance is summoned, reads
-            # once, and shows what it found — there is no poll here to hijack
-            # the clipboard on, which is the fence the Mac has to state
-            # explicitly because it re-reads every four seconds while open.
-            reading = glance.read(
-                self.frontmost.current,
-                allow_copy=True,
-                asked=True,
-                changed_at=self.frontmost.selection.changed_at,
-                focused_at=self.frontmost.focused_at,
-                clock_blind=self.frontmost.selection.blind,
-            )
+            ))
+        # `allow_copy` for this read and no other. Glance is summoned, reads
+        # once, and shows what it found — there is no poll here to hijack the
+        # clipboard on, which is the fence the Mac has to state explicitly
+        # because it re-reads every four seconds while open.
+        #
+        # Off the GUI thread — see `Reader` — and the panel is opened by the
+        # callback, which keeps the order this method exists for: the reading is
+        # taken before anything of ours is in front.
+        self._reading(self._glance_read, self.frontmost.current, allow_copy=True)
 
+    def _glance_read(self, reading) -> None:
         # What it looked at and where it got it, but never the text itself:
         # this is a log, and the text is the user's document.
         front = self.frontmost.current
@@ -840,27 +908,21 @@ class Shell(QObject):
         showing it before it has one would show an empty window. This one is a
         form that stands on its own, and the text is an improvement to it.
         """
-        text, rung = None, "none"
         # Our own window, and only when something was actually selected in it —
         # "everything showing in the desk" is not a block. A harvest that found
         # the desk but no selection falls through to the ladder rather than
         # stopping here, which is the difference between "nothing was selected
         # in Talaria" and "nothing was selected".
         if isinstance(found, dict) and found.get("how") == "selected" and str(found.get("text") or "").strip():
-            text, rung = str(found["text"]), "our own window"
-        else:
-            reading = glance.read(
-                self.frontmost.current,
-                allow_copy=True,
-                asked=True,
-                changed_at=self.frontmost.selection.changed_at,
-                focused_at=self.frontmost.focused_at,
-                clock_blind=self.frontmost.selection.blind,
-            )
-            rung = reading.rung
-            if reading.usable and reading.rung in self.CHOSEN:
-                text = reading.text
+            return self._compose_show(str(found["text"]), "our own window")
+        self._reading(self._compose_read, self.frontmost.current, allow_copy=True)
 
+    def _compose_read(self, reading) -> None:
+        """The ladder answered. Only text somebody chose goes in a new block."""
+        usable = reading.usable and reading.rung in self.CHOSEN
+        self._compose_show(reading.text if usable else None, reading.rung)
+
+    def _compose_show(self, text, rung) -> None:
         # What it looked at and which rung answered, never the text itself.
         front = self.frontmost.current
         print(

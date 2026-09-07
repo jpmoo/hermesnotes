@@ -218,6 +218,19 @@ interface CanvasNote extends Rect, TalariaInk {
  * ---------------------------------------------------------------------------
  */
 interface TalariaInk {
+  /**
+   * The picture this node is wearing, ready to draw.
+   *
+   * A URL for a placed block — `document.ts` builds it with `pictureAt` on the
+   * way through the seam — and Hermes' own `{name, mime, data}` for a note,
+   * which is what the component makes when one is pasted. `nodeBox` handles
+   * both and says so.
+   *
+   * It was never declared, and `vite build` does not typecheck, so nothing
+   * noticed that `ctxOf` was not carrying it: a placed block set to show its
+   * photograph showed it until the page was reloaded and then showed a card.
+   */
+  image?: string | { name: string; mime: string; data: string } | null;
   /** Every picture this node has, by name. Talaria's; Hermes has one or none. */
   images?: string[];
   /** Which of them is its face — the name, where `image` is the URL to draw. */
@@ -561,7 +574,24 @@ export function CanvasView({
           h: c.h ?? DEFAULT_H,
           color: c.color ?? null,
           shape: c.shape ?? null,
+          /*
+           * The picture and the ink, which this used to drop on the floor.
+           *
+           * `document.ts` puts all of these in a member's context on the way in
+           * — the URL, the names, which one is worn, the alignment, the text
+           * colour — and this rebuilt the context from that one without them.
+           * They survived being *set*, because setting spreads over the old
+           * object; they did not survive a reload, which is where the member
+           * list is read again. A node shown as a photograph came back as a
+           * card, and centred text came back left.
+           */
+          image: c.image ?? null,
+          images: c.images,
+          imageName: c.imageName ?? null,
           showImage: c.showImage === true,
+          hAlign: c.hAlign ?? null,
+          vAlign: c.vAlign ?? null,
+          textColor: c.textColor ?? null,
           stroke: c.stroke ?? null,
           strokeWidth: typeof c.strokeWidth === "number" ? c.strokeWidth : null,
           strokeStyle: c.strokeStyle ?? null,
@@ -2228,7 +2258,19 @@ export function CanvasView({
     persistMemberCtx(id, ctx);
   };
 
-  const setBorder = (id: string, patch: Partial<NodeCtx>) => {
+  /*
+   * The three border keys, and only those.
+   *
+   * It took a `Partial<NodeCtx>`, which let it spread any node field onto a
+   * note — and once `image` was declared honestly (a URL for a member, an object
+   * for a note) the compiler could see that a patch typed that wide could widen
+   * a note's picture into something a note cannot hold. Every caller passes
+   * border keys; the signature says so now.
+   */
+  const setBorder = (
+    id: string,
+    patch: Pick<Partial<NodeCtx>, "stroke" | "strokeWidth" | "strokeStyle">,
+  ) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
       return;

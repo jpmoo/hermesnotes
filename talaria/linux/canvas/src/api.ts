@@ -49,6 +49,34 @@ export interface Block {
   updatedAt: string;
 }
 
+/**
+ * A row from a block search, in the two fields this canvas reads off one.
+ *
+ * Imported by `CanvasView` and never exported, which the type checker would
+ * have said on the first run — see the note in `linux/CLAUDE.md` about `vite
+ * build` not typechecking.
+ */
+export interface BlockSearchResult {
+  id: string;
+  label: string;
+}
+
+/**
+ * A type's declared fields.
+ *
+ * Only the shape the canvas actually reads: it walks the fields looking for a
+ * reference pointing at another type, to decide whether one placed block can
+ * file under another. Everything else a schema carries is the server's business.
+ */
+export interface PropertySchema {
+  fields: Array<{
+    key: string;
+    label?: string | null;
+    type: string;
+    refTypeId?: string | null;
+  }>;
+}
+
 export interface BlockType {
   id: string;
   name: string;
@@ -56,7 +84,7 @@ export interface BlockType {
   iconColor: string | null;
   iconSource: string;
   showIcon: boolean;
-  propertySchema: unknown | null;
+  propertySchema: PropertySchema | null;
   schemaVersion: number;
   isText: boolean;
   builtin: boolean;

@@ -55,12 +55,18 @@ def canvas(kind: str, done=None) -> None:
     # heard of, and the load failed before anything was drawn. The log said
     # "page FAILED to load" every time; nothing else could get far enough to go
     # wrong.
+    #
+    # The profile lives in `webprofile` rather than in `shell` because the shell
+    # is `__main__` — `import shell` from here does not find it in `sys.modules`
+    # and builds a second copy of the module, with a second profile on the same
+    # storage. That is what the first attempt at this fix did, and it froze the
+    # application instead of loading the page.
     from PySide6.QtWebEngineCore import QWebEnginePage
     from PySide6.QtWidgets import QApplication
-    import shell
+    import webprofile
 
     view = QWebEngineView()
-    page = QWebEnginePage(shell.profile(QApplication.instance()), view)
+    page = QWebEnginePage(webprofile.get(QApplication.instance()), view)
     view.setPage(page)
     view.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
     view.setWindowFlag(Qt.WindowType.Tool, True)

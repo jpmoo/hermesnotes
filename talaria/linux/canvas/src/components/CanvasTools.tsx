@@ -135,6 +135,25 @@ export function CanvasTools({ onPlaced }: { onPlaced: () => void }) {
     onPlaced();
   }
 
+  /*
+   * A double-click on bare canvas drops one too, in whatever shape is selected.
+   *
+   * Asked for rather than duplicated. The canvas is a sibling of this strip and
+   * neither owns the other — the same standing the Select mode has, which uses a
+   * dataset flag on the root for exactly that reason. An event is the same idea
+   * pointed the other way: the canvas says where, and the strip, which is the
+   * thing that knows what a new node is, makes it. Copying `defaults` over there
+   * would have been a second answer to that question, free to drift.
+   */
+  useEffect(() => {
+    const drop = (e: Event) => {
+      const at = (e as CustomEvent<{ x: number; y: number }>).detail;
+      if (at) dropText(at.x, at.y);
+    };
+    window.document.addEventListener("talaria-drop-text", drop);
+    return () => window.document.removeEventListener("talaria-drop-text", drop);
+  });
+
   function dropText(clientX: number, clientY: number) {
     const at = atPoint(clientX, clientY);
     const { fill, strokeWidth } = defaults(shape);

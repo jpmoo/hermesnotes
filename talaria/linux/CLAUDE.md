@@ -235,6 +235,14 @@ that bindings live in the portal's store rather than System Settings;
   rounded default is an *absent key*, not a name — `document.ts` reads it that
   way and writing a name for it would put a shape in the file nothing there has
   ever meant.
+- **The shell is `__main__`, so `import shell` builds a second copy of it.**
+  The fix below reached for the profile with `import shell` from `export.py` —
+  and `talaria-shell` runs `python3 shell.py`, so that module is `__main__` and
+  is not in `sys.modules` under its own name. The import re-executed the file as
+  a *second* module with its own `PROFILE = None`, which built a second
+  `QWebEngineProfile` on the same storage directory: the page still failed to
+  load, and the application froze. The profile lives in `webprofile.py` now,
+  which neither of them owns and both import by name.
 - **A second `QWebEngineView` gets the *default* profile, which knows no
   schemes.** The PNG and PDF export opened its own off-screen view with a bare
   `QWebEngineView()`, so it asked `defaultProfile()` for a `talaria-app://` URL

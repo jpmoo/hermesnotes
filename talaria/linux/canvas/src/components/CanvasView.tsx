@@ -2952,7 +2952,16 @@ export function CanvasView({
       }}
       onPointerDown={onBgPointerDown}
       onDoubleClick={(e) => {
-        if (!locked && e.target === e.currentTarget) addNote(toCanvas(e.clientX, e.clientY));
+        // The tool strip makes it, in the shape it is set to — see the note by
+        // `dropText`. `addNote` used to be called here and has never existed:
+        // `vite build` does not typecheck, so double-clicking blank canvas threw
+        // `addNote is not defined` and did nothing, quietly, for as long as this
+        // line has been here.
+        if (!locked && e.target === e.currentTarget) {
+          window.document.dispatchEvent(new CustomEvent("talaria-drop-text", {
+            detail: { x: e.clientX, y: e.clientY },
+          }));
+        }
       }}
     >
       <div className="cv-layer" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>

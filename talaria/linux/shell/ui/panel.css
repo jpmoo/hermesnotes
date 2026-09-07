@@ -1030,3 +1030,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   font-size: .92em;
 }
 .page pre code[data-language="calc"] { display: block; }
+
+/* A block whose whole content was a stray `/` — see `notefield.js`. It draws
+   nothing and still has to be a target, or the line cannot be got back into. */
+.note-block .note-blank { min-height: 1.5em; margin: 0; }

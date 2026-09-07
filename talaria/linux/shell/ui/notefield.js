@@ -119,9 +119,28 @@ export function noteField(host, text, onChange) {
   }
 
   /** One rendered block, with its checkboxes live and its links clickable. */
+  /*
+   * A slash on a line of its own is a keystroke, not a paragraph.
+   *
+   * `/` opens the command menu in Hermes' editor, and a lone one left in the
+   * text is what somebody typed and did not follow through — an artifact of the
+   * menu rather than a word. Hermes never shows it as content and neither should
+   * this: rendered as a paragraph it reads as a stray mark in the middle of a
+   * note.
+   *
+   * Dropped from what is *drawn* and kept in the source, which is the difference
+   * that matters. Talaria is not the editor this note belongs to; deciding a
+   * character is noise is a long way from deleting it out of somebody's file,
+   * and the line is still there to be edited the moment the caret lands on it.
+   */
+  const shown = (src) => src.split("\n").filter((line) => line.trim() !== "/").join("\n");
+
   function rendered(i, blockOf) {
     const node = el("div", "note-block");
-    node.appendChild(render(blockOf.src));
+    const text = shown(blockOf.src);
+    // A block that was *only* that keeps its height, or there is nothing left
+    // to click on to get back into it.
+    node.appendChild(text.trim() ? render(text) : el("p", "note-blank"));
 
     for (const box of node.querySelectorAll('input[type="checkbox"]')) {
       box.disabled = false;

@@ -235,6 +235,14 @@ that bindings live in the portal's store rather than System Settings;
   rounded default is an *absent key*, not a name — `document.ts` reads it that
   way and writing a name for it would put a shape in the file nothing there has
   ever meant.
+- **A second `QWebEngineView` gets the *default* profile, which knows no
+  schemes.** The PNG and PDF export opened its own off-screen view with a bare
+  `QWebEngineView()`, so it asked `defaultProfile()` for a `talaria-app://` URL
+  and the load failed before anything was drawn — `talaria: export png — page
+  FAILED to load`, every time, for as long as the feature has existed. The
+  handler is installed on the shell's *named* profile and every view that needs
+  it has to be built on that one. `shell.profile()` is public now for exactly
+  that reason.
 - **`vite build` does not typecheck, and two live handlers were undefined.** The
   canvas's "Save…" pointed at a bare `save` that is not a function, not an
   import and not a global, so clicking it threw — and the shipped bundle carried

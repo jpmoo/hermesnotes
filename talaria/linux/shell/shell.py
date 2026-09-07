@@ -134,7 +134,7 @@ class RoutedPage(QWebEnginePage):
 
     def __init__(self, route, profile, parent=None) -> None:
         # The profile is passed in rather than taken from the default, because
-        # the default keeps nothing: see `_profile`.
+        # the default keeps nothing: see `profile`.
         super().__init__(profile, parent)
         self._route = route
 
@@ -249,13 +249,13 @@ class Panel(QWidget):
         # On the shell's own profile, not the default one — which is off the
         # record, and would hand each window its own amnesiac cookie jar.
         if route is None:
-            self._page = QWebEnginePage(_profile(QApplication.instance()), self.view)
+            self._page = QWebEnginePage(profile(QApplication.instance()), self.view)
             self.view.setPage(self._page)
         if route is not None:
             # Held on the view: a page the widget does not own is collected out
             # from under the engine, which is the same lifetime trap as the
             # request jobs in `scheme.py`.
-            self._page = RoutedPage(route, _profile(QApplication.instance()), self.view)
+            self._page = RoutedPage(route, profile(QApplication.instance()), self.view)
             self.view.setPage(self._page)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1153,7 +1153,7 @@ def only_one() -> object | None:
 PROFILE = None
 
 
-def _profile(app):
+def profile(app):
     """
     A profile that remembers being logged in.
 
@@ -1205,6 +1205,12 @@ def _save_as(download) -> None:
     """
     from PySide6.QtWidgets import QFileDialog
 
+    # What was offered and from where. A download that never arrives and a
+    # dialog that never opens look identical from outside the process.
+    print(
+        f"talaria: download — {download.suggestedFileName()!r}",
+        file=sys.stderr, flush=True,
+    )
     suggested = os.path.join(
         QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
         or os.path.expanduser("~"),
@@ -1263,9 +1269,9 @@ def main() -> int:
     handler = scheme.DaemonScheme(app)
     from PySide6.QtWebEngineCore import QWebEngineProfile
 
-    profile = _profile(app)
-    profile.installUrlSchemeHandler(scheme.SCHEME, handler)
-    profile.downloadRequested.connect(_save_as)
+    the_profile = profile(app)
+    the_profile.installUrlSchemeHandler(scheme.SCHEME, handler)
+    the_profile.downloadRequested.connect(_save_as)
 
     shell = Shell(app)
     _ = shell, lock  # both held for the life of the event loop

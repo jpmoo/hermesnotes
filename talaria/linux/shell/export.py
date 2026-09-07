@@ -47,7 +47,21 @@ def canvas(kind: str, done=None) -> None:
             done(None)
         return
 
+    # **On the shell's own profile, which is the whole of why this never worked.**
+    #
+    # A bare `QWebEngineView()` takes `QWebEngineProfile.defaultProfile()`, and
+    # the `talaria-app://` handler is installed on the shell's *named* profile —
+    # so the export view asked the default profile for a scheme it had never
+    # heard of, and the load failed before anything was drawn. The log said
+    # "page FAILED to load" every time; nothing else could get far enough to go
+    # wrong.
+    from PySide6.QtWebEngineCore import QWebEnginePage
+    from PySide6.QtWidgets import QApplication
+    import shell
+
     view = QWebEngineView()
+    page = QWebEnginePage(shell.profile(QApplication.instance()), view)
+    view.setPage(page)
     view.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
     view.setWindowFlag(Qt.WindowType.Tool, True)
     view.resize(1400, 900)

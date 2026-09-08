@@ -20,11 +20,40 @@ import WebKit
  the desk builds both its other surfaces up front.
  */
 struct WritingSurface: NSViewRepresentable {
+    /// Whether what is behind the window shows through.
+    ///
+    /// Told to the page rather than drawn over it: `panel.css` already has a
+    /// `solid` class that swaps the toolbar's and the sheet's see-through fill
+    /// for an opaque one, and it is the Linux shell's switch for the same thing.
+    /// Restyling from here would be a second answer to a question the page has
+    /// already answered.
+    var seeThrough: Bool
+
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     /// Holds the scheme handler, and lets go of its work before the view dies.
-    final class Coordinator {
+    final class Coordinator: NSObject, WKNavigationDelegate {
         let scheme = DaemonScheme(socketPath: Daemon.socketPath)
+        /// What the page was last told, so an unchanged value costs nothing.
+        var told: Bool?
+        /// What it should be, for the load that has not finished yet. A view is
+        /// made and asked to update long before its page exists.
+        var want = true
+
+        func webView(_ view: WKWebView, didFinish _: WKNavigation!) {
+            told = nil
+            WritingSurface.tell(view, seeThrough: want, coordinator: self)
+        }
+    }
+
+    /// One line of script, and only when the answer has changed.
+    private static func tell(_ view: WKWebView, seeThrough: Bool, coordinator: Coordinator) {
+        guard coordinator.told != seeThrough else { return }
+        coordinator.told = seeThrough
+        view.evaluateJavaScript(
+            "document.documentElement.classList.toggle('solid', \(seeThrough ? "false" : "true"))",
+            completionHandler: nil
+        )
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -32,6 +61,7 @@ struct WritingSurface: NSViewRepresentable {
         config.setURLSchemeHandler(context.coordinator.scheme, forURLScheme: DaemonScheme.scheme)
 
         let view = WKWebView(frame: .zero, configuration: config)
+        view.navigationDelegate = context.coordinator
         // The desk draws its own ground and may be see-through; a web view that
         // paints an opaque white page over it would be a white rectangle in the
         // middle of frosted glass.
@@ -43,7 +73,10 @@ struct WritingSurface: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: WKWebView, context: Context) {}
+    func updateNSView(_ view: WKWebView, context: Context) {
+        context.coordinator.want = seeThrough
+        Self.tell(view, seeThrough: seeThrough, coordinator: context.coordinator)
+    }
 
     /**
      Let go of anything still in flight before the view goes.

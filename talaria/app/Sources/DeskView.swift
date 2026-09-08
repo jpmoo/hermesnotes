@@ -734,10 +734,30 @@ struct DeskView: View {
                      a frame late and loads its page in front of somebody, which
                      is the same reason both other surfaces already exist at once.
                      */
-                    DeskPane(title: "Writing", opaque: !chrome.seeThrough) {
-                        WritingSurface()
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
+                    /*
+                     No `DeskPane` around it, unlike the other two.
+
+                     The page arrives with its own chrome — a rounded toolbar and
+                     a rounded sheet, both bordered — because on the Linux shell
+                     it *is* the window. Putting it in a pane drew a second card
+                     around the first: a border and a header sitting behind the
+                     sheet and behind the menu above it, which reads as another
+                     window showing through rather than as one surface.
+
+                     So the pane's ground is kept and its frame is not. The sheet's
+                     own edge is what says where the surface stops, and the strip
+                     along the bottom is what says which surface it is.
+                     */
+                    WritingSurface(seeThrough: chrome.seeThrough)
+                        .padding(Self.gap)
+                        .background {
+                            if chrome.seeThrough {
+                                Frosting().frame(maxWidth: .infinity, maxHeight: .infinity)
+                            } else {
+                                Color(nsColor: .windowBackgroundColor)
+                            }
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
                 }
                 .frame(width: geo.size.width * CGFloat(DeskSurface.allCases.count), alignment: .leading)
                 .offset(x: -CGFloat(chrome.surface.rawValue) * geo.size.width)

@@ -520,13 +520,22 @@ private struct DeskPane<Content: View>: View {
         // column a third the width of the space under it.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: Theme.cardRadius)
-                // Enough to hold text against a busy desktop and no more. At
-                // 0.55 the panes read as four opaque cards over a blur; the
-                // point of the frost is that you can still see roughly what is
-                // behind it. Opaque only where somebody has asked for it.
-                .fill(opaque ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
-                             : AnyShapeStyle(.background.opacity(0.35)))
+            ZStack {
+                // The blur first, then a tint over it.
+                //
+                // The tint alone was doing this job and could not: 35% white
+                // over an unblurred desktop is a veil, not frost — everything
+                // behind stays legible and text sits on top of it. With a real
+                // blur underneath, the same tint is what stops the frost being
+                // *only* a blur, which is hard to read pale text against.
+                // Filling the pane explicitly. A representable has no size of
+                // its own to offer, and a background that sized itself to
+                // nothing would be a blur nobody could see.
+                if !opaque { Frosting().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                RoundedRectangle(cornerRadius: Theme.cardRadius)
+                    .fill(opaque ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+                                 : AnyShapeStyle(.background.opacity(0.35)))
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: Theme.cardRadius)

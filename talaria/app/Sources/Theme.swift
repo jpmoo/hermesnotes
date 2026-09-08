@@ -219,3 +219,50 @@ struct MarkdownText: View {
         return out
     }
 }
+
+/**
+ Frosted glass behind a surface.
+
+ The desk has always described its panes as frosted and never actually blurred
+ anything: the panel is transparent and each pane filled itself with 35% white,
+ which is a *veil*. It hides a busy desktop about as well as tracing paper —
+ everything behind it is still legible, just paler — and text over it reads
+ against whatever happens to be underneath.
+
+ `NSVisualEffectView` blurring what is behind the window is the real thing, and
+ on this platform it is one view. The Linux shell needed a Wayland protocol and
+ a small C++ binding to ask its compositor for the same effect, after six routes
+ from Python turned out to be closed; that file is worth reading for how much
+ this costs elsewhere.
+
+ `.active` regardless of focus, deliberately. A visual effect view dims itself
+ when its window is not frontmost, which is right for a sidebar and wrong for
+ something covering the whole screen: the desk would go flat the moment you
+ clicked through to whatever it was over, which reads as it having closed.
+ */
+struct Frosting: NSViewRepresentable {
+    /**
+     `.fullScreenUI` because that is what this is.
+
+     The materials are named for the situations they were tuned in, and the desk
+     is a full-screen surface over whatever somebody was doing — which is the
+     one this is for. `.hudWindow` is heavier and reads as a floating panel;
+     `.sidebar` and `.popover` are tuned for something the size of a column.
+     One word to change if it looks wrong on the day.
+     */
+    var material: NSVisualEffectView.Material = .fullScreenUI
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = material
+        // Behind the window, not within it. `.withinWindow` blurs this app's own
+        // views, which for a transparent panel is blurring nothing at all.
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {
+        view.material = material
+    }
+}

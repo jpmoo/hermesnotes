@@ -1509,14 +1509,22 @@ export function CanvasView({
     member === region || nestedIn(member).has(region);
   const inRect = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-  // Leaving a region requires a deliberate yank: the member must land beyond
-  // the region's PRE-DRAG outline plus this grace margin. Anything closer
-  // stays a member, and the region simply reshapes around the new position.
-  const REGION_GRACE = 90;
-  const inflate = (r: Rect, m: number): Rect => ({ x: r.x - m, y: r.y - m, w: r.w + m * 2, h: r.h + m * 2 });
-
-  /** After a node drag: joins the region it landed in, leaves ones it left. */
-  const updateRegionMembership = (nodeId: string, startRegions: Record<string, Rect> = {}) => {
+  /**
+   * After a node drag: joins the region it landed in. Nothing ever leaves.
+   *
+   * There used to be a boundary — a member had to be hauled past its region's
+   * pre-drag outline plus ninety pixels of grace before it was dropped from it,
+   * with the grace there to stop an ordinary nudge ejecting something. It is
+   * gone, and the reason is that membership now has a way to be *said*: the `+`
+   * on a region turns on add-mode and a click takes a thing out. A gesture that
+   * removes something as a side effect of moving it is guesswork wearing a
+   * threshold, and no threshold makes "I was rearranging" and "I meant to take
+   * this out of the box" the same shape.
+   *
+   * So a member dragged anywhere stays a member, and the region reshapes around
+   * it — which it does by itself, a region being the extent of what it holds.
+   */
+  const updateRegionMembership = (nodeId: string) => {
     const r = rectOf(nodeId);
     if (!r) return;
     const cx = r.x + r.w / 2;
@@ -1524,22 +1532,10 @@ export function CanvasView({
     let changed = false;
     const next = regions
       .map((rg) => {
-        const others = rg.memberIds.filter((id) => id !== nodeId);
-        const isMember = rg.memberIds.includes(nodeId);
-        if (isMember) {
-          // Hysteresis: judge against the pre-drag outline (or, failing that,
-          // the others' rect), inflated by the grace margin.
-          const base = startRegions[rg.id] ?? rectFromIds(others);
-          const stays = base ? inRect(inflate(base, REGION_GRACE), cx, cy) : false;
-          if (!stays) {
-            changed = true;
-            return { ...rg, memberIds: others };
-          }
-          return rg;
-        }
+        if (rg.memberIds.includes(nodeId)) return rg;
         // Joining uses the strict current outline — dropping INTO a region
         // should feel precise, not magnetic.
-        const base = rectFromIds(others);
+        const base = rectFromIds(rg.memberIds.filter((id) => id !== nodeId));
         if (base && inRect(base, cx, cy)) {
           changed = true;
           return { ...rg, memberIds: [...rg.memberIds, nodeId] };
@@ -1615,7 +1611,6 @@ export function CanvasView({
         dx: number;
         dy: number;
         moved: boolean;
-        startRegions: Record<string, Rect>;
         /** Where it started, for a drop that connects instead of moving. */
         from: { x: number; y: number };
       }
@@ -2102,6 +2097,7 @@ export function CanvasView({
     }
   };
   const onPointerUp = () => {
+    holding(false);
     const d = drag.current;
     drag.current = null;
     setGuides([]);
@@ -2224,7 +2220,7 @@ export function CanvasView({
       if (!r) return;
       if (d.id.startsWith("n:")) persistProps({ canvas_notes: notes });
       else persistMemberCtx(d.id, r as NodeCtx);
-      updateRegionMembership(d.id, d.startRegions);
+      updateRegionMembership(d.id);
     } else if (d.kind === "resize") {
       const r = rectOf(d.id);
       if (!r) return;
@@ -2255,7 +2251,24 @@ export function CanvasView({
     dropCaret();
     drag.current = { kind: "group", ids, hit, sx: p.x, sy: p.y, starts, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    holding(true);
   };
+
+  /*
+   * The hand stays closed for the length of the drag.
+   *
+   * A cursor set on the node is only the cursor while the pointer is over the
+   * node, and a drag is precisely the gesture that takes it somewhere else —
+   * so it turned back into an arrow the moment the node started moving, which
+   * reads as the drag having been dropped. `:active` does not cover it either:
+   * with the pointer captured, the pointer is not over the element any more.
+   *
+   * A class on the surface does, because the surface is what the pointer is
+   * over for the whole gesture. Set on the element rather than through state:
+   * a drag deliberately avoids re-rendering, which is why `drag` is a ref.
+   */
+  const holding = (on: boolean) =>
+    wrapRef.current?.classList.toggle("cv-holding", on);
 
   const startNodeDrag = (id: string, e: ReactPointerEvent) => {
     if (locked) return;
@@ -2271,23 +2284,16 @@ export function CanvasView({
     const p = toCanvas(e.clientX, e.clientY);
     const r = rectOf(id);
     if (!r) return;
-    // Remember each containing region's full outline: leaving is judged
-    // against where the region WAS, not the shrunken rect of the others.
-    const startRegions: Record<string, Rect> = {};
-    for (const rg of regions) {
-      if (!rg.memberIds.includes(id)) continue;
-      const rr = regionRect(rg);
-      if (rr) startRegions[rg.id] = rr;
-    }
     // Where it came from. A drop that connects puts the node back: "the gesture
     // said 'this one goes with that one', not 'this one goes here', so the box
     // goes back where it came from and a line is what is left behind. Leaving it
     // where it landed would mean every connection also rearranged the diagram."
     drag.current = {
-      kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false, startRegions,
+      kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false,
       from: { x: r.x, y: r.y },
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    holding(true);
   };
   const startResize = (id: string, corner: string, e: ReactPointerEvent) => {
     if (locked) return;
@@ -3571,30 +3577,6 @@ export function CanvasView({
           />
         ))}
 
-        {(() => {
-          // While dragging a region member, show where membership ends: the
-          // pre-drag outline + grace margin. Crossing it flips to the danger
-          // color — release there and the node leaves the region.
-          const d = drag.current;
-          if (d?.kind !== "node" || !d.moved) return null;
-          const r = rectOf(d.id);
-          if (!r) return null;
-          const cx = r.x + r.w / 2;
-          const cy = r.y + r.h / 2;
-          return Object.entries(d.startRegions).map(([rgId, base]) => {
-            const b = inflate(base, REGION_GRACE);
-            const leaving = !inRect(b, cx, cy);
-            return (
-              <div
-                key={`limit-${rgId}`}
-                className={`cv-region-limit${leaving ? " leaving" : ""}`}
-                style={{ left: b.x, top: b.y, width: b.w, height: b.h }}
-              >
-                <span className="cv-region-limit-tag">{leaving ? "leaves region" : "stays in region"}</span>
-              </div>
-            );
-          });
-        })()}
         {marquee && (
           <div
             className="cv-marquee"

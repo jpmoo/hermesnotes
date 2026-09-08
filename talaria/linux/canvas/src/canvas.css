@@ -565,9 +565,23 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 /* And the paper says what a press will do, rather than offering an I-beam over
  * something that will not take one. */
 .cv-node .cv-paper { cursor: grab; }
-.cv-node:active .cv-paper { cursor: grabbing; }
 .cv-node[data-editing="1"] .cv-paper { cursor: auto; }
 .cv-node[data-editing="1"] .longtext-area { cursor: text; }
+
+/*
+ * While something is actually being dragged, the whole surface holds it.
+ *
+ * `:active` on the node cannot do this: the pointer is captured, so it is no
+ * longer *over* the node it is carrying, and the cursor fell back to whatever
+ * it crossed — an arrow over bare canvas, which reads as the drag having been
+ * dropped. The surface is the one thing under the pointer for the whole
+ * gesture, so the class goes there. `!important` because the things being
+ * crossed set cursors of their own, and for this moment none of them are right.
+ */
+.cv-wrap.cv-holding,
+.cv-wrap.cv-holding * {
+  cursor: grabbing !important;
+}
 
 /* The region's "+", and the mode it turns on ---------------------------------
  * Small, in the title band, and only while the region is selected — the Mac

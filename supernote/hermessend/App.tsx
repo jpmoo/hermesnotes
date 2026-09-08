@@ -266,7 +266,7 @@ function App(): React.JSX.Element {
   // ── Not paired yet ────────────────────────────────────────────────────────
   if (!settings.token) {
     return (
-      <ScrollView contentContainerStyle={styles.page}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.page}>
         <Text style={styles.heading}>Connect to Hermes Notes</Text>
         {code ? (
           <>
@@ -320,7 +320,7 @@ function App(): React.JSX.Element {
 
   // ── Paired: what did we just lasso? ───────────────────────────────────────
   return (
-    <ScrollView contentContainerStyle={styles.page}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.page}>
       {capture.working ? (
         <View style={styles.centre}>
           <ActivityIndicator />
@@ -408,8 +408,27 @@ function App(): React.JSX.Element {
 /* E-ink: no color worth the name, high contrast, and generous targets for a
  * finger on a screen that redraws slowly. */
 const styles = StyleSheet.create({
-  page: { padding: 20, gap: 14 },
-  centre: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 },
+  /*
+   * An opaque sheet, which has to be said out loud.
+   *
+   * A React Native view has no background unless one is given, and the host
+   * composites the plugin over the note it was opened from — so every screen
+   * here was a form floating on somebody's handwriting, with the page showing
+   * through the buttons. Set on the ScrollView itself rather than on the
+   * content container: the container is only as tall as what is in it, so a
+   * background there leaves the empty space below the last control transparent,
+   * which looks like a rendering fault rather than a short form.
+   */
+  screen: { flex: 1, backgroundColor: '#fff' },
+  page: { padding: 20, gap: 14, flexGrow: 1 },
+  centre: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+    gap: 10,
+    backgroundColor: '#fff',
+  },
   heading: { fontSize: 20, fontWeight: '600', color: '#000' },
   hint: { fontSize: 14, color: '#444' },
   code: { fontSize: 44, fontWeight: '700', letterSpacing: 8, color: '#000', paddingVertical: 8 },

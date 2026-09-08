@@ -7,6 +7,7 @@ import {
   regionNamesOf,
   toInterchange,
 } from "@hermes/interchange";
+import { createHash } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -485,6 +486,96 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
      * the id before it sent anything, so a retry after a lost answer is
      * recognizably the same create rather than a second radiator.
      */
+    /**
+     * Take the files out of a property bag and put them where Hermes keeps files.
+     *
+     * An attachment value arriving with `bytes` is a file being handed over, and
+     * Hermes stores files as rows in `attachments` rather than as JSON in a
+     * property. Without this the base64 would simply sit in the bag: the block
+     * would carry a megabyte of string, nothing in the app would show it as an
+     * attachment, and the next export would overwrite it from the table it
+     * never reached.
+     *
+     * **The value is removed rather than kept alongside the row.** The exporter
+     * regenerates attachment values from the table, so keeping both would be two
+     * statements of one fact — and the day they disagree there is no way to tell
+     * which is the document. Same reasoning as a parent pointer with no
+     * `children` array.
+     *
+     * Every refusal is reported. A file Hermes declines to store and says
+     * nothing about is the silent coercion the whole format is written against.
+     */
+    async function absorbFiles(
+      userId: string,
+      blockId: string,
+      properties: Record<string, unknown> | undefined,
+    ): Promise<{ properties: Record<string, unknown> | undefined; reports: string[]; commit: () => Promise<void> }> {
+      if (!properties) return { properties, reports: [], commit: async () => {} };
+      const reports: string[] = [];
+      const rows: { blockId: string; ownerId: string; filename: string; mime: string; size: number; data: Buffer }[] =
+        [];
+      const out: Record<string, unknown> = {};
+
+      for (const [key, value] of Object.entries(properties)) {
+        const many = Array.isArray(value);
+        const kept: unknown[] = [];
+        for (const one of many ? (value as unknown[]) : [value]) {
+          const a = one as { kind?: string; filename?: unknown; mediaType?: unknown; sha256?: unknown; bytes?: unknown };
+          if (one === null || typeof one !== "object" || a.kind !== "attachment") {
+            kept.push(one);
+            continue;
+          }
+          const name = typeof a.filename === "string" && a.filename ? a.filename : "attachment";
+          const bytes = typeof a.bytes === "string" && a.bytes.length > 0 ? a.bytes : null;
+          if (!bytes) {
+            // Told about a file, not given it. Hermes has no row for a file it
+            // does not hold, so this is a real reduction and is named as one.
+            reports.push("attachment.bytes-not-carried");
+            continue;
+          }
+          if (typeof a.sha256 !== "string") {
+            reports.push("attachment.hash-missing");
+            continue;
+          }
+          const data = Buffer.from(bytes, "base64");
+          if (createHash("sha256").update(data).digest("hex") !== a.sha256) {
+            // A consumer that keeps the bytes must verify them, and a mismatch
+            // is a failure rather than a warning — storing them would spread a
+            // file already known not to be the promised one.
+            reports.push("attachment.hash-mismatch");
+            continue;
+          }
+          rows.push({
+            blockId,
+            ownerId: userId,
+            filename: name,
+            mime: typeof a.mediaType === "string" && a.mediaType ? a.mediaType : "application/octet-stream",
+            size: data.byteLength,
+            data,
+          });
+        }
+        // A key whose only contents were files is absent rather than empty: the
+        // exporter puts it back from the table, and an empty list here would be
+        // a second, contradictory answer about what the block holds.
+        if (many) {
+          if (kept.length) out[key] = kept;
+        } else if (kept.length) {
+          out[key] = kept[0];
+        }
+      }
+
+      /*
+       * Handed back rather than written here, because a row references a block
+       * and on a create the block does not exist yet. The caller writes the
+       * object, then calls this — which also means a refused write leaves no
+       * files behind pointing at nothing.
+       */
+      const commit = async () => {
+        if (rows.length) await db.insert(attachments).values(rows);
+      };
+      return { properties: out, reports, commit };
+    }
+
     guarded.put("/interchange/objects/:id", async (req, reply) => {
       const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
       const body = z
@@ -538,15 +629,20 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         if (!known.length) reports.push("create.unknown-type");
       }
 
+      // Files out of the bag before the bag is written. See `absorbFiles`.
+      const files = await absorbFiles(requireUser(req), id, body.properties);
+      reports.push(...files.reports);
+
       const made = await app.inject({
         method: "POST",
         url: `${mount}/blocks`,
         headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
-        payload: { id, blockTypeId: body.type, properties: body.properties, content: body.content },
+        payload: { id, blockTypeId: body.type, properties: files.properties, content: body.content },
       });
       if (made.statusCode >= 400) {
         return reply.code(made.statusCode).send({ ok: false, reports: ["write.refused"] });
       }
+      await files.commit();
 
       // Read back the way a reader would, so the object in this answer is the
       // object the next `?since=` will carry.
@@ -585,11 +681,13 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ ok: false, reports: ["tags.added-and-removed"] });
       }
 
+      const files = await absorbFiles(requireUser(req), id, body.set);
+
       const wrote = await app.inject({
         method: "PATCH",
         url: `${mount}/blocks/${id}`,
         headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
-        payload: { patch: { set: body.set, unset: body.unset }, version: body.version },
+        payload: { patch: { set: files.properties, unset: body.unset }, version: body.version },
       });
 
       if (wrote.statusCode === 409) {
@@ -599,6 +697,8 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       if (wrote.statusCode >= 400) {
         return reply.code(wrote.statusCode).send({ ok: false, reports: ["write.refused"] });
       }
+      // The properties landed, so the files that came with them may be written.
+      await files.commit();
 
       // Tags after the properties, and only once they were accepted.
       //
@@ -650,7 +750,16 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       // mean answering "reduced" to everything: a field that is always set
       // carries no information, and the one write that really did lose
       // something would arrive looking like all the others.
-      return { ok: true, fidelity: "full", reports: [], cursor: env.cursor, object };
+      // A patch that could not keep every file it was handed did not do the
+      // whole of what it was asked, and says so — `fidelity` follows the
+      // reports rather than being asserted beside them.
+      return {
+        ok: true,
+        fidelity: files.reports.length ? "reduced" : "full",
+        reports: files.reports,
+        cursor: env.cursor,
+        object,
+      };
     });
 
     /**

@@ -716,11 +716,16 @@ enum Daemon {
     static func create(
         blockTypeId: String,
         content: String?,
-        properties: [String: Any]
+        properties: [String: Any],
+        /// A picture in the daemon's `canvas-images/`, to travel with the block
+        /// as an attachment. Named rather than sent: the daemon already holds
+        /// the file and is the one thing that knows where.
+        image: String? = nil
     ) throws -> String? {
         var body: [String: Any] = ["kind": "create", "blockTypeId": blockTypeId]
         if let content, !content.isEmpty { body["content"] = content }
         if !properties.isEmpty { body["properties"] = properties }
+        if let image, !image.isEmpty { body["image"] = image }
         let out = try write(body)
         return (try? JSONDecoder().decode(Written.self, from: out))?.id
     }

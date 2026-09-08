@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { HOME } from "./config.js";
@@ -225,8 +225,51 @@ const IMAGE_GRACE_MS = 60_000;
  * Best-effort throughout. Failing to delete a file is untidy; failing to save a
  * canvas because a file could not be deleted is not a trade worth making.
  */
+/** Where canvas pictures live. One answer, so a sweep and a read agree. */
+export const IMAGE_DIR = join(HOME, "canvas-images");
+
+/**
+ * One picture, as an interchange attachment value.
+ *
+ * The canvas keeps its pictures beside `canvas.json` and refers to them by
+ * name, which is right for a canvas and is exactly as far as they used to get:
+ * a node converted into a Hermes block left its picture behind, visible on that
+ * canvas, on that machine, and nowhere else in the library. The format can
+ * carry a file now, so it does.
+ *
+ * Nothing when the file is missing — a sweep may have taken it, or the name may
+ * be from a canvas somebody replaced. The caller reports that; inventing an
+ * empty attachment would be worse than saying nothing.
+ */
+export function pictureValue(name: string): Record<string, unknown> | null {
+  if (!name || name.includes("/") || name.includes("..")) return null;
+  let data: Buffer;
+  try {
+    data = readFileSync(join(IMAGE_DIR, name));
+  } catch {
+    return null;
+  }
+  const ext = name.slice(name.lastIndexOf(".") + 1).toLowerCase();
+  const mime =
+    ext === "png" ? "image/png"
+    : ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+    : ext === "gif" ? "image/gif"
+    : ext === "webp" ? "image/webp"
+    : ext === "svg" ? "image/svg+xml"
+    : "application/octet-stream";
+  return {
+    kind: "attachment",
+    filename: name,
+    mediaType: mime,
+    // The identity, so a library already holding this picture recognizes it
+    // rather than storing a second copy under the same name.
+    sha256: createHash("sha256").update(data).digest("hex"),
+    bytes: data.toString("base64"),
+  };
+}
+
 export function sweepImages(live: CanvasDocument): number {
-  const dir = join(HOME, "canvas-images");
+  const dir = IMAGE_DIR;
   const keep = new Set<string>();
   const note = (d: CanvasDocument | null) => {
     for (const item of d?.items ?? []) {

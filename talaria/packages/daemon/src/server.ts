@@ -19,7 +19,7 @@ import {
   styleFor,
 } from "@talaria/canonical";
 import { HOME, type Config } from "./config.js";
-import { readCanvas, sweepImages, writeCanvas, type CanvasDocument } from "./canvas.js";
+import { pictureValue, readCanvas, sweepImages, writeCanvas, type CanvasDocument } from "./canvas.js";
 import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, wmStatus, workspaces } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
@@ -2172,6 +2172,8 @@ export function buildServer(deps: {
         text: z.string().min(1),
         as: z.enum(["task", "note"]).default("task"),
         blockTypeId: z.string().uuid().optional(),
+        /** A canvas picture to travel with it, by file name. See `/write`. */
+        image: z.string().max(200).optional(),
       })
       .parse(req.body);
 
@@ -2188,7 +2190,7 @@ export function buildServer(deps: {
       const res = await app.inject({
         method: "POST",
         url: "/write",
-        payload: { kind: "create", blockTypeId: typeId, content: text },
+        payload: { kind: "create", blockTypeId: typeId, content: text, ...(body.image ? { image: body.image } : {}) },
       });
       const firstLine = (text.split("\n").find((l) => l.trim()) ?? "").trim();
       return reply.code(res.statusCode).send({
@@ -2221,7 +2223,7 @@ export function buildServer(deps: {
     const res = await app.inject({
       method: "POST",
       url: "/write",
-      payload: { kind: "create", blockTypeId: typeId, properties },
+      payload: { kind: "create", blockTypeId: typeId, properties, ...(body.image ? { image: body.image } : {}) },
     });
     return reply.code(res.statusCode).send({
       ...(res.json() as Record<string, unknown>),
@@ -2245,6 +2247,15 @@ export function buildServer(deps: {
           blockTypeId: z.string().uuid().optional(),
           content: z.string().optional(),
           properties: z.record(z.unknown()).optional(),
+          /**
+           * A picture in `canvas-images/`, to travel with the block.
+           *
+           * Named rather than sent: the canvas already holds the file and the
+           * daemon already knows where, so a client that wants the picture to
+           * come along says which one. That keeps both shells trivial and keeps
+           * one answer to "where do canvas pictures live".
+           */
+          image: z.string().max(200).optional(),
         }),
         z.object({ kind: z.literal("complete"), blockId: z.string().uuid(), status: z.string().optional() }),
         z.object({ kind: z.literal("retitle"), blockId: z.string().uuid(), title: z.string() }),
@@ -2262,6 +2273,8 @@ export function buildServer(deps: {
 
     let intent: Intent;
     let baseVersion: number | null = null;
+    /** Why a picture that was asked for did not go, when one did not. */
+    let picture: string | null = null;
 
     if (body.kind === "create") {
       const typeId = body.blockTypeId ?? defaultTypeId(body.content !== undefined ? "note" : "task");
@@ -2270,13 +2283,35 @@ export function buildServer(deps: {
           error: "no block types mirrored yet — the first sync hasn't happened, so there's nothing to create this as",
         });
       }
+      /*
+       * The picture comes too, if one was named and the type has somewhere to
+       * put it.
+       *
+       * The field is found by *kind*, never by name — the invariant this repo
+       * pays for whenever it is forgotten. A type with no attachment field is
+       * not an error and not a silent drop: the block is still made, and the
+       * answer says the picture stayed behind.
+       */
+      let properties = body.properties;
+      let pictureReport: string | null = null;
+      if (body.image) {
+        const slot = (types().get(typeId)?.fields ?? []).find(
+          (f: { kind?: string }) => f.kind === "attachment",
+        ) as { key?: string } | undefined;
+        const value = pictureValue(body.image);
+        if (!slot?.key) pictureReport = "no attachment field on this type — the picture stayed on the canvas";
+        else if (!value) pictureReport = "that picture is no longer in canvas-images — the block was made without it";
+        else properties = { ...(properties ?? {}), [slot.key]: [value] };
+      }
+
       intent = {
         kind: "create",
         id: randomUUID(),
         blockTypeId: typeId,
         content: body.content,
-        properties: body.properties,
+        properties,
       };
+      if (pictureReport) picture = pictureReport;
     } else if (body.kind === "complete") {
       const raw = mirror.rawBlock(body.blockId);
       if (!raw) return reply.code(404).send({ error: "not in the mirror" });
@@ -2332,7 +2367,11 @@ export function buildServer(deps: {
       // within the poll interval anyway, but a write that isn't findable the
       // instant it succeeds reads as a write that didn't happen.
       if (typeof applied.id === "string") await sync.refresh([applied.id]);
-      return { applied: true, ...applied };
+      // A block that was made without the picture somebody asked for is not a
+      // failure and is not a plain success either. Said out loud, because a
+      // picture silently left behind looks exactly like one that travelled
+      // until somebody opens the block to look for it.
+      return { applied: true, ...applied, ...(picture ? { picture } : {}) };
     } catch (err) {
       if (!(err instanceof OfflineError)) {
         // A refused write has to undo the optimistic placement, or the mirror
@@ -2360,6 +2399,7 @@ export function buildServer(deps: {
         applied: false,
         queued: id,
         ...(intent.kind === "create" ? { id: intent.id } : {}),
+        ...(picture ? { picture } : {}),
         note: "Hermes is not reachable; this is queued and will go out on reconnect.",
       });
     }

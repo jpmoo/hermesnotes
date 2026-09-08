@@ -2890,7 +2890,7 @@ struct CanvasSurface: View {
     /// Handed in rather than reached for: the canvas has no business knowing
     /// what a composer is, and this keeps the one place it touches Hermes down
     /// to a closure somebody else supplies.
-    var onCompose: (String, @escaping (String) -> Void) -> Void = { _, _ in }
+    var onCompose: (String, String?, @escaping (String) -> Void) -> Void = { _, _, _ in }
     /// Put the desk away, for the one action that sends somebody somewhere else.
     var onLeave: () -> Void = {}
     /// The canvas chat, which writes the same file this draws from.
@@ -3836,11 +3836,16 @@ struct CanvasSurface: View {
                 trouble = "That block is not in the mirror yet"
             } else {
                 let words = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !words.isEmpty else {
+                // A picture is something to make a block out of, so the words
+                // are only required when there is nothing else. The composer
+                // opens on the file's name, which is a title somebody can
+                // replace rather than a blank field they have to fill.
+                guard !words.isEmpty || item.image != nil else {
                     trouble = "Write something in it first"
                     return
                 }
-                onCompose(words) { id in model.attach(item.id, to: id) }
+                let seed = words.isEmpty ? (item.image.map(Self.nameOf) ?? "") : words
+                onCompose(seed, item.image) { id in model.attach(item.id, to: id) }
             }
         } label: {
             // The same disc as the one beside it, because it is the same kind
@@ -3907,10 +3912,36 @@ struct CanvasSurface: View {
         // dangerous one is furthest from where the others are reached from —
         // and so that the one which changes width does it away from the rest.
         buttonRow(at: corner) {
-            if item.image == nil { toHermes }
+            /*
+             Offered on a picture too, now.
+
+             It was hidden on image nodes for a plain reason: the format could
+             name a file and not carry one, so making a block out of a picture
+             meant making a block *without* the picture — the thing on the canvas
+             stayed on that canvas, on that machine, and nowhere else in the
+             library. Offering a button that silently dropped the only content
+             the node had would have been worse than not offering it.
+
+             The format carries files now, so the picture goes with the block.
+             */
+            toHermes
             info
             remove
         }
+    }
+
+    /// A picture's file name as something to title a block with.
+    ///
+    /// Stored names carry a generated prefix so two screenshots taken a second
+    /// apart cannot collide; that prefix is Talaria's bookkeeping and is not
+    /// what anybody would call the thing.
+    private static func nameOf(_ file: String) -> String {
+        let base = file.split(separator: ".").dropLast().joined(separator: ".")
+        let trimmed = base.isEmpty ? file : base
+        if let dash = trimmed.firstIndex(of: "-"), trimmed[..<dash].count >= 8 {
+            return String(trimmed[trimmed.index(after: dash)...])
+        }
+        return trimmed
     }
 
     /// Save the canvas to a file, or replace it with one.

@@ -665,7 +665,7 @@ struct DeskView: View {
     @State private var chatOpen = false
     /// Open the New Block window seeded with these words, and hand back the id
     /// of whatever it made.
-    var onCompose: (String, @escaping (String) -> Void) -> Void
+    var onCompose: (String, String?, @escaping (String) -> Void) -> Void
     /// Put the desk away — for an action that sends somebody out of it.
     var onLeave: () -> Void
     var onPickWorkspace: (String) -> Void

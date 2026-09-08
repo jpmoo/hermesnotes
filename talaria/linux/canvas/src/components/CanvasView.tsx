@@ -2581,9 +2581,13 @@ export function CanvasView({
     // away without saying so.
     const rest = text.slice(rawFirst.length).replace(/^\n+/, "");
     const key = bodyFieldKey(type.propertySchema);
+    // The picture goes with the create rather than after it. `api.ts` turns this
+    // into an interchange attachment value; see the note there.
+    const picture = note.image ? { image: note.image.name } : {};
     const body = type.isText
-      ? { blockTypeId: type.id, content: text }
+      ? { blockTypeId: type.id, content: text, ...picture }
       : {
+          ...picture,
           blockTypeId: type.id,
           properties: {
             title: firstLine || "Untitled",
@@ -2595,28 +2599,22 @@ export function CanvasView({
           // than being discarded on the way through.
           ...(rest && !key ? { content: rest } : {}),
         };
-    const b = await api.post<Block>("/blocks", body);
-    /**
+    /*
      * The picture becomes a real attachment, now that there is something to
-     * attach it to.
+     * attach it to — and now that the format can carry a file.
      *
      * This is the whole point of converting an image note rather than leaving
-     * it: the bytes stop riding on the collection as base64 and become a file
-     * on the block, where they can be downloaded, replaced and deleted like any
-     * other. The node keeps showing the picture, because that is what it looked
-     * like a moment ago and a conversion that changed the drawing as well as
-     * the substance would read as having done something else.
+     * it: the picture stops being visible on this canvas, on this machine and
+     * nowhere else, and becomes a file on the block. It travels *with* the
+     * create rather than in a second upload afterwards, which is what makes it
+     * atomic: there is no window in which a block exists without the picture it
+     * was made from, and nothing to undo when the write is refused.
      *
-     * Awaited before the note is removed, and before the member is placed:
-     * failing here must leave the note where it was rather than half-converted
-     * with its picture nowhere.
+     * The node keeps showing it, because that is what it looked like a moment
+     * ago and a conversion that changed the drawing as well as the substance
+     * would read as having done something else.
      */
-    if (note.image) {
-      const blob = await (await fetch(note.image.data)).blob();
-      const form = new FormData();
-      form.append("file", new File([blob], note.image.name, { type: note.image.mime }));
-      await api.upload<Attachment[]>(`/blocks/${b.id}/attachments`, form);
-    }
+    const b = await api.post<Block>("/blocks", body);
     await api.post(`/collections/${cid}/members`, {
       blockId: b.id,
       context: {
@@ -2626,16 +2624,13 @@ export function CanvasView({
         h: note.h,
         color: note.color ?? null,
         /*
-         * The picture comes with it.
+         * And the node goes on showing it.
          *
-         * Hermes turns a note's image into an attachment on the new block and
-         * lets the node keep showing it, "because that is what it looked like a
-         * moment ago and a conversion that changed the drawing as well as the
-         * substance would read as having done something else." Talaria cannot
-         * make it an attachment — the format's `attachment` value is a file name
-         * and carries no bytes, and Hermes' own manifest declares attachments
-         * unsupported — but the second half holds: the picture stays on the
-         * canvas, beside the document, and the node goes on showing it.
+         * Both halves hold now. This comment used to say Talaria could do only
+         * the second — that the format's `attachment` value was a file name
+         * carrying no bytes, so the picture stayed on the canvas and nowhere
+         * else. The format carries files, so it is an attachment on the block
+         * *and* still the picture on this node.
          */
         ...(note.image ? { showImage: true, image: note.image.name } : {}),
       },

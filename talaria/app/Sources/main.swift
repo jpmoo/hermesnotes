@@ -635,7 +635,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             canvas: canvasModel,
             assistant: assistantModel,
             canvasChat: canvasChatModel,
-            onCompose: { [weak self] seed, made in self?.compose(seed: seed, then: made) },
+            onCompose: { [weak self] seed, image, made in self?.compose(seed: seed, image: image, then: made) },
             onLeave: { [weak self] in self?.hideDesk() },
             onPickWorkspace: { [weak self] name in
                 // Leave first, then go. Going somewhere is leaving here — but
@@ -1122,11 +1122,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
      the composer already knows what to do with them — first line into the field
      the type leads with, the rest into its body — which is the same rule it
      applies to a selection taken from any other application.
+
+     `image` is the node's picture, by file name, and it travels with the block
+     as an attachment. Until the format could carry a file this was not offered
+     at all: a node with a picture had no button to become a block, because
+     becoming one meant leaving the picture behind on that canvas, on that
+     machine, and nowhere else in the library.
      */
-    func compose(seed: String, then: @escaping (String) -> Void) {
+    func compose(seed: String, image: String? = nil, then: @escaping (String) -> Void) {
         composeHandoff = then
         let panel = composePanel()
-        composeModel.load(seed: seed)
+        composeModel.load(seed: seed, image: image)
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }) {
             let f = panel.frame
             panel.setFrameOrigin(NSPoint(

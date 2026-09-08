@@ -143,9 +143,18 @@ final class ComposeModel: ObservableObject {
      button — and losing the sentence somebody was partway through would be a
      worse failure than showing it to them again.
      */
-    func load(seed: String? = nil) {
+    /// A canvas picture to send with whatever this composes, by file name.
+    ///
+    /// Set on every `load`, defaulting to nothing, which is what stops a picture
+    /// riding along with the next thing somebody composes. Deliberately *not*
+    /// cleared by `reset` — a type change resets the fields, and the picture
+    /// belongs to the node rather than to the type.
+    @Published var image: String?
+
+    func load(seed: String? = nil, image: String? = nil) {
         if seed != nil { reset() }
         self.seed = seed
+        self.image = image
         error = nil
         Task.detached(priority: .userInitiated) { [weak self] in
             let found = try? Daemon.types()
@@ -351,9 +360,12 @@ final class ComposeModel: ObservableObject {
 
         let typeId = type.id
         let title = titleValue
+        let picture = image
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                let made = try Daemon.create(blockTypeId: typeId, content: content, properties: properties)
+                let made = try Daemon.create(
+                    blockTypeId: typeId, content: content, properties: properties, image: picture
+                )
                 await MainActor.run {
                     self?.busy = false
                     // The block exists now, so the form has done its job. Left

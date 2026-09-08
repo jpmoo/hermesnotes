@@ -626,6 +626,16 @@ async function route<T>(method: string, path: string, body?: unknown): Promise<T
       blockTypeId?: string;
       content?: string;
       properties?: Record<string, unknown>;
+      /**
+       * A canvas picture to travel with the block, by file name.
+       *
+       * Not one of Hermes' create keys — the component adds it, and this is the
+       * one place that knows what to do with it. Hermes uploads the bytes to
+       * `/blocks/:id/attachments` after the fact; Talaria cannot and must not,
+       * so the name goes to `/capture` and the daemon, which already holds the
+       * file, sends it as an interchange attachment value on the create itself.
+       */
+      image?: string;
     };
     const props = payload.properties ?? {};
     const title = typeof props.title === "string" ? props.title : "";
@@ -640,6 +650,7 @@ async function route<T>(method: string, path: string, body?: unknown): Promise<T
       // to split off. `/capture` says this in the same two words.
       as: payload.properties ? "task" : "note",
       ...(payload.blockTypeId ? { blockTypeId: payload.blockTypeId } : {}),
+      ...(payload.image ? { image: payload.image } : {}),
     });
     if (!made?.id) throw new Error("the daemon made no block");
     // Enough of a `Block` for the caller, which wants an id and puts the rest
@@ -706,7 +717,16 @@ export const api = {
   post: <T>(p: string, b?: unknown) => route<T>("POST", p, b ?? {}),
   patch: <T>(p: string, b?: unknown) => route<T>("PATCH", p, b ?? {}),
   del: <T>(p: string) => route<T>("DELETE", p),
+  /**
+   * Not this way.
+   *
+   * Hermes uploads bytes to `/blocks/:id/attachments` after a block exists.
+   * That is Hermes' own route and reaching it is the one thing this fork must
+   * not do — and it is unnecessary now besides: a picture travels *with* the
+   * create, as an interchange attachment value, named on the body and resolved
+   * by the daemon which already holds the file. See `POST /blocks` above.
+   */
   upload: <T>(_p: string, _form: FormData): Promise<T> => {
-    throw new Unsupported("attachments are not wired up yet");
+    throw new Unsupported("a picture travels with the create — see POST /blocks in api.ts");
   },
 };

@@ -41,28 +41,55 @@ library one sync at a time.
 
 **American spellings**, as everywhere in this repo.
 
+## The first thing to build
+
+Decided. **Lasso a region on the page and send it to Hermes as a block.**
+
+- The writer picks what it becomes: a text block or a task. Their choice, on
+  the device, before it goes.
+- They type a title.
+- The block arrives in Hermes carrying **an image of the lassoed area as an
+  attachment**.
+
+Two notes on that, one of which is a wall.
+
+**The type is picked from what Hermes declares, never from a name.** The chooser
+offers whatever the library actually has, resolved through profiles — a type
+declaring the `task` profile is the task option, whatever it is called. Matching
+on the string `"Task"` or `"Text"` is the bug this repo names in its own
+invariants, and it has already cost one import of three hundred notes.
+
+**And the attachment is the open limit, exactly.** `LIMITS.md` says an
+attachment can be named and not carried: the format has a value kind that says
+*there is a file called this* and no channel for the bytes. The first feature of
+the second consumer needs to send a PNG to Hermes, so the very first thing built
+here walks into the one thing v0 cannot do.
+
+That is not bad luck; it is the list working. A limit found by one client is a
+guess about the format, and the same limit found by a second client that shares
+none of the first one's shape is evidence. This one is now both.
+
 ## What is not decided
 
 Written down as questions rather than guessed at:
 
-1. **What the plugin surface actually is.** A sideloaded Android APK, a Ratta
-   partner-app SDK, or no on-device code at all — a host-side tool that meets
-   the device through its file system, USB, or whichever cloud sync it is set
-   to. These are three different projects sharing a name, and only the third
-   can start today without a device SDK in hand.
-2. **Which direction goes first.** Hermes onto the device — today's tasks and
-   notes as something readable and markable — or the device back into Hermes,
-   where a page of handwriting becomes a block. The second is the harder and
-   more interesting half, and needs an answer about `.note` before it can
-   begin.
+1. **How the bytes get there.** See above. Either the format grows the channel —
+   the shape proposed at the end of that `LIMITS.md` entry — or this reaches
+   past the binding to Hermes' own attachment route for one call, named and
+   confined. The second is explicitly allowed and explicitly must not be
+   silent. The first is better and larger.
+2. **What the Ratta SDK actually gives a plugin.** Whether a lasso selection is
+   exposed to plugin code at all, whether a plugin can rasterize the selected
+   region, what language and lifecycle it runs under, and what network access it
+   has. Nothing here should be designed against a guess about this.
 3. **Which binding.** `file` (an export handed across) or the live HTTP binding
-   (L4, talking to a running Hermes). Mostly follows from 1: a device that is
-   sometimes on a network and often not is the case the file binding was
-   written for, and is also the case Talaria's mirror already solved once.
+   (L4, talking to a running Hermes). A device that is sometimes on a network
+   and often not is the case Talaria's mirror already solved once, and the same
+   answer may apply — send when it can, hold when it cannot.
 4. **What `.note` costs.** It is proprietary. Reverse-engineered parsers exist
-   and their fidelity is the open question — whether a page can be read well
-   enough to be worth carrying, and whether anything can be written back at all
-   without corrupting a notebook somebody cares about.
+   and their fidelity is the open question. The first feature may not need it at
+   all if the SDK can hand over a rendered region, which is the cheapest reason
+   to find out what the SDK can do before anything else.
 
 ## Not a workspace member yet
 

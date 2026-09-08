@@ -78,27 +78,116 @@ nothing is smuggled past the binding. The cost is real and worth stating: the
 image is visible on that canvas, on that machine, and nowhere else in the
 library.
 
-Two shapes an answer could take, in the order they seem worth trying:
+#### The shape proposed
 
-1. **A bytes channel beside the objects.** The binding is already more than a
-   file — `ix.put` is a request — so an attachment could be a second request
-   naming the object and the field. This does not touch the file binding, where
-   an export is one document, and that asymmetry is the argument against it.
-2. **Attachments as content-addressed blobs in the export.** `{ "kind":
-   "attachment", "filename": …, "sha256": …, "bytes": "<base64>" }`, with the
-   bytes optional and the hash the identity. A file binding stays one file, at
-   the price of a format that can carry a gigabyte in a string. The escape is
-   that `bytes` is optional: a producer that cannot afford it sends the name and
-   the hash, which is exactly what v0 sends today, and a consumer knows the
-   difference between "no attachment" and "an attachment I was not given".
+Two were sketched here. The first — a bytes channel beside the objects, an
+`ix.put`-style second request naming the object and the field — is not the one,
+and the reason is worth keeping: it exists only in the live binding, where a
+payload is a request. In the file binding an export is one document, so that
+answer would leave the two bindings disagreeing about what an attachment *is*
+rather than about how it travels. A format whose central rule is that unknown
+fields survive a round trip should not need a different vocabulary depending on
+which door the data came through.
 
-Neither is a small change, which is why this is written down rather than
-guessed at.
+The second is the proposal. **An attachment value carries its own identity, and
+may carry its own bytes:**
+
+```json
+{
+  "kind": "attachment",
+  "filename": "notes.pdf",
+  "mediaType": "application/pdf",
+  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "bytes": "<base64>"
+}
+```
+
+`mediaType` is an ordinary optional label — the one thing a consumer needs to
+decide whether it can show a file rather than only offer it, and unguessable
+from an extension a producer may not have. Nothing below depends on it.
+
+Six rules, which are the whole of the design.
+
+**The hash is the identity; the filename is a label.** Two attachments with the
+same `sha256` are the same file however they are named, and two named
+`scan.pdf` are not related by that fact. This is the single thing a filename
+could never do, and it is what separates a merge from a collision — the same
+problem the Obsidian importer already had to solve when it learned to upload a
+shared attachment once and link to it from every note that named it.
+
+**`bytes` is optional, and its absence says something.** A producer that cannot
+afford to inline a file sends the name and the hash. That is exactly what v0
+sends today, which makes today's output the degenerate case of this shape rather
+than something to migrate: no existing export becomes wrong, and no producer has
+to do anything to stay valid.
+
+**A consumer must tell "no attachment" from "an attachment I was not given."**
+This is *Loud failure* applied to a file. A value with a `sha256` and no `bytes`
+is a known-missing file, and a consumer that stores it must report reduced
+fidelity rather than render a broken link or drop the field. Silence here is the
+same disaster as the drifting haircut reminder: the library looks complete and
+is not.
+
+**Present bytes are checked against the hash.** A consumer that keeps the file
+verifies it and treats a mismatch as a loud failure. A hash nobody checks is a
+comment.
+
+**Omit rather than send empty**, following the rule that an empty string is not
+a value. `"bytes": ""` is not "a file of length zero" to anybody reading quickly,
+and the one real empty file in a library is not worth the ambiguity in every
+other.
+
+**It is additive, so `format` does not bump.** *Versioning* says additive changes
+do not, and the round-trip rule is what makes that safe — a v0 consumer that has
+never heard of `sha256` or `bytes` carries both through byte-identical and
+neither loses anything nor destroys anything. That is the property the first
+shape could not have offered, and it is most of the argument.
+
+#### What the manifest should then say
+
+`features: ["attachments"]` is doing two jobs and reads as the larger one. An
+attachment *value* traveling and an attachment *file* traveling are different
+claims, and only the first is true of anything shipping today — Hermes declares
+the feature and simultaneously emits `attachments.contents-do-not-travel` about
+its own export, which is a producer arguing with itself in one document.
+
+Split the word: `attachments` for the values, `attachment-bytes` for the files.
+A stranger automating an import reads the manifest, not the prose findings
+attached to one export, and today the manifest tells them they are getting
+something they are not. This costs nothing measured — it renames a claim rather
+than deflating one.
+
+#### What this deliberately is not
+
+Not a blob store, not a sync protocol, and not a requirement that anybody store
+files by hash. The hash is an identity claim about a value, and what a consumer
+does with the bytes is its own business.
+
+#### What it still does not solve
+
+The size, and there is no clever answer. Base64 is a third larger again, a
+library with video in it becomes a document nothing will parse, and a single
+JSON document cannot be streamed into or chunked. The escape is per-attachment
+rather than per-export — inline the small ones, hash the large ones, and the
+consumer can tell which it got — but a producer whose library is mostly large
+files is back where it started, holding names.
+
+Which is the honest remainder: this closes the case where the file is small
+enough to carry and makes the other case *legible* rather than solved. The live
+binding could offer bytes a second way, since a request is not a document, but
+that is the first shape again and it needs the same answer about what the file
+binding then means. Worth designing next, not now.
+
+A fixture would settle it: an export carrying one attachment with bytes and one
+without, round-tripped, with the consumer reporting the second as reduced
+fidelity. Until that exists this is a proposal and stays here.
 
 ---
 
-The three that were here before are below, with what each cost to answer; the
+Everything that was here before is below, with what each cost to answer; the
 one remaining piece of unfinished business is named at the end of the first.
+No count, because the one that was here had drifted from three to ten without
+anybody noticing — which is what a number in prose does.
 
 ---
 

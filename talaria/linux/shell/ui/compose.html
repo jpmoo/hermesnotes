@@ -8,7 +8,7 @@
 </div>
 <script type="module">
 import { get, post, complain, el, typeLabel } from "/ui/api.js";
-import { blockIcon } from "/ui/icons.js";
+import { blockIcon, typeIcon } from "/ui/icons.js";
 
 const host = document.getElementById("form");
 let types = [];
@@ -146,19 +146,62 @@ function referencePicker(field) {
   return box;
 }
 
+/*
+ * The type, with the mark each one declares.
+ *
+ * A native `<select>` cannot draw anything but text, and the type is the one
+ * choice on this form where a picture helps: six words that all look alike
+ * against six shapes you recognize without reading. So this is the same
+ * construction the reference picker below already uses — a button that opens a
+ * list of rows — and it keeps the keyboard: the button is a button, the rows are
+ * buttons, and Escape closes the list.
+ *
+ * `picker.value` is kept as a property so nothing else in this file has to know
+ * it stopped being a `<select>`.
+ */
+function typePicker() {
+  const box = el("div", "typepick");
+  const button = el("button", "typepick-current");
+  const list = el("div", "options");
+  list.hidden = true;
+
+  const show = (t) => {
+    button.replaceChildren(typeIcon(t.icon), el("span", null, t.name), el("span", "caret", "⌄"));
+    box.value = t.id;
+  };
+
+  for (const t of types) {
+    const row = el("button", "option");
+    row.type = "button";
+    row.appendChild(typeIcon(t.icon));
+    row.appendChild(el("span", "title", t.name));
+    row.onclick = () => {
+      show(t);
+      list.hidden = true;
+      fields(t.id);
+    };
+    list.appendChild(row);
+  }
+
+  button.type = "button";
+  button.onclick = () => { list.hidden = !list.hidden; };
+  box.addEventListener("keydown", (e) => { if (e.key === "Escape") list.hidden = true; });
+  // Clicking anywhere else puts it away, the way the document list does.
+  document.addEventListener("click", (e) => {
+    if (!box.contains(e.target)) list.hidden = true;
+  });
+
+  box.append(button, list);
+  if (types[0]) show(types[0]);
+  return box;
+}
+
 async function load() {
   types = await get("/types");
   host.innerHTML = "";
 
-  const picker = el("select");
-  picker.id = "type";
-  for (const t of types) {
-    const option = el("option", null, t.name);
-    option.value = t.id;
-    picker.appendChild(option);
-  }
+  const picker = typePicker();
   host.append(Object.assign(el("label", null, "Type"), {}), picker);
-  picker.onchange = () => fields(picker.value);
 
   const body = el("div");
   body.id = "fields";

@@ -373,13 +373,16 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
   background: var(--bg);
   box-shadow: 0 6px 20px rgb(0 0 0 / 18%);
 }
-.picker .option {
+.picker .option,
+.typepick .option {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 6px 10px; border: 0; background: none;
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.picker .option:hover { background: color-mix(in srgb, AccentColor 14%, Canvas); }
-.picker .option .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker .option:hover,
+.typepick .option:hover { background: color-mix(in srgb, AccentColor 14%, Canvas); }
+.picker .option .title,
+.typepick .option .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon { flex: none; opacity: .75; }
 
 /* Folded sections in Glance. Closed by default: these are the things you did
@@ -1034,3 +1037,30 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 /* A block whose whole content was a stray `/` — see `notefield.js`. It draws
    nothing and still has to be a target, or the line cannot be got back into. */
 .note-block .note-blank { min-height: 1.5em; margin: 0; }
+
+/* --- The type picker on New Block ------------------------------------------
+ * A `<select>` cannot draw an icon, and the type is the one choice on that form
+ * where a picture helps: six words that all look alike against six shapes you
+ * recognize without reading. Built from the reference picker's own parts, so
+ * there is one row style on the page rather than two.
+ */
+.typepick { position: relative; }
+.typepick-current {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left;
+  padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--fg); font: inherit;
+  cursor: pointer;
+}
+.typepick-current:hover { border-color: color-mix(in srgb, CanvasText 35%, var(--line)); }
+.typepick-current .caret { margin-left: auto; color: var(--muted); font-size: 11px; }
+/* The list sits over what follows it rather than pushing the form down. */
+.typepick .options {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 6;
+  background: var(--raised);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 10px 26px rgb(0 0 0 / .22);
+  padding: 4px;
+  max-height: 260px; overflow-y: auto;
+}

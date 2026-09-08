@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Android / Gradle
+android/build/
+android/app/build/
+android/.gradle/
+.gradle/
+.idea/
+local.properties
+*.iml
+*.hprof
+.cxx/
+.kotlin/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Plugin build output
+build/
+
+# Metro
+.metro-health-check*
+*.jsbundle
+
+# macOS iCloud Drive duplicate-collision artifacts
+* 2
+* 2.*

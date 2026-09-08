@@ -1,0 +1,10 @@
+{
+  "name": "Send to Hermes",
+  "desc": "Lasso a region and send it to Hermes Notes as a note or a task, with the selection attached as a PNG.",
+  "iconPath": "./assets/icon.png",
+  "versionName": "0.1.0",
+  "versionCode": "1",
+  "pluginID": "kwqy7npwqmstbw8s",
+  "pluginKey": "hermessend",
+  "jsMainPath": "index"
+}

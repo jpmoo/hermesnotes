@@ -69,6 +69,29 @@ That is not bad luck; it is the list working. A limit found by one client is a
 guess about the format, and the same limit found by a second client that shares
 none of the first one's shape is evidence. This one is now both.
 
+## What is built
+
+`hermessend/` — **Send to Hermes**. Lasso a region, choose note or task, give it
+a title, and it arrives as a block with the selection attached as a PNG. See its
+own README for the SDK's two traps and why it needs one native module.
+
+The four questions below are answered, and left standing because the answers are
+the useful part:
+
+1. **The bytes go through the format.** No reaching past. `PUT
+   /api/interchange/objects/:id` carries the picture as an `attachment` value
+   with `sha256` and base64 `bytes` — the limit that was open when this folder
+   was made, closed in the meantime and closed partly *because* of this plugin.
+2. **The SDK gives more than expected and less.** Lasso selections come out as
+   stickers, which hold only the selected ink. But nothing in the SDK reads a
+   file's contents into JavaScript, so a plugin that wants to send a file it
+   just made needs a native module. That is the whole of `HermesFileModule.kt`.
+3. **The live binding, over the network.** Not the file binding: a device that
+   is on wifi most of the time and creates one block at a time wants a request,
+   not an export.
+4. **`.note` cost nothing.** The SDK renders the selection, so nothing here
+   parses Supernote's format.
+
 ## What is not decided
 
 Written down as questions rather than guessed at:

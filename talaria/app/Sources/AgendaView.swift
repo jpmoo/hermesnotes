@@ -330,7 +330,7 @@ struct AgendaView: View {
             } else {
                 // Nothing to tick: this is a note or a person that happens to
                 // carry a date, so it gets a mark of what it is instead.
-                Image(systemName: Theme.symbol(forTool: item.typeName))
+                Image(systemName: Theme.symbol(forIconKey: Daemon.iconKey(forTypeNamed: item.typeName)))
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
             }
             VStack(alignment: .leading, spacing: 2) {

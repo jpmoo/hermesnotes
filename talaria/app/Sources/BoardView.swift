@@ -580,7 +580,7 @@ private struct CardRow: View {
                 .disabled(card.done)
             } else {
                 // No status to set — a checkbox here would offer nonsense.
-                Image(systemName: Theme.symbol(forTool: card.typeName))
+                Image(systemName: Theme.symbol(forIconKey: Daemon.iconKey(forTypeNamed: card.typeName)))
                     .font(.system(size: 11)).foregroundStyle(.tertiary)
             }
 

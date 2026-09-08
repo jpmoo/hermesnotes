@@ -462,7 +462,8 @@ struct ComposeView: View {
                 .font(Theme.chrome(12, weight: .semibold))
             Picker("", selection: $model.typeId) {
                 ForEach(model.types) { t in
-                    Label(t.display, systemImage: Theme.symbol(forTool: t.display)).tag(t.id)
+                    // The type's own icon key, not a guess from its name.
+                    Label(t.display, systemImage: Theme.symbol(forIconKey: t.icon)).tag(t.id)
                 }
             }
             .labelsHidden()

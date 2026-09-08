@@ -612,6 +612,29 @@ private struct SurfaceStrip: View {
                 .buttonStyle(.plain)
                 .help(surface.name)
             }
+
+            /*
+             The frost switch, here rather than on one surface.
+
+             It lived in the canvas's own toolbar, which meant the desk and the
+             writing surface had no way to reach it at all — a setting for the
+             whole overlay, reachable from a third of it. The strip is where it
+             belongs because the strip is the only chrome every surface shares.
+             */
+            Divider().frame(height: 16).padding(.horizontal, 2)
+            Button { chrome.seeThrough.toggle() } label: {
+                Image(systemName: chrome.seeThrough ? "circle.dotted" : "circle.fill")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 34, height: 26)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(chrome.seeThrough ? Color.secondary : Theme.accent)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(chrome.seeThrough ? .clear : Color.primary.opacity(0.08))
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(chrome.seeThrough ? "Frosted — click for solid" : "Solid — click for frosted")
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 4)
@@ -735,6 +758,23 @@ struct DeskView: View {
                         .padding(.bottom, 10)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+            }
+            /*
+             Reaching for the strip is enough to be shown it.
+
+             It appeared on a swipe and nowhere else, so the only way to a
+             control that lives on it was a gesture that also moved you off the
+             surface you wanted it for. The bottom of the screen is where a hand
+             goes when it wants the pager anyway.
+
+             `onContinuousHover` rather than a band with `onHover`: a band wide
+             enough to be found would have to accept hits, and a strip of
+             nothing swallowing clicks along the bottom edge of every surface is
+             a worse fault than the one being fixed.
+             */
+            .onContinuousHover { phase in
+                guard case let .active(point) = phase else { return }
+                if point.y > geo.size.height - 90 { chrome.reveal() }
             }
         }
         // The frost reaches the edges of the screen; the panes clear the chrome

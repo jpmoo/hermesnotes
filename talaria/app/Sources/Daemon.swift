@@ -625,7 +625,42 @@ enum Daemon {
     }
 
     static func types() throws -> [BlockType] {
-        try JSONDecoder().decode(Envelope<[BlockType]>.self, from: get("/types")).data
+        let all = try JSONDecoder().decode(Envelope<[BlockType]>.self, from: get("/types")).data
+        Self.rememberIcons(all)
+        return all
+    }
+
+    /**
+     What each type calls its icon, by the name it is displayed under.
+
+     A lookup of the user's own declaration, not a guess about it. Three surfaces
+     — the agenda, the board, and Glance's results — are handed a type's *name*
+     and nothing else, and were drawing an icon by searching that name for the
+     word "task" or "person". So `Organization` and `Text` matched nothing and
+     came out as the wrench that means "no idea", and a type renamed to `Errand`
+     would have lost its tick. Reading the key the type declares is the same
+     answer the composer now gets, arrived at from the only fact those surfaces
+     have.
+
+     Filled in by whoever asks for the types — the composer at least does, on
+     every open — and empty until then, which draws the neutral shape rather
+     than the wrong one. A cache that is merely cold is not a cache that lies.
+     */
+    private static let iconLock = NSLock()
+    nonisolated(unsafe) private static var iconsByTypeName: [String: String] = [:]
+
+    static func rememberIcons(_ types: [BlockType]) {
+        iconLock.lock()
+        for t in types where t.icon != nil {
+            iconsByTypeName[t.display.lowercased()] = t.icon
+        }
+        iconLock.unlock()
+    }
+
+    static func iconKey(forTypeNamed name: String?) -> String? {
+        guard let name else { return nil }
+        iconLock.lock(); defer { iconLock.unlock() }
+        return iconsByTypeName[name.lowercased()]
     }
 
     /**

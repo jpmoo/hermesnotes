@@ -924,7 +924,7 @@ struct GlanceView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                Image(systemName: Theme.symbol(forTool: hit.block.typeName))
+                Image(systemName: Theme.symbol(forIconKey: Daemon.iconKey(forTypeNamed: hit.block.typeName)))
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .frame(width: 14)

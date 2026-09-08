@@ -30,6 +30,53 @@ enum Theme {
         .custom("Tahoma", size: size).weight(weight)
     }
 
+    /**
+     A block type's icon, from the key the type itself declares.
+
+     Never from its name. A type is a row somebody owns and renames, and the
+     composer was picking its icon by looking for "task" or "person" inside the
+     word — so `Organization` and `Text` matched nothing and were drawn with the
+     wrench that means "no idea", while a type renamed to `Errand` would have
+     lost its tick. That is the same guess this project has written down twice
+     as a bug, made a third time in a menu.
+
+     Hermes names icons the way Lucide does and carries the key as
+     `hermes:icon_key`; the daemon hands it over as `icon`. Only the ones that
+     actually turn up are listed. A key with no obvious counterpart gets a
+     neutral shape rather than a clever near-miss: an icon that is *almost*
+     right is read as information, and a plain one is read as none.
+     */
+    static func symbol(forIconKey key: String?) -> String {
+        switch (key ?? "").lowercased() {
+        case "check-square", "checksquare", "circle-check-big", "circle-check", "square-check",
+             "list-checks", "check": return "checkmark.square"
+        case "calendar", "calendar-days", "calendar-clock", "calendar-check": return "calendar"
+        case "user", "person", "contact", "users": return "person"
+        case "building", "building2", "briefcase", "landmark": return "building.2"
+        case "clipboard", "clipboard-list", "clipboard-check": return "clipboard"
+        case "type", "text", "file-text", "filetext", "align-left": return "textformat"
+        case "folder", "folder-open": return "folder"
+        case "star", "sparkle", "sparkles": return "star"
+        case "tag", "tags", "hash": return "tag"
+        case "book", "book-open", "library", "notebook": return "book"
+        case "list", "list-ordered": return "list.bullet"
+        case "table", "table2", "grid", "layout-grid": return "tablecells"
+        case "kanban", "columns": return "rectangle.split.3x1"
+        case "map", "map-pin", "pin": return "mappin"
+        case "mail", "inbox", "send": return "envelope"
+        case "link", "link2", "paperclip": return "link"
+        case "image", "camera": return "photo"
+        case "quote", "message-square", "messages-square": return "quote.bubble"
+        case "flag", "target", "goal": return "flag"
+        case "lightbulb", "brain", "zap": return "lightbulb"
+        case "heart": return "heart"
+        case "clock", "timer", "history": return "clock"
+        case "scroll", "scroll-text", "file", "files": return "doc.text"
+        case "workflow", "git-branch", "share2": return "point.topleft.down.curvedto.point.bottomright.up"
+        default: return "cube"
+        }
+    }
+
     /// A tool's icon, by what the tool does rather than by an exhaustive list —
     /// the MCP toolkit grows, and a lookup table would quietly fall behind and
     /// show a wrench for everything new.

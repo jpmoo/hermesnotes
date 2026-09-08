@@ -147,20 +147,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// gesture. Accumulated here and cleared when it lands or when it stops.
     private var deskSwipeAccumulated: CGFloat = 0
     private var deskSwipeReset: Timer?
+    /**
+     One page per gesture, however far the fingers keep going.
+
+     A turn fired the moment the accumulation passed ninety and then reset to
+     zero — but the fingers are still moving, so the same physical swipe crossed
+     ninety again and turned another page, and with a long swipe another after
+     that. With two surfaces this was invisible: the second step had nowhere to
+     go and clamped. Adding a third made it a flight through the middle of the
+     desk, which is the same fault finally having somewhere to land.
+
+     So a gesture that has turned a page is spent, and stays spent until the
+     fingers lift. `NSEvent` says when that is.
+     */
+    private var deskSwipeSpent = false
     private var deskSwipe: CGFloat {
         get { deskSwipeAccumulated }
         set {
             deskSwipeAccumulated = newValue
             deskChrome.reveal()
             deskSwipeReset?.invalidate()
-            if abs(deskSwipeAccumulated) > 90 {
+            if !deskSwipeSpent, abs(deskSwipeAccumulated) > 90 {
                 deskChrome.swiped(by: deskSwipeAccumulated)
                 deskSwipeAccumulated = 0
+                deskSwipeSpent = true
                 return
             }
             // A gesture that stopped short is not the beginning of the next one.
             deskSwipeReset = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
-                Task { @MainActor in self?.deskSwipeAccumulated = 0 }
+                Task { @MainActor in
+                    self?.deskSwipeAccumulated = 0
+                    // A trackpad that never says the gesture ended — an old one,
+                    // or an event stream cut short — must not leave the desk
+                    // refusing to page for the rest of the session.
+                    self?.deskSwipeSpent = false
+                }
             }
         }
     }
@@ -744,6 +765,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             let dx = event.scrollingDeltaX
             let dy = event.scrollingDeltaY
+            // The fingers have lifted: whatever came before is over, and the
+            // next thing is a new gesture rather than more of this one.
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+                Task { @MainActor in
+                    self.deskSwipeAccumulated = 0
+                    self.deskSwipeSpent = false
+                }
+                return event
+            }
+            // Momentum is the trackpad coasting after the hand has gone. It is
+            // the tail of a gesture already answered, and paging on it is how
+            // one flick becomes two pages.
+            if event.momentumPhase != [] { return event }
             // Decisively sideways, and from the trackpad rather than a wheel.
             guard event.hasPreciseScrollingDeltas, abs(dx) > abs(dy) * 1.6, abs(dx) > 1 else {
                 return event
@@ -774,6 +808,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let deskScroll { NSEvent.removeMonitor(deskScroll) }
         deskScroll = nil
         deskSwipeAccumulated = 0
+        deskSwipeSpent = false
         panel.orderOut(nil)
         // Back to a background app. Leaving it regular would put a Dock icon and
         // a menu bar on something meant to have neither.

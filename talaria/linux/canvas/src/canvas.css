@@ -601,3 +601,39 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 /* On, and saying so: the mode stays until you press the canvas or Escape, and
  * nothing else on screen would tell you it is still running. */
 .cv-region-add.on { background: var(--accent, CanvasText); }
+
+/* --- Resize corners you can see -------------------------------------------
+ *
+ * They were twelve invisible pixels. Hit-testing them worked — the cursor even
+ * changed to `nwse-resize` when you happened to be over one — but there was
+ * nothing on screen saying where "over one" was, so finding a corner meant
+ * sweeping the edge of a node until the pointer changed shape. On a photograph,
+ * where the picture runs to the node's edge and there is no paper margin to aim
+ * at, that is most of the way to not having handles at all.
+ *
+ * So: a slightly larger target, and a mark inside it that appears when the node
+ * is under the pointer or selected — the same way the connect dots used to
+ * announce themselves, which is the idiom this canvas already had.
+ */
+.cv-corner { width: 16px; height: 16px; }
+.cv-nw { top: -6px; left: -6px; }
+.cv-ne { top: -6px; right: -6px; }
+.cv-sw { bottom: -6px; left: -6px; }
+.cv-se { bottom: -6px; right: -6px; }
+
+.cv-corner::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 2px;
+  background: Canvas;
+  border: 1.5px solid color-mix(in srgb, CanvasText 55%, transparent);
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+}
+.cv-node:hover .cv-corner::after,
+.cv-node.cv-sel .cv-corner::after { opacity: 1; }
+/* Not while something is being dragged: the marks would follow the node around
+ * suggesting a resize that is not what is happening. */
+.cv-wrap.cv-holding .cv-corner::after { opacity: 0; }

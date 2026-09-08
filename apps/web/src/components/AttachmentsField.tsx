@@ -90,7 +90,10 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         <ul className="attach-list">
           {files.map((f) => (
             <li key={f.id} className="attach-item">
-              <FileText size={15} className="attach-icon" />
+              {/* A chip, not a link. The name is a thing you can pick up and
+                  open — the same shape a mention has — and the underlined blue
+                  it used to be read as a web address rather than as this
+                  block's own file. */}
               <a
                 className="attach-name"
                 href={`${apiBase}/attachments/${f.id}`}
@@ -98,7 +101,8 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
                 rel="noreferrer"
                 title={f.filename}
               >
-                {f.filename}
+                <FileText size={13} className="attach-icon" />
+                <span className="attach-filename">{f.filename}</span>
               </a>
               <span className="attach-size">{humanSize(f.size)}</span>
               <a

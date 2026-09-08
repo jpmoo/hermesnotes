@@ -20,6 +20,7 @@ import {
   WEEKLY_TEMPLATE_PREF,
 } from "@hermes/shared";
 import { ActiveLineSource, SourceableListItem, SourceBlock } from "../lib/active-line-source.ts";
+import { AutoUrl } from "../lib/auto-url.ts";
 import { CheckboxInput, HeadingIndent, SmartEnter } from "../lib/heading-indent.ts";
 import { ListGutter, ListIndent } from "../lib/list-tools.ts";
 import { patchMarkdownParser } from "../lib/markdown-fixups.ts";
@@ -223,6 +224,7 @@ export function MarkdownEditor({
       MdImage,
       SourceBlock,
       ActiveLineSource,
+      AutoUrl,
       ListIndent,
       ListGutter,
       Mentions.configure({ handlers }),

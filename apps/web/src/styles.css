@@ -4130,15 +4130,40 @@ input.matrix-axis-y::placeholder {
   background: var(--surface-2);
 }
 .attach-icon {
-  color: var(--text-muted);
   flex-shrink: 0;
+  opacity: 0.75;
 }
+/* The file name as a chip, matching `.mention-chip` — see the note in
+   AttachmentsField. `min-width: 0` is what lets the name inside it ellipsize
+   instead of pushing the size and the buttons off the row. */
 .attach-name {
-  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  /* Sized by its name, not by the row: a chip is the width of the word on it.
+     The auto margin is what keeps the size and the buttons over on the right
+     now that the name no longer fills the gap. */
+  flex: 0 1 auto;
+  margin-right: auto;
+  padding: 1px 7px 1px 5px;
+  border-radius: 6px;
+  background: rgba(95, 164, 181, 0.13);
+  color: var(--accent-ink);
+  font-size: 13px;
+  line-height: 1.5;
+  text-decoration: none;
+  cursor: pointer;
+}
+.attach-name:hover {
+  background: rgba(95, 164, 181, 0.24);
+  text-decoration: none;
+}
+.attach-filename {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
 }
 .attach-size {
   font-size: 11px;
@@ -8449,3 +8474,13 @@ body:has(.embed-scratchpad) #root {
 .convert-row.kept { color: var(--text-muted); }
 .convert-row.gone { color: var(--danger); }
 .convert-row .hint { color: var(--text-faint); }
+
+/* Bare URLs in live preview. Drawn over the text by the `autoUrl` decoration —
+   the markdown underneath is untouched, so this is the only thing that says a
+   plain address is a link. */
+.note-editor a.auto-url {
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}

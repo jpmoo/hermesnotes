@@ -4,6 +4,7 @@ import {
   findRegion,
   freeSpot,
   newId,
+  pruneRegions,
   readCanvas,
   shapeDefaults,
   SHAPES,
@@ -299,17 +300,24 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
     },
     {
       name: "canvas_group",
-      description: "Draw a region around some nodes, with a title. Name the nodes by their words or ids.",
+      description:
+        "Draw a region around some nodes, with a title. Name the nodes by their words or ids. " +
+        "A region can be named too, which puts that whole region inside this one — regions nest.",
       parameters: params({ nodes: strs, title: str, fill: str }, ["nodes"]),
       schema: z.object({ nodes: z.array(z.string()).min(1), title: z.string().default(""), fill: HEX.optional() }),
       run: (a) => {
         const args = a as { nodes: string[]; title: string; fill?: string };
         const d = load();
-        const members = args.nodes.map((n) => findItem(d, n)).filter((i): i is NonNullable<typeof i> => !!i);
+        // A node, or a region — regions nest, and a member list has always been
+        // ids rather than item ids. The node is tried first: a region named
+        // after the card it was drawn round should mean the card.
+        const members = args.nodes
+          .map((n) => findItem(d, n)?.id ?? findRegion(d, n)?.id)
+          .filter((id): id is string => !!id);
         if (!members.length) return "None of those nodes are on the canvas.";
         d.regions.push({
           id: newId(),
-          members: members.map((m) => m.id),
+          members,
           title: args.title,
           hAlign: "leading",
           strokeWidth: 1.5,
@@ -317,7 +325,7 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
           ...(args.fill ? { fill: args.fill } : {}),
         });
         save(d);
-        return `Grouped ${members.length} node(s)${args.title ? ` as "${args.title}"` : ""}.`;
+        return `Grouped ${members.length} thing(s)${args.title ? ` as "${args.title}"` : ""}.`;
       },
     },
     {
@@ -337,9 +345,7 @@ export function tools(ix: Interchange, mirror: Mirror): Tool[] {
         if (!gone.size) return "None of those are on the canvas.";
         d.items = d.items.filter((i) => !gone.has(i.id));
         d.links = d.links.filter((l) => !gone.has(l.from) && !gone.has(l.to));
-        d.regions = d.regions
-          .map((r) => ({ ...r, members: r.members.filter((m) => !gone.has(m)) }))
-          .filter((r) => r.members.length);
+        d.regions = pruneRegions(d.regions, new Set(d.items.map((i) => i.id)));
         save(d);
         return `Removed ${gone.size} node(s). Any Hermes blocks they stood for are untouched.`;
       },

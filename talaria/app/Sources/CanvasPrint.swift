@@ -41,12 +41,29 @@ struct CanvasPrint: View {
      Nil when there is nothing to draw: exporting an empty canvas should say so
      rather than write a blank page somebody has to open to find out.
      */
+    /**
+     A region's box, working through the regions it holds.
+
+     A member is an item or another region — regions nest — so this recurses,
+     and `visiting` is the stop: a loop has no extent, and the code that draws
+     the page must not be the thing that discovers one.
+     */
+    static func box(of region: CanvasRegion, items: [CanvasItem], regions: [CanvasRegion],
+                    visiting: Set<UUID> = []) -> CGRect? {
+        guard !visiting.contains(region.id) else { return nil }
+        let seen = visiting.union([region.id])
+        let held: [CGRect] = region.members.compactMap { id in
+            if let item = items.first(where: { $0.id == id }) { return item.rect }
+            guard let inner = regions.first(where: { $0.id == id }) else { return nil }
+            return box(of: inner, items: items, regions: regions, visiting: seen)
+        }
+        return CanvasRegion.box(of: held)
+    }
+
     static func extent(items: [CanvasItem], regions: [CanvasRegion]) -> CGRect? {
         var boxes = items.map(\.rect)
         for region in regions {
-            if let box = CanvasRegion.box(of: region.members.compactMap { id in
-                items.first { $0.id == id }?.rect
-            }) {
+            if let box = box(of: region, items: items, regions: regions) {
                 // A region's name is written above its box and has to be inside
                 // the page too.
                 boxes.append(box.insetBy(dx: 0, dy: -CanvasRegion.titleHeight))
@@ -60,9 +77,7 @@ struct CanvasPrint: View {
     private func rect(of id: UUID) -> CGRect? {
         if let item = items.first(where: { $0.id == id }) { return item.rect }
         if let region = regions.first(where: { $0.id == id }) {
-            return CanvasRegion.box(of: region.members.compactMap { m in
-                items.first { $0.id == m }?.rect
-            })
+            return Self.box(of: region, items: items, regions: regions)
         }
         return nil
     }
@@ -76,7 +91,13 @@ struct CanvasPrint: View {
             Color.white
 
             ZStack(alignment: .topLeading) {
-                ForEach(regions) { region in regionView(region) }
+                // Biggest first, so a box inside a box prints over the one
+                // that holds it rather than under it.
+                ForEach(regions.sorted {
+                    let a = Self.box(of: $0, items: items, regions: regions).map { $0.width * $0.height } ?? 0
+                    let b = Self.box(of: $1, items: items, regions: regions).map { $0.width * $0.height } ?? 0
+                    return a > b
+                }) { region in regionView(region) }
                 // Framed, and drawing in page coordinates rather than canvas
                 // ones. A `Canvas` has no size of its own inside a stack of
                 // positioned things — it took whatever the stack worked out and
@@ -96,9 +117,7 @@ struct CanvasPrint: View {
 
     @ViewBuilder
     private func regionView(_ region: CanvasRegion) -> some View {
-        if let box = CanvasRegion.box(of: region.members.compactMap { id in
-            items.first { $0.id == id }?.rect
-        }) {
+        if let box = Self.box(of: region, items: items, regions: regions) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(Hex.color(region.fill) ?? .clear)
                 if region.strokeWidth > 0 {

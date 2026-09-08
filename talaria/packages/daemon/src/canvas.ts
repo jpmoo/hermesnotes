@@ -169,6 +169,27 @@ export function findItem(doc: CanvasDocument, nameOrId: string): CanvasItem | un
   );
 }
 
+/**
+ * Regions with dead members dropped, and regions left holding nothing dropped in
+ * turn.
+ *
+ * In turn, because a region can hold a region: emptying an inner one can empty
+ * the outer one that held only it, and that can go on. One pass would leave the
+ * outer box naming something no longer in the file — which both clients then
+ * draw as a box that is mysteriously too small.
+ */
+export function pruneRegions(regions: CanvasRegion[], items: Set<string>): CanvasRegion[] {
+  let kept = regions;
+  for (;;) {
+    const alive = new Set([...items, ...kept.map((r) => r.id)]);
+    const trimmed = kept
+      .map((r) => ({ ...r, members: r.members.filter((m) => m !== r.id && alive.has(m)) }))
+      .filter((r) => r.members.length);
+    if (trimmed.length === kept.length) return trimmed;
+    kept = trimmed;
+  }
+}
+
 export function findRegion(doc: CanvasDocument, nameOrId: string): CanvasRegion | undefined {
   const s = nameOrId.trim();
   return (

@@ -801,9 +801,7 @@ final class CanvasModel: ObservableObject {
         let present = Set(document.items.map(\.id))
         // A region keeps only the members that are still here, and a region left
         // holding nothing is over rather than empty.
-        regions = document.regions
-            .map { var r = $0; r.members = r.members.filter(present.contains); return r }
-            .filter { !$0.members.isEmpty }
+        regions = CanvasModel.pruned(document.regions, items: present)
         // Either end may be a region, so both kinds count as still existing.
         let anchors = present.union(regions.map(\.id))
         links = document.links.filter { anchors.contains($0.from) && anchors.contains($0.to) }
@@ -922,8 +920,99 @@ final class CanvasModel: ObservableObject {
     }
 
     /// The box a region occupies right now, or nothing if it holds nothing.
-    func box(of region: CanvasRegion) -> CGRect? {
-        CanvasRegion.box(of: region.members.compactMap { item($0)?.rect })
+    func box(of region: CanvasRegion) -> CGRect? { box(of: region, visiting: []) }
+
+    /**
+     The same, told where it has already been.
+
+     A member is an item or another region — regions nest — so this recurses,
+     and a box that reached itself has no extent to report. `visiting` is the
+     stop: a loop cannot be created through the UI, but a file can arrive with
+     one and the drawing code must not be the thing that finds out.
+     */
+    private func box(of region: CanvasRegion, visiting: Set<UUID>) -> CGRect? {
+        guard !visiting.contains(region.id) else { return nil }
+        let seen = visiting.union([region.id])
+        let held: [CGRect] = region.members.compactMap { member in
+            if let item = item(member) { return item.rect }
+            guard let inner = regions.first(where: { $0.id == member }) else { return nil }
+            return box(of: inner, visiting: seen)
+        }
+        return CanvasRegion.box(of: held)
+    }
+
+    /**
+     Whether putting `member` inside `region` would make a box that contains
+     itself.
+
+     Asked before the join rather than coped with afterwards. A loop has no
+     extent, so both boxes would simply stop being drawn — the region would look
+     deleted, by a gesture that said "put this in here".
+     */
+    func wouldLoop(_ member: UUID, into region: UUID) -> Bool {
+        var stack = [member]
+        var seen: Set<UUID> = []
+        while let next = stack.popLast() {
+            guard seen.insert(next).inserted else { continue }
+            if next == region { return true }
+            guard let held = regions.first(where: { $0.id == next }) else { continue }
+            stack.append(contentsOf: held.members)
+        }
+        return false
+    }
+
+    /// Every item a region holds, however deep. A set, because two nested boxes
+    /// may hold the same card and moving it once per box would move it twice as
+    /// far as the pointer went.
+    func leaves(of region: UUID) -> Set<UUID> {
+        var found: Set<UUID> = []
+        var stack = [region]
+        var seen: Set<UUID> = []
+        while let next = stack.popLast() {
+            guard seen.insert(next).inserted else { continue }
+            if let held = regions.first(where: { $0.id == next }) {
+                stack.append(contentsOf: held.members)
+            } else if item(next) != nil {
+                found.insert(next)
+            }
+        }
+        return found
+    }
+
+    /**
+     Regions with dead members dropped, and regions left holding nothing dropped
+     in turn.
+
+     In turn, because a region can hold a region: emptying an inner one can
+     empty the outer one that held only it, and that can go on. One pass would
+     leave the outer box naming something that is no longer in the file.
+     */
+    static func pruned(_ regions: [CanvasRegion], items: Set<UUID>) -> [CanvasRegion] {
+        var kept = regions
+        while true {
+            let alive = items.union(kept.map(\.id))
+            let next = kept
+                .map { r -> CanvasRegion in
+                    var r = r
+                    r.members = r.members.filter { alive.contains($0) && $0 != r.id }
+                    return r
+                }
+                .filter { !$0.members.isEmpty }
+            let settled = next.count == kept.count
+            kept = next
+            if settled { return kept }
+        }
+    }
+
+    /// The same, applied here, taking the lines to any box that did not survive
+    /// with it. A line to a region that is over is a line to nowhere, exactly as
+    /// a line to a deleted card is.
+    private func pruneRegions() {
+        let before = Set(regions.map(\.id))
+        regions = CanvasModel.pruned(regions, items: Set(items.map(\.id)))
+        let gone = before.subtracting(regions.map(\.id))
+        guard !gone.isEmpty else { return }
+        links.removeAll { gone.contains($0.from) || gone.contains($0.to) }
     }
 
     /**
@@ -971,7 +1060,11 @@ final class CanvasModel: ObservableObject {
      */
     @discardableResult
     func addRegion(around ids: Set<UUID>) -> UUID? {
+        // Items first, then any regions chosen with them: a box round a box is
+        // an ordinary thing to want and the members list has always been "ids",
+        // not "item ids".
         let held = items.filter { ids.contains($0.id) }.map(\.id)
+            + regions.filter { ids.contains($0.id) }.map(\.id)
         guard !held.isEmpty else { return nil }
         let region = CanvasRegion(id: UUID(), members: held)
         regions.append(region)
@@ -993,6 +1086,10 @@ final class CanvasModel: ObservableObject {
         // Lines drawn to the box go with the box. What was inside it stays, and
         // so does anything joined to those things directly.
         links.removeAll { $0.from == id || $0.to == id }
+        // And a box that held this one no longer does. Without this the outer
+        // region keeps a member id nothing answers to, which draws as a smaller
+        // box for no visible reason — and is written back out to the file.
+        pruneRegions()
         if selectedRegion == id { clearSelection() }
         persist()
     }
@@ -1003,6 +1100,9 @@ final class CanvasModel: ObservableObject {
     func join(region id: UUID, item: UUID) {
         guard let at = regions.firstIndex(where: { $0.id == id }) else { return }
         guard !regions[at].members.contains(item) else { return }
+        // A member may be another region — boxes nest — but not one this is
+        // already inside. See `wouldLoop`.
+        guard !wouldLoop(item, into: id) else { return }
         regions[at].members.append(item)
         persist()
     }
@@ -1019,6 +1119,7 @@ final class CanvasModel: ObservableObject {
             guard regions[at].members.count > 1 else { return }
             regions[at].members.remove(at: member)
         } else {
+            guard !wouldLoop(item, into: id) else { return }
             regions[at].members.append(item)
         }
         persist()
@@ -1033,10 +1134,10 @@ final class CanvasModel: ObservableObject {
         regions.first { $0.id == region }?.members == [item]
     }
 
-    /// Everything in a region, moved together.
+    /// Everything in a region, moved together — including everything in the
+    /// regions it holds, because a box carries what its boxes carry.
     func moveRegion(_ id: UUID, by delta: CGSize) {
-        guard let region = regions.first(where: { $0.id == id }) else { return }
-        for member in region.members {
+        for member in leaves(of: id) {
             guard let at = items.firstIndex(where: { $0.id == member }) else { continue }
             items[at].x += delta.width
             items[at].y += delta.height
@@ -1105,9 +1206,7 @@ final class CanvasModel: ObservableObject {
         items.removeAll { $0.image != nil && $0.image.flatMap(store.image(named:)) == nil }
 
         let present = Set(items.map(\.id))
-        regions = export.document.regions
-            .map { var r = $0; r.members = r.members.filter(present.contains); return r }
-            .filter { !$0.members.isEmpty }
+        regions = CanvasModel.pruned(export.document.regions, items: present)
         let anchors = present.union(regions.map(\.id))
         links = export.document.links.filter { anchors.contains($0.from) && anchors.contains($0.to) }
 
@@ -1133,11 +1232,7 @@ final class CanvasModel: ObservableObject {
     func deleteItems(_ ids: Set<UUID>) {
         items.removeAll { ids.contains($0.id) }
         links.removeAll { ids.contains($0.from) || ids.contains($0.to) }
-        let emptied = regions.filter { $0.members.allSatisfy(ids.contains) }.map(\.id)
-        regions = regions
-            .map { var r = $0; r.members = r.members.filter { !ids.contains($0) }; return r }
-            .filter { !$0.members.isEmpty }
-        links.removeAll { emptied.contains($0.from) || emptied.contains($0.to) }
+        pruneRegions()
         clearSelection()
         persist()
     }
@@ -1436,11 +1531,7 @@ final class CanvasModel: ObservableObject {
         items.removeAll { $0.id == id }
         // A line to something that is gone is a line to nowhere.
         links.removeAll { $0.from == id || $0.to == id }
-        let emptied = regions.filter { $0.members == [id] }.map(\.id)
-        regions = regions
-            .map { var r = $0; r.members = r.members.filter { $0 != id }; return r }
-            .filter { !$0.members.isEmpty }
-        links.removeAll { emptied.contains($0.from) || emptied.contains($0.to) }
+        pruneRegions()
         if selectedItems.contains(id) { select(items: selectedItems.subtracting([id])) }
         if editing == id { editing = nil }
         persist()
@@ -2883,6 +2974,10 @@ struct CanvasSurface: View {
     /// The system's own double-click interval, so this agrees with everything
     /// else the person's machine does.
     @State private var lastClick: (id: UUID, at: Date)?
+    /// The last click on bare canvas, for the same reason and counted the same
+    /// way. Where as well as when: two clicks a screen apart are two clicks,
+    /// however quickly they followed each other.
+    @State private var lastBlank: (at: Date, spot: CGPoint)?
     /// The item being moved, and where it started. Same reasoning as `panAtStart`.
     @State private var movingId: UUID?
     @State private var moveOrigin: CGPoint?
@@ -3176,7 +3271,12 @@ struct CanvasSurface: View {
         // Its members travel under the pointer for the whole drag, so without
         // this the likeliest outcome of moving a region is a line from the box
         // to something already inside it.
-        let carried = Set(model.regions.first { $0.id == moving }?.members ?? [])
+        // Every depth of it: a region can hold a region, and the inner one's
+        // cards travel under the pointer just as the outer one's do.
+        var carried = model.leaves(of: moving)
+        if model.regions.contains(where: { $0.id == moving }) {
+            carried.formUnion(nested(in: moving))
+        }
 
         // An item first: a region is mostly the things it holds, and dropping on
         // one of those means that one, not the box around it.
@@ -3189,10 +3289,25 @@ struct CanvasSurface: View {
         // Joining something to the box it is already inside is a line from a
         // thing to itself, drawn the long way round.
         if let region = model.region(at: here, excluding: moving),
+           !carried.contains(region.id),
            !region.members.contains(moving) {
             return region.id
         }
         return nil
+    }
+
+    /// The regions a region holds, however deep. Its own id is not in it.
+    private func nested(in region: UUID) -> Set<UUID> {
+        var found: Set<UUID> = []
+        var stack = [region]
+        var seen: Set<UUID> = []
+        while let next = stack.popLast() {
+            guard seen.insert(next).inserted else { continue }
+            guard let held = model.regions.first(where: { $0.id == next }) else { continue }
+            if next != region { found.insert(next) }
+            stack.append(contentsOf: held.members)
+        }
+        return found
     }
 
     /**
@@ -3535,11 +3650,26 @@ struct CanvasSurface: View {
     @ViewBuilder
     private func regionLayer(_ geo: GeometryProxy) -> some View {
         ZStack {
-            ForEach(model.regions) { region in
+            // Biggest first, so a box inside a box paints over the one that
+            // holds it rather than under it. Regions nest, and drawing them in
+            // the order they were made would hide the inner one behind the
+            // outer one's fill for no reason anybody could see.
+            ForEach(model.regions.sorted {
+                let a = model.box(of: $0).map { $0.width * $0.height } ?? 0
+                let b = model.box(of: $1).map { $0.width * $0.height } ?? 0
+                return a > b
+            }) { region in
                 if let box = model.box(of: region) {
                     let chosen = model.selectedRegion == region.id
                     let weight = region.strokeWidth / chrome.zoom
                     let aimed = linkTarget == region.id
+                    // While another region is taking members, this one is either
+                    // in it or not — the same mark the cards get, for the same
+                    // reason: the mode has to be visible on the things it is
+                    // about.
+                    let held: Bool? = addingTo.flatMap {
+                        $0 == region.id ? nil : model.isMember(region.id, of: $0)
+                    }
                     ZStack {
                         RoundedRectangle(cornerRadius: 10 / chrome.zoom)
                             .fill(aimed ? Theme.accent.opacity(0.14) : (Hex.color(region.fill) ?? .clear))
@@ -3559,6 +3689,22 @@ struct CanvasSurface: View {
                         }
                     }
                     .frame(width: box.width, height: box.height)
+                    .overlay {
+                        if let held {
+                            RoundedRectangle(cornerRadius: 10 / chrome.zoom)
+                                .fill(held ? Theme.accent.opacity(0.16) : .clear)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10 / chrome.zoom)
+                                        .strokeBorder(
+                                            held ? Theme.accent : Color.primary.opacity(0.25),
+                                            style: StrokeStyle(
+                                                lineWidth: 1.5 / chrome.zoom,
+                                                dash: held ? [] : [3 / chrome.zoom, 2 / chrome.zoom]
+                                            )
+                                        )
+                                )
+                        }
+                    }
                     // The name, above the box rather than in it. One line: it is
                     // a label for a group and not a paragraph, and a name that
                     // wrapped would push the box down away from the things it is
@@ -4197,6 +4343,10 @@ struct CanvasSurface: View {
                         // A region carried onto something joins to it, the same
                         // gesture and the same rule as one card onto another.
                         linkTarget = dropTarget(at: value.location, moving: id, in: geo)
+                        // Same as a card's drag: read every frame, because it is
+                        // a key somebody presses partway through, once they can
+                        // see what the drop is about to do.
+                        joining = NSEvent.modifierFlags.contains(.command)
                         return
                     }
                     /*
@@ -4270,7 +4420,18 @@ struct CanvasSurface: View {
                         return
                     }
                     if let id = draggingRegion {
-                        if let onto = linkTarget, let traveled = regionOrigin {
+                        if let onto = linkTarget, joining,
+                           model.regions.contains(where: { $0.id == onto }),
+                           !model.wouldLoop(id, into: onto) {
+                            // ⌘ and only ⌘, exactly as a card does it: a plain
+                            // drop onto a region connects to it, held down it
+                            // goes *into* it. Regions nest, so a box is one of
+                            // the things a box can hold — and it stays where it
+                            // was let go, because the outer box is the extent of
+                            // what it holds and has already grown to fit.
+                            model.join(region: onto, item: id)
+                            model.settled(); settleReload()
+                        } else if let onto = linkTarget, let traveled = regionOrigin {
                             // Back where it came from, and a line left behind.
                             // Exactly what dropping one card on another does,
                             // and it has to be exactly that or the two gestures
@@ -4284,6 +4445,7 @@ struct CanvasSurface: View {
                         draggingRegion = nil
                         regionOrigin = nil
                         linkTarget = nil
+                        joining = false
                         return
                     }
                     // A press on the background that never became a drag is
@@ -4300,6 +4462,32 @@ struct CanvasSurface: View {
                         let here = canvasPoint(value.location, in: size)
                         if let link = hitLink(at: value.location, in: size) {
                             model.select(link: link)
+                        } else if let region = model.region(at: here), addingTo != nil {
+                            /*
+                             In add-mode, clicking a region puts that region in
+                             or takes it out — regions nest, so a box is one of
+                             the things a box can hold.
+
+                             Its own inside is not a click on anything: the
+                             region being filled covers most of the canvas
+                             anybody is aiming at, and treating that as a
+                             refusal would put a complaint on screen every time
+                             somebody missed a card by a few points.
+                             */
+                            if let filling = addingTo, region.id != filling {
+                                if model.isLastMember(region.id, of: filling) {
+                                    trouble = "A region has to hold something — remove the region instead"
+                                } else if model.wouldLoop(region.id, into: filling) {
+                                    trouble = "That region already holds this one"
+                                } else {
+                                    model.toggle(region: filling, item: region.id)
+                                }
+                            }
+                            panAtStart = nil
+                            pressing = false
+                            dragging = false
+                            NSCursor.openHand.set()
+                            return
                         } else if let region = model.region(at: here) {
                             // Only where no item is — the inside of a region is
                             // mostly the things it holds, and clicking one of
@@ -4319,6 +4507,29 @@ struct CanvasSurface: View {
                             // selected selected.
                             model.clearSelection()
                             inspecting = nil
+                            /*
+                             And a *second* click on bare canvas puts something
+                             there, in whatever shape the strip is set to — the
+                             same node the text tool drops, without the trip to
+                             the strip and back.
+
+                             Counted here rather than by a `TapGesture(count: 2)`
+                             for the reason written out over the item's own
+                             double-click: two gestures cannot both have one
+                             press, and the drag has it.
+                             */
+                            let now = Date()
+                            let again = lastBlank.map {
+                                now.timeIntervalSince($0.at) < NSEvent.doubleClickInterval
+                                    && abs($0.spot.x - value.location.x) < 8
+                                    && abs($0.spot.y - value.location.y) < 8
+                            } ?? false
+                            if again {
+                                lastBlank = nil
+                                model.addText(at: here, shape: shape)
+                            } else {
+                                lastBlank = (now, value.location)
+                            }
                         }
                         confirmingDelete = nil
                         confirmingGroupDelete = false

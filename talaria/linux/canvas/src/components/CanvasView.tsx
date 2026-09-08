@@ -667,9 +667,39 @@ export function CanvasView({
     persistProps({ canvas_edges: next });
     for (const id of touched) emitBlockChange(id, "canvas-edges");
   };
+  /**
+   * Regions with dead members dropped, and regions left holding nothing dropped
+   * in turn.
+   *
+   * In turn, because a region can hold a region: emptying an inner one can empty
+   * the outer one that held only it, and that can go on. One pass would leave
+   * the outer box naming something that is no longer in the file.
+   *
+   * Only *region* members are judged. A member id that was never a region is a
+   * node, and this is not the place that knows which nodes exist — that is
+   * `updateRegionMembership`, which is about where things are rather than
+   * whether they are.
+   */
+  const pruneRegions = (next: CanvasRegion[]): CanvasRegion[] => {
+    const known = new Set([...regions, ...next].map((r) => r.id));
+    let kept = next;
+    for (;;) {
+      const alive = new Set(kept.map((r) => r.id));
+      const trimmed = kept
+        .map((r) => ({
+          ...r,
+          memberIds: r.memberIds.filter((m) => m !== r.id && (!known.has(m) || alive.has(m))),
+        }))
+        .filter((r) => r.memberIds.length > 0);
+      if (trimmed.length === kept.length) return trimmed;
+      kept = trimmed;
+    }
+  };
+
   const saveRegions = (next: CanvasRegion[]) => {
-    setRegions(next);
-    persistProps({ canvas_regions: next });
+    const kept = pruneRegions(next);
+    setRegions(kept);
+    persistProps({ canvas_regions: kept });
   };
   const patchRegion = (id: string, patch: Partial<CanvasRegion>) =>
     saveRegions(regions.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -711,7 +741,7 @@ export function CanvasView({
     return s;
   }, [edges]);
 
-  const rectOf = (id: string): Rect | null => {
+  const rectOf = (id: string, seen: Set<string> = new Set()): Rect | null => {
     if (id.startsWith("n:")) {
       const n = notes.find((x) => x.id === id);
       return n ? { x: n.x, y: n.y, w: n.w, h: n.h } : null;
@@ -729,7 +759,7 @@ export function CanvasView({
      * anything looked up a node.
      */
     const rg = regions.find((r) => r.id === id);
-    return rg ? regionRect(rg) : null;
+    return rg ? regionRect(rg, seen) : null;
   };
   /**
    * Alignment while dragging or resizing: a node's edges and centers look for
@@ -796,7 +826,11 @@ export function CanvasView({
    * `finishLink` reads `elementFromPoint`.
    */
   const dropTargetAt = (clientX: number, clientY: number, moving: string): string | null => {
-    const carried = new Set<string>(regions.find((rg) => rg.id === moving)?.memberIds ?? []);
+    // Every depth of it: a region can hold a region, and the inner one's cards
+    // travel under the pointer just as the outer one's do.
+    const carried = regions.some((rg) => rg.id === moving)
+      ? new Set<string>([...leavesOf(moving), ...nestedIn(moving)])
+      : new Set<string>();
     const stack = document.elementsFromPoint(clientX, clientY) as HTMLElement[];
     for (const el of stack) {
       const node = el.closest<HTMLElement>("[data-block-id]");
@@ -834,6 +868,9 @@ export function CanvasView({
   /** Into the box rather than onto it — the held-down drop. The region grows by
    *  itself, because it is the extent of what it holds. */
   const joinRegion = (regionId: string, nodeId: string) => {
+    // A member may be another region — boxes nest — but not one this box is
+    // already inside. See `wouldNest`.
+    if (wouldNest(nodeId, regionId)) return;
     const next = regions.map((rg) =>
       rg.id === regionId && !rg.memberIds.includes(nodeId)
         ? { ...rg, memberIds: [...rg.memberIds, nodeId] }
@@ -841,7 +878,9 @@ export function CanvasView({
     );
     saveRegions(next);
     if (nodeId.startsWith("n:")) persistProps({ canvas_notes: notes });
-    else {
+    else if (!regions.some((rg) => rg.id === nodeId)) {
+      // A region has no geometry of its own to write down — its box is the
+      // extent of what it holds — and no collection member to write it to.
       const r = rectOf(nodeId);
       if (r) persistMemberCtx(nodeId, r as NodeCtx);
     }
@@ -1305,8 +1344,8 @@ export function CanvasView({
   ];
 
   /** Bounding box (with region padding) of the given node ids. */
-  const rectFromIds = (ids: string[]): Rect | null => {
-    const rs = ids.map(rectOf).filter((r): r is Rect => r !== null);
+  const rectFromIds = (ids: string[], seen: Set<string> = new Set()): Rect | null => {
+    const rs = ids.map((id) => rectOf(id, seen)).filter((r): r is Rect => r !== null);
     if (!rs.length) return null;
     const x1 = Math.min(...rs.map((r) => r.x));
     const y1 = Math.min(...rs.map((r) => r.y));
@@ -1314,7 +1353,61 @@ export function CanvasView({
     const y2 = Math.max(...rs.map((r) => r.y + r.h));
     return { x: x1 - REGION_PAD, y: y1 - REGION_TOP, w: x2 - x1 + REGION_PAD * 2, h: y2 - y1 + REGION_TOP + REGION_PAD };
   };
-  const regionRect = (rg: CanvasRegion) => rectFromIds(rg.memberIds);
+  /*
+   * A region's box, which may be worked out through other regions' boxes:
+   * regions nest, and `rectOf` answers for a region id as readily as for a
+   * node's.
+   *
+   * `seen` is the stop. A loop cannot be made through the UI — `wouldNest`
+   * refuses it — but a `canvas.json` can arrive with one, and the recursion
+   * that draws the canvas must not be the thing that finds out.
+   */
+  const regionRect = (rg: CanvasRegion, seen: Set<string> = new Set()): Rect | null =>
+    seen.has(rg.id) ? null : rectFromIds(rg.memberIds, new Set(seen).add(rg.id));
+
+  /** Every node a region holds, however deep — its nested regions resolved away.
+   *  A Set, because two nested boxes may hold the same card and moving it once
+   *  per box would move it twice as far as the pointer went. */
+  const leavesOf = (regionId: string): string[] => {
+    const found = new Set<string>();
+    const seen = new Set<string>();
+    const stack = [regionId];
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      const rg = regions.find((r) => r.id === next);
+      if (rg) stack.push(...rg.memberIds);
+      else found.add(next);
+    }
+    return [...found];
+  };
+
+  /** The regions a region holds, however deep. Its own id is not in it. */
+  const nestedIn = (regionId: string): Set<string> => {
+    const found = new Set<string>();
+    const seen = new Set<string>();
+    const stack = [regionId];
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      const rg = regions.find((r) => r.id === next);
+      if (!rg) continue;
+      if (next !== regionId) found.add(next);
+      stack.push(...rg.memberIds);
+    }
+    return found;
+  };
+
+  /**
+   * Whether putting `member` inside `region` would make a box that contains
+   * itself.
+   *
+   * Asked before the join rather than coped with afterwards: a loop has no
+   * extent, so both boxes would simply stop being drawn — the region would look
+   * deleted, by a gesture that said "put this in here".
+   */
+  const wouldNest = (member: string, region: string): boolean =>
+    member === region || nestedIn(member).has(region);
   const inRect = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
   /** Mirror a region change into its linked collection (best-effort). */
@@ -1686,8 +1779,12 @@ export function CanvasView({
     const rg = regions.find((r) => r.id === id);
     if (!rg) return;
     const p = toCanvas(e.clientX, e.clientY);
+    // The nodes, not the members: a member may be another region, which has no
+    // geometry of its own to move. Resolving to leaves is also what keeps a card
+    // held by both an inner and an outer box from traveling twice as far as the
+    // pointer.
     const starts: Record<string, Rect> = {};
-    for (const mid of rg.memberIds) {
+    for (const mid of leavesOf(rg.id)) {
       const r = rectOf(mid);
       if (r) starts[mid] = { ...r };
     }
@@ -1868,7 +1965,12 @@ export function CanvasView({
       // knows to skip whatever it is carrying: "its members travel under the
       // pointer for the whole drag, so without this the likeliest outcome of
       // moving a region is a line from the box to something already inside it."
-      if (d.kind === "region") aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
+      if (d.kind === "region") {
+        aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
+        // Sampled every move, like a node's: a pointerup does not always carry
+        // the modifier that was down a moment before it.
+        joining.current = e.metaKey || e.ctrlKey;
+      }
       const dx = p.x - d.sx;
       const dy = p.y - d.sy;
       for (const [mid, start] of Object.entries(d.starts)) {
@@ -1958,6 +2060,23 @@ export function CanvasView({
       return;
     }
     if (d.kind === "region" && d.moved) {
+      if (onto && joining.current && regions.some((rg) => rg.id === onto) && !wouldNest(d.id, onto)) {
+        /*
+         * Held down, a drop onto a region means *into* it — the same trade a
+         * node makes, and the reason regions nest at all. The box stays where it
+         * was let go, because the outer box is the extent of what it holds and
+         * has already grown to fit.
+         */
+        joinRegion(onto, d.id);
+        persistProps({ canvas_notes: notes });
+        for (const mid of leavesOf(d.id)) {
+          if (mid.startsWith("n:")) continue;
+          const r = rectOf(mid);
+          if (r) persistMemberCtx(mid, r as NodeCtx);
+        }
+        setSelected([]);
+        return;
+      }
       if (onto) {
         // Dropped on something: the box and everything it carries go back, and
         // a line is what is left behind — the same trade a node makes.
@@ -1969,7 +2088,7 @@ export function CanvasView({
       const rg = regions.find((r) => r.id === d.id);
       if (rg) {
         persistProps({ canvas_notes: notes });
-        for (const mid of rg.memberIds) {
+        for (const mid of leavesOf(rg.id)) {
           if (mid.startsWith("n:")) continue;
           const r = rectOf(mid);
           if (r) persistMemberCtx(mid, r as NodeCtx);

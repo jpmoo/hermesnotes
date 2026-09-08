@@ -486,12 +486,26 @@ function patchProperties(props: Record<string, unknown>) {
     held.links = (props.canvas_edges as Record<string, unknown>[]).map(linkFromEdge);
   }
   if (Array.isArray(props.canvas_regions)) {
-    held.regions = (props.canvas_regions as Record<string, unknown>[]).map((region) => ({
-      id: String(region.id),
-      title: typeof region.title === "string" ? region.title : "",
-      fill: (region.color as string) ?? null,
-      members: ((region.memberIds as string[]) ?? []).map((end) => endIn(held, end)),
-    }));
+    // Merged onto what was there, not rebuilt from what came back.
+    //
+    // The component knows four things about a region — id, title, colour and
+    // members — and a region in the file has five more: its alignment, its text
+    // colour, and the three that describe its outline. Replacing the object
+    // with the four dropped the other five on every write, so a canvas made in
+    // the macOS app lost its region styling the first time anything moved here.
+    //
+    // The same care `itemFromNote` takes, for the same reason.
+    const was = new Map(held.regions.map((r) => [r.id, r]));
+    held.regions = (props.canvas_regions as Record<string, unknown>[]).map((region) => {
+      const id = String(region.id);
+      return {
+        ...(was.get(id) ?? { id, members: [] }),
+        id,
+        title: typeof region.title === "string" ? region.title : "",
+        fill: (region.color as string) ?? null,
+        members: ((region.memberIds as string[]) ?? []).map((end) => endIn(held, end)),
+      };
+    });
   }
   save();
 }

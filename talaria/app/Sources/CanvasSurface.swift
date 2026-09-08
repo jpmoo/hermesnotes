@@ -218,6 +218,22 @@ struct CanvasItem: Identifiable, Equatable, Codable {
      */
     var image: String?
     /**
+     Pictures a node carries, and whether they are shown instead of its words.
+
+     Neither is drawn here — this canvas shows the one picture `image` names —
+     and both are kept anyway, because the Linux canvas writes them and a file
+     the two platforms share has to survive being opened by either.
+
+     A field that is merely *unmodelled* is not passed through. `Codable` reads
+     the keys it knows and writes the keys it knows, so an unknown one is
+     decoded to nothing and then not written back: a canvas made on Linux with
+     several pictures on a node lost them the first time this app saved it, and
+     nothing anywhere said so. Carrying a field one renderer does not use is the
+     price of one document and two programs.
+     */
+    var images: [String]?
+    var showImage: Bool?
+    /**
      The Hermes block this node stands for, if somebody made one.
 
      An id and nothing else. Not a copy of the title, the type, the status or
@@ -326,6 +342,9 @@ struct CanvasItem: Identifiable, Equatable, Codable {
         text = try c.decode(String.self, forKey: .text)
         shape = try c.decodeIfPresent(CanvasShape.self, forKey: .shape) ?? .plain
         image = try c.decodeIfPresent(String.self, forKey: .image)
+        // Read so they can be written again. See the declarations.
+        images = try c.decodeIfPresent([String].self, forKey: .images)
+        showImage = try c.decodeIfPresent(Bool.self, forKey: .showImage)
         blockId = try c.decodeIfPresent(String.self, forKey: .blockId)
         hAlign = try c.decodeIfPresent(TextAlign.self, forKey: .hAlign) ?? .center
         vAlign = try c.decodeIfPresent(TextVAlign.self, forKey: .vAlign) ?? .middle

@@ -712,9 +712,7 @@ export function CanvasView({
    * the outer box naming something that is no longer in the file.
    *
    * Only *region* members are judged. A member id that was never a region is a
-   * node, and this is not the place that knows which nodes exist — that is
-   * `updateRegionMembership`, which is about where things are rather than
-   * whether they are.
+   * node, and this is not the place that knows which nodes exist.
    */
   const pruneRegions = (next: CanvasRegion[]): CanvasRegion[] => {
     const known = new Set([...regions, ...next].map((r) => r.id));
@@ -859,13 +857,13 @@ export function CanvasView({
    *
    * The Mac's `addingTo`, and its reasoning, which is the part worth copying:
    * a drop-to-join is faster once you know about it, and this is "how they find
-   * out there is anything to know". It is also the only way to take one thing
-   * *out* of a region without deleting it — dragging a member out means hauling
-   * it past the region's whole outline, which is a different intent.
+   * out there is anything to know" — except that here it is not one way among
+   * several, it is the only one. Dropping a node on a region draws a line to
+   * the region; dragging a member anywhere leaves it a member. Membership has a
+   * single door, in and out, and this is it.
    */
   const [addingTo, setAddingTo] = useState<string | null>(null);
 
-  const joining = useRef(false);
 
   /**
    * What a node let go here would land on.
@@ -1509,42 +1507,7 @@ export function CanvasView({
     member === region || nestedIn(member).has(region);
   const inRect = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-  /**
-   * After a node drag: joins the region it landed in. Nothing ever leaves.
-   *
-   * There used to be a boundary — a member had to be hauled past its region's
-   * pre-drag outline plus ninety pixels of grace before it was dropped from it,
-   * with the grace there to stop an ordinary nudge ejecting something. It is
-   * gone, and the reason is that membership now has a way to be *said*: the `+`
-   * on a region turns on add-mode and a click takes a thing out. A gesture that
-   * removes something as a side effect of moving it is guesswork wearing a
-   * threshold, and no threshold makes "I was rearranging" and "I meant to take
-   * this out of the box" the same shape.
-   *
-   * So a member dragged anywhere stays a member, and the region reshapes around
-   * it — which it does by itself, a region being the extent of what it holds.
-   */
-  const updateRegionMembership = (nodeId: string) => {
-    const r = rectOf(nodeId);
-    if (!r) return;
-    const cx = r.x + r.w / 2;
-    const cy = r.y + r.h / 2;
-    let changed = false;
-    const next = regions
-      .map((rg) => {
-        if (rg.memberIds.includes(nodeId)) return rg;
-        // Joining uses the strict current outline — dropping INTO a region
-        // should feel precise, not magnetic.
-        const base = rectFromIds(rg.memberIds.filter((id) => id !== nodeId));
-        if (base && inRect(base, cx, cy)) {
-          changed = true;
-          return { ...rg, memberIds: [...rg.memberIds, nodeId] };
-        }
-        return rg;
-      })
-      .filter((rg) => rg.memberIds.length > 0);
-    if (changed) saveRegions(next);
-  };
+
 
   const persistMemberCtx = (blockId: string, ctx: NodeCtx) =>
     void api.patch(`/collections/${cid}/members/${blockId}`, {
@@ -2014,7 +1977,6 @@ export function CanvasView({
       aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
       // Sampled here rather than read on release: a pointerup does not always
       // carry the modifier that was down a moment before it.
-      joining.current = e.ctrlKey;
       const cur = rectOf(d.id);
       if (!cur) return;
       const free = { ...cur, x: p.x - d.dx, y: p.y - d.dy };
@@ -2056,9 +2018,6 @@ export function CanvasView({
       // moving a region is a line from the box to something already inside it."
       if (d.kind === "region") {
         aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
-        // Sampled every move, like a node's: a pointerup does not always carry
-        // the modifier that was down a moment before it.
-        joining.current = e.ctrlKey;
       }
       const dx = p.x - d.sx;
       const dy = p.y - d.sy;
@@ -2150,24 +2109,6 @@ export function CanvasView({
       return;
     }
     if (d.kind === "region" && d.moved) {
-      if (onto && !joining.current && regions.some((rg) => rg.id === onto) && !wouldNest(d.id, onto)) {
-        /*
-         * A region dropped on a region goes inside it — the same trade a node
-         * makes, and the reason regions nest at all. The box stays where it was
-         * let go, because the outer box is the extent of what it holds and has
-         * already grown to fit. Hold the modifier to draw a line between them
-         * instead.
-         */
-        joinRegion(onto, d.id);
-        persistProps({ canvas_notes: notes });
-        for (const mid of leavesOf(d.id)) {
-          if (mid.startsWith("n:")) continue;
-          const r = rectOf(mid);
-          if (r) persistMemberCtx(mid, r as NodeCtx);
-        }
-        setSelected([]);
-        return;
-      }
       if (onto) {
         // Dropped on something: the box and everything it carries go back, and
         // a line is what is left behind — the same trade a node makes.
@@ -2190,37 +2131,25 @@ export function CanvasView({
     if (d.kind === "node" && d.moved) {
       if (onto) {
         /*
-         * Dropped on something. Onto a node that means a connection; onto a
-         * region it means *into* the region.
+         * Dropped on something, so this is a connection — onto a node or onto a
+         * region, both of which are things a line may end at.
          *
-         * It was the other way round — plain connected, and the modifier put it
-         * in — which is the Mac's ⌘ trade, and it made the ordinary thing
-         * impossible to find. Dragging a card into a box is the gesture
-         * everybody tries first, and it drew a line to the box and put the card
-         * back; there was nothing on screen to suggest a key. A region has its
-         * own connect handles for the rarer intent, and the modifier still
-         * reaches it.
-         *
-         * A node is different and keeps its old meaning: two cards on a canvas
-         * are things you relate far more often than things you nest.
+         * **Dropping never changes membership.** Putting something in a box is
+         * the `+` and nothing else: one way in, one way out, and a gesture that
+         * means the same thing wherever it lands. This has been all three ways
+         * round now — the Mac's modifier, then a plain drop joining, and now
+         * neither — and the version that reads best is the one where a drag is
+         * always about position and a line, never about belonging.
          */
-        const ontoRegion = regions.some((rg) => rg.id === onto);
-        const intoRegion = ontoRegion && !joining.current;
-        if (intoRegion) {
-          joinRegion(onto, d.id);
-        } else {
-          moveTo(d.id, d.from);
-          toggleLink(d.id, onto);
-          setSelected([]);
-        }
-        joining.current = false;
+        moveTo(d.id, d.from);
+        toggleLink(d.id, onto);
+        setSelected([]);
         return;
       }
       const r = rectOf(d.id);
       if (!r) return;
       if (d.id.startsWith("n:")) persistProps({ canvas_notes: notes });
       else persistMemberCtx(d.id, r as NodeCtx);
-      updateRegionMembership(d.id);
     } else if (d.kind === "resize") {
       const r = rectOf(d.id);
       if (!r) return;

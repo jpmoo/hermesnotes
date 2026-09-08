@@ -93,6 +93,26 @@ npm install
 ./buildPlugin.sh
 ```
 
+## SDK version, and why it matters more than it looks
+
+Pinned to `sn-plugin-lib` **0.1.65**, not the `^0.1.43` the scaffold came with.
+
+0.1.65 added a permission gate — `plugin.permission.FILE:WRITE`,
+`FILE:DELETE` and `INTERNET` — and firmware that enforces it refuses plugins
+built against the SDK before it, with a message about the plugin not working
+with this version and needing an update. That reads like a broken plugin and is
+not one: every plugin built against 0.1.43 stops installing at the same moment,
+which is the tell.
+
+`src/permissions.ts` asks for each at the point it is needed rather than three
+dialogs at launch — file write and delete on the button press, network before
+pairing and before sending — so the dialog arrives with its reason on screen. An
+SDK with no permission API is treated as granting everything, so this does not
+break itself on older firmware while being careful about newer.
+
+Pinned rather than caret, because the version is a compatibility claim about
+somebody's device and not a dependency to float.
+
 ## Known unfinished
 
 - **Never run on a device.** See above.

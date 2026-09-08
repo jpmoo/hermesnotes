@@ -37,6 +37,7 @@ import {
 import { HermesFile } from './src/native';
 import { load, save, type Settings } from './src/settings';
 import { current, watch, type Capture } from './src/session';
+import { INTERNET, ensure } from './src/permissions';
 
 type Kind = 'note' | 'task';
 
@@ -99,6 +100,13 @@ function App(): React.JSX.Element {
     setBusy(true);
     setTrouble(null);
     try {
+      // Network access is a permission the host grants per plugin now. Asked
+      // here rather than at launch, so the dialog arrives with a reason
+      // visible on screen.
+      if (!(await ensure(INTERNET))) {
+        setTrouble('network permission was refused, so this cannot reach Hermes');
+        return;
+      }
       const root = where.replace(/\/+$/, '').replace(/\/api$/, '');
       const res = await fetch(`${root}/api/auth/pair/start`, {
         method: 'POST',
@@ -163,6 +171,10 @@ function App(): React.JSX.Element {
     setBusy(true);
     setTrouble(null);
     try {
+      if (!(await ensure(INTERNET))) {
+        setTrouble('network permission was refused, so this cannot reach Hermes');
+        return;
+      }
       const file = await HermesFile.read(capture.png);
       const hermes = new Hermes(settings.base, settings.token);
 

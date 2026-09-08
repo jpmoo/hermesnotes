@@ -9,6 +9,7 @@ import App from './App';
 import { name as appName } from './app.json';
 import { FileUtils, PluginCommAPI, PluginManager } from 'sn-plugin-lib';
 import { begin, set } from './src/session';
+import { DELETE, WRITE, ensureAll } from './src/permissions';
 
 const BUTTON_ID = 1;
 
@@ -47,7 +48,18 @@ PluginManager.registerButtonListener({
   onButtonPress: (event) => {
     if (!event || event.id !== BUTTON_ID) return;
     begin();
-    capture()
+    // Writing the PNG and clearing the sticker behind it are both gated now.
+    // Asked here, where a dialog arrives immediately after a deliberate tap,
+    // rather than at launch where it would arrive out of nowhere.
+    ensureAll(WRITE, DELETE)
+      .then((refused) => {
+        if (refused) {
+          throw new Error(
+            `${refused.split(':').pop()} permission was refused — the selection cannot be saved`,
+          );
+        }
+        return capture();
+      })
       .then((got) => set({ working: false, png: got.png, noteName: got.noteName }))
       .catch((err) => {
         set({

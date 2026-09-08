@@ -568,3 +568,23 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .cv-node:active .cv-paper { cursor: grabbing; }
 .cv-node[data-editing="1"] .cv-paper { cursor: auto; }
 .cv-node[data-editing="1"] .longtext-area { cursor: text; }
+
+/* The region's "+", and the mode it turns on ---------------------------------
+ * Small, in the title band, and only while the region is selected — the Mac
+ * shows its chrome the same way and for the same reason: a box covered in
+ * buttons is a box you cannot see the contents of.
+ */
+.cv-region-add {
+  margin-left: 6px;
+  width: 14px; height: 14px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: color-mix(in srgb, CanvasText 45%, transparent);
+  color: Canvas;
+  font: 700 10px/1 system-ui, sans-serif;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.cv-region-add:hover { background: color-mix(in srgb, CanvasText 65%, transparent); }
+/* On, and saying so: the mode stays until you press the canvas or Escape, and
+ * nothing else on screen would tell you it is still running. */
+.cv-region-add.on { background: var(--accent, CanvasText); }

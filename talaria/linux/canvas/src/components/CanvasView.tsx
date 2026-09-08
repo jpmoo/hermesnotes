@@ -846,6 +846,25 @@ export function CanvasView({
     showLinkTarget((was) => (was === id ? was : id));
   };
   /** Whether "into the region" was asked for, sampled while dragging. */
+  /*
+   * Whether this drag means "connect" rather than "put inside".
+   *
+   * Ctrl alone, and not Meta. On this desktop Meta belongs to the compositor —
+   * Meta+drag is how KWin moves a window, so the key never reaches the page and
+   * a gesture built on it is a gesture that does not exist here. The Mac reads
+   * ⌘ for the same idea and is welcome to; this is the Linux shell.
+   */
+  /*
+   * A region in add-mode: clicking things puts them in or takes them out.
+   *
+   * The Mac's `addingTo`, and its reasoning, which is the part worth copying:
+   * a drop-to-join is faster once you know about it, and this is "how they find
+   * out there is anything to know". It is also the only way to take one thing
+   * *out* of a region without deleting it — dragging a member out means hauling
+   * it past the region's whole outline, which is a different intent.
+   */
+  const [addingTo, setAddingTo] = useState<string | null>(null);
+
   const joining = useRef(false);
 
   /**
@@ -902,6 +921,28 @@ export function CanvasView({
 
   /** Into the box rather than onto it — the held-down drop. The region grows by
    *  itself, because it is the extent of what it holds. */
+  /** In add-mode, a click on a thing means in-or-out rather than select. */
+  const toggleMembership = (regionId: string, nodeId: string) => {
+    const rg = regions.find((r) => r.id === regionId);
+    if (!rg || rg.id === nodeId) return;
+    if (!rg.memberIds.includes(nodeId)) {
+      if (wouldNest(nodeId, regionId)) {
+        showToast("That box is already outside this one.");
+        return;
+      }
+      return joinRegion(regionId, nodeId);
+    }
+    // Refusing silently is indistinguishable from a click that did not
+    // register — the Mac says the same thing in the same situation.
+    if (rg.memberIds.length <= 1) {
+      showToast("A region has to hold something — delete the region instead.");
+      return;
+    }
+    saveRegions(regions.map((r) => (
+      r.id === regionId ? { ...r, memberIds: r.memberIds.filter((m) => m !== nodeId) } : r
+    )));
+  };
+
   const joinRegion = (regionId: string, nodeId: string) => {
     // A member may be another region — boxes nest — but not one this box is
     // already inside. See `wouldNest`.
@@ -1799,8 +1840,10 @@ export function CanvasView({
     e.preventDefault(); // stop text-selection sweeps while panning/selecting
     dropCaret();
     // A press on bare canvas puts the open field away, which is what makes the
-    // next press on that node a drag rather than a caret.
+    // next press on that node a drag rather than a caret — and ends add-mode,
+    // which is the same gesture meaning "done with that box".
     setEditingNode(null);
+    setAddingTo(null);
     /*
      * Shift, or the Select tool.
      *
@@ -1930,7 +1973,7 @@ export function CanvasView({
     // canvas worth dragging that way.
     const noDrag = (e: Event) => e.preventDefault();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setLinking(null);
+      if (e.key === "Escape") { setLinking(null); setAddingTo(null); }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -1976,7 +2019,7 @@ export function CanvasView({
       aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
       // Sampled here rather than read on release: a pointerup does not always
       // carry the modifier that was down a moment before it.
-      joining.current = e.metaKey || e.ctrlKey;
+      joining.current = e.ctrlKey;
       const cur = rectOf(d.id);
       if (!cur) return;
       const free = { ...cur, x: p.x - d.dx, y: p.y - d.dy };
@@ -2020,7 +2063,7 @@ export function CanvasView({
         aimAt(dropTargetAt(e.clientX, e.clientY, d.id));
         // Sampled every move, like a node's: a pointerup does not always carry
         // the modifier that was down a moment before it.
-        joining.current = e.metaKey || e.ctrlKey;
+        joining.current = e.ctrlKey;
       }
       const dx = p.x - d.sx;
       const dy = p.y - d.sy;
@@ -2111,12 +2154,13 @@ export function CanvasView({
       return;
     }
     if (d.kind === "region" && d.moved) {
-      if (onto && joining.current && regions.some((rg) => rg.id === onto) && !wouldNest(d.id, onto)) {
+      if (onto && !joining.current && regions.some((rg) => rg.id === onto) && !wouldNest(d.id, onto)) {
         /*
-         * Held down, a drop onto a region means *into* it — the same trade a
-         * node makes, and the reason regions nest at all. The box stays where it
-         * was let go, because the outer box is the extent of what it holds and
-         * has already grown to fit.
+         * A region dropped on a region goes inside it — the same trade a node
+         * makes, and the reason regions nest at all. The box stays where it was
+         * let go, because the outer box is the extent of what it holds and has
+         * already grown to fit. Hold the modifier to draw a line between them
+         * instead.
          */
         joinRegion(onto, d.id);
         persistProps({ canvas_notes: notes });
@@ -2150,15 +2194,22 @@ export function CanvasView({
     if (d.kind === "node" && d.moved) {
       if (onto) {
         /*
-         * Dropped on something, so this was a connection rather than a move.
+         * Dropped on something. Onto a node that means a connection; onto a
+         * region it means *into* the region.
          *
-         * Held down, a drop onto a region means *into* it instead: the card
-         * stays where it was let go and the box grows to include it, which it
-         * does by itself because a region is the extent of what it holds. Plain,
-         * it connects — "one gesture, one meaning". The Mac reads ⌘ for that;
-         * here it is the same key by its own name.
+         * It was the other way round — plain connected, and the modifier put it
+         * in — which is the Mac's ⌘ trade, and it made the ordinary thing
+         * impossible to find. Dragging a card into a box is the gesture
+         * everybody tries first, and it drew a line to the box and put the card
+         * back; there was nothing on screen to suggest a key. A region has its
+         * own connect handles for the rarer intent, and the modifier still
+         * reaches it.
+         *
+         * A node is different and keeps its old meaning: two cards on a canvas
+         * are things you relate far more often than things you nest.
          */
-        const intoRegion = joining.current && regions.some((rg) => rg.id === onto);
+        const ontoRegion = regions.some((rg) => rg.id === onto);
+        const intoRegion = ontoRegion && !joining.current;
         if (intoRegion) {
           joinRegion(onto, d.id);
         } else {
@@ -3021,6 +3072,15 @@ export function CanvasView({
       // Anywhere on a grouped node is a grip. The resize corners and connect
       // handles stop propagation, so they keep their own jobs.
       onPointerDown={(e) => {
+        // Add-mode first: while a region is filling, a press on a thing means
+        // in-or-out and nothing else. The region stays selected throughout, so
+        // its buttons stay put and the mode is visibly still on.
+        if (addingTo) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleMembership(addingTo, id);
+          return;
+        }
         const group = groupWith(id);
         if (group) return startGroupDrag(group, id, e);
         // A press on the node itself rather than into its text selects it —
@@ -3277,6 +3337,30 @@ export function CanvasView({
             >
               <div className="cv-region-title">
                 {rg.title || "Region"}
+                {/*
+                  * The discoverable half of "put things in a box".
+                  *
+                  * Shown when the region is selected, which is when somebody is
+                  * already thinking about this box. Dropping a card in does the
+                  * same thing faster; this is how anybody finds out there is
+                  * anything to know, and it is the only way to take one thing
+                  * out again without deleting it.
+                  */}
+                {selected.includes(rg.id) && !locked && (
+                  <button
+                    className={`cv-region-add${addingTo === rg.id ? " on" : ""}`}
+                    title={addingTo === rg.id
+                      ? "Click things to add or remove them"
+                      : "Add things to this region"}
+                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAddingTo((a) => (a === rg.id ? null : rg.id));
+                    }}
+                  >
+                    +
+                  </button>
+                )}
               </div>
               {/* The same four handles a node has, so a region is a place a
                   line can start as well as one it can land on. Without these it

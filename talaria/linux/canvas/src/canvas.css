@@ -539,3 +539,32 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .exporting, .exporting body, .exporting .cv-wrap { overflow: hidden !important; }
 /* The dashed mark on a linked node says "this lives elsewhere", which is a fact
  * about the canvas and not about the drawing; it stays. */
+
+/* --- Click selects, double-click edits, drag moves -------------------------
+ *
+ * The Mac's rule (`CanvasSurface.swift`), and the reason this is CSS rather
+ * than event handling: the body of a node *is* a text field, so as long as it
+ * takes the pointer, a press is a caret and a drag is a text selection. That
+ * left a 16-pixel grip at the top as the only way to move a node — with the
+ * four connect dots on the edges either side of it — so dragging a node into a
+ * region was a coin toss between selecting its words and drawing a connection
+ * out of it.
+ *
+ * Inert until the node is the one being edited. Scoped to the writing: a linked
+ * node's status box is not text and stays clickable, which is the one
+ * interaction those are allowed.
+ */
+.cv-node .longtext,
+.cv-node .longtext-area {
+  pointer-events: none;
+}
+.cv-node[data-editing="1"] .longtext,
+.cv-node[data-editing="1"] .longtext-area {
+  pointer-events: auto;
+}
+/* And the paper says what a press will do, rather than offering an I-beam over
+ * something that will not take one. */
+.cv-node .cv-paper { cursor: grab; }
+.cv-node:active .cv-paper { cursor: grabbing; }
+.cv-node[data-editing="1"] .cv-paper { cursor: auto; }
+.cv-node[data-editing="1"] .longtext-area { cursor: text; }

@@ -519,6 +519,23 @@ export function CanvasView({
   // rest (the CSS calc() is only a first-paint fallback).
   // Which element owns the swipe in progress, and when it was last fed.
   const wheelGesture = useRef<{ el: HTMLElement | null; at: number }>({ el: null, at: 0 });
+  /*
+   * The node whose words are open for editing, and only that one.
+   *
+   * The Mac's rule, in `CanvasSurface.swift`: a click selects, a double-click
+   * begins editing, and a drag moves. Here the body of every node was a live
+   * text field, so a press put a caret in it and a drag selected text — which
+   * left a 16-pixel grip at the top as the only way to move a node, with the
+   * four connect dots sitting on the edges either side of it. Trying to drag a
+   * node into a region was a coin toss between selecting its text and drawing a
+   * connection out of it.
+   *
+   * The field is made inert (`pointer-events: none`, in `canvas.css`) until the
+   * node is this one, which is what lets a press anywhere on the paper be a
+   * drag. Scoped to the writing: a linked node's status box is not text and
+   * stays clickable, which is the one interaction those are allowed.
+   */
+  const [editingNode, setEditingNode] = useState<string | null>(null);
   const [wrapH, setWrapH] = useState<number | null>(null);
   useEffect(() => {
     const measure = () => {
@@ -1781,6 +1798,9 @@ export function CanvasView({
     if (e.target !== e.currentTarget) return;
     e.preventDefault(); // stop text-selection sweeps while panning/selecting
     dropCaret();
+    // A press on bare canvas puts the open field away, which is what makes the
+    // next press on that node a drag rather than a caret.
+    setEditingNode(null);
     /*
      * Shift, or the Select tool.
      *
@@ -3010,8 +3030,64 @@ export function CanvasView({
         if (!t.closest?.("input, textarea, select, [contenteditable=true]")) {
           setSelected([id]);
           dropCaret();
+          // …and moves it. Pressing a different node also puts the last one's
+          // words away, so there is never more than one field open and a press
+          // is always a drag somewhere.
+          if (editingNode !== id) setEditingNode(null);
+          startNodeDrag(id, e);
         }
       }}
+      onDoubleClick={(e) => {
+        if (locked) return;
+        const t = e.target as HTMLElement;
+        if (t.closest?.(".cv-handle, .cv-corner, .cv-grab")) return;
+        setEditingNode(id);
+        /*
+         * …and the caret goes where the second click landed.
+         *
+         * The field was inert when that click arrived, so it never saw it: a
+         * double-click would open the node and leave you to click a third time.
+         * There is nothing to `focus()` either — the note field is a stack of
+         * rendered blocks and only becomes a textarea when one is clicked
+         * (`notefield.js`), so the click is what has to be replayed.
+         *
+         * After a paint, because the element only stops being inert once React
+         * has written the attribute the stylesheet keys on.
+         */
+        const { clientX, clientY } = e;
+        const node = e.currentTarget as HTMLElement;
+        /*
+         * The block under the pointer, clicked once it exists.
+         *
+         * Two things make this awkward and both are timing. `elementFromPoint`
+         * looks the obvious way and cannot work: it skips anything with
+         * `pointer-events: none`, and the field is still inert on the frame
+         * this is scheduled from — so it answers with the body underneath,
+         * whose `closest(".note-block")` is nothing. And the blocks themselves
+         * are drawn by `notefield.js` after React has re-rendered, so on the
+         * next frame there may be nothing to click yet.
+         *
+         * So: look down from the node, match the point against the blocks' own
+         * rectangles, and try again for a few frames if none are there. Bounded,
+         * because a node that never grows a block is a picture, and a picture
+         * has no words to put a caret in.
+         */
+        let tries = 12;
+        const land = () => {
+          const blocks = [...node.querySelectorAll<HTMLElement>(".note-block")];
+          if (!blocks.length) {
+            if (tries-- > 0) requestAnimationFrame(land);
+            return;
+          }
+          const hit = blocks.find((el) => {
+            const r = el.getBoundingClientRect();
+            return clientY >= r.top && clientY <= r.bottom;
+          });
+          (hit ?? blocks[blocks.length - 1]).click();
+        };
+        requestAnimationFrame(land);
+      }}
+      {...(editingNode === id ? { "data-editing": "1" } : {})}
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}
       onContextMenu={(e) => {

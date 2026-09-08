@@ -56,6 +56,7 @@ struct CanvasPrint: View {
             if let item = items.first(where: { $0.id == id }) { return item.rect }
             guard let inner = regions.first(where: { $0.id == id }) else { return nil }
             return box(of: inner, items: items, regions: regions, visiting: seen)
+                .map { CanvasRegion.withTitle(of: inner, box: $0) }
         }
         return CanvasRegion.box(of: held)
     }

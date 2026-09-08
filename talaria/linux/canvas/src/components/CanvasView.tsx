@@ -836,8 +836,7 @@ export function CanvasView({
       const node = el.closest<HTMLElement>("[data-block-id]");
       const id = node?.dataset.blockId;
       if (!id || id === moving || carried.has(id)) continue;
-      const region = regions.find((rg) => rg.id === id);
-      if (region && region.memberIds.includes(moving)) continue;
+      if (regions.some((rg) => rg.id === id) && holds(moving, id)) continue;
       return id;
     }
     return null;
@@ -1380,6 +1379,29 @@ export function CanvasView({
       else found.add(next);
     }
     return [...found];
+  };
+
+  /**
+   * Whether a region holds this at any depth.
+   *
+   * Not the same question as `memberIds.includes`, and the difference is a bug
+   * that only appears once regions nest: a card in an inner box is *inside* the
+   * outer box too, but is not one of its members. The drop target has to mean
+   * this one, or moving a card about inside its own group draws a line from the
+   * card to the group.
+   */
+  const holds = (id: string, regionId: string): boolean => {
+    const seen = new Set<string>();
+    const stack = [regionId];
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      const rg = regions.find((r) => r.id === next);
+      if (!rg) continue;
+      if (rg.memberIds.includes(id)) return true;
+      stack.push(...rg.memberIds);
+    }
+    return false;
   };
 
   /** The regions a region holds, however deep. Its own id is not in it. */

@@ -477,6 +477,25 @@ struct CanvasRegion: Identifiable, Equatable, Codable {
         strokeStyle = try c.decodeIfPresent(LineStyle.self, forKey: .strokeStyle) ?? .dashed
     }
 
+    /**
+     A box with room above it for its own name.
+
+     A region's title is written *outside* the box, in a band above it. That is
+     invisible until a region holds a region: the outer box is the inner one's
+     extent plus the padding, the padding is exactly the height of a title band,
+     and so the inner region's name sat flush against the outer border with no
+     buffer at all. What is inside a box is the box and its label — this is that
+     sentence, as a rectangle.
+
+     Nothing to make room for when there is no name, and a name added later
+     grows the box that holds it, which is what a derived box is for.
+     */
+    static func withTitle(of region: CanvasRegion, box: CGRect) -> CGRect {
+        guard !region.title.isEmpty else { return box }
+        return CGRect(x: box.minX, y: box.minY - titleHeight,
+                      width: box.width, height: box.height + titleHeight)
+    }
+
     /// The box, given where its members are now.
     ///
     /// Nothing when it holds nothing that still exists — a region whose contents
@@ -936,7 +955,7 @@ final class CanvasModel: ObservableObject {
         let held: [CGRect] = region.members.compactMap { member in
             if let item = item(member) { return item.rect }
             guard let inner = regions.first(where: { $0.id == member }) else { return nil }
-            return box(of: inner, visiting: seen)
+            return box(of: inner, visiting: seen).map { CanvasRegion.withTitle(of: inner, box: $0) }
         }
         return CanvasRegion.box(of: held)
     }
@@ -1127,6 +1146,27 @@ final class CanvasModel: ObservableObject {
 
     func isMember(_ item: UUID, of region: UUID) -> Bool {
         regions.first { $0.id == region }?.members.contains(item) ?? false
+    }
+
+    /**
+     Whether a region holds this at any depth.
+
+     Not the same question as `isMember`, and the difference is a bug that only
+     appears once regions nest: a card in an inner box is *inside* the outer box
+     too, but is not one of its members. Everything that asks "is this already in
+     here?" — above all the drop target, which drew a line from a card to the
+     group it was being moved about inside — has to mean this one.
+     */
+    func holds(_ id: UUID, in region: UUID) -> Bool {
+        var stack = [region]
+        var seen: Set<UUID> = []
+        while let next = stack.popLast() {
+            guard seen.insert(next).inserted else { continue }
+            guard let held = regions.first(where: { $0.id == next }) else { continue }
+            if held.members.contains(id) { return true }
+            stack.append(contentsOf: held.members)
+        }
+        return false
     }
 
     /// The only thing left in a region, which is why it cannot be taken out.
@@ -3290,7 +3330,7 @@ struct CanvasSurface: View {
         // thing to itself, drawn the long way round.
         if let region = model.region(at: here, excluding: moving),
            !carried.contains(region.id),
-           !region.members.contains(moving) {
+           !model.holds(moving, in: region.id) {
             return region.id
         }
         return nil

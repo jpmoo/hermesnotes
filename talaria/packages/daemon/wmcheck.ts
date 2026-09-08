@@ -17,7 +17,15 @@
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ContextRecord, FrontmostWatcher, WM_RECHECK_MS } from "./src/context.js";
+import {
+  ContextRecord,
+  FrontmostWatcher,
+  focusWorkspace,
+  frontmostFromAerospace,
+  WM_RECHECK_MS,
+  wmStatus,
+  workspaces,
+} from "./src/context.js";
 import { Mirror } from "./src/mirror.js";
 
 let bad = 0;
@@ -55,17 +63,30 @@ const cli = join(home, "aerospace");
 /** How many times the fake was actually run. */
 const calls = join(home, "calls");
 
-/** Rewrite the fake: either it answers with a workspace, or it fails like an absent binary. */
-const setWm = (answering: boolean) => {
-  writeFileSync(
-    cli,
-    answering
+/**
+ * Rewrite the fake, into one of the three states a window manager can be in.
+ *
+ * `answering` — a real row. `absent` — nothing at that path. `disabled` — there,
+ * running, and refusing, which is `aerospace enable off` and is the state this
+ * suite did not have. It is the interesting one: the refusal is a *sentence*,
+ * and everything downstream reads AeroSpace's output as data.
+ */
+type Wm = "answering" | "absent" | "disabled";
+const setWm = (state: Wm | boolean) => {
+  const wm: Wm = state === true ? "answering" : state === false ? "absent" : state;
+  const script =
+    wm === "answering"
       ? // `list-windows --focused --format ...` — one tab-separated line of
         // bundle id, workspace, title. Printed for any argv, because what is
         // under test is the parsing and the degradation, not the flag handling.
         `#!/bin/sh\necho x >> ${calls}\nprintf 'com.googlecode.iterm2\\tfirst\\t-zsh\\n'\n`
-      : `#!/bin/sh\necho x >> ${calls}\nexit 127\n`,
-  );
+      : wm === "disabled"
+        ? // Word for word what AeroSpace says, on stdout and exiting zero —
+          // the worst case of the two, and the one that turns a refusal into a
+          // workspace named after it if anything treats stdout as output.
+          `#!/bin/sh\necho x >> ${calls}\necho "AeroSpace server is disabled and doesn't accept commands. You can use 'aerospace enable on' to enable the server"\nexit 0\n`
+        : `#!/bin/sh\necho x >> ${calls}\nexit 127\n`;
+  writeFileSync(cli, script);
   chmodSync(cli, 0o755);
 };
 const callCount = () => {
@@ -130,6 +151,31 @@ try {
   // ---- Launch Services still names what is in front ------------------------
   const front = record.recent(1)[0];
   check("the record keeps going without it", Boolean(front?.app), String(front?.app));
+
+  /*
+   * ---- Running, and switched off -------------------------------------------
+   *
+   * `aerospace enable off` does not merely stop tiling: the server refuses every
+   * query, and says so in a sentence on a stream that is otherwise output. So a
+   * refusal must never reach anything that reads AeroSpace's answer as a value —
+   * or the desk grows a workspace called "AeroSpace server is disabled…", the
+   * picker offers it, and context rows get stamped with it.
+   */
+  setWm("disabled");
+  const refused = await wmStatus(cli);
+  check("a disabled server is told from an absent one", refused === "disabled", refused);
+
+  const listed = await workspaces(cli);
+  check("and never becomes a workspace", listed.length === 0, `${listed.length} listed`);
+
+  const seen = await frontmostFromAerospace(cli);
+  check("and names no frontmost window", seen === undefined, JSON.stringify(seen));
+
+  const went = await focusWorkspace("first", cli);
+  check("and does not claim a move it refused", went === false, String(went));
+
+  setWm("absent");
+  check("while a missing binary still reads as absent", (await wmStatus(cli)) === "absent");
 
   watcher.stop();
 } finally {

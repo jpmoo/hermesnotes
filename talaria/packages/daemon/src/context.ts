@@ -344,13 +344,10 @@ export async function frontmostFromAerospace(cliPath?: string): Promise<
   { app: string; title: string | null; workspace: string | null } | undefined
 > {
   if (!MACOS_WINDOW_SOURCES) return undefined;
-  const { execFile } = await import("node:child_process");
   const candidates = aerospaceCandidates(cliPath);
 
-  const run = (bin: string, args: string[]): Promise<string> =>
-    new Promise((resolve) =>
-      execFile(bin, args, { timeout: 2000 }, (err, stdout) => resolve(err ? "" : stdout)),
-    );
+  const run = async (bin: string, args: string[]): Promise<string> =>
+    (await askAerospace(bin, args, 2000)).out;
 
   for (const bin of candidates) {
     // Tab-separated rather than JSON: `--json` omits the bundle id and the
@@ -711,6 +708,73 @@ export function aerospaceCandidates(cliPath?: string): string[] {
       ];
 }
 
+/**
+ * What the window manager said, and whether it refused to say anything.
+ *
+ * AeroSpace can be running and *disabled* — `aerospace enable off` — and in that
+ * state the server does not merely stop tiling: it refuses every query, with
+ *
+ *     AeroSpace server is disabled and doesn't accept commands.
+ *
+ * The refusal has to be told from an answer, for two reasons. The obvious one
+ * is that "not installed" and "installed and switched off" are different
+ * problems and a diagnostic that reports them identically is a diagnostic that
+ * sends somebody hunting for a binary sitting right there.
+ *
+ * The other is worse. `list-workspaces --all` is read as *a list of workspace
+ * names, one per line*, and nothing downstream asks whether a line looks like a
+ * name. If that sentence arrives on stdout it becomes a workspace called "AeroSpace
+ * server is disabled…" — a row in the desk's pane, an entry in the picker, and a
+ * value stamped onto context rows. Refusing to treat it as output at all is the
+ * only place that can be fixed once.
+ *
+ * Both streams are read and the exit status is ignored on purpose: which of
+ * those the message travels on is AeroSpace's business and has no reason to
+ * stay the same, and being wrong about it here restores exactly the bug this
+ * exists to prevent.
+ */
+const DISABLED = /server is disabled/i;
+
+export interface WmAnswer {
+  /** stdout, or empty when there was nothing usable to say. */
+  out: string;
+  /** The server is there and refusing. Never true when `out` is non-empty. */
+  disabled: boolean;
+  /** The binary ran. False for a path with nothing at it, which is how the
+   *  candidate list is walked — and the difference between "did not work" and
+   *  "is not there", which `focusWorkspace` reports as the same word. */
+  ran: boolean;
+}
+
+export async function askAerospace(bin: string, args: string[], timeout = 3000): Promise<WmAnswer> {
+  const { execFile } = await import("node:child_process");
+  return new Promise<WmAnswer>((resolve) =>
+    execFile(bin, args, { timeout, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+      const said = `${stdout}${stderr}`;
+      // A refusal is not output. See the note above `DISABLED`.
+      if (DISABLED.test(said)) resolve({ out: "", disabled: true, ran: true });
+      else resolve({ out: stdout ?? "", disabled: false, ran: !err });
+    }),
+  );
+}
+
+/**
+ * Why the workspace half is quiet, in the three words a diagnostic needs.
+ *
+ * `absent` — nothing at any of the candidate paths answered at all.
+ * `disabled` — AeroSpace is there and switched off.
+ * `answering` — it told us the focused workspace.
+ */
+export async function wmStatus(cliPath?: string): Promise<"answering" | "disabled" | "absent"> {
+  let refused = false;
+  for (const bin of aerospaceCandidates(cliPath)) {
+    const said = await askAerospace(bin, ["list-workspaces", "--focused"], 2000);
+    if (said.out.trim()) return "answering";
+    if (said.disabled) refused = true;
+  }
+  return refused ? "disabled" : "absent";
+}
+
 export interface WorkspaceWindow {
   id: number;
   app: string;
@@ -737,13 +801,8 @@ export interface WorkspaceSummary {
  * move a window *to* the one place you cannot click.
  */
 export async function workspaces(cliPath?: string): Promise<WorkspaceSummary[]> {
-  const { execFile } = await import("node:child_process");
-  const run = (bin: string, args: string[]): Promise<string> =>
-    new Promise((resolve) =>
-      execFile(bin, args, { timeout: 3000, maxBuffer: 1 << 20 }, (err, stdout) =>
-        resolve(err ? "" : stdout),
-      ),
-    );
+  const run = async (bin: string, args: string[]): Promise<string> =>
+    (await askAerospace(bin, args)).out;
 
   for (const bin of aerospaceCandidates(cliPath)) {
     const names = (await run(bin, ["list-workspaces", "--all"]))
@@ -791,12 +850,12 @@ export async function workspaces(cliPath?: string): Promise<WorkspaceSummary[]> 
 
 /** Go to a workspace. Returns whether the manager accepted it. */
 export async function focusWorkspace(name: string, cliPath?: string): Promise<boolean> {
-  const { execFile } = await import("node:child_process");
   for (const bin of aerospaceCandidates(cliPath)) {
-    const ok = await new Promise<boolean>((resolve) =>
-      execFile(bin, ["workspace", name], { timeout: 3000 }, (err) => resolve(!err)),
-    );
-    if (ok) return true;
+    // A disabled server exits cleanly while doing nothing, so `!err` used to
+    // report the move as accepted and the desk closed on a workspace it had
+    // not gone to.
+    const said = await askAerospace(bin, ["workspace", name]);
+    if (said.ran && !said.disabled) return true;
   }
   return false;
 }

@@ -20,7 +20,7 @@ import {
 } from "@talaria/canonical";
 import { HOME, type Config } from "./config.js";
 import { readCanvas, sweepImages, writeCanvas, type CanvasDocument } from "./canvas.js";
-import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, workspaces } from "./context.js";
+import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, wmStatus, workspaces } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { regionNameAt, type Interchange } from "./interchange.js";
@@ -643,6 +643,10 @@ export function buildServer(deps: {
        * something asks.
        */
       const withWorkspace = context.recent(1).some((r) => r.workspace);
+      // Asked only when there is something to explain, and it is one short
+      // command: a check that shells out on the happy path is a check that
+      // makes `doctor` slower for everybody to say something nobody needed.
+      const wm = withWorkspace || noWindowSource ? "answering" : await wmStatus(config.aerospaceCli);
       add(
         "workspace",
         withWorkspace || noWindowSource,
@@ -650,7 +654,12 @@ export function buildServer(deps: {
           ? "arriving from the window manager"
           : noWindowSource
             ? "no window manager wired up yet — KDE virtual desktops are the Linux analogue"
-            : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
+            : wm === "disabled"
+              // Found, running, and refusing — which is not a PATH problem, and
+              // telling somebody to go looking for a binary that is sitting
+              // right there is how a diagnostic wastes an afternoon.
+              ? "AeroSpace is running but switched off — `aerospace enable on`. While it is off it answers nothing, so workspaces, the desk's Workspaces pane, and window titles in context all go quiet"
+              : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
       );
     }
 

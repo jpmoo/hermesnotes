@@ -654,9 +654,6 @@ struct DeskView: View {
                 // would mean animating a view still deciding how big it is, and
                 // the canvas would arrive a frame late every time.
                 HStack(spacing: 0) {
-                    quadrants(w: (geo.size.width - Self.gap) / 2,
-                              h: (geo.size.height - Self.gap) / 2)
-                        .frame(width: geo.size.width, height: geo.size.height)
                     // A region, like a quadrant, filling the page instead of a
                     // quarter of it. The canvas needs an edge for the same
                     // reason the panes do: without one it is the whole screen
@@ -684,8 +681,33 @@ struct DeskView: View {
                         }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
+
+                    quadrants(w: (geo.size.width - Self.gap) / 2,
+                              h: (geo.size.height - Self.gap) / 2)
+                        .frame(width: geo.size.width, height: geo.size.height)
+
+                    /*
+                     Somewhere to write.
+
+                     The page is the Linux shell's, unchanged — `ui/writing.html`
+                     read out of the bundle by `DaemonScheme`. Nothing on it
+                     touches Hermes Notes: no blocks, no types, no interchange,
+                     and no daemon, because its documents are Markdown files
+                     answered by `/shell/writing`. It works with the daemon
+                     stopped and the network down, which is the whole point of
+                     a blank page.
+
+                     Built once and kept, rather than made when the surface is
+                     reached: a web view created at the moment of a swipe arrives
+                     a frame late and loads its page in front of somebody, which
+                     is the same reason both other surfaces already exist at once.
+                     */
+                    DeskPane(title: "Writing", opaque: !chrome.seeThrough) {
+                        WritingSurface()
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
-                .frame(width: geo.size.width * 2, alignment: .leading)
+                .frame(width: geo.size.width * CGFloat(DeskSurface.allCases.count), alignment: .leading)
                 .offset(x: -CGFloat(chrome.surface.rawValue) * geo.size.width)
                 // Pinned to the left and cut to one page.
                 //
@@ -822,14 +844,24 @@ final class DeskPanel: NSPanel {
  moving between them is lateral. Nothing about the panel, the frost, the hotkey
  or the dismissal changes with it.
  */
+/**
+ The surfaces the desk pages between.
+
+ Ordered the way they sit: the canvas on one side of home and the writing on the
+ other, so one gesture reaches each. The Linux shell arranges them the same way
+ and for the same reason — "the canvas is where things are arranged and this is
+ where they are written".
+ */
 enum DeskSurface: Int, CaseIterable {
-    case quadrants
     case canvas
+    case quadrants
+    case writing
 
     var symbol: String {
         switch self {
         case .quadrants: return "square.grid.2x2"
         case .canvas: return "point.topleft.down.curvedto.point.bottomright.up"
+        case .writing: return "text.alignleft"
         }
     }
 
@@ -837,6 +869,7 @@ enum DeskSurface: Int, CaseIterable {
         switch self {
         case .quadrants: return "Desk"
         case .canvas: return "Canvas"
+        case .writing: return "Writing"
         }
     }
 }

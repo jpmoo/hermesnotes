@@ -49,10 +49,24 @@ ESBUILD="$(find "$REPO_ROOT/../node_modules/.pnpm" -maxdepth 6 -path '*esbuild@*
   --banner:js="import{createRequire as __cr}from'node:module';const require=__cr(import.meta.url);" \
   --outfile="$(dirname "$APP")/daemon.mjs"
 
-# No canvas page on macOS. The app draws its own canvas in AppKit and the web
-# one lives in `talaria/linux`, for the port that needs it — so nothing is
-# copied here, and `/canvas/app/*` answers 404 on this platform, which is
-# correct rather than broken.
+# The shared UI, into the bundle.
+#
+# These pages are the Linux shell's, and they are not copies: one set of files,
+# read by both platforms through their own scheme handlers. The writing surface
+# is the first of them to run here, and everything it needs — `panel.css`,
+# `api.js`, `richtext.js`, `calc.js` — comes across with it.
+#
+# esbuild emits one JavaScript file and copies nothing else, so a build that
+# forgets this serves 404s and opens a blank page saying nothing about why.
+#
+# Mirrored rather than copied over: a file deleted upstream has to go from here
+# too, or the app keeps serving a page whose source nobody can find.
+echo "==> Shared UI"
+UI_SRC="$REPO_ROOT/linux/shell/ui"
+[ -d "$UI_SRC" ] || { echo "!! no shared UI at $UI_SRC"; exit 1; }
+mkdir -p "$APP/Contents/Resources"
+rm -rf "$APP/Contents/Resources/ui"
+cp -R "$UI_SRC" "$APP/Contents/Resources/ui"
 
 echo "==> Icon"
 # Needs Pillow. A build-time dependency on this machine only — nothing the

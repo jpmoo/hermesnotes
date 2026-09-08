@@ -1,0 +1,239 @@
+{
+  "suite": "attachments",
+  "level": 1,
+  "about": "A file named, proved, and sometimes carried. The format could describe an attachment and never move one, which two unrelated clients hit independently — a canvas wanting a picture on a block, and a tablet wanting a lassoed region on one. These cases are what carrying it means, and what a consumer owes somebody when it is handed a name it cannot resolve.",
+  "cases": [
+    {
+      "id": "attachments/a-name-alone-is-still-valid",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": { "kind": "attachment", "filename": "notes.pdf" }
+            }
+          }
+        ]
+      },
+      "expect": { "valid": true },
+      "why": "The shape v0 has always written. Everything else in this suite is additive on top of it, and the day a name alone stops validating is the day every export written before this suite becomes non-conformant — which is not a version bump anybody agreed to."
+    },
+    {
+      "id": "attachments/bytes-need-a-hash",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": { "kind": "attachment", "filename": "notes.pdf", "bytes": "aGVsbG8=" }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [{ "code": "attachment.hash-missing" }]
+      },
+      "why": "Bytes nobody can check are bytes nobody should trust. The hash is also how a consumer recognizes a second copy of a file it already holds, so bytes without one cannot be deduplicated and cannot be verified — the two things carrying them was for."
+    },
+    {
+      "id": "attachments/a-hash-is-lowercase-hex",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": { "kind": "attachment", "filename": "notes.pdf", "sha256": "9F86D081" }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [{ "code": "attachment.hash-malformed" }]
+      },
+      "why": "Sixty-four lowercase hex characters, so two producers computing the same hash write the same string. A format that accepts both cases of the same digest has an identity that compares unequal to itself."
+    },
+    {
+      "id": "attachments/empty-bytes-are-not-a-file",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "notes.pdf",
+                "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+                "bytes": ""
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [{ "code": "attachment.bytes-empty" }]
+      },
+      "why": "The same rule as an empty string anywhere else in this format: omit rather than store nothing. An empty `bytes` reads as a file of length zero to a machine and as an absent file to a person, and the one real empty file in a library is not worth that ambiguity in every other."
+    },
+    {
+      "id": "attachments/a-file-that-was-not-given-is-reported",
+      "level": 1,
+      "op": "import",
+      "requires": { "features": ["attachment-bytes"] },
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "notes.pdf",
+                "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+              }
+            }
+          }
+        ]
+      },
+      "with": { "attachmentBytes": true },
+      "expect": {
+        "fidelity": "reduced",
+        "reports": ["attachment.bytes-not-carried"]
+      },
+      "why": "The heart of it. A hash with no bytes is a *known-missing* file: the consumer knows a file exists, knows exactly which one, and does not have it. Importing that as though the attachment were absent is the silent coercion this format exists to prevent — the library looks complete and is not, and nobody finds out until they open the note."
+    },
+    {
+      "id": "attachments/a-file-that-was-given-is-not-a-loss",
+      "level": 1,
+      "op": "import",
+      "requires": { "features": ["attachment-bytes"] },
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "hello.txt",
+                "mediaType": "text/plain",
+                "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                "bytes": "aGVsbG8="
+              }
+            }
+          }
+        ]
+      },
+      "with": { "attachmentBytes": true },
+      "expect": { "fidelity": "full" },
+      "why": "The other half of the pair, and the reason the first is not simply a warning about attachments in general. A consumer that got the file reports nothing, so a `reduced` on this suite always means a specific file is missing rather than that attachments were involved."
+    },
+    {
+      "id": "attachments/bytes-must-match-the-hash",
+      "level": 1,
+      "op": "import",
+      "requires": { "features": ["attachment-bytes"] },
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "hello.txt",
+                "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "bytes": "aGVsbG8="
+              }
+            }
+          }
+        ]
+      },
+      "with": { "attachmentBytes": true },
+      "expect": {
+        "fidelity": "reduced",
+        "reports": ["attachment.hash-mismatch"]
+      },
+      "why": "A hash nobody checks is a comment. This is the one case in the suite where the producer is wrong rather than merely unable, and a consumer that stored the bytes anyway would be spreading a file it has been told is not the file it was promised."
+    },
+    {
+      "id": "attachments/a-consumer-that-knows-nothing-destroys-nothing",
+      "level": 1,
+      "op": "roundtrip",
+      "simulated": true,
+      "given": {
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "hello.txt",
+                "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                "bytes": "aGVsbG8="
+              }
+            }
+          }
+        ]
+      },
+      "with": { "attachmentBytes": false },
+      "expect": {
+        "result": {
+          "properties": {
+            "brief": {
+              "kind": "attachment",
+              "filename": "hello.txt",
+              "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+              "bytes": "aGVsbG8="
+            }
+          }
+        }
+      },
+      "why": "This case is why `format` does not bump. A consumer written before any of this existed treats `sha256` and `bytes` as unknown keys, and the round-trip rule already obliges it to hand them back untouched. The addition is safe because that rule was there first — not because every consumer will be updated."
+    },
+    {
+      "id": "attachments/carrying-files-is-its-own-claim",
+      "level": 3,
+      "op": "validate",
+      "given": {
+        "export": {
+          "conformance": { "profiles": ["note"], "features": ["attachments"] }
+        },
+        "objects": [
+          {
+            "id": "o_1",
+            "type": "t_note",
+            "properties": {
+              "brief": {
+                "kind": "attachment",
+                "filename": "hello.txt",
+                "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                "bytes": "aGVsbG8="
+              }
+            }
+          }
+        ]
+      },
+      "expect": {
+        "valid": false,
+        "errors": [{ "code": "conformance.undeclared-feature" }]
+      },
+      "why": "`attachments` says attachment values travel; `attachment-bytes` says the files do. One word covering both is a promise the data does not keep — a consumer reading `attachments` and planning storage for what arrives has no way to know whether anything will. Declaring the second is how it finds out before it starts rather than per file."
+    }
+  ]
+}

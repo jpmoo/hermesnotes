@@ -1,4 +1,9 @@
+import { createHash } from "node:crypto";
 import type { Finding, HermesBlock, HermesMembership, HermesType } from "./types.js";
+
+/** The digest of some base64, for checking a value against its own claim. */
+const sha256 = (base64: string): string =>
+  createHash("sha256").update(Buffer.from(base64, "base64")).digest("hex");
 
 /**
  * An envelope, read back into Hermes rows.
@@ -148,6 +153,46 @@ export function fromInterchange(envelope: Record<string, unknown>): ImportResult
       } as HermesType["propertySchema"],
     };
   });
+
+  /*
+   * Attachments: what arrived, and what did not.
+   *
+   * Two different losses, and reporting them the same way would hide the one
+   * that matters. A value naming a file with no hash and no bytes is v0 saying
+   * "there is a file called this" — nothing was promised and nothing is missing.
+   * A value with a hash and no bytes is a *known-missing* file: the consumer
+   * knows one exists, knows exactly which, and does not have it. That is a loss
+   * and it is reported, because a library that looks complete and is not is the
+   * silent coercion this format exists to prevent.
+   *
+   * And bytes that do not hash to what they claim are worse than absent. Storing
+   * them would spread a file already known not to be the promised one.
+   */
+  for (const o of inObjects) {
+    for (const v of Object.values((o.properties ?? {}) as Record<string, unknown>)) {
+      for (const one of Array.isArray(v) ? v : [v]) {
+        if (one === null || typeof one !== "object") continue;
+        const a = one as { kind?: string; filename?: unknown; sha256?: unknown; bytes?: unknown };
+        if (a.kind !== "attachment") continue;
+        const hasBytes = typeof a.bytes === "string" && a.bytes.length > 0;
+        if (typeof a.sha256 === "string" && !hasBytes) {
+          note(
+            "attachment.bytes-not-carried",
+            "format",
+            `An attachment names a file and proves which one and the file did not come with it. The value is kept, so a later export says the same thing — but "${String(a.filename ?? "the file")}" is not in this library and nothing here can fetch it.`,
+          );
+          continue;
+        }
+        if (hasBytes && typeof a.sha256 === "string" && sha256(a.bytes as string) !== a.sha256) {
+          note(
+            "attachment.hash-mismatch",
+            "producer",
+            `An attachment carried bytes that do not hash to the digest beside them, so the file is not the one the value claims. It is kept as it arrived rather than stored as that file — a hash nobody checks is a comment, and one that fails and is ignored is worse.`,
+          );
+        }
+      }
+    }
+  }
 
   const blocks: HermesBlock[] = inObjects.map((o) => {
     // Anything the object carried that Hermes has no column for rides along in

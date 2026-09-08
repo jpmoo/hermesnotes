@@ -30,168 +30,79 @@ into an API for one product.
 
 ## Open
 
-### An attachment can be named and not carried
+Nothing, today. The one that was here — an attachment that could be named and
+not carried — is the first entry below.
 
-**Found by building.** Talaria's canvas on Linux can put a picture on a node,
-and a node can be converted into a real block. The obvious next step — the one
-the Mac takes — is for that picture to become an attachment on the block, so the
-thing that was on the canvas is now on the block wherever you look at it.
-
-The format has an `attachment` value kind, and what it carries is a file name:
-
-```json
-{ "kind": "attachment", "filename": "notes.pdf" }
-```
-
-A name is enough to *describe* an attachment and not enough to *move* one. There
-is no channel in the export for the bytes, so a consumer holding a file has no
-way to say "here it is, keep it"; it can only say "there is one, called this",
-which is true and useless to anybody who does not already have the file. Between
-two applications on one machine, sharing a disk, that may be survivable. Between
-two that have never heard of each other — the test this file exists to serve —
-it is not: the receiving side gets a library full of names pointing at nothing.
-
-**Hermes says the same thing from the other end, and says it better.** An
-earlier version of this entry claimed its manifest declared attachments
-unsupported. It does not — `features` includes `attachments`, and the deployed
-instance reports it. What Hermes does instead is emit a *finding* whenever a type
-declares an attachment field, in `packages/interchange/src/map.ts`:
-
-> `attachments.contents-do-not-travel` — "A type declares an attachment field,
-> and the format has no story for the bytes behind one — no encoding, no
-> side-car, no reference to fetch it by. The field travels and the file it
-> stands for does not, which is worse than either declaring the feature honestly
-> or leaving it out."
-
-That is this entry, arrived at independently by the producer, at export time,
-about its own data. Two implementations reaching the same conclusion from
-opposite ends is the strongest evidence this file collects.
-
-It also sharpens what is missing. The gap is not permission and not a
-declaration: an attachment *value* travels fine and says which file it means.
-There is nowhere to put the file.
-
-What Talaria does instead, and this is the whole of it: **the picture stays on
-the canvas.** It lives beside `canvas.json` in `canvas-images/`, the node names
-it, and a converted node goes on showing it. Nothing is written to Hermes and
-nothing is smuggled past the binding. The cost is real and worth stating: the
-image is visible on that canvas, on that machine, and nowhere else in the
-library.
-
-#### The shape proposed
-
-Two were sketched here. The first — a bytes channel beside the objects, an
-`ix.put`-style second request naming the object and the field — is not the one,
-and the reason is worth keeping: it exists only in the live binding, where a
-payload is a request. In the file binding an export is one document, so that
-answer would leave the two bindings disagreeing about what an attachment *is*
-rather than about how it travels. A format whose central rule is that unknown
-fields survive a round trip should not need a different vocabulary depending on
-which door the data came through.
-
-The second is the proposal. **An attachment value carries its own identity, and
-may carry its own bytes:**
-
-```json
-{
-  "kind": "attachment",
-  "filename": "notes.pdf",
-  "mediaType": "application/pdf",
-  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-  "bytes": "<base64>"
-}
-```
-
-`mediaType` is an ordinary optional label — the one thing a consumer needs to
-decide whether it can show a file rather than only offer it, and unguessable
-from an extension a producer may not have. Nothing below depends on it.
-
-Six rules, which are the whole of the design.
-
-**The hash is the identity; the filename is a label.** Two attachments with the
-same `sha256` are the same file however they are named, and two named
-`scan.pdf` are not related by that fact. This is the single thing a filename
-could never do, and it is what separates a merge from a collision — the same
-problem the Obsidian importer already had to solve when it learned to upload a
-shared attachment once and link to it from every note that named it.
-
-**`bytes` is optional, and its absence says something.** A producer that cannot
-afford to inline a file sends the name and the hash. That is exactly what v0
-sends today, which makes today's output the degenerate case of this shape rather
-than something to migrate: no existing export becomes wrong, and no producer has
-to do anything to stay valid.
-
-**A consumer must tell "no attachment" from "an attachment I was not given."**
-This is *Loud failure* applied to a file. A value with a `sha256` and no `bytes`
-is a known-missing file, and a consumer that stores it must report reduced
-fidelity rather than render a broken link or drop the field. Silence here is the
-same disaster as the drifting haircut reminder: the library looks complete and
-is not.
-
-**Present bytes are checked against the hash.** A consumer that keeps the file
-verifies it and treats a mismatch as a loud failure. A hash nobody checks is a
-comment.
-
-**Omit rather than send empty**, following the rule that an empty string is not
-a value. `"bytes": ""` is not "a file of length zero" to anybody reading quickly,
-and the one real empty file in a library is not worth the ambiguity in every
-other.
-
-**It is additive, so `format` does not bump.** *Versioning* says additive changes
-do not, and the round-trip rule is what makes that safe — a v0 consumer that has
-never heard of `sha256` or `bytes` carries both through byte-identical and
-neither loses anything nor destroys anything. That is the property the first
-shape could not have offered, and it is most of the argument.
-
-#### What the manifest should then say
-
-`features: ["attachments"]` is doing two jobs and reads as the larger one. An
-attachment *value* traveling and an attachment *file* traveling are different
-claims, and only the first is true of anything shipping today — Hermes declares
-the feature and simultaneously emits `attachments.contents-do-not-travel` about
-its own export, which is a producer arguing with itself in one document.
-
-Split the word: `attachments` for the values, `attachment-bytes` for the files.
-A stranger automating an import reads the manifest, not the prose findings
-attached to one export, and today the manifest tells them they are getting
-something they are not. This costs nothing measured — it renames a claim rather
-than deflating one.
-
-#### What this deliberately is not
-
-Not a blob store, not a sync protocol, and not a requirement that anybody store
-files by hash. The hash is an identity claim about a value, and what a consumer
-does with the bytes is its own business.
-
-#### What it still does not solve
-
-The size, and there is no clever answer. Base64 is a third larger again, a
-library with video in it becomes a document nothing will parse, and a single
-JSON document cannot be streamed into or chunked. The escape is per-attachment
-rather than per-export — inline the small ones, hash the large ones, and the
-consumer can tell which it got — but a producer whose library is mostly large
-files is back where it started, holding names.
-
-Which is the honest remainder: this closes the case where the file is small
-enough to carry and makes the other case *legible* rather than solved. The live
-binding could offer bytes a second way, since a request is not a document, but
-that is the first shape again and it needs the same answer about what the file
-binding then means. Worth designing next, not now.
-
-A fixture would settle it: an export carrying one attachment with bytes and one
-without, round-tripped, with the consumer reporting the second as reduced
-fidelity. Until that exists this is a proposal and stays here.
-
----
-
-Everything that was here before is below, with what each cost to answer; the
-one remaining piece of unfinished business is named at the end of the first.
-No count, because the one that was here had drifted from three to ten without
-anybody noticing — which is what a number in prose does.
+Which is worth one sentence of caution rather than any satisfaction: an empty
+list here means the two clients that have been built found everything they
+needed, and both of them were built against the same producer. It does not mean
+the format is finished. The next thing that gets built is where the next entry
+comes from.
 
 ---
 
 ## Closed
+
+Below, with what each cost to answer. Several carry a remainder — the part that
+was not closed with the rest — and each says so at its own end rather than
+here. No count: the one that used to be in this spot drifted from three to ten
+without anybody noticing, which is what a number in prose does.
+
+### An attachment could be named and not carried — closed
+
+**Was:** the format had an `attachment` value kind carrying a file name and
+nothing else. A name is enough to *describe* an attachment and not enough to
+*move* one, so a consumer holding a file could only say "there is one, called
+this" — true, and useless to anybody who did not already have the file.
+
+**Now:** the value carries its own identity and may carry its own bytes.
+`sha256` is the identity and `filename` a label; `mediaType` says whether a
+consumer can show the file or only offer it; `bytes` is base64 and optional.
+Six rules in *Attachments*, of which two matter most: bytes without a hash are
+invalid, because bytes nobody can check are bytes nobody should trust; and a
+hash with no bytes is a **known-missing** file that a consumer must report
+rather than import as an absence.
+
+**Why it took two clients to see it.** This entry was written when Talaria
+wanted a canvas picture on a block. It was still a guess about the format then —
+one consumer feeling one thing, which is exactly the bias this file warns about
+in its own preamble. What settled it was a Supernote plugin, whose first feature
+is to lasso a region and send it to Hermes as a block with an image attached: a
+device whose native unit is a stroke, sharing none of Hermes' shape, needing the
+same missing thing for an unrelated reason. A limit found twice from opposite
+directions is a limit.
+
+**It is additive, so `format` does not bump.** A consumer that has never heard
+of `sha256` or `bytes` carries both through byte-identical under the round-trip
+rule — which is why this could be a change to v0 rather than a wait for v0.1.
+The first shape this entry proposed, a bytes channel beside the objects, was
+dropped for exactly that reason: it lived only in the live binding and would
+have left the two bindings disagreeing about what an attachment *is*.
+
+**What it cost Hermes to say it, which is the useful part.** More than expected.
+Hermes' manifest claimed `features: ["attachments"]` and its exporter emitted
+`attachments.contents-do-not-travel` about the same document — a producer
+arguing with itself. Underneath, it was worse than the argument suggested: the
+export never touched the `attachments` table at all. `toInterchange` had no
+input for it and the route never queried it, so no export had ever carried a
+file *or a filename*. The claim was true only in the sense that some type
+declared a field of that kind. Two words now, because they were always two
+claims: `attachments` for the values, `attachment-bytes` for the files.
+
+Three findings replace the one that went, and each names something real: a file
+too large for the export's inline limit, a block whose type declares no
+attachment field to hold one, and an export built without asking for files at
+all. `GET /interchange?files=1` is how a caller asks — off by default, because
+attachment bytes are the only part of a library whose weight is unbounded.
+
+**What is still open**, and is the honest remainder: size. Base64 is a third
+larger again, a single JSON document cannot be streamed or chunked, and a
+library that is mostly large files still travels as names. The escape is
+per-attachment — inline the small ones, hash the large ones — so the case is
+made *legible* rather than solved, and a consumer can always tell which it got.
+A binding that offers bytes a second way is the next design, not this one.
+
+→ `fixtures/attachments.json`
 
 ### `derivations` named the feature and not the query — closed enough to say so
 

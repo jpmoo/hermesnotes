@@ -1,7 +1,8 @@
 import { inlineMentions, profilesOf, recurrenceSchema, type FieldDef, type PropertySchema } from "@hermes/shared";
 import { CONFORMANCE } from "./conformance.js";
 import { CARRY_KEY } from "./import.js";
-import type { Finding, HermesBlock, HermesMembership, HermesSeries, HermesType } from "./types.js";
+import { createHash } from "node:crypto";
+import type { Finding, HermesAttachment, HermesBlock, HermesMembership, HermesSeries, HermesType } from "./types.js";
 
 /**
  * Hermes, as pkm-interchange sees it.
@@ -42,6 +43,26 @@ export interface ExportInput {
   series?: unknown[];
   /** Hermes' own series rows, emitted as the format's series objects. */
   seriesRows?: HermesSeries[];
+  /**
+   * The files on these blocks.
+   *
+   * Supplied by the caller for the same reason `queryMembers` is: this package
+   * is rows in, envelope out, and the bytes live in a table. Absent means the
+   * caller did not ask for them, which is different from a library with no
+   * files — so nothing is reported when this is undefined.
+   */
+  attachments?: HermesAttachment[];
+  /**
+   * The largest file this export will carry, in bytes. Anything above it
+   * travels as a name and a hash.
+   *
+   * A cap rather than all-or-nothing, because the format's escape is
+   * per-attachment: a library is usually a great many small files and a few
+   * enormous ones, and refusing the lot because of the enormous ones is how a
+   * feature that mostly works gets turned off. Default two mebibytes, which
+   * carries a scan and not a screen recording.
+   */
+  attachmentLimit?: number;
   /** Edges that arrived and cannot be re-derived from properties or prose. */
   relations?: unknown[];
   /**
@@ -211,6 +232,14 @@ export function toInterchange(input: ExportInput): {
   });
 
   // ---- objects -----------------------------------------------------------
+  const limit = input.attachmentLimit ?? 2 * 1024 * 1024;
+  const attachmentsByBlock = new Map<string, HermesAttachment[]>();
+  for (const a of input.attachments ?? []) {
+    const list = attachmentsByBlock.get(a.blockId) ?? [];
+    list.push(a);
+    attachmentsByBlock.set(a.blockId, list);
+  }
+
   const objects = live.map((b) => {
     const schema = b.blockTypeId ? typeById.get(b.blockTypeId)?.propertySchema : null;
     for (const f of schema?.fields ?? []) {
@@ -274,6 +303,53 @@ export function toInterchange(input: ExportInput): {
     const carried = (b.properties[CARRY_KEY] ?? {}) as Record<string, unknown>;
     const props = { ...b.properties };
     delete props[CARRY_KEY];
+
+    /*
+     * The files on this block, as attachment values.
+     *
+     * Hermes keys attachments by block and not by field, so which property they
+     * belong under is a question only the type can answer — the first field of
+     * kind `attachments` it declares. A block carrying files whose type has no
+     * such field has nowhere in the property bag to put them, and that is
+     * reported rather than resolved: inventing a key would put data under a name
+     * no schema knows, which is exactly what this exporter exists not to do.
+     */
+    const mine = attachmentsByBlock.get(b.id);
+    if (mine?.length) {
+      const slot = (typeById.get(b.blockTypeId ?? "")?.propertySchema?.fields ?? []).find(
+        (f) => f.type === "attachments",
+      );
+      if (!slot) {
+        note(
+          "attachment.no-field-to-hold-it",
+          "hermes",
+          `A block carries ${mine.length} file(s) and its type declares no attachment field, so there is no property for them to travel in. Hermes stores attachments against the block rather than against a field, so this is possible and the format has no way to say it.`,
+        );
+      } else {
+        props[slot.key] = mine.map((a) => {
+          const carried = a.data !== undefined && a.data.byteLength <= limit;
+          if (!carried) {
+            note(
+              "attachment.too-large-to-carry",
+              "format",
+              `A file is larger than this export carries inline, so it travels as a name and a digest. A consumer knows exactly which file it has not been given, which is the difference between a gap and a surprise — but it has not been given it.`,
+            );
+          }
+          return {
+            kind: "attachment",
+            filename: a.filename,
+            ...(a.mime ? { mediaType: a.mime } : {}),
+            // The hash travels whether or not the bytes do. It is the identity,
+            // so a consumer that already holds this file recognizes it, and one
+            // that does not can say precisely what is missing.
+            ...(a.data !== undefined
+              ? { sha256: createHash("sha256").update(a.data).digest("hex") }
+              : {}),
+            ...(carried ? { bytes: Buffer.from(a.data!).toString("base64") } : {}),
+          };
+        });
+      }
+    }
 
     return {
       id: b.id,
@@ -637,14 +713,34 @@ export function toInterchange(input: ExportInput): {
     }
   }
 
-  // Declared because the types plainly use it — a consumer meeting a field of
-  // kind `attachment` has to cope with it, whatever we do about the bytes.
+  /*
+   * Declared because the types plainly use it — a consumer meeting a field of
+   * kind `attachment` has to cope with it whether or not any file came with it.
+   *
+   * This used to carry `attachments.contents-do-not-travel`, saying the format
+   * had no story for the bytes. It has one now, and the finding it was replaced
+   * by is narrower and more useful: silence when the caller supplied the files,
+   * `attachment.too-large-to-carry` for the ones over the limit, and
+   * `attachment.no-field-to-hold-it` where Hermes' own model has nowhere to put
+   * them. What is left is the case where nobody asked for the files at all.
+   */
   const hasAttachments = types.some((t) => t.fields.some((f) => f.kind === "attachment"));
-  if (hasAttachments) {
+  const carriedBytes = objects.some((o) =>
+    Object.values((o as { properties?: Record<string, unknown> }).properties ?? {}).some((v) =>
+      (Array.isArray(v) ? v : [v]).some(
+        (one) =>
+          one !== null &&
+          typeof one === "object" &&
+          (one as { kind?: string }).kind === "attachment" &&
+          typeof (one as { bytes?: unknown }).bytes === "string",
+      ),
+    ),
+  );
+  if (hasAttachments && input.attachments === undefined) {
     note(
-      "attachments.contents-do-not-travel",
-      "format",
-      "A type declares an attachment field, and the format has no story for the bytes behind one — no encoding, no side-car, no reference to fetch it by. The field travels and the file it stands for does not, which is worse than either declaring the feature honestly or leaving it out.",
+      "attachment.files-not-requested",
+      "hermes",
+      "A type declares an attachment field and this export was built without the files. The format can carry them now, so this is a caller that did not ask rather than a format that cannot say — the names do not travel either, because Hermes stores attachments against the block and nothing loaded them.",
     );
   }
 
@@ -652,6 +748,9 @@ export function toInterchange(input: ExportInput): {
   const features = [
     outSeries.length ? "series" : null,
     hasAttachments ? "attachments" : null,
+    // The second claim, and only when a file actually rode along. See the note
+    // in `conformance.ts`: values traveling and files traveling are two things.
+    carriedBytes ? "attachment-bytes" : null,
     outCollections.some((c) => c.placement.semantic) ? "placement" : null,
     outCollections.some((c) => c.membership.mode === "query") ? "derivations" : null,
     relations.length ? "relations" : null,
@@ -779,6 +878,10 @@ function mapField(f: FieldDef, note: (c: string, o: Finding["owner"], d: string)
       // Hermes reference fields hold a list, always — 62 of 62 values in a real
       // library — so this is a declaration rather than an observation.
       ...(f.type === "reference" ? { many: true } : {}),
+      // And so does an attachment field: Hermes attaches files to a block, any
+      // number of them, and the field is where they surface. Declaring it
+      // singular would make every block with two files contradict its own type.
+      ...(f.type === "attachments" ? { many: true } : {}),
       ...(f.units ? { units: f.units } : {}),
       ...(f.startLabel ? { startLabel: f.startLabel } : {}),
       ...(f.endLabel ? { endLabel: f.endLabel } : {}),

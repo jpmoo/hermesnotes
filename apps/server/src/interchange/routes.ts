@@ -1,4 +1,4 @@
-import { blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
+import { attachments, blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
 import {
   CONFORMANCE,
   narrow,
@@ -123,6 +123,21 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           // Free text. Unlike the two narrowings above, this one is not
           // permission to send less — see below.
           q: z.string().max(200).optional(),
+          /**
+           * Carry the files, not just their names.
+           *
+           * Off by default, and that is a size decision rather than a shy one.
+           * Attachment bytes are the only part of a library whose weight is
+           * unbounded — a hundred notes are a hundred kilobytes and one screen
+           * recording is a hundred megabytes — so a caller that wants them says
+           * so, and a caller polling `since` every thirty seconds is not
+           * surprised by a gigabyte.
+           *
+           * When it is off nothing about an attachment travels, and the export
+           * reports `attachment.files-not-requested` so the absence is legible
+           * rather than looking like a library with no files in it.
+           */
+          files: z.coerce.boolean().optional(),
         })
         .parse(req.query);
 
@@ -219,6 +234,31 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         .from(series)
         .where(eq(series.ownerId, userId));
 
+      /*
+       * The files, when asked for.
+       *
+       * Hermes keys attachments by block in a table of their own, and this
+       * query is the piece that never existed — so `features: ["attachments"]`
+       * was true only in the sense that some type declared a field of that
+       * kind, and no export ever carried a file or even a filename. The
+       * exporter decides per file whether the bytes fit; everything gets a
+       * digest either way, so a consumer always knows exactly which file it is
+       * or is not being handed.
+       */
+      const files = q.files
+        ? await db
+            .select({
+              id: attachments.id,
+              blockId: attachments.blockId,
+              filename: attachments.filename,
+              mime: attachments.mime,
+              size: attachments.size,
+              data: attachments.data,
+            })
+            .from(attachments)
+            .where(eq(attachments.ownerId, userId))
+        : undefined;
+
       const mem = await db
         .select({
           collectionId: memberships.collectionId,
@@ -291,6 +331,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           version: m.version,
         })),
         seriesRows,
+        attachments: files,
         producer: { name: "hermes", version: "2.0.0" },
         // Where a person can go to see any of this.
         //

@@ -35,7 +35,20 @@ export const CONFORMANCE = {
   // same as not implementing it: `fixtures/address.json` requires the feature,
   // so all five of its cases were scoped away as not-applicable and had never
   // once run. A manifest is a promise in both directions.
-  features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering"],
+  /**
+   * `attachments` and `attachment-bytes` are two claims, not one said twice.
+   *
+   * The first says attachment *values* travel — a name, and which file it is.
+   * The second says the *files* do. One word covering both was a promise the
+   * data did not keep: a consumer reading `attachments` and making room for
+   * what arrives had no way to know whether anything would, and the exporter
+   * emitted a finding saying so about the very same document.
+   */
+  features: [
+    "series", "placement", "derivations", "relations",
+    "attachments", "attachment-bytes",
+    "addresses", "ordering",
+  ],
   /**
    * What this producer does not do, said out loud.
    *

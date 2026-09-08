@@ -46,8 +46,33 @@ export interface Finding {
   code: string;
   detail: string;
   count: number;
-  /** Which side has to move: the format, or Hermes. */
-  owner: "format" | "hermes";
+  /**
+   * Which side has to move: the format, Hermes, or whoever sent this.
+   *
+   * `producer` is for a document that is simply wrong — bytes that do not hash
+   * to the digest printed beside them, and nothing else so far. It is neither a
+   * gap in the format nor a bug here, and filing it under either would put a
+   * fault in somebody's list who cannot fix it.
+   */
+  owner: "format" | "hermes" | "producer";
+}
+
+/**
+ * One file on a block, as the `attachments` table holds it.
+ *
+ * `data` is optional here and that is the whole of the size question: an
+ * exporter decides per file whether it can afford to carry the bytes, and a
+ * value with a hash and no bytes still tells a consumer exactly which file it
+ * is not being given. See *Attachments* in the specification.
+ */
+export interface HermesAttachment {
+  id: string;
+  blockId: string;
+  filename: string;
+  mime: string;
+  size: number;
+  /** Raw bytes. Left out when the exporter chose not to carry this one. */
+  data?: Uint8Array;
 }
 
 /** A recurrence rule, once, as the series table holds it. */

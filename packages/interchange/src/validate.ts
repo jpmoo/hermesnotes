@@ -18,6 +18,42 @@ export interface Invalid {
 
 const PROFILES = ["task", "event", "contact", "note", "journal"];
 
+/**
+ * Every attachment value in an envelope, wherever it sits.
+ *
+ * Scalar or inside a `many` list — an attachment field is the commonest thing in
+ * a library to hold several of, and a walk that only looked at scalars would
+ * validate the one-file case and wave the rest through.
+ */
+interface AttachmentValue {
+  kind?: string;
+  filename?: unknown;
+  sha256?: unknown;
+  bytes?: unknown;
+  mediaType?: unknown;
+}
+
+const isAttachment = (v: unknown): v is AttachmentValue =>
+  v !== null && typeof v === "object" && (v as { kind?: string }).kind === "attachment";
+
+function attachmentsIn(e: Env): { at: string; value: AttachmentValue }[] {
+  const found: { at: string; value: AttachmentValue }[] = [];
+  (e.objects ?? []).forEach((o, i) => {
+    for (const [key, v] of Object.entries(o.properties ?? {})) {
+      const each = Array.isArray(v) ? v : [v];
+      each.forEach((one, n) => {
+        if (isAttachment(one)) {
+          found.push({ at: `objects[${i}].${key}${Array.isArray(v) ? `[${n}]` : ""}`, value: one });
+        }
+      });
+    }
+  });
+  return found;
+}
+
+/** 64 lowercase hex, so two producers computing one digest write one string. */
+const SHA256 = /^[0-9a-f]{64}$/;
+
 /** Features a manifest is expected to declare, and how to spot each in the data. */
 const FEATURES: Record<string, (e: Env) => boolean> = {
   series: (e) => (e.series ?? []).length > 0,
@@ -26,11 +62,12 @@ const FEATURES: Record<string, (e: Env) => boolean> = {
   derivations: (e) => (e.collections ?? []).some((c) => c.membership?.mode === "query"),
   ordering: (e) => (e.collections ?? []).some((c) => Boolean(c.order?.sort || c.order?.groupBy)),
   attachments: (e) =>
-    (e.objects ?? []).some((o) =>
-      Object.values(o.properties ?? {}).some(
-        (v) => v !== null && typeof v === "object" && (v as { kind?: string }).kind === "attachment",
-      ),
-    ) || (e.types ?? []).some((t) => (t.fields ?? []).some((f) => f.kind === "attachment")),
+    attachmentsIn(e).length > 0 ||
+    (e.types ?? []).some((t) => (t.fields ?? []).some((f) => f.kind === "attachment")),
+  // Values traveling and files traveling are two claims, and only the second
+  // tells a consumer whether to make room for what arrives. See *Attachments*.
+  "attachment-bytes": (e) =>
+    attachmentsIn(e).some(({ value }) => typeof value.bytes === "string" && value.bytes.length > 0),
 };
 
 interface Field {
@@ -131,6 +168,33 @@ export function validateEnvelope(envelope: unknown): { valid: boolean; errors: I
       fail("stub.suggests-not-a-profile", `objects[${i}].suggests`);
     }
   });
+
+  /*
+   * Attachments: what a file value has to say about itself.
+   *
+   * Only shape is checked here. Whether the bytes actually hash to what the
+   * value claims is a question for whoever holds them — an importer, which can
+   * report a mismatch as the loss it is. A validator that decoded every base64
+   * string in a library to check a digest would be doing the consumer's work at
+   * the consumer's cost, on a document it was asked only to read.
+   */
+  for (const { at, value } of attachmentsIn(e)) {
+    const bytes = value.bytes;
+    const hash = value.sha256;
+    if (bytes !== undefined) {
+      if (typeof bytes !== "string" || bytes.length === 0) {
+        // Omit rather than send empty, as everywhere else in this format.
+        fail("attachment.bytes-empty", `${at}.bytes`);
+      } else if (hash === undefined) {
+        // Bytes nobody can check are bytes nobody should trust, and a second
+        // copy of the same file cannot be recognized without one.
+        fail("attachment.hash-missing", `${at}.sha256`);
+      }
+    }
+    if (hash !== undefined && (typeof hash !== "string" || !SHA256.test(hash))) {
+      fail("attachment.hash-malformed", `${at}.sha256`);
+    }
+  }
 
   (e.collections ?? []).forEach((c, i) => {
     // A sort key naming nothing runs on nothing: it reads as a declaration and

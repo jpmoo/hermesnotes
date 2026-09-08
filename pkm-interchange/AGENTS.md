@@ -171,6 +171,75 @@ There is deliberately **no recurrence value kind**. Recurrence is not a value; s
 
 → `fixtures/values.json`
 
+### Attachments (L1)
+
+An attachment value names a file, may prove which file, and may carry it.
+
+```json
+{
+  "kind": "attachment",
+  "filename": "notes.pdf",
+  "mediaType": "application/pdf",
+  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "bytes": "<base64>"
+}
+```
+
+`filename` is the only required key, which is what makes this additive: every
+v0 attachment ever written is still valid and still means what it meant.
+`mediaType` is an ordinary optional label — the one thing a consumer needs to
+decide whether it can *show* a file rather than only offer it, and unguessable
+from an extension a producer may not have.
+
+**The hash is the identity; the filename is a label.** Two attachments with the
+same `sha256` are the same file however they are named, and two named
+`scan.pdf` are not related by that fact. Lowercase hex, 64 characters. This is
+the only thing that lets a consumer receiving the same file twice store it once,
+and the only thing that tells a merge from a collision.
+
+**`bytes` is base64 of the file, and it is optional.** A producer that cannot
+afford to inline a file sends the name and the hash. That is what v0 sends
+today, so today's export is the degenerate case of this shape rather than
+something to migrate.
+
+**`bytes` without `sha256` is invalid.** Bytes nobody can check are bytes
+nobody should trust, and the hash is what a second copy is recognized by.
+`attachment.hash-missing`.
+
+**A consumer MUST tell "no attachment" from "an attachment I was not given."**
+A value with a `sha256` and no `bytes` is a *known-missing* file: the consumer
+knows a file exists, knows which one, and does not have it. Storing that as
+though the attachment were absent is the silent coercion this format exists to
+prevent, so it is reported as reduced fidelity like any other loss. This is
+*Loud failure*, applied to a file.
+
+**A consumer that keeps the bytes MUST verify them against the hash**, and a
+mismatch is a failure rather than a warning. A hash nobody checks is a comment.
+
+**Omit rather than send empty**, as everywhere else — `"bytes": ""` is not a
+file of length zero to anybody reading quickly, and the one real empty file in a
+library is not worth the ambiguity in every other.
+
+**Two features, not one.** `attachments` says attachment *values* travel.
+`attachment-bytes` says the *files* do. A producer that emits a filename and no
+bytes declares the first and not the second, and a consumer reading the manifest
+knows before it starts which it is getting. One word covering both is a promise
+that the data does not keep.
+
+This is additive, so `format` does not bump: a consumer that has never heard of
+`sha256` or `bytes` carries them through byte-identical under the round-trip
+rule, losing nothing and destroying nothing.
+
+**What this deliberately is not.** Not a blob store, not a sync protocol, and
+not a requirement that anybody store files by hash. The hash is an identity
+claim about a value; what a consumer does with the bytes is its own business.
+And it does not solve size: base64 is a third larger again, a single JSON
+document cannot be streamed, and a library that is mostly large files still
+travels as names. The escape is per-attachment — inline the small ones, hash the
+large ones — and the consumer can always tell which it got.
+
+→ `fixtures/attachments.json`
+
 ### Profiles
 
 A profile declaration maps a producer's own fields onto a vocabulary a stranger can consume. It is a *mapping*, not a claim of identity — a type named `Chore` or `Errand` or `明日の仕事` declaring the `task` profile is consumable by any task-aware tool.

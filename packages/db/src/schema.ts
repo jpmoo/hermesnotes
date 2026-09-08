@@ -47,6 +47,42 @@ export const apiTokens = pgTable("api_tokens", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * A device waiting to be handed a key.
+ *
+ * For pairing something with no keyboard worth typing a token on — a Supernote,
+ * anything on a screen you write on rather than type at. The device starts the
+ * pairing and shows a short code; a signed-in person types that code into
+ * Hermes; the device, which has been polling, collects the key once.
+ *
+ * **The code is not the secret.** Six digits somebody reads aloud off a screen
+ * cannot be, and treating it as one would mean a guessable path to a key. The
+ * secret is `id`: minted here, known only to the device that asked, and required
+ * to collect. The code's whole job is to let a person point at *which* pending
+ * device they mean, and it is only ever accepted from an authenticated session.
+ *
+ * `token` holds the plaintext key between claiming and collection, which is the
+ * one window in which Hermes stores one. It is cleared the instant the device
+ * takes it, and the row is worthless afterwards.
+ */
+export const devicePairings = pgTable("device_pairings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  /** What the device calls itself, shown to whoever is approving it. */
+  label: text("label").notNull(),
+  /** Six digits. Unique among rows still waiting — see the route. */
+  code: text("code").notNull(),
+  /** Set when a person claims it; null until then. */
+  ownerId: uuid("owner_id").references(() => users.id, { onDelete: "cascade" }),
+  /** The key, held only between being claimed and being collected. */
+  token: text("token"),
+  /** The token row this made, so revoking the device is revoking that. */
+  tokenId: uuid("token_id").references(() => apiTokens.id, { onDelete: "cascade" }),
+  claimedAt: timestamp("claimed_at", { withTimezone: true }),
+  collectedAt: timestamp("collected_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const userSettings = pgTable("user_settings", {
   userId: uuid("user_id")
     .primaryKey()

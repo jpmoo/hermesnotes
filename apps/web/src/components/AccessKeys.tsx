@@ -38,6 +38,50 @@ export function AccessKeys() {
     }
   };
 
+  /*
+   * Pairing, for a device with no keyboard worth typing a key on.
+   *
+   * The device shows six digits; they go in here. What comes back is an
+   * ordinary access key in the list below — the same kind, revoked the same
+   * way — so a paired device is not a second class of credential to remember
+   * to audit.
+   *
+   * The label is read back before claiming, so what appears is "pair Supernote
+   * Manta?" rather than a number somebody is trusting blind.
+   */
+  const [code, setCode] = useState("");
+  const [pending, setPending] = useState<{ label: string } | null>(null);
+  const [paired, setPaired] = useState<string | null>(null);
+
+  const lookUp = async (digits: string) => {
+    setPending(null);
+    setPaired(null);
+    setError(null);
+    if (!/^\d{6}$/.test(digits)) return;
+    try {
+      setPending(await api.get<{ label: string }>(`/auth/pair/pending/${digits}`));
+    } catch {
+      // Nothing waiting. Said by the absence of the confirm row rather than as
+      // an error: somebody halfway through typing six digits is not wrong yet.
+    }
+  };
+
+  const pair = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const done = await api.post<{ label: string }>("/auth/pair/claim", { code });
+      setPaired(done.label);
+      setPending(null);
+      setCode("");
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "could not pair that device");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const revoke = async (id: string) => {
     await api.del(`/auth/tokens/${id}`);
     if (created?.id === id) setCreated(null);
@@ -72,6 +116,39 @@ export function AccessKeys() {
           Create
         </button>
       </div>
+
+      <div className="row" style={{ marginBottom: 6 }}>
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="Pairing code from a device"
+          value={code}
+          maxLength={6}
+          onChange={(e) => {
+            const digits = e.target.value.replace(/\D/g, "").slice(0, 6);
+            setCode(digits);
+            void lookUp(digits);
+          }}
+        />
+        <button className="primary" onClick={() => void pair()} disabled={busy || !pending}>
+          Pair
+        </button>
+      </div>
+      {pending && (
+        <p className="hint" style={{ marginBottom: 14 }}>
+          Pair <strong>{pending.label}</strong>? It gets a key of its own, listed below.
+        </p>
+      )}
+      {paired && (
+        <p className="hint" style={{ marginBottom: 14 }}>
+          Paired <strong>{paired}</strong> — it should pick up its key within a few seconds.
+        </p>
+      )}
+      {!pending && !paired && (
+        <p className="hint" style={{ marginBottom: 14 }}>
+          A device showing six digits — a Supernote, anything you write on rather than type at.
+        </p>
+      )}
 
       {created && (
         <div

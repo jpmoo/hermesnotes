@@ -4129,9 +4129,10 @@ input.matrix-axis-y::placeholder {
   border-radius: 9px;
   background: var(--surface-2);
 }
-.attach-icon {
-  flex-shrink: 0;
-  opacity: 0.75;
+.attach-name {
+  /* The chip's leading padding was making room for an icon it no longer
+     carries — the thumbnail says what kind of file it is. */
+  padding-left: 7px;
 }
 /* The file name as a chip, matching `.mention-chip` — see the note in
    AttachmentsField. `min-width: 0` is what lets the name inside it ellipsize
@@ -8483,4 +8484,28 @@ body:has(.embed-scratchpad) #root {
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
+}
+
+/* A file's own picture, beside its name. See the note in AttachmentsField:
+   a row of thumbnails answers "which one" where a list of names does not.
+   Fixed box so the rows line up whatever shape the pictures are, and the
+   image is contained rather than cropped — a thumbnail that cuts the subject
+   out is worse than no thumbnail. */
+.attach-thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  overflow: hidden;
+}
+.attach-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }

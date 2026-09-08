@@ -429,15 +429,6 @@ struct ComposeView: View {
                                 row(field)
                             }
                         }
-                        if let skipped = unsupported, !skipped.isEmpty, !model.isProse {
-                            // Said out loud. A field that silently never appears
-                            // reads as the composer being broken; a field that
-                            // says it is not here reads as a boundary.
-                            Text("\(skipped.joined(separator: ", ")) — set in Hermes Notes after saving.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                                .padding(.top, 2)
-                        }
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 14)
@@ -460,12 +451,6 @@ struct ComposeView: View {
                idealWidth: Field.formWidth, maxWidth: .infinity,
                minHeight: 320, idealHeight: 560, maxHeight: .infinity)
         .background(standalone ? AnyView(VisualEffect(radius: 0)) : AnyView(Color.clear))
-    }
-
-    private var unsupported: [String]? {
-        model.type?.fields
-            .filter { $0.kind == "recurrence" || $0.kind == "attachment" }
-            .map(\.display)
     }
 
     private var picker: some View {

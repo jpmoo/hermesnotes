@@ -1,9 +1,62 @@
-import { Download, FileText, Paperclip, Trash2, Upload } from "lucide-react";
+import {
+  Download,
+  File as FileIcon,
+  FileArchive,
+  FileAudio,
+  FileCode,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  FileVideo,
+  Paperclip,
+  Presentation,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, apiBase, type Attachment } from "../api.ts";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
+
+/**
+ * The icon for a file nobody can show a picture of.
+ *
+ * By media type first and by extension only as a fallback, because the media
+ * type is what the file said about itself and an extension is what somebody
+ * typed. Neither is trustworthy alone: a `.md` uploaded from a phone often
+ * arrives as `application/octet-stream`, which would put a blank page beside
+ * every note somebody moved across.
+ */
+function iconFor(mime: string, filename: string) {
+  const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
+  const is = (...xs: string[]) => xs.some((x) => mime.startsWith(x));
+  if (is("audio/")) return FileAudio;
+  if (is("video/")) return FileVideo;
+  if (mime === "application/pdf" || ext === "pdf") return FileText;
+  if (is("text/csv") || /^(csv|tsv|xls|xlsx|ods|numbers)$/.test(ext)) return FileSpreadsheet;
+  if (/^(ppt|pptx|odp|key)$/.test(ext)) return Presentation;
+  if (/^(zip|tar|gz|tgz|bz2|xz|7z|rar)$/.test(ext)) return FileArchive;
+  if (
+    is("application/json", "application/xml", "text/html", "text/css", "text/javascript") ||
+    /^(json|xml|ya?ml|toml|js|ts|tsx|jsx|py|rb|go|rs|swift|kt|java|c|h|cpp|sh)$/.test(ext)
+  ) {
+    return FileCode;
+  }
+  if (is("text/") || /^(md|markdown|txt|rtf|doc|docx|odt)$/.test(ext)) return FileText;
+  return FileIcon;
+}
+
+/**
+ * Whether the browser will draw this as a picture.
+ *
+ * Named formats rather than the whole of `image/*`: a TIFF or a HEIC is an
+ * image the browser cannot render, and an `<img>` pointed at one shows a broken
+ * icon — which reads as a damaged upload rather than as a format nothing here
+ * can display. Those fall through to the icon, which is honest and looks
+ * deliberate.
+ */
+const SHOWABLE = /^image\/(png|jpeg|gif|webp|avif|svg\+xml|bmp)$/;
 
 function humanSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -90,6 +143,30 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         <ul className="attach-list">
           {files.map((f) => (
             <li key={f.id} className="attach-item">
+              {/* The file itself, where the browser can draw one.
+                  A list of file names tells you what you attached; a row of
+                  thumbnails tells you which one you want, which is the question
+                  anybody actually has in front of five screenshots. Everything
+                  else gets the icon for its kind — deliberate, rather than the
+                  broken-image mark an <img> leaves on a format it cannot
+                  render. */}
+              <a
+                className="attach-thumb"
+                href={`${apiBase}/attachments/${f.id}`}
+                target="_blank"
+                rel="noreferrer"
+                tabIndex={-1}
+                aria-hidden="true"
+              >
+                {SHOWABLE.test(f.mime) ? (
+                  <img src={`${apiBase}/attachments/${f.id}`} alt="" loading="lazy" />
+                ) : (
+                  (() => {
+                    const Icon = iconFor(f.mime, f.filename);
+                    return <Icon size={18} />;
+                  })()
+                )}
+              </a>
               {/* A chip, not a link. The name is a thing you can pick up and
                   open — the same shape a mention has — and the underlined blue
                   it used to be read as a web address rather than as this
@@ -101,7 +178,9 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
                 rel="noreferrer"
                 title={f.filename}
               >
-                <FileText size={13} className="attach-icon" />
+                {/* No icon in the chip: the thumbnail beside it already says
+                    what kind of file this is, and saying it twice on one row
+                    is clutter rather than emphasis. */}
                 <span className="attach-filename">{f.filename}</span>
               </a>
               <span className="attach-size">{humanSize(f.size)}</span>

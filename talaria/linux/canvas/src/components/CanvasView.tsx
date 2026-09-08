@@ -875,8 +875,7 @@ export function CanvasView({
    *
    * Found by hit-testing the DOM rather than by arithmetic: every node carries
    * its id, the topmost one wins by construction, and pointer capture makes
-   * hover events unreliable for the rest of a drag — the same reason
-   * `finishLink` reads `elementFromPoint`.
+   * hover events unreliable for the rest of a drag.
    */
   const dropTargetAt = (clientX: number, clientY: number, moving: string): string | null => {
     // Every depth of it: a region can hold a region, and the inner one's cards
@@ -1591,9 +1590,6 @@ export function CanvasView({
       }
     | null
   >(null);
-  const [linking, setLinking] = useState<{ from: string; side: Side; x: number; y: number } | null>(null);
-  const linkingRef = useRef(linking);
-  linkingRef.current = linking;
   const hoverNode = useRef<string | null>(null);
 
   // Fully functional updates so rapid wheel events never read a stale zoom
@@ -1843,114 +1839,25 @@ export function CanvasView({
     drag.current = { kind: "region", id, sx: p.x, sy: p.y, starts, moved: false };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
-  /**
-   * Land the connection being drawn at a point on screen. Kept apart from the
-   * pointer plumbing because what it decides — which side of the target to meet,
-   * whether this is a real relation or a note's dotted line — is the interesting
-   * part, and it's reached from the window listener above.
-   */
-  const finishLink = (clientX: number, clientY: number) => {
-    const link = linkingRef.current;
-    setLinking(null);
-    if (!link) return;
-    // What's under the pointer, by position. Hover tracking can't be trusted
-    // here: enter/leave stop firing for the rest of a drag once a pointer is
-    // captured, which touch does implicitly on the first move. Every node
-    // carries its id, ephemeral notes included.
-    const under = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    const target = under?.closest<HTMLElement>("[data-block-id]")?.dataset.blockId ?? hoverNode.current;
-    if (!target || target === link.from) return;
-    const tr = rectOf(target);
-    const src = rectOf(link.from);
-    if (!tr || !src) return;
-    // Meet the target on the side facing the source anchor.
-    const sa = anchor(src, link.side);
-    const dxc = sa.x - (tr.x + tr.w / 2);
-    const dyc = sa.y - (tr.y + tr.h / 2);
-    const toSide: Side =
-      Math.abs(dxc) / tr.w > Math.abs(dyc) / tr.h ? (dxc > 0 ? "e" : "w") : dyc > 0 ? "s" : "n";
-    /*
-     * **No relation filing, and no live edges.**
-     *
-     * Hermes files a connection between two blocks under a reference field when
-     * their types have one, so the line *is* the relation. Talaria cannot: a
-     * relation is a fact about two blocks in the library, and writing one means
-     * writing to Hermes — which happens through the interchange or not at all,
-     * and `canvas.json` is not the interchange. Its lines are canvas decoration,
-     * and they say so by being nothing else.
-     */
-    // Two things are either connected or they aren't — a second line between the
-    // same pair says nothing the first doesn't, and they overlap so you can't
-    // tell there are two. Drawing one again opens the existing line's settings,
-    // which is what you were reaching for anyway.
-    const existing = edges.find(
-      (e) => (e.from === link.from && e.to === target) || (e.from === target && e.to === link.from),
-    );
-    if (existing) {
-      setEdgeMenu({ id: existing.id, x: clientX, y: clientY });
-      return;
-    }
-    const edgeId = uid();
-    saveEdges([
-      ...edges,
-      {
-        id: edgeId,
-        from: link.from,
-        to: target,
-        fromSide: link.side,
-        toSide,
-        arrow: "forward",
-      },
-    ]);
-    // The line's own settings, where it was dropped: dashes, arrows and label
-    // are decisions you've just made, and right-clicking the line afterwards is
-    // a step people don't find.
-    setEdgeMenu({ id: edgeId, x: clientX, y: clientY });
-  };
 
-  /**
-   * Drawing a connection is a gesture on the WINDOW, not on the canvas element.
-   * Relying on the move and the release reaching the canvas meant anything that
-   * took them away — a native drag starting, the pointer crossing out of the
-   * canvas, an element between us and it — ended the gesture with no line, no
-   * error and nothing to go on. The window sees every one of them.
+  /*
+   * Escape ends add-mode.
    *
-   * Everything the finish needs is read from refs at release time, so the
-   * listeners can be attached once for the gesture rather than re-attached on
-   * every move.
+   * It used to live inside the effect that ran a link-drawing gesture, which
+   * meant it was only listening while a line was being drawn — so Escape did
+   * nothing to a region left filling. There is no such gesture any more, and
+   * this is a listener of its own.
    */
   useEffect(() => {
-    if (!linking) return;
-    const move = (e: PointerEvent) => {
-      const p = toCanvas(e.clientX, e.clientY);
-      setLinking((l) => (l ? { ...l, x: p.x, y: p.y } : l));
-    };
-    const up = (e: PointerEvent) => finishLink(e.clientX, e.clientY);
-    const cancel = () => setLinking(null);
-    // A native drag would steal the pointer mid-gesture; there's nothing on a
-    // canvas worth dragging that way.
-    const noDrag = (e: Event) => e.preventDefault();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setLinking(null); setAddingTo(null); }
+      if (e.key === "Escape") setAddingTo(null);
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", cancel);
-    window.addEventListener("dragstart", noDrag);
     window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", cancel);
-      window.removeEventListener("dragstart", noDrag);
-      window.removeEventListener("keydown", onKey);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Boolean(linking)]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const onPointerMove = (e: ReactPointerEvent) => {
     if (pinchRef.current) return;
-    if (linking) return; // the window owns this gesture
     const d = drag.current;
     if (!d) return;
     if (d.kind === "pan") {
@@ -3035,7 +2942,7 @@ export function CanvasView({
       onDoubleClick={(e) => {
         if (locked) return;
         const t = e.target as HTMLElement;
-        if (t.closest?.(".cv-handle, .cv-corner, .cv-grab")) return;
+        if (t.closest?.(".cv-corner, .cv-grab")) return;
         setEditingNode(id);
         /*
          * …and the caret goes where the second click landed.
@@ -3168,24 +3075,6 @@ export function CanvasView({
       {(["nw", "ne", "sw", "se"] as const).map((c) => (
         <span key={c} className={`cv-corner cv-${c}`} onPointerDown={(e) => startResize(id, c, e)} />
       ))}
-      {(["n", "s", "e", "w"] as const).map((sd) => (
-        <span
-          key={sd}
-          className={`cv-handle cv-h-${sd}`}
-          title="Drag to connect"
-          onPointerDown={(e) => {
-            if (locked || e.button !== 0) return;
-            e.preventDefault();
-            e.stopPropagation();
-            // Capture, so the events keep coming even if what's under the
-            // pointer changes or disappears. They still reach the window, which
-            // is where the rest of this gesture lives (see finishLink).
-            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-            const p = toCanvas(e.clientX, e.clientY);
-            setLinking({ from: id, side: sd, x: p.x, y: p.y });
-          }}
-        />
-      ))}
     </div>
     );
   };
@@ -3230,7 +3119,6 @@ export function CanvasView({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={() => {
-        setLinking(null);
         drag.current = null;
         setGuides([]);
         setSpacings([]);
@@ -3256,9 +3144,9 @@ export function CanvasView({
           return (
             <div
               key={rg.id}
-              // The same attribute a node carries, because `finishLink` finds
-              // what a line was dropped on by looking for it. A region without
-              // one is a thing you can aim at and never hit.
+              // The same attribute a node carries, because a drop finds what it
+              // landed on by looking for it. A region without one is a thing you
+              // can aim at and never hit.
               data-block-id={rg.id}
               className="cv-region"
               style={{ left: rr.x, top: rr.y, width: rr.w, height: rr.h, background: rg.color ?? REGION_COLORS[0] }}
@@ -3297,28 +3185,6 @@ export function CanvasView({
                   </button>
                 )}
               </div>
-              {/* The same four handles a node has, so a region is a place a
-                  line can start as well as one it can land on. Without these it
-                  could only ever be the far end of a connection somebody drew
-                  from a node, which is half a feature. */}
-              {!locked &&
-                (["n", "s", "e", "w"] as const).map((sd) => (
-                  <span
-                    key={sd}
-                    className={`cv-handle cv-h-${sd}`}
-                    title="Drag to connect"
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      e.preventDefault();
-                      // Stopped, or the region's own drag takes the gesture and
-                      // the whole group moves instead of a line being drawn.
-                      e.stopPropagation();
-                      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-                      const p = toCanvas(e.clientX, e.clientY);
-                      setLinking({ from: rg.id, side: sd, x: p.x, y: p.y });
-                    }}
-                  />
-                ))}
             </div>
           );
         })}
@@ -3447,21 +3313,6 @@ export function CanvasView({
                 />
               );
             })}
-          {linking &&
-            (() => {
-              const fr = rectOf(linking.from);
-              if (!fr) return null;
-              const a = anchor(fr, linking.side);
-              return (
-                <path
-                  d={`M ${a.x} ${a.y} L ${linking.x} ${linking.y}`}
-                  className="cv-edge cv-edge-temp"
-                  stroke="#5fa4b5"
-                  strokeWidth={2}
-                  strokeDasharray="6 5"
-                />
-              );
-            })()}
         </svg>
 
         {members.map((m) => {

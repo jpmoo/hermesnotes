@@ -1283,25 +1283,6 @@ input.typed-title:focus {
 .cv-ne { top: -4px; right: -4px; cursor: nesw-resize; }
 .cv-sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
 .cv-se { bottom: -4px; right: -4px; cursor: nwse-resize; }
-.cv-handle {
-  position: absolute;
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--surface);
-  opacity: 0;
-  transition: opacity 0.12s;
-  z-index: 4;
-  cursor: crosshair;
-}
-.cv-node:hover .cv-handle {
-  opacity: 1;
-}
-.cv-h-n { top: -6px; left: calc(50% - 6px); }
-.cv-h-s { bottom: -6px; left: calc(50% - 6px); }
-.cv-h-w { left: -6px; top: calc(50% - 6px); }
-.cv-h-e { right: -6px; top: calc(50% - 6px); }
 .cv-toolbar {
   position: absolute;
   right: 10px;
@@ -1567,13 +1548,6 @@ input.cv-add-input {
 }
 .mobile-bar .icon-btn {
   flex-shrink: 0;
-}
-/* Locked canvas: hide structural affordances (drag grip, resize corners,
-   connect handles). Block bodies stay fully interactive; pan/zoom/select stay. */
-.cv-wrap.locked .cv-grab,
-.cv-wrap.locked .cv-corner,
-.cv-wrap.locked .cv-handle {
-  display: none;
 }
 .cv-wrap.locked .cv-node {
   cursor: default;

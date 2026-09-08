@@ -532,7 +532,6 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .exporting .chat-drawer,
 .exporting .cv-grab,
 .exporting .cv-corner,
-.exporting .cv-handle,
 .exporting .cv-bend { display: none !important; }
 .exporting body, .exporting .cv-wrap { background-color: Canvas; }
 /* No scrollbars in a photograph. */

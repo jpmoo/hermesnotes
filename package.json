@@ -9,7 +9,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm -r --filter=!@talaria/canvas build",
+    "build:canvas": "pnpm --filter @talaria/canvas build",
     "start": "pnpm --filter @hermes/server start",
     "typecheck": "pnpm -r typecheck",
     "dev:server": "pnpm --filter @hermes/server dev",

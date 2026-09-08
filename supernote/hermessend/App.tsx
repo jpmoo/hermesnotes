@@ -37,7 +37,7 @@ import {
 import { HermesFile } from './src/native';
 import { load, save, type Settings } from './src/settings';
 import { current, watch, type Capture } from './src/session';
-import { INTERNET, ensure } from './src/permissions';
+import { INTERNET, ensure, explain } from './src/permissions';
 
 type Kind = 'note' | 'task';
 
@@ -93,6 +93,27 @@ function App(): React.JSX.Element {
   };
   useEffect(() => stop, []);
 
+  /**
+   * A way out, from every screen.
+   *
+   * There was none: the view closed itself only after a send succeeded, so a
+   * pairing that failed, an address typed wrong, or simply changing your mind
+   * left somebody holding a screen with no exit. On a device whose back gesture
+   * belongs to the note underneath, a plugin without its own close button is a
+   * plugin you have to reboot out of.
+   *
+   * Polling deliberately continues: closing the view is putting it down, not
+   * cancelling the pairing, and the key should still land if the code is
+   * approved a minute later on a laptop.
+   */
+  const close = () => {
+    try {
+      PluginManager.closePluginView();
+    } catch {
+      // Nothing else to offer — but the button has to exist either way.
+    }
+  };
+
   /** Ask for a code, then wait to be approved. */
   const startPairing = useCallback(async () => {
     const where = base.trim();
@@ -103,8 +124,13 @@ function App(): React.JSX.Element {
       // Network access is a permission the host grants per plugin now. Asked
       // here rather than at launch, so the dialog arrives with a reason
       // visible on screen.
-      if (!(await ensure(INTERNET))) {
-        setTrouble('network permission was refused, so this cannot reach Hermes');
+      //
+      // Three answers, not two: a refusal and a failure to ask are different
+      // things, and calling the second one a refusal sends somebody hunting
+      // for a switch they never touched. See `src/permissions.ts`.
+      const net = await ensure(INTERNET);
+      if (!net.ok) {
+        setTrouble(explain(net, 'pairing'));
         return;
       }
       const root = where.replace(/\/+$/, '').replace(/\/api$/, '');
@@ -171,8 +197,9 @@ function App(): React.JSX.Element {
     setBusy(true);
     setTrouble(null);
     try {
-      if (!(await ensure(INTERNET))) {
-        setTrouble('network permission was refused, so this cannot reach Hermes');
+      const net = await ensure(INTERNET);
+      if (!net.ok) {
+        setTrouble(explain(net, 'sending'));
         return;
       }
       const file = await HermesFile.read(capture.png);
@@ -272,6 +299,21 @@ function App(): React.JSX.Element {
           </>
         )}
         {trouble ? <Text style={styles.trouble}>{trouble}</Text> : null}
+        <TouchableOpacity style={styles.quiet} onPress={close}>
+          <Text style={styles.quietText}>Close</Text>
+        </TouchableOpacity>
+        {code ? (
+          <TouchableOpacity
+            style={styles.quiet}
+            onPress={() => {
+              stop();
+              setCode(null);
+              setTrouble(null);
+            }}
+          >
+            <Text style={styles.quietText}>Start over</Text>
+          </TouchableOpacity>
+        ) : null}
       </ScrollView>
     );
   }
@@ -355,6 +397,10 @@ function App(): React.JSX.Element {
       </TouchableOpacity>
 
       {trouble ? <Text style={styles.trouble}>{trouble}</Text> : null}
+
+      <TouchableOpacity style={styles.quiet} onPress={close}>
+        <Text style={styles.quietText}>Cancel</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -396,6 +442,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonOff: { backgroundColor: '#999' },
+  /* The way out. Plain rather than prominent — it is always available and
+     never the thing somebody came here to do. */
+  quiet: { paddingVertical: 12, alignItems: 'center' },
+  quietText: { fontSize: 15, color: '#000', textDecorationLine: 'underline' },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   trouble: { fontSize: 14, color: '#8a1c1c' },
 });

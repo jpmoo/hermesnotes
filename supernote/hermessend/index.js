@@ -9,7 +9,7 @@ import App from './App';
 import { name as appName } from './app.json';
 import { FileUtils, PluginCommAPI, PluginManager } from 'sn-plugin-lib';
 import { begin, set } from './src/session';
-import { DELETE, WRITE, ensureAll } from './src/permissions';
+import { DELETE, WRITE, ensureAll, explain } from './src/permissions';
 
 const BUTTON_ID = 1;
 
@@ -52,12 +52,10 @@ PluginManager.registerButtonListener({
     // Asked here, where a dialog arrives immediately after a deliberate tap,
     // rather than at launch where it would arrive out of nowhere.
     ensureAll(WRITE, DELETE)
-      .then((refused) => {
-        if (refused) {
-          throw new Error(
-            `${refused.split(':').pop()} permission was refused — the selection cannot be saved`,
-          );
-        }
+      .then((verdict) => {
+        // A refusal and a failure to ask read differently on screen, because
+        // they are different problems. See `src/permissions.ts`.
+        if (!verdict.ok) throw new Error(explain(verdict, 'saving the selection'));
         return capture();
       })
       .then((got) => set({ working: false, png: got.png, noteName: got.noteName }))

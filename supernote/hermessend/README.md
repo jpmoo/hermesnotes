@@ -104,11 +104,25 @@ with this version and needing an update. That reads like a broken plugin and is
 not one: every plugin built against 0.1.43 stops installing at the same moment,
 which is the tell.
 
-`src/permissions.ts` asks for each at the point it is needed rather than three
-dialogs at launch — file write and delete on the button press, network before
-pairing and before sending — so the dialog arrives with its reason on screen. An
-SDK with no permission API is treated as granting everything, so this does not
-break itself on older firmware while being careful about newer.
+**A permission has to be declared before it can be requested.** The names go in
+`uses-permissions` in `PluginConfig.json`; calling `requestPermission` for one
+that is not listed fails with code 1500 *before any dialog appears*, which reads
+on screen as the request having been refused when nobody was ever asked.
+
+**Two permissions, not four.** The plugin's own private directory is exempt from
+every permission by default, and that is where the PNG and the settings file
+live — so `FILE:WRITE` and `FILE:DELETE` would be dialogs asking for something
+already granted. `FILE:READ` is needed because the lasso is read out of a note in
+shared storage, and `INTERNET` because Hermes is on the network.
+
+`src/permissions.ts` asks for each at the point it is needed rather than at
+launch — read on the button press, network before pairing and before sending —
+so a dialog arrives with its reason on screen. An SDK with no permission API is
+treated as granting everything, so this does not break itself on older firmware
+while being careful about newer.
+
+Ratta's own documentation is the reference:
+<https://github.com/Supernote-Ratta/docs-plugin> (`en/plugin-base/permission.mdx`).
 
 Pinned rather than caret, because the version is a compatibility claim about
 somebody's device and not a dependency to float.

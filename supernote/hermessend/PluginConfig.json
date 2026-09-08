@@ -6,5 +6,9 @@
   "versionCode": "1",
   "pluginID": "kwqy7npwqmstbw8s",
   "pluginKey": "hermessend",
-  "jsMainPath": "index"
+  "jsMainPath": "index",
+  "uses-permissions": [
+    "plugin.permission.INTERNET",
+    "plugin.permission.FILE:READ"
+  ]
 }

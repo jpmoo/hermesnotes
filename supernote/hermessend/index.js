@@ -9,7 +9,7 @@ import App from './App';
 import { name as appName } from './app.json';
 import { FileUtils, PluginCommAPI, PluginManager } from 'sn-plugin-lib';
 import { begin, set } from './src/session';
-import { DELETE, WRITE, ensureAll, explain } from './src/permissions';
+import { READ, ensureAll, explain } from './src/permissions';
 
 const BUTTON_ID = 1;
 
@@ -48,10 +48,12 @@ PluginManager.registerButtonListener({
   onButtonPress: (event) => {
     if (!event || event.id !== BUTTON_ID) return;
     begin();
-    // Writing the PNG and clearing the sticker behind it are both gated now.
-    // Asked here, where a dialog arrives immediately after a deliberate tap,
-    // rather than at launch where it would arrive out of nowhere.
-    ensureAll(WRITE, DELETE)
+    // The selection is read out of the note, which lives in shared storage and
+    // is gated. What this writes — the sticker and the PNG — goes in the
+    // plugin's own directory, which is exempt from permissions entirely, so
+    // there is nothing to ask about that. Asked here, where a dialog arrives
+    // immediately after a deliberate tap rather than out of nowhere at launch.
+    ensureAll(READ)
       .then((verdict) => {
         // A refusal and a failure to ask read differently on screen, because
         // they are different problems. See `src/permissions.ts`.

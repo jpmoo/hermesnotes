@@ -9,13 +9,22 @@ import { PluginManager } from "sn-plugin-lib";
  * every plugin built against 0.1.43 stopped installing at once rather than one
  * of them being broken.
  *
- * Three of them matter here, and each is asked for at the moment it is needed
- * rather than all three at launch: a dialog that arrives while somebody is
- * looking at the thing it is about can be answered, and three at once before
- * anything has happened is a wall.
+ * **Declared before requested.** Every name below also appears in
+ * `uses-permissions` in `PluginConfig.json`; asking for one that is not
+ * declared fails with code 1500 before any dialog is shown, which is what
+ * "could not ask for INTERNET permission" meant the first time this shipped.
+ *
+ * Two, not four. The plugin's own private directory is exempt from every
+ * permission by default, and that is where the PNG and the settings file live —
+ * so `FILE:WRITE` and `FILE:DELETE` would be two dialogs asking for something
+ * already granted. `FILE:READ` is here because the lasso is read out of a note
+ * in shared storage, which is not exempt.
+ *
+ * Each is asked for at the moment it is needed rather than at launch: a dialog
+ * that arrives while somebody is looking at the thing it is about can be
+ * answered, and a stack of them before anything has happened is a wall.
  */
-export const WRITE = "plugin.permission.FILE:WRITE";
-export const DELETE = "plugin.permission.FILE:DELETE";
+export const READ = "plugin.permission.FILE:READ";
 export const INTERNET = "plugin.permission.INTERNET";
 
 /** A short name for a message, since the full string is mostly namespace. */
@@ -60,8 +69,12 @@ async function held(permission: string): Promise<boolean | null> {
 /**
  * Hold it, or ask for it once.
  *
- * `requestPermission` answers 0 (refused), 1 (while using) or 2 (always), so
- * anything above zero is a yes.
+ * `requestPermission` answers 0 (don't allow), 1 (this time), 2 (always) or
+ * -1 (dialog dismissed without choosing), so anything above zero is a yes.
+ *
+ * Worth knowing about the "1": it lasts only while the plugin is open, so a
+ * `hasPermission` of 0 on the next run is ordinary rather than a sign that
+ * something was revoked. Asking again is the intended flow.
  */
 export async function ensure(permission: string): Promise<Verdict> {
   const have = await held(permission);

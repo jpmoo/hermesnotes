@@ -1129,12 +1129,16 @@ class Shell(QObject):
 
     def _report_shortcuts(self) -> None:
         """
-        Say what the portal granted, through the tray rather than into a log.
+        Say what the portal *refused*, and nothing else.
 
-        Both halves matter. A hotkey that silently did not bind is the failure
-        mode this whole surface has — you press it, nothing happens, and there is
-        nowhere to look. And a hotkey the portal *changed* is worth knowing about
-        too, since the trigger it granted need not be the one that was asked for.
+        A hotkey that silently did not bind is the failure mode this whole
+        surface has — you press it, nothing happens, and there is nowhere to
+        look — so that still earns a notification. What does not is the list of
+        the ones that worked: it appeared on every start, said the same eight
+        things every time, and by the second day it was a popup to dismiss
+        rather than a thing to read. The bindings are printed to the journal on
+        every start regardless, which is where you go when one of them is
+        missing.
         """
         if self.shortcuts.failures:
             self.tray.showMessage(
@@ -1143,30 +1147,6 @@ class Shell(QObject):
                 QSystemTrayIcon.MessageIcon.Warning,
                 10000,
             )
-        elif self.shortcuts.bound:
-            # One per line, and the key first.
-            #
-            # This was a single comma-joined sentence, which a Plasma
-            # notification elides — so the last entry lost its name and read as
-            # a bare keystroke belonging to nothing. A list is also simply
-            # easier to scan than prose when every item has the same shape.
-            #
-            # Ordered by PANELS rather than by whatever the portal happened to
-            # return, so the same list appears in the same order every start.
-            # Alphabetical by name. `PANELS` order is the order they were built
-            # in, which means something to nobody reading a notification.
-            lines = [
-                f"{self.shortcuts.bound[a]}  —  {SHORT.get(a, PANELS[a][0])}"
-                for a in sorted(PANELS, key=lambda k: SHORT.get(k, PANELS[k][0]).lower())
-                if self.shortcuts.bound.get(a)
-            ]
-            if lines:
-                self.tray.showMessage(
-                    "Talaria hotkeys",
-                    "\n".join(lines),
-                    QSystemTrayIcon.MessageIcon.Information,
-                    6000,
-                )
 
     def _complain(self, title: str, body: str) -> None:
         QMessageBox.warning(None, title, body)

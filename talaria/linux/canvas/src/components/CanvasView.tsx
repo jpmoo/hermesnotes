@@ -248,8 +248,18 @@ interface CanvasRegion {
   title: string;
   color?: string;
   memberIds: string[];
-  /** A collection mirroring this region: canvas add/remove keeps it updated. */
-  linkedCollectionId?: string | null;
+  /*
+   * **No collection behind it.** Hermes' canvas can turn a region into a
+   * collection and keep the two in step; this one cannot, and the difference is
+   * the point. Talaria's canvas is `canvas.json` — a document somebody
+   * arranged, with Canvas Chat as its only other writer — and it reaches the
+   * library through the interchange and nowhere else. Creating collections and
+   * mirroring membership into them is a second write path into Hermes, hidden
+   * inside a drag.
+   *
+   * It also never worked: `POST /collections` is not a route Talaria's router
+   * answers, so the button threw every time it was pressed.
+   */
 }
 
 const DEFAULT_W = 280;
@@ -458,7 +468,6 @@ export function CanvasView({
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 3200);
   };
-  const [createdCollection, setCreatedCollection] = useState<{ id: string; title: string; kind: string } | null>(null);
   const typeById = useMemo(() => new Map(types.map((t) => [t.id, t])), [types]);
 
   // When a live link connects a block to another whose type matches one of the
@@ -515,10 +524,20 @@ export function CanvasView({
     const measure = () => {
       const el = wrapRef.current;
       if (!el) return;
-      // Down to the bottom of the window, less a hair so the border isn't flush
-      // with the edge. Measured rather than guessed at, because what sits above
-      // a canvas varies: a banner, a title, a toolbar, none of them.
-      setWrapH(Math.max(460, window.innerHeight - el.getBoundingClientRect().top - 12));
+      /*
+       * Down to the bottom of the window. Measured rather than guessed at,
+       * because what sits above a canvas varies: a banner, a title, a toolbar,
+       * none of them.
+       *
+       * The hair off the end is for a window whose own edge is the canvas's:
+       * without it the rounded corners are cut off flush against the bottom of
+       * the screen. On the desk that hair is one margin too many — the surface
+       * already holds the canvas in 22 pixels of padding on all four sides, so
+       * subtracting again gave the bottom 34 and the other three 22, which is
+       * exactly the uneven gap it looks like.
+       */
+      const hair = document.documentElement.classList.contains("framed") ? 0 : 12;
+      setWrapH(Math.max(460, window.innerHeight - el.getBoundingClientRect().top - hair));
     };
     measure();
     window.addEventListener("resize", measure);
@@ -1432,14 +1451,6 @@ export function CanvasView({
     member === region || nestedIn(member).has(region);
   const inRect = (r: Rect, x: number, y: number) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 
-  /** Mirror a region change into its linked collection (best-effort). */
-  const syncLinked = (rg: CanvasRegion, op: "add" | "remove", nodeId: string) => {
-    if (!rg.linkedCollectionId || nodeId.startsWith("n:")) return;
-    if (op === "add")
-      void api.post(`/collections/${rg.linkedCollectionId}/members`, { blockId: nodeId }).catch(() => {});
-    else void api.del(`/collections/${rg.linkedCollectionId}/members/${nodeId}`).catch(() => {});
-  };
-
   // Leaving a region requires a deliberate yank: the member must land beyond
   // the region's PRE-DRAG outline plus this grace margin. Anything closer
   // stays a member, and the region simply reshapes around the new position.
@@ -1464,7 +1475,6 @@ export function CanvasView({
           const stays = base ? inRect(inflate(base, REGION_GRACE), cx, cy) : false;
           if (!stays) {
             changed = true;
-            syncLinked(rg, "remove", nodeId);
             return { ...rg, memberIds: others };
           }
           return rg;
@@ -1474,7 +1484,6 @@ export function CanvasView({
         const base = rectFromIds(others);
         if (base && inRect(base, cx, cy)) {
           changed = true;
-          syncLinked(rg, "add", nodeId);
           return { ...rg, memberIds: [...rg.memberIds, nodeId] };
         }
         return rg;
@@ -2230,7 +2239,6 @@ export function CanvasView({
   } | null>(null);
   const [edgeMenu, setEdgeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [regionMenu, setRegionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
-  const [syncNewCollection, setSyncNewCollection] = useState(true);
   useEffect(() => {
     if (!nodeMenu && !edgeMenu && !regionMenu) return;
     // pointerdown, not mousedown: canvas drags preventDefault() their
@@ -2249,27 +2257,6 @@ export function CanvasView({
   }, [nodeMenu, edgeMenu, regionMenu]);
 
   /** Region → a real collection of its blocks (manual; optionally kept in sync). */
-  const createRegionCollection = async (rg: CanvasRegion, kind: string, sync: boolean) => {
-    const c = await api.post<Collection>("/collections", {
-      kind,
-      title: rg.title?.trim() || "Region",
-      membershipMode: "explicit",
-    });
-    for (const mid of rg.memberIds) {
-      if (mid.startsWith("n:")) continue; // ephemeral notes aren't blocks
-      // Matrix members are invisible without a cell — start them all in the
-      // first region; the user arranges from there.
-      await api
-        .post(`/collections/${c.id}/members`, {
-          blockId: mid,
-          ...(kind === "matrix" ? { context: { region: 0 } } : {}),
-        })
-        .catch(() => {});
-    }
-    if (sync) patchRegion(rg.id, { linkedCollectionId: c.id });
-    setCreatedCollection({ id: c.id, title: rg.title?.trim() || "Region", kind });
-  };
-
   // Removal is membership-only — deleting the block itself is the info
   // panel's job, never the canvas's.
   const removeNode = async (id: string) => {
@@ -2751,7 +2738,9 @@ export function CanvasView({
       saveRegions(
         regions.map((r) => {
           if (!r.memberIds.includes(note.id)) return r;
-          syncLinked(r, "add", b.id); // the real block joins any linked collection
+          // The block takes the note's place in the region, and that is the
+          // whole of it — a region is an arrangement on this canvas and has no
+          // collection behind it to tell.
           return { ...r, memberIds: r.memberIds.map((m) => (m === note.id ? b.id : m)) };
         }),
       );
@@ -3212,7 +3201,6 @@ export function CanvasView({
             >
               <div className="cv-region-title">
                 {rg.title || "Region"}
-                {rg.linkedCollectionId && <span title="Synced to a collection"> ⟲</span>}
               </div>
               {/* The same four handles a node has, so a region is a place a
                   line can start as well as one it can land on. Without these it
@@ -3935,29 +3923,6 @@ export function CanvasView({
 
       {toast && <div className="cv-toast">{toast}</div>}
 
-      {createdCollection &&
-        createPortal(
-          <div className="modal-backdrop" onClick={() => setCreatedCollection(null)}>
-            <div className="modal-card" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
-              <h2 className="modal-title">Collection created</h2>
-              <p className="modal-message">
-                “{createdCollection.title}” is now a{" "}
-                {createdCollection.kind === "document" ? "spread" : createdCollection.kind} with the
-                region's blocks.
-              </p>
-              <div className="modal-actions">
-                <button className="ghost" onClick={() => setCreatedCollection(null)}>
-                  Stay here
-                </button>
-                <button className="primary" onClick={() => nav(`/collections/${createdCollection.id}`)}>
-                  Open it
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
       <ConfirmDialog
         open={confirmRemove !== null}
         title={removalTitle(confirmRemove ?? [])}
@@ -4023,36 +3988,6 @@ export function CanvasView({
                     onChange={(e) => patchRegion(rg.id, { color: e.target.value })}
                   />
                 </label>
-              </div>
-              <div className="menu-sep" />
-              <div className="hint" style={{ padding: "4px 10px" }}>Create collection from region…</div>
-              <label className="cv-menu-row" style={{ cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={syncNewCollection}
-                  style={{ width: "auto" }}
-                  onChange={(e) => setSyncNewCollection(e.target.checked)}
-                />
-                <span style={{ fontSize: 12 }}>Keep synced with region</span>
-              </label>
-              <div className="cv-menu-row">
-                {[
-                  ["list", "List"],
-                  ["document", "Spread"],
-                  ["matrix", "Matrix"],
-                  ["table", "Table"],
-                ].map(([k, label]) => (
-                  <button
-                    key={k}
-                    className="seg"
-                    onClick={() => {
-                      void createRegionCollection(rg, k!, syncNewCollection);
-                      setRegionMenu(null);
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
               </div>
               <div className="menu-sep" />
               <button

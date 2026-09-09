@@ -8639,3 +8639,21 @@ body:has(.embed-scratchpad) #root {
   font-size: 11px;
   color: var(--text-faint);
 }
+
+/* The two ways to attach a file, weighted the same. Uploading was a drop zone
+   and attaching-an-existing-one was a text link beneath it, which read as a
+   footnote rather than an alternative. */
+.attach-ways {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.attach-ways .ghost {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 8px 10px;
+}

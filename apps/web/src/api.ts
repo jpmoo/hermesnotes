@@ -163,6 +163,8 @@ export interface Attachment {
   filename: string;
   mime: string;
   size: number;
+  /** Which stored file this points at — see `/attachments/blob/:digest`. */
+  sha256: string;
   createdAt: string;
 }
 

@@ -268,18 +268,34 @@ export function TextBlockEditor({
 
       {bodyFields.length > 0 && (
         <div className="typed-fields">
-          {bodyFields.map((f) => (
-            <label
-              className={`field typed-field${
-                f.type === "text" ||
-                f.type === "longtext" ||
-                f.type === "url" ||
-                f.type === "datespan" ||
-                f.type === "reference" ||
-                f.type === "attachments"
-                  ? " full"
-                  : ""
-              }`}
+          {bodyFields.map((f) => {
+            const wide =
+              f.type === "text" ||
+              f.type === "longtext" ||
+              f.type === "url" ||
+              f.type === "datespan" ||
+              f.type === "reference" ||
+              f.type === "attachments";
+            /*
+             * A native <label> forwards a click anywhere inside it to its first
+             * form control. For a plain text field that is the point; for a
+             * field made of controls it is a trap, and the attachments field is
+             * the worst case — its first form control is a hidden file input,
+             * so pressing *anything* in that field (move, delete, a thumbnail)
+             * opened the file dialog. `TypedBlockCard` learned this and wrote it
+             * down; this copy of the same list never got the same treatment.
+             */
+            const simple =
+              f.type === "text" ||
+              f.type === "number" ||
+              f.type === "url" ||
+              f.type === "boolean" ||
+              f.type === "select" ||
+              f.type === "status";
+            const Tag = simple ? "label" : "div";
+            return (
+            <Tag
+              className={`field typed-field${wide ? " full" : ""}`}
               key={f.key}
             >
               <span>{f.label ?? f.key.replace(/_/g, " ")}</span>
@@ -293,8 +309,9 @@ export function TextBlockEditor({
                     !isComplete(type.propertySchema, props),
                 )}
               />
-            </label>
-          ))}
+            </Tag>
+            );
+          })}
         </div>
       )}
 

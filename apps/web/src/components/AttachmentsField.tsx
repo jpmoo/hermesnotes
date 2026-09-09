@@ -199,18 +199,20 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         }}
       />
 
-      {/* Uploading is not the only way to attach a file, now that the same
-          bytes can be pointed at from anywhere. Beside the drop zone rather
-          than inside it, so dropping a file still means what it always did. */}
-      <button
-        className="attach-existing"
-        onClick={(e) => {
-          e.stopPropagation();
-          setLibrary(true);
-        }}
-      >
-        or attach a file you already have
-      </button>
+      {/* Two ways in, side by side and equally weighted. Uploading is not the
+          only way to attach a file now that the same bytes can be pointed at
+          from anywhere, and the second way was a text link under the drop zone
+          — which reads as a footnote to the first rather than an alternative
+          to it. Outside the drop zone, so dropping a file still means what it
+          always did. */}
+      <div className="attach-ways">
+        <button className="ghost" type="button" onClick={() => inputRef.current?.click()}>
+          <Upload size={14} /> Upload a file
+        </button>
+        <button className="ghost" type="button" onClick={() => setLibrary(true)}>
+          <Paperclip size={14} /> Attach an existing file
+        </button>
+      </div>
 
       {files.length > 0 && (
         <ul className="attach-list">
@@ -223,16 +225,28 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
                   else gets the icon for its kind — deliberate, rather than the
                   broken-image mark an <img> leaves on a format it cannot
                   render. */}
+              {/*
+                The blob route, not the attachment route.
+                
+                `/attachments/:id` sets `Content-Disposition: attachment`, so
+                clicking a thumbnail downloaded the file instead of showing it,
+                and the <img> was fetching a URL whose whole purpose is to be
+                saved. The blob route serves the same bytes inline, and because
+                it is named by the digest it is also immutably cacheable — the
+                picture the file picker just showed is already in cache when the
+                row appears. The download button below still uses the attachment,
+                which is what carries the filename.
+              */}
               <a
                 className="attach-thumb"
-                href={`${apiBase}/attachments/${f.id}`}
+                href={`${apiBase}/attachments/blob/${f.sha256}`}
                 target="_blank"
                 rel="noreferrer"
                 tabIndex={-1}
                 aria-hidden="true"
               >
                 {SHOWABLE.test(f.mime) ? (
-                  <img src={`${apiBase}/attachments/${f.id}`} alt="" loading="lazy" />
+                  <img src={`${apiBase}/attachments/blob/${f.sha256}`} alt="" loading="lazy" />
                 ) : (
                   (() => {
                     const Icon = iconFor(f.mime, f.filename);

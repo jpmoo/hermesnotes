@@ -13,6 +13,18 @@ const META = {
   filename: attachments.filename,
   mime: attachments.mime,
   size: attachments.size,
+  /**
+   * Which bytes this is.
+   *
+   * Handed to the client so a thumbnail can point at `/attachments/blob/:digest`
+   * — which serves inline and is immutably cacheable — while the download button
+   * keeps pointing at the attachment, which carries the name somebody gave it
+   * and a `Content-Disposition` that saves rather than shows.
+   *
+   * That split is the difference between a thumbnail you can click to look at
+   * and one that downloads a file every time you press it.
+   */
+  sha256: attachments.sha256,
   createdAt: attachments.createdAt,
 };
 

@@ -360,7 +360,12 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
           mode={placing.mode}
           types={types}
           onClose={() => setPlacing(null)}
-          onDone={load}
+          onDone={(said) => {
+            // The same line the scratchpad moves use. One place for "what just
+            // happened", wherever the file went.
+            setPlacedNote(said);
+            load();
+          }}
         />
       )}
 

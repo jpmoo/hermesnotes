@@ -34,7 +34,14 @@ export function AttachmentPlaceModal({
   mode: "move" | "copy";
   types: BlockType[];
   onClose: () => void;
-  onDone: () => void;
+  /**
+   * Done, and what to say about it.
+   *
+   * The message travels out rather than being shown here, because this closes
+   * the moment the work lands: a modal that stays open to report success is a
+   * modal somebody has to dismiss to see the result it is reporting on.
+   */
+  onDone: (said: string) => void;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<BlockSearchResult[]>([]);
@@ -94,19 +101,22 @@ export function AttachmentPlaceModal({
    * scan the results without holding your breath.
    */
   const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);
-  const [went, setWent] = useState<string | null>(null);
 
   const place = async (blockId: string, title: string) => {
     setBusy(true);
     setError(null);
     try {
       await api.post(`/attachments/${attachment.id}/place`, { blockId, mode });
-      onDone();
-      // Said, rather than assumed from the modal closing. A move that silently
-      // succeeds looks exactly like a move that silently did nothing, and the
-      // file is no longer on the note you are looking at to prove otherwise.
-      setWent(title);
-      setChosen(null);
+      // Said out of here rather than in here. A move that silently succeeds
+      // looks exactly like one that silently did nothing — and the file is no
+      // longer on the note you are looking at to prove otherwise — so the
+      // sentence goes where the file used to be.
+      onDone(
+        mode === "move"
+          ? `Moved “${attachment.filename}” to “${title}”.`
+          : `Copied “${attachment.filename}” to “${title}” — stored once, on both notes.`,
+      );
+      onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `could not ${mode} that file`);
       setBusy(false);
@@ -130,7 +140,11 @@ export function AttachmentPlaceModal({
         properties: { title: q.trim() },
       });
       await api.post(`/attachments/${attachment.id}/place`, { blockId: made.id, mode });
-      onDone();
+      onDone(
+        mode === "move"
+          ? `Moved “${attachment.filename}” to a new note.`
+          : `Copied “${attachment.filename}” to a new note — stored once, on both.`,
+      );
       // A new note is opened rather than announced: landing on it is the
       // stronger confirmation, and it is the thing somebody wants next.
       onClose();
@@ -159,15 +173,6 @@ export function AttachmentPlaceModal({
         <h2 className="modal-title">
           {mode === "move" ? "Move" : "Copy"} {attachment.filename}
         </h2>
-        {went ? (
-          <p className="hint" style={{ marginBottom: 10 }}>
-            {mode === "move" ? "Moved" : "Copied"} to <strong>{went}</strong>.{" "}
-            {mode === "copy"
-              ? "The file is on both notes and stored once."
-              : "It is no longer on the note you came from."}
-          </p>
-        ) : null}
-
         <input
           type="text"
           placeholder="Search notes that can hold a file…"

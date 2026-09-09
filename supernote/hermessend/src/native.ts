@@ -13,6 +13,8 @@ interface HermesFileSpec {
   read(path: string): Promise<{ base64: string; sha256: string; size: number }>;
   readText(path: string): Promise<string | null>;
   writeText(path: string, text: string): Promise<boolean>;
+  /** Every page, one above the next, as one tall PNG. Answers the out path. */
+  stitchVertically(paths: string[], outPath: string): Promise<string>;
 }
 
 const missing = () => {
@@ -27,4 +29,5 @@ export const HermesFile: HermesFileSpec =
     read: missing,
     readText: missing,
     writeText: missing,
+    stitchVertically: missing,
   };

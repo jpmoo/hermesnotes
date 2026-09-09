@@ -10,7 +10,13 @@
  * A module-level store with subscribers is the whole mechanism. Both halves are
  * in one JS bundle, so they share this module.
  */
+export type Kind = "selection" | "note";
+
 export interface Capture {
+  /** Which button started this — a lasso selection, or the whole note. */
+  kind: Kind;
+  /** How many pages were joined, when it was the whole note. */
+  pages?: number;
   /** Where the PNG of the selection is, once it exists. */
   png?: string;
   /** The note it came off, for a default title. */
@@ -23,7 +29,7 @@ export interface Capture {
   seq: number;
 }
 
-let state: Capture = { working: false, seq: 0 };
+let state: Capture = { kind: "selection", working: false, seq: 0 };
 const watchers = new Set<(c: Capture) => void>();
 
 export function current(): Capture {
@@ -36,8 +42,8 @@ export function set(next: Partial<Capture>): void {
 }
 
 /** A fresh press: everything from the last one goes. */
-export function begin(): void {
-  state = { working: true, seq: state.seq + 1 };
+export function begin(kind: Kind = "selection"): void {
+  state = { kind, working: true, seq: state.seq + 1 };
   for (const w of watchers) w(state);
 }
 

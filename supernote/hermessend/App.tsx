@@ -53,7 +53,6 @@ function App(): React.JSX.Element {
   const polling = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Composing
-  const [kind, setKind] = useState<Kind>('note');
   const [typeId, setTypeId] = useState('');
   const [title, setTitle] = useState('');
   const seen = useRef(-1);
@@ -82,10 +81,16 @@ function App(): React.JSX.Element {
     setTrouble(null);
   }, [capture.seq]);
 
+  /*
+   * Every type that could hold this, note or task alike.
+   *
+   * The kind is chosen by which button gets pressed rather than by a toggle set
+   * beforehand, so the picker below the title is only about *which* note type
+   * when a library has more than one — not about note versus task.
+   */
   const types = (settings?.types ?? []) as HermesType[];
   const choices = offer(types);
-  const forKind = choices[kind];
-  const chosen = forKind.find((t) => t.id === typeId) ?? forKind[0];
+  const choosable = [...new Set([...choices.note, ...choices.task])];
 
   const stop = () => {
     if (polling.current) clearInterval(polling.current);
@@ -192,8 +197,27 @@ function App(): React.JSX.Element {
     }
   }, [settings]);
 
-  const send = useCallback(async () => {
-    if (!settings?.token || !chosen || !capture.png) return;
+  /**
+   * The file, as an interchange attachment value.
+   *
+   * Read and hashed by the native module, because the format wants a digest
+   * beside any bytes and a JS SHA-256 over a megabyte of PNG on this hardware
+   * feels like a hang.
+   */
+  const fileValue = useCallback(async (named: string) => {
+    const got = await HermesFile.read(capture.png!);
+    return {
+      kind: 'attachment',
+      filename: `${named.replace(/[^A-Za-z0-9._ -]+/g, '_')}.png`,
+      mediaType: 'image/png',
+      sha256: got.sha256,
+      bytes: got.base64,
+    };
+  }, [capture.png]);
+
+  /** Straight onto today's page, with no title to think of. */
+  const sendToday = useCallback(async () => {
+    if (!settings?.token || !capture.png) return;
     setBusy(true);
     setTrouble(null);
     try {
@@ -202,26 +226,68 @@ function App(): React.JSX.Element {
         setTrouble(explain(net, 'sending'));
         return;
       }
-      const file = await HermesFile.read(capture.png);
+      const hermes = new Hermes(settings.base, settings.token);
+      const day = new Date().toLocaleDateString('en-CA');
+      const page = await hermes.today(day);
+      if (!page) {
+        setTrouble('no type in your library declares the journal profile, so there is no page for today');
+        return;
+      }
+      const slot = attachmentKey(page.type);
+      if (!slot) {
+        setTrouble(`${page.type.name} has no attachment field, so the picture has nowhere to go`);
+        return;
+      }
+      const answer = await hermes.patch(page.id, {
+        version: page.version,
+        set: { [slot]: [await fileValue(capture.noteName || 'Note')] },
+      });
+      // A refusal is a refusal in whatever shape it arrives — a stale version
+      // says so with `conflict`, not with a report about attachments.
+      if (answer.ok === false) {
+        setTrouble(
+          answer.conflict
+            ? "today's page changed while this was being sent — try again"
+            : `Hermes refused it (${(answer.reports ?? []).join(', ') || 'no reason given'})`,
+        );
+        return;
+      }
+      const lost = (answer.reports ?? []).filter((r) => r.startsWith('attachment.'));
+      ToastAndroid.show(
+        lost.length ? `Sent — without the picture (${lost[0]})` : "Added to today's note",
+        ToastAndroid.LONG,
+      );
+    } catch (err) {
+      setTrouble(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [settings, capture, fileValue]);
+
+  const send = useCallback(async (as: Kind) => {
+    const forKind = offer((settings?.types ?? []) as HermesType[])[as];
+    const chosen = forKind.find((t) => t.id === typeId) ?? forKind[0];
+    if (!settings?.token || !chosen || !capture.png) {
+      if (!chosen) setTrouble(`no type in your library declares the ${as} profile`);
+      return;
+    }
+    setBusy(true);
+    setTrouble(null);
+    try {
+      const net = await ensure(INTERNET);
+      if (!net.ok) {
+        setTrouble(explain(net, 'sending'));
+        return;
+      }
       const hermes = new Hermes(settings.base, settings.token);
 
       const named = title.trim() || capture.noteName || 'Untitled';
-      const slot = titleKey(chosen, kind);
+      const slot = titleKey(chosen, as);
       const files = attachmentKey(chosen);
 
       const properties: Record<string, unknown> = {};
       if (slot) properties[slot] = named;
-      if (files) {
-        properties[files] = [
-          {
-            kind: 'attachment',
-            filename: `${named.replace(/[^A-Za-z0-9._ -]+/g, '_')}.png`,
-            mediaType: 'image/png',
-            sha256: file.sha256,
-            bytes: file.base64,
-          },
-        ];
-      }
+      if (files) properties[files] = [await fileValue(named)];
 
       const answer = await hermes.create(uuid(), {
         type: chosen.id,
@@ -253,7 +319,7 @@ function App(): React.JSX.Element {
     } finally {
       setBusy(false);
     }
-  }, [settings, chosen, capture, title, kind]);
+  }, [settings, capture, title, typeId, fileValue]);
 
   if (!settings) {
     return (
@@ -334,38 +400,23 @@ function App(): React.JSX.Element {
         <Text style={styles.hint}>Lasso something, then tap Send to Hermes.</Text>
       )}
 
-      <View style={styles.kinds}>
-        {(['note', 'task'] as Kind[]).map((k) => (
-          <TouchableOpacity
-            key={k}
-            style={[styles.kind, kind === k && styles.kindOn]}
-            onPress={() => {
-              setKind(k);
-              setTypeId('');
-            }}
-          >
-            <Text style={[styles.kindText, kind === k && styles.kindTextOn]}>
-              {k === 'note' ? 'Note' : 'Task'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/*
+        Today first, and without a title.
+        
+        The commonest thing to do with a piece of a page is put it where today's
+        thinking already is, and that destination needs no name — the page is
+        named after the day. Above the title field because it is the answer that
+        skips the question below it.
+      */}
+      <TouchableOpacity
+        style={[styles.button, (busy || !capture.png) && styles.buttonOff]}
+        disabled={busy || !capture.png}
+        onPress={() => void sendToday()}
+      >
+        <Text style={styles.buttonText}>Add to today's daily note</Text>
+      </TouchableOpacity>
 
-      {/* The types the library actually has, by what they declare. A library
-          with two kinds of task shows both, under their own names. */}
-      {forKind.length > 1 ? (
-        <View style={styles.kinds}>
-          {forKind.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[styles.kind, chosen?.id === t.id && styles.kindOn]}
-              onPress={() => setTypeId(t.id)}
-            >
-              <Text style={[styles.kindText, chosen?.id === t.id && styles.kindTextOn]}>{t.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.rule} />
 
       <TextInput
         style={styles.input}
@@ -374,27 +425,39 @@ function App(): React.JSX.Element {
         placeholder={capture.noteName ? `Title (from ${capture.noteName})` : 'Title'}
       />
 
-      {!chosen ? (
-        <Text style={styles.trouble}>
-          No type in your library declares the {kind} profile.{' '}
-          <Text onPress={() => void refreshTypes()}>Read the types again.</Text>
-        </Text>
-      ) : !attachmentKey(chosen) ? (
-        // Said before sending rather than reported afterwards: this one is
-        // knowable in advance, and finding out after the fact that the picture
-        // stayed behind is the thing this plugin exists to avoid.
-        <Text style={styles.hint}>
-          {chosen.name} has no attachment field, so the picture will not travel with it.
-        </Text>
+      {/* The types the library actually has, by what they declare — shown only
+          when there is a choice to make. A library with two kinds of task shows
+          both, under their own names. */}
+      {choosable.length > 1 ? (
+        <View style={styles.kinds}>
+          {choosable.map((t) => (
+            <TouchableOpacity
+              key={t.id}
+              style={[styles.kind, typeId === t.id && styles.kindOn]}
+              onPress={() => setTypeId(t.id)}
+            >
+              <Text style={[styles.kindText, typeId === t.id && styles.kindTextOn]}>{t.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       ) : null}
 
-      <TouchableOpacity
-        style={[styles.button, (busy || !capture.png || !chosen) && styles.buttonOff]}
-        disabled={busy || !capture.png || !chosen}
-        onPress={() => void send()}
-      >
-        <Text style={styles.buttonText}>{busy ? 'Sending…' : 'Send'}</Text>
-      </TouchableOpacity>
+      <View style={styles.pair}>
+        <TouchableOpacity
+          style={[styles.button, styles.half, (busy || !capture.png) && styles.buttonOff]}
+          disabled={busy || !capture.png}
+          onPress={() => void send('note')}
+        >
+          <Text style={styles.buttonText}>New note</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, styles.half, (busy || !capture.png) && styles.buttonOff]}
+          disabled={busy || !capture.png}
+          onPress={() => void send('task')}
+        >
+          <Text style={styles.buttonText}>New task</Text>
+        </TouchableOpacity>
+      </View>
 
       {trouble ? <Text style={styles.trouble}>{trouble}</Text> : null}
 
@@ -461,6 +524,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonOff: { backgroundColor: '#999' },
+  /* The two ways to make something new, side by side and equal. */
+  pair: { flexDirection: 'row', gap: 10 },
+  half: { flex: 1 },
+  /* Between "today" and the naming below it: they are two answers to one
+     question and the line says so without a word. */
+  rule: { height: 1, backgroundColor: '#ddd', marginVertical: 4 },
   /* The way out. Plain rather than prominent — it is always available and
      never the thing somebody came here to do. */
   quiet: { paddingVertical: 12, alignItems: 'center' },

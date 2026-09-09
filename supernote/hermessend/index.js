@@ -7,19 +7,21 @@
 import { AppRegistry, Image } from 'react-native';
 import App from './App';
 import { name as appName } from './app.json';
-import { FileUtils, PluginCommAPI, PluginManager } from 'sn-plugin-lib';
+import { FileUtils, PluginCommAPI, PluginFileAPI, PluginManager } from 'sn-plugin-lib';
 import { begin, set } from './src/session';
+import { HermesFile } from './src/native';
 import { READ, ensureAll, explain } from './src/permissions';
 
-const BUTTON_ID = 1;
+const LASSO_BUTTON = 1;
+const NOTE_BUTTON = 2;
 
 AppRegistry.registerComponent(appName, () => App);
 
 PluginManager.init();
 
 PluginManager.registerButton(2, ['NOTE'], {
-  id: BUTTON_ID,
-  name: 'Send to Hermes',
+  id: LASSO_BUTTON,
+  name: 'Send selection',
   icon: Image.resolveAssetSource(require('./assets/icon.png')).uri,
   editDataTypes: [0, 1, 2, 3, 4, 5],
   /**
@@ -36,6 +38,23 @@ PluginManager.registerButton(2, ['NOTE'], {
   showType: 1,
 });
 
+/*
+ * The second surface: the whole note rather than a piece of it.
+ *
+ * A type-1 button lives on the note's own toolbar, so it is reachable without
+ * selecting anything. One plugin carries both because both want the same
+ * pairing, the same key, the same settings and the same native module — two
+ * plugins would mean pairing twice and two copies of this client drifting
+ * apart, which is exactly how the other two plugins came to need the same fix
+ * on the same afternoon.
+ */
+PluginManager.registerButton(1, ['NOTE'], {
+  id: NOTE_BUTTON,
+  name: 'Send whole note',
+  icon: Image.resolveAssetSource(require('./assets/icon.png')).uri,
+  showType: 1,
+});
+
 /**
  * The capture runs here, in the listener, and not in the view.
  *
@@ -46,8 +65,10 @@ PluginManager.registerButton(2, ['NOTE'], {
  */
 PluginManager.registerButtonListener({
   onButtonPress: (event) => {
-    if (!event || event.id !== BUTTON_ID) return;
-    begin();
+    if (!event) return;
+    const whole = event.id === NOTE_BUTTON;
+    if (!whole && event.id !== LASSO_BUTTON) return;
+    begin(whole ? 'note' : 'selection');
     // The selection is read out of the note, which lives in shared storage and
     // is gated. What this writes — the sticker and the PNG — goes in the
     // plugin's own directory, which is exempt from permissions entirely, so
@@ -57,10 +78,10 @@ PluginManager.registerButtonListener({
       .then((verdict) => {
         // A refusal and a failure to ask read differently on screen, because
         // they are different problems. See `src/permissions.ts`.
-        if (!verdict.ok) throw new Error(explain(verdict, 'saving the selection'));
-        return capture();
+        if (!verdict.ok) throw new Error(explain(verdict, 'reading the note'));
+        return whole ? captureNote() : capture();
       })
-      .then((got) => set({ working: false, png: got.png, noteName: got.noteName }))
+      .then((got) => set({ working: false, png: got.png, noteName: got.noteName, pages: got.pages }))
       .catch((err) => {
         set({
           working: false,
@@ -100,19 +121,7 @@ async function capture() {
   if (!pluginDir) throw new Error('cannot resolve the plugin directory');
   const root = String(pluginDir).replace(/\/+$/, '');
 
-  // Anything left from a send that failed, or one somebody abandoned by
-  // closing the view. The successful path deletes its own, so what is here is
-  // by definition litter.
-  try {
-    const existing = await FileUtils.listFiles(root);
-    for (const entry of existing || []) {
-      if (/^selection-\d+\.(sticker|png)$/.test(entry)) {
-        await FileUtils.deleteFile(`${root}/${entry}`);
-      }
-    }
-  } catch {
-    // Tidying is not the job. A stale file costs disk, not correctness.
-  }
+  await sweep(root);
 
   try {
     PluginCommAPI.clearElementCache();
@@ -158,4 +167,82 @@ async function capture() {
   }
 
   return { png: pngPath, noteName };
+}
+
+/**
+ * Every page of the note, joined into one tall PNG.
+ *
+ * The SDK renders a page at a time and has nothing that joins them, so the
+ * pages go to temporary files and the native module stitches them — the same
+ * shape Scroll Export uses, because it is the shape the SDK leaves available.
+ *
+ * `type: 1` on `generateNotePng` means a white background rather than a
+ * transparent one. A note is ink on paper; a transparent render of it looks
+ * like an empty file in most things that open a PNG.
+ */
+async function captureNote() {
+  const pluginDir = await PluginManager.getPluginDirPath();
+  if (!pluginDir) throw new Error('cannot resolve the plugin directory');
+  const root = String(pluginDir).replace(/\/+$/, '');
+
+  await sweep(root);
+
+  const notePath = unwrap(await PluginCommAPI.getCurrentFilePath(), 'getCurrentFilePath');
+  const noteName = deriveBaseName(notePath);
+  const pages = unwrap(
+    await PluginFileAPI.getNoteTotalPageNum(notePath),
+    'getNoteTotalPageNum',
+  );
+  if (!pages || pages < 1) throw new Error('that note has no pages');
+
+  const stamp = Date.now();
+  const rendered = [];
+  for (let i = 0; i < pages; i += 1) {
+    const at = `${root}/page-${stamp}-${String(i).padStart(3, '0')}.png`;
+    unwrap(
+      await PluginFileAPI.generateNotePng({
+        notePath,
+        page: i,
+        times: 1,
+        pngPath: at,
+        type: 1,
+      }),
+      `generateNotePng(page ${i + 1})`,
+    );
+    if (!(await FileUtils.exists(at))) throw new Error(`page ${i + 1} could not be drawn`);
+    rendered.push(at);
+  }
+
+  const pngPath = `${root}/note-${stamp}.png`;
+  // One page needs no joining, and asking the stitcher to make a copy of a
+  // single bitmap is work and memory for nothing.
+  if (rendered.length === 1) {
+    await FileUtils.copyFile(rendered[0], pngPath);
+  } else {
+    await HermesFile.stitchVertically(rendered, pngPath);
+  }
+  if (!(await FileUtils.exists(pngPath))) throw new Error('the pages could not be joined');
+
+  for (const at of rendered) {
+    try {
+      await FileUtils.deleteFile(at);
+    } catch {
+      // The joined picture is what matters; the pages were scaffolding.
+    }
+  }
+  return { png: pngPath, noteName, pages };
+}
+
+/** Anything left by a send that failed or was abandoned. */
+async function sweep(root) {
+  try {
+    const existing = await FileUtils.listFiles(root);
+    for (const entry of existing || []) {
+      if (/^(selection|note|page)-[\d-]+\.(sticker|png)$/.test(entry)) {
+        await FileUtils.deleteFile(`${root}/${entry}`);
+      }
+    }
+  } catch {
+    // Tidying is not the job. A stale file costs disk, not correctness.
+  }
 }

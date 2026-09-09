@@ -28,6 +28,13 @@ export interface HermesType {
   hermesTextType?: boolean;
 }
 
+interface JournalObject {
+  id: string;
+  type?: string;
+  version?: number;
+  properties?: Record<string, unknown>;
+}
+
 export interface Conformance {
   features?: string[];
   profiles?: string[];
@@ -117,6 +124,74 @@ export class Hermes {
   async types(): Promise<HermesType[]> {
     const env = await this.ask<{ types?: HermesType[] }>("GET", "/api/interchange");
     return env.types ?? [];
+  }
+
+  /**
+   * The page for today, found or made — through the format and nothing else.
+   *
+   * A daily note is an object with a date identity, which is what the `journal`
+   * profile says: a type declares `journal.date` naming the field that holds
+   * the day. Found by declaration and never by title — a note somebody named
+   * after a date is not that date's page, and guessing from a title is how a
+   * tool starts appending to somebody's meeting notes.
+   */
+  async today(date: string): Promise<{ id: string; version: number; type: HermesType } | null> {
+    const env = await this.ask<{ types?: HermesType[]; objects?: JournalObject[] }>(
+      "GET",
+      "/api/interchange?profile=journal",
+    );
+    const types = env.types ?? [];
+    const dateKeyOf = (t: HermesType): string | null => {
+      const spec = t.profiles?.journal?.date;
+      const named =
+        typeof spec === "string"
+          ? spec
+          : spec !== null && typeof spec === "object"
+            ? (spec as { field?: unknown }).field
+            : undefined;
+      return typeof named === "string" && named !== "content" ? named : null;
+    };
+    const journals = types
+      .map((t) => ({ type: t, key: dateKeyOf(t) }))
+      .filter((x): x is { type: HermesType; key: string } => x.key !== null);
+    if (!journals.length) return null;
+
+    const keyByType = new Map(journals.map((j) => [j.type.id, j.key]));
+    const on = (env.objects ?? [])
+      .filter((o) => {
+        const key = o.type ? keyByType.get(o.type) : undefined;
+        const held = key ? o.properties?.[key] : undefined;
+        // A datetime for a day is still that day.
+        return typeof held === "string" && held.slice(0, 10) === date;
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    if (on.length) {
+      const first = on[0]!;
+      const type = types.find((t) => t.id === first.type);
+      if (!type) return null;
+      return { id: first.id, version: first.version ?? 1, type };
+    }
+
+    const chosen = journals[0]!;
+    const id = uuid();
+    const made = await this.create(id, {
+      type: chosen.type.id,
+      properties: { [chosen.key]: date },
+    });
+    // The version the producer says it made, not a guess: a create may be more
+    // than one write — a daily page is seeded with a title and a template — so
+    // even 1 is an assumption.
+    const version = (made as { object?: { version?: number } }).object?.version;
+    return { id, version: typeof version === "number" ? version : 1, type: chosen.type };
+  }
+
+  /** Add to an object without replacing what is already on it. */
+  patch(
+    id: string,
+    change: { version: number; set?: Record<string, unknown> },
+  ): Promise<{ ok?: boolean; conflict?: boolean; reports?: string[] }> {
+    return this.ask("PATCH", `/api/interchange/objects/${id}`, change);
   }
 
   /** Bring an object into being, at an id we chose. */

@@ -1,12 +1,18 @@
 package com.hermessend_scaffold
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableArray
 import java.io.File
+import java.io.FileOutputStream
 import java.security.MessageDigest
 
 /**
@@ -59,6 +65,71 @@ class HermesFileModule(reactContext: ReactApplicationContext) :
       promise.resolve(out)
     } catch (err: Throwable) {
       promise.reject("EREAD", err.message ?: "could not read $path", err)
+    }
+  }
+
+  /**
+   * Every page of a note, one above the next, as a single tall PNG.
+   *
+   * Ported from Scroll Export, which worked this out first. The SDK renders a
+   * page at a time and has nothing that joins them, so this is the one job that
+   * genuinely needs pixels: decode each page's bounds, make one bitmap as wide
+   * as the widest and as tall as all of them, and draw each page centered.
+   *
+   * White rather than transparent. A note's ink is dark on paper, and a
+   * transparent PNG of it looks like an empty file everywhere it is opened.
+   *
+   * Sizes are read with `inJustDecodeBounds` before anything is allocated: a
+   * forty-page note at full resolution is a large bitmap, and finding that out
+   * after decoding forty of them is how a device runs out of memory.
+   */
+  @ReactMethod
+  fun stitchVertically(paths: ReadableArray, outPath: String, promise: Promise) {
+    try {
+      val n = paths.size()
+      if (n == 0) {
+        promise.reject("EEMPTY", "no pages to join")
+        return
+      }
+
+      val heights = IntArray(n)
+      var maxWidth = 0
+      var totalHeight = 0
+      for (i in 0 until n) {
+        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(paths.getString(i), opts)
+        if (opts.outWidth <= 0 || opts.outHeight <= 0) {
+          promise.reject("EDECODE", "could not read the size of ${paths.getString(i)}")
+          return
+        }
+        heights[i] = opts.outHeight
+        if (opts.outWidth > maxWidth) maxWidth = opts.outWidth
+        totalHeight += opts.outHeight
+      }
+
+      val dest = Bitmap.createBitmap(maxWidth, totalHeight, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(dest)
+      canvas.drawColor(Color.WHITE)
+
+      var y = 0
+      for (i in 0 until n) {
+        val page = BitmapFactory.decodeFile(paths.getString(i))
+            ?: throw RuntimeException("could not read ${paths.getString(i)}")
+        // Centered, because a page narrower than the widest would otherwise sit
+        // against the left edge and the column would look broken.
+        canvas.drawBitmap(page, (maxWidth - page.width) / 2f, y.toFloat(), null)
+        y += heights[i]
+        // Released as we go. Holding forty decoded pages to build one bitmap
+        // needs twice the memory of holding one at a time.
+        page.recycle()
+      }
+
+      File(outPath).parentFile?.mkdirs()
+      FileOutputStream(outPath).use { out -> dest.compress(Bitmap.CompressFormat.PNG, 100, out) }
+      dest.recycle()
+      promise.resolve(outPath)
+    } catch (t: Throwable) {
+      promise.reject("ESTITCH", t.message ?: "the pages could not be joined", t)
     }
   }
 

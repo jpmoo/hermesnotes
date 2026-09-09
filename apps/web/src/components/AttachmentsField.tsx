@@ -173,17 +173,31 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
               ? "Add files and images from your device"
               : "Drop files or click to upload"}
         </span>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            if (e.target.files) void uploadFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
       </div>
+
+      {/*
+        Outside the drop zone, and it has to be.
+
+        The input used to live inside the div whose `onClick` clicks it. A
+        programmatic `.click()` dispatches a real click that bubbles — back into
+        the same handler, which clicks it again. The file dialog opened over and
+        over from one press, and because the openings queue up they surface while
+        somebody is pressing something else entirely, so the blame lands on
+        whatever button they touched next.
+
+        A sibling cannot re-enter the handler, which is a fix by construction
+        rather than by remembering to stop propagation in the right place.
+      */}
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          if (e.target.files) void uploadFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
 
       {/* Uploading is not the only way to attach a file, now that the same
           bytes can be pointed at from anywhere. Beside the drop zone rather

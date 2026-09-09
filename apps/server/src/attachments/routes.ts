@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { createHash } from "node:crypto";
+import { oneLineLabel } from "@hermes/shared";
 import { attachmentBlobs, attachments, blocks } from "@hermes/db";
 import { db } from "../db.js";
 import { badRequest, forbidden, notFound } from "../lib/errors.js";
@@ -274,6 +275,43 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
       else byDigest.set(r.sha256, { ...r, uses: 1 });
     }
     return [...byDigest.values()];
+  });
+
+  /**
+   * Which notes hold this file.
+   *
+   * The other half of sharing: once the same bytes can hang off several notes,
+   * "where else is this?" becomes a question somebody will have, and the only
+   * honest place to answer it is beside the file itself. Returned as blocks
+   * rather than as a count, because the useful version of that answer is one
+   * you can click.
+   */
+  app.get("/attachments/blob/:digest/notes", async (req) => {
+    const userId = requireUser(req);
+    const { digest } = z.object({ digest: z.string().regex(/^[0-9a-f]{64}$/) }).parse(req.params);
+    const rows = await db
+      .select({
+        attachmentId: attachments.id,
+        blockId: blocks.id,
+        properties: blocks.properties,
+        content: blocks.content,
+        blockTypeId: blocks.blockTypeId,
+        archivedAt: blocks.archivedAt,
+      })
+      .from(attachments)
+      .innerJoin(blocks, eq(blocks.id, attachments.blockId))
+      .where(and(eq(attachments.ownerId, userId), eq(attachments.sha256, digest)))
+      .orderBy(asc(attachments.createdAt));
+
+    return rows.map((r) => ({
+      attachmentId: r.attachmentId,
+      id: r.blockId,
+      typeId: r.blockTypeId,
+      // The same one-line label the pickers and mention chips use, so a note is
+      // called the same thing wherever it is named.
+      title: oneLineLabel(r.properties as Record<string, unknown>, r.content) || "Untitled",
+      archived: r.archivedAt !== null,
+    }));
   });
 
   /** A stored file's bytes, by digest — what a picker's thumbnails point at. */

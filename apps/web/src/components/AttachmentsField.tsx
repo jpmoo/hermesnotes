@@ -20,46 +20,9 @@ import { api, apiBase, type Attachment, type BlockType } from "../api.ts";
 import { AttachmentPlaceModal } from "./AttachmentPlaceModal.tsx";
 import { FileLibraryModal } from "./FileLibraryModal.tsx";
 import { useIsMobile } from "../lib/useIsMobile.ts";
+import { AttachmentPreview } from "./AttachmentPreview.tsx";
+import { iconFor, SHOWABLE } from "./file-kinds.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
-
-/**
- * The icon for a file nobody can show a picture of.
- *
- * By media type first and by extension only as a fallback, because the media
- * type is what the file said about itself and an extension is what somebody
- * typed. Neither is trustworthy alone: a `.md` uploaded from a phone often
- * arrives as `application/octet-stream`, which would put a blank page beside
- * every note somebody moved across.
- */
-function iconFor(mime: string, filename: string) {
-  const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
-  const is = (...xs: string[]) => xs.some((x) => mime.startsWith(x));
-  if (is("audio/")) return FileAudio;
-  if (is("video/")) return FileVideo;
-  if (mime === "application/pdf" || ext === "pdf") return FileText;
-  if (is("text/csv") || /^(csv|tsv|xls|xlsx|ods|numbers)$/.test(ext)) return FileSpreadsheet;
-  if (/^(ppt|pptx|odp|key)$/.test(ext)) return Presentation;
-  if (/^(zip|tar|gz|tgz|bz2|xz|7z|rar)$/.test(ext)) return FileArchive;
-  if (
-    is("application/json", "application/xml", "text/html", "text/css", "text/javascript") ||
-    /^(json|xml|ya?ml|toml|js|ts|tsx|jsx|py|rb|go|rs|swift|kt|java|c|h|cpp|sh)$/.test(ext)
-  ) {
-    return FileCode;
-  }
-  if (is("text/") || /^(md|markdown|txt|rtf|doc|docx|odt)$/.test(ext)) return FileText;
-  return FileIcon;
-}
-
-/**
- * Whether the browser will draw this as a picture.
- *
- * Named formats rather than the whole of `image/*`: a TIFF or a HEIC is an
- * image the browser cannot render, and an `<img>` pointed at one shows a broken
- * icon — which reads as a damaged upload rather than as a format nothing here
- * can display. Those fall through to the icon, which is honest and looks
- * deliberate.
- */
-const SHOWABLE = /^image\/(png|jpeg|gif|webp|avif|svg\+xml|bmp)$/;
 
 function humanSize(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -94,6 +57,8 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
   const [todayId, setTodayId] = useState<string | null>(null);
   /** The library, for attaching a file that is already here. */
   const [library, setLibrary] = useState(false);
+  /** The file being looked at, rather than downloaded. */
+  const [previewing, setPreviewing] = useState<Attachment | null>(null);
   const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -236,13 +201,12 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
                 row appears. The download button below still uses the attachment,
                 which is what carries the filename.
               */}
-              <a
+              <button
                 className="attach-thumb"
-                href={`${apiBase}/attachments/blob/${f.sha256}`}
-                target="_blank"
-                rel="noreferrer"
+                type="button"
                 tabIndex={-1}
                 aria-hidden="true"
+                onClick={() => setPreviewing(f)}
               >
                 {SHOWABLE.test(f.mime) ? (
                   <img src={`${apiBase}/attachments/blob/${f.sha256}`} alt="" loading="lazy" />
@@ -252,23 +216,25 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
                     return <Icon size={18} />;
                   })()
                 )}
-              </a>
+              </button>
               {/* A chip, not a link. The name is a thing you can pick up and
                   open — the same shape a mention has — and the underlined blue
                   it used to be read as a web address rather than as this
                   block's own file. */}
-              <a
+              {/* Opens rather than downloads. The download button is two
+                  along and says so; a name that saved a file every time you
+                  wanted to glance at it was the wrong default. */}
+              <button
                 className="attach-name"
-                href={`${apiBase}/attachments/${f.id}`}
-                target="_blank"
-                rel="noreferrer"
+                type="button"
                 title={f.filename}
+                onClick={() => setPreviewing(f)}
               >
                 {/* No icon in the chip: the thumbnail beside it already says
                     what kind of file this is, and saying it twice on one row
                     is clutter rather than emphasis. */}
                 <span className="attach-filename">{f.filename}</span>
-              </a>
+              </button>
               <span className="attach-size">{humanSize(f.size)}</span>
               <a
                 className="icon-btn"
@@ -328,6 +294,10 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {previewing && (
+        <AttachmentPreview file={previewing} onClose={() => setPreviewing(null)} />
       )}
 
       {library && (

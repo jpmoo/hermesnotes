@@ -4138,6 +4138,9 @@ input.matrix-axis-y::placeholder {
    AttachmentsField. `min-width: 0` is what lets the name inside it ellipsize
    instead of pushing the size and the buttons off the row. */
 .attach-name {
+  border: none;
+  cursor: pointer;
+  font: inherit;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -8492,6 +8495,11 @@ body:has(.embed-scratchpad) #root {
    image is contained rather than cropped — a thumbnail that cuts the subject
    out is worse than no thumbnail. */
 .attach-thumb {
+  /* A button now rather than a link — it opens the preview instead of
+     navigating to a download — so the button chrome has to go. */
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
   flex: none;
   display: flex;
   align-items: center;
@@ -8657,4 +8665,84 @@ body:has(.embed-scratchpad) #root {
   gap: 6px;
   font-size: 13px;
   padding: 8px 10px;
+}
+
+/* ── Looking at a file rather than downloading it ───────────────── */
+.modal-card.preview-card {
+  max-width: 900px;
+  width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.preview-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.preview-pct {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* The surface scrolls; the picture inside is *sized* rather than transformed,
+   so scrolling reaches all of it. A scaled element keeps its original box and
+   half a zoomed picture would be unreachable. */
+.preview-surface {
+  flex: 1;
+  min-height: 320px;
+  max-height: 68vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  display: flex;
+}
+.preview-surface.zoomable {
+  display: block;
+  cursor: zoom-in;
+}
+.preview-surface img {
+  display: block;
+  /* Fits on arrival, and only grows past its box when asked to. */
+  max-width: none;
+  height: auto;
+}
+.preview-surface iframe {
+  width: 100%;
+  height: 68vh;
+  border: 0;
+  border-radius: 9px;
+}
+.preview-none {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  padding: 40px;
+}
+.preview-holders {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }

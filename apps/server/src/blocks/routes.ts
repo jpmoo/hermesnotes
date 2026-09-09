@@ -2,7 +2,8 @@ import { and, asc, desc, eq, inArray, or, sql, type SQL, type SQLWrapper } from 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { applyPatch, datedInRange, planConversion, filterQuerySchema, inlineMentions, isComplete, nextSpan, normalizeFilter, oneLineLabel, periodicKindOf, recurrenceContinues, recurrenceSchema, stripBlankDates, TEMPLATE_MARKER, type PropertySchema } from "@hermes/shared";
-import { attachments, blocks, blockTags, blockTypes, memberships, series, tags, userSettings } from "@hermes/db";
+import { attachmentBlobs,
+  attachments, blocks, blockTags, blockTypes, memberships, series, tags, userSettings } from "@hermes/db";
 import { db } from "../db.js";
 import { syncSeries } from "./series.js";
 import { runQuery, runQueryCounted, semanticIds } from "../collections/query.js";
@@ -461,6 +462,44 @@ async function scrubDanglingRefs(userId: string, id: string): Promise<void> {
   }
 }
 
+/**
+ * Bytes nothing points at any more, after a block was deleted.
+ *
+ * `attachments` cascades when a block goes, but the blob it referenced does
+ * not: it is shared, and the delete route cannot know whether this was the
+ * last note holding it. So the count is taken *before* the block goes and the
+ * collect happens after — a blob still referenced is left alone, which is the
+ * whole point of sharing one.
+ *
+ * Called from every hard delete rather than from one. Deleting a note from the
+ * archive, emptying the archive, and deleting a template are three routes and
+ * three chances to forget; Settings' orphan sweep exists because forgetting is
+ * the likely outcome, not because it is acceptable.
+ */
+async function collectBlobs(userId: string, digests: string[]): Promise<void> {
+  if (!digests.length) return;
+  const still = await db
+    .select({ sha256: attachments.sha256 })
+    .from(attachments)
+    .where(and(eq(attachments.ownerId, userId), inArray(attachments.sha256, digests)));
+  const held = new Set(still.map((r) => r.sha256));
+  const gone = digests.filter((d) => !held.has(d));
+  if (!gone.length) return;
+  await db
+    .delete(attachmentBlobs)
+    .where(and(eq(attachmentBlobs.ownerId, userId), inArray(attachmentBlobs.sha256, gone)));
+}
+
+/** Which files the given blocks hold, so they can be collected once gone. */
+async function digestsOn(userId: string, blockIds: string[]): Promise<string[]> {
+  if (!blockIds.length) return [];
+  const rows = await db
+    .select({ sha256: attachments.sha256 })
+    .from(attachments)
+    .where(and(eq(attachments.ownerId, userId), inArray(attachments.blockId, blockIds)));
+  return [...new Set(rows.map((r) => r.sha256))];
+}
+
 export async function blockRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -645,7 +684,9 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
       .limit(1);
     if (!row || !(TEMPLATE_MARKER in (row.properties ?? {}))) throw notFound("template");
+    const digests = await digestsOn(userId, [id]);
     await db.delete(blocks).where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
+    await collectBlobs(userId, digests);
     reply.code(204);
     return null;
   });
@@ -2189,11 +2230,15 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .from(blocks)
       .where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NOT NULL`));
     if (!doomed.length) return { deleted: 0 };
+    // Asked before the blocks go, because afterwards there is nothing left to
+    // ask. See `collectBlobs`.
+    const digests = await digestsOn(userId, doomed.map((b) => b.id));
     await db
       .delete(blocks)
       .where(and(eq(blocks.ownerId, userId), sql`${blocks.archivedAt} IS NOT NULL`));
     // FK-backed relations cascade; references stored in JSON don't.
     for (const b of doomed) await scrubDanglingRefs(userId, b.id);
+    await collectBlobs(userId, digests);
     return { deleted: doomed.length };
   });
 
@@ -2211,9 +2256,12 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .limit(1);
     if (!block) throw notFound("block");
     if (!block.archivedAt) throw badRequest("archive the block before deleting it");
+    const digests = await digestsOn(userId, [id]);
     await db.delete(blocks).where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)));
     // FK-backed relations cascade; JSON-stored references don't — scrub those.
     await scrubDanglingRefs(userId, id);
+    // And the files, if this was the last note holding them.
+    await collectBlobs(userId, digests);
     return { ok: true };
   });
 }

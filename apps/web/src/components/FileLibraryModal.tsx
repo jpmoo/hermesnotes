@@ -1,6 +1,7 @@
 import { Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, apiBase, type Attachment } from "../api.ts";
+import { SHOWABLE } from "./file-kinds.ts";
 
 /** One distinct file this account holds, however many notes point at it. */
 export interface LibraryFile {
@@ -27,8 +28,6 @@ function when(iso: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-/** What the browser will draw. See the note in AttachmentsField. */
-const SHOWABLE = /^image\/(png|jpeg|gif|webp|avif|svg\+xml|bmp)$/;
 
 /**
  * Every file already here, to attach without uploading again.

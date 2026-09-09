@@ -2226,24 +2226,46 @@ export function buildServer(deps: {
       });
     }
 
-    const answer = await ix.patch(page.id, {
-      version: page.version,
-      set: {
-        [slot.key]: [
-          {
-            kind: "attachment",
-            filename: body.filename,
-            mediaType: body.mediaType,
-            sha256: digest,
-            bytes: body.bytes,
-          },
-        ],
-      },
-    });
+    const file = {
+      kind: "attachment",
+      filename: body.filename,
+      mediaType: body.mediaType,
+      sha256: digest,
+      bytes: body.bytes,
+    };
 
-    // A write that could not keep the file is not a success, whatever its
-    // status code said. The reports name what was reduced and this is the only
-    // place anybody will see them.
+    /*
+     * Written, and once more if the version moved under us.
+     *
+     * Two things move it. A create seeds a daily page with a title and a
+     * template, so the version a moment after creating is not the version the
+     * create answered with; and this library has other hands in it — the
+     * assistant, another shell — that may write between the read and the write.
+     * Both look identical from here and both are answered the same way: read
+     * the page again, write again, once.
+     */
+    let answer = await ix.patch(page.id, { version: page.version, set: { [slot.key]: [file] } });
+    if (!answer.ok && answer.conflict) {
+      const again = await ix.journalPage(day);
+      if (again) answer = await ix.patch(again.id, { version: again.version, set: { [slot.key]: [file] } });
+    }
+
+    /*
+     * A refusal is a refusal, whatever shape it came in.
+     *
+     * This used to look only for reports beginning `attachment.` and call
+     * everything else a success — under a comment claiming a write that could
+     * not keep the file is not a success. A stale version carries
+     * `version.stale` and `ok: false`, matched none of that, and was reported
+     * to the caller as though the file had landed. The one failure it was
+     * written to catch was the one it could not see.
+     */
+    if (!answer.ok) {
+      const why = (answer.reports ?? []).join(", ") || (answer.conflict ? "version.stale" : "no reason given");
+      return reply.code(answer.conflict ? 409 : 502).send({
+        error: `Hermes refused the write (${why})`,
+      });
+    }
     const lost = (answer.reports ?? []).filter((r: string) => r.startsWith("attachment."));
     return reply.code(lost.length ? 502 : 200).send({
       ok: lost.length === 0,

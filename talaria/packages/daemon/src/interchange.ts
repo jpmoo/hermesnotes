@@ -552,8 +552,26 @@ export class Interchange {
     // same request the second time.
     const chosen = journals[0]!;
     const id = randomUUID();
-    await this.put(id, { type: chosen.type.id, properties: { [chosen.key]: date } });
-    return { id, version: 0, created: true, duplicates: 0, dateKey: chosen.key, typeId: chosen.type.id };
+    const made = await this.put(id, { type: chosen.type.id, properties: { [chosen.key]: date } });
+    /*
+     * The version the producer says it made, not a guess.
+     *
+     * This returned 0 at first, on the reasoning that a thing which did not
+     * exist a moment ago has no history — and 0 is not what a new block's
+     * version is. Every write against the page was therefore refused as stale
+     * on the first try. A producer may also do more than one thing on a create:
+     * this one seeds a daily page with a title and a template, so even 1 is a
+     * guess. It says which, so it is asked.
+     */
+    const version = (made.object as { version?: number } | undefined)?.version;
+    return {
+      id,
+      version: typeof version === "number" ? version : 1,
+      created: true,
+      duplicates: 0,
+      dateKey: chosen.key,
+      typeId: chosen.type.id,
+    };
   }
 
   async patch(

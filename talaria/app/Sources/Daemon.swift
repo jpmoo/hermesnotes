@@ -332,6 +332,50 @@ enum Daemon {
         return answer
     }
 
+    /**
+     A file onto today's page.
+
+     The daemon finds the page through the `journal` profile and sends the file
+     as an interchange attachment value — see `POST /today/attach`. Nothing
+     about which block today's page is, or how a file becomes an attachment, is
+     decided here: two shells asking the same question and each working out its
+     own answer is two answers waiting to disagree.
+
+     Answers with a sentence when something went wrong and nothing when it did
+     not, so a caller can put the sentence on screen without inventing one.
+     */
+    static func attachToToday(filename: String, mediaType: String, data: Data) -> String? {
+        let body: [String: Any] = [
+            "filename": filename,
+            "mediaType": mediaType,
+            "bytes": data.base64EncodedString(),
+        ]
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        task.arguments = [
+            "-s", "--unix-socket", socketPath,
+            "-H", "content-type: application/json", "--data-binary", "@-",
+            "http://talaria/today/attach",
+        ]
+        let stdin = Pipe(), out = Pipe()
+        task.standardInput = stdin
+        task.standardOutput = out
+        task.standardError = Pipe()
+        do {
+            try task.run()
+            stdin.fileHandleForWriting.write(try JSONSerialization.data(withJSONObject: body))
+            stdin.fileHandleForWriting.closeFile()
+        } catch {
+            return "the daemon could not be reached"
+        }
+        let answer = out.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        struct Said: Decodable { let ok: Bool?; let error: String? }
+        let said = try? JSONDecoder().decode(Said.self, from: answer)
+        if said?.ok == true { return nil }
+        return said?.error ?? "the daemon did not say why that failed"
+    }
+
     // MARK: Glance
 
     /// One hit, and how near it was.

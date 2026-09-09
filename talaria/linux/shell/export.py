@@ -22,7 +22,6 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QPoint, QSize, QTimer, QUrl, Qt
-from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 import scheme
@@ -34,18 +33,29 @@ MARGIN = 40
 #: made.
 MAX_EDGE = 6000
 
+#: Preview windows currently open. A Qt dialog with no Python reference is
+#: collected and closes itself, which reads as the export having failed.
+_open: list = []
+
 
 def canvas(kind: str, done=None) -> None:
-    """Export the canvas as `png` or `pdf`, asking where to put it."""
-    suggested = os.path.join(
-        os.path.expanduser("~"),
+    """
+    Export the canvas as `png` or `pdf`, and show it before anything is done
+    with it.
+
+    The save dialog used to come *first*, which asked where to put a thing
+    before showing what the thing was. A canvas export is the whole extent of
+    the drawing rather than the part anybody was looking at, so what comes out
+    is routinely a surprise — which makes this the one export worth looking at
+    before committing to. The file is rendered into a temporary and
+    `exportpreview` decides its fate.
+    """
+    import tempfile
+
+    where = os.path.join(
+        tempfile.mkdtemp(prefix="talaria-export-"),
         f"canvas.{'pdf' if kind == 'pdf' else 'png'}",
     )
-    where, _filter = QFileDialog.getSaveFileName(None, f"Export {kind.upper()}", suggested)
-    if not where:
-        if done:
-            done(None)
-        return
 
     # **On the shell's own profile, which is the whole of why this never worked.**
     #
@@ -139,6 +149,12 @@ def canvas(kind: str, done=None) -> None:
 
     def shoot() -> None:
         say("taking the picture")
+        # A picture for the preview regardless of what is being exported: a PDF
+        # cannot be shown in a QLabel, and what somebody wants to look at is the
+        # drawing rather than the container.
+        preview_shot = view.grab()
+        if not preview_shot.isNull():
+            preview_shot.save(where + ".preview.png")
         if kind == "pdf":
             # **A page the size of the drawing, and one page of it.**
             #
@@ -170,6 +186,19 @@ def canvas(kind: str, done=None) -> None:
     def finish() -> None:
         held.pop("view", None)
         view.deleteLater()
+        # Shown rather than saved. The dialog is kept on the module so Python
+        # does not collect it the moment this function returns — a Qt window
+        # with no owner closes itself, which looked exactly like the export
+        # having silently failed.
+        if os.path.exists(where):
+            import exportpreview
+
+            picture = where + ".preview.png"
+            dialog = exportpreview.ExportPreview(kind, where, picture)
+            _open.append(dialog)
+            dialog.finished.connect(lambda *_: _open.remove(dialog) if dialog in _open else None)
+            dialog.show()
+            dialog.raise_()
         if done:
             done(where)
 

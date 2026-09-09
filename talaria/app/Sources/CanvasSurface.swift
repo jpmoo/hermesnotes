@@ -3028,6 +3028,8 @@ struct CanvasSurface: View {
     @State private var joining = false
     /// A region in add-mode: clicking things puts them in or takes them out.
     @State private var addingTo: UUID?
+    /// A finished export, waiting to be looked at.
+    @State private var preview: ExportPreview?
     /// Where the bend was when the handle was picked up.
     @State private var bendAtStart: CGSize?
 
@@ -3273,6 +3275,12 @@ struct CanvasSurface: View {
                     pickImage: { _ in }
                 )
                 .padding(.trailing, 10)
+            }
+            // Presented from the surface rather than the strip: the export
+            // belongs to the canvas, and a sheet owned by a button that can be
+            // scrolled away is a sheet with a disappearing owner.
+            .sheet(item: $preview) { ready in
+                ExportPreviewSheet(preview: ready) { preview = nil }
             }
         }
     }
@@ -3964,14 +3972,29 @@ struct CanvasSurface: View {
                 pictures: pictures, bounds: extent
             )
             let png = entry == .png
-            guard let url = CanvasFiles.destination(png ? .png : .pdf,
-                                                    named: png ? "Canvas.png" : "Canvas.pdf") else { return }
             let data = png ? CanvasRender.png(page) : CanvasRender.pdf(page, size: extent.size)
             guard let data else {
                 trouble = "That canvas could not be drawn"
                 return
             }
-            if let bad = CanvasFiles.write(data, to: url) { trouble = bad }
+            /*
+             Drawn, then shown, and only saved if somebody says so.
+
+             It used to open a save panel *first* and render into whatever came
+             back, which asked where to put a thing before showing what the
+             thing was — and a canvas export is exactly the case where you want
+             to look before you commit, because what comes out is the whole
+             extent of the drawing rather than the part you were looking at.
+
+             The preview always shows a PNG even when a PDF is being exported.
+             What is being previewed is the drawing, not the container, and
+             rendering a page image is something this already knows how to do.
+             */
+            preview = ExportPreview(
+                data: data,
+                png: png,
+                image: CanvasRender.png(page).flatMap(NSImage.init(data:))
+            )
         case .load:
             guard let url = CanvasFiles.source() else { return }
             let read = CanvasFiles.read(url)

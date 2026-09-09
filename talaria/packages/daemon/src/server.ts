@@ -23,6 +23,7 @@ import { pictureValue, readCanvas, sweepImages, writeCanvas, type CanvasDocument
 import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, wmStatus, workspaces } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
+import { createHash } from "node:crypto";
 import { regionNameAt, type Interchange } from "./interchange.js";
 import type { Mirror } from "./mirror.js";
 import { applyRegionActions, Queue, type Intent } from "./queue.js";
@@ -2169,6 +2170,89 @@ export function buildServer(deps: {
    * in the title rather than being dropped. Caller sends text; where the pieces
    * land is worked out here, because here is where the property schema is.
    */
+  /**
+   * A file onto today's page.
+   *
+   * What the canvas export's "Send to Today's Note" lands on, from either
+   * shell. One verb rather than two implementations, because "which block is
+   * today's page" is a question that must have exactly one answer — two clients
+   * each working it out is two answers waiting to disagree.
+   *
+   * Entirely through the format: the page is found by the `journal` profile
+   * (see `journalPage`), and the file travels as an interchange attachment
+   * value carrying its own digest and bytes. Neither of those was possible
+   * until recently, which is why this could not have been written before.
+   */
+  app.post("/today/attach", async (req, reply) => {
+    const body = z
+      .object({
+        filename: z.string().min(1).max(200),
+        mediaType: z.string().min(1).max(100),
+        /** The file itself, base64. */
+        bytes: z.string().min(1),
+        /** Which day. Defaults to the one the daemon is having. */
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      })
+      .parse(req.body);
+
+    const day = body.date ?? new Date().toLocaleDateString("en-CA");
+    let page: Awaited<ReturnType<typeof ix.journalPage>>;
+    try {
+      page = await ix.journalPage(day);
+    } catch (err) {
+      if (err instanceof OfflineError) {
+        return reply.code(503).send({ error: "Hermes is not reachable, so there is no page to attach to" });
+      }
+      throw err;
+    }
+    if (!page) {
+      // No type here declares the journal profile, so there is no such thing as
+      // today's page in this library. Said plainly rather than by inventing a
+      // type, which would be this daemon deciding how somebody's library is
+      // shaped.
+      return reply.code(409).send({
+        error: "no type in your library declares the journal profile, so there is no page for today",
+      });
+    }
+
+    const digest = createHash("sha256").update(Buffer.from(body.bytes, "base64")).digest("hex");
+    const type = types().get(page.typeId);
+    const slot = (type?.fields ?? []).find((f: { kind?: string }) => f.kind === "attachment") as
+      | { key?: string }
+      | undefined;
+    if (!slot?.key) {
+      return reply.code(409).send({
+        error: `${type?.name ?? "today's page"} has no attachment field, so a file has nowhere to go on it`,
+      });
+    }
+
+    const answer = await ix.patch(page.id, {
+      version: page.version,
+      set: {
+        [slot.key]: [
+          {
+            kind: "attachment",
+            filename: body.filename,
+            mediaType: body.mediaType,
+            sha256: digest,
+            bytes: body.bytes,
+          },
+        ],
+      },
+    });
+
+    // A write that could not keep the file is not a success, whatever its
+    // status code said. The reports name what was reduced and this is the only
+    // place anybody will see them.
+    const lost = (answer.reports ?? []).filter((r: string) => r.startsWith("attachment."));
+    return reply.code(lost.length ? 502 : 200).send({
+      ok: lost.length === 0,
+      created: page.created,
+      duplicates: page.duplicates,
+      ...(lost.length ? { error: `Hermes kept the note and not the file (${lost[0]})` } : {}),
+    });
+  });
+
   app.post("/capture", async (req, reply) => {
     const body = z
       .object({

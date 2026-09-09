@@ -11,6 +11,7 @@
  * otherwise. Those still use the Hermes client, and that is the honest split.
  */
 
+import { randomUUID } from "node:crypto";
 import { GoneError, OfflineError } from "./errors.js";
 
 // Re-exported, because callers have always imported them from here and there is
@@ -460,6 +461,101 @@ export class Interchange {
    * against private routes, doing a read-modify-write that every client wanting
    * to add a tag would have had to repeat. It is one named move now.
    */
+  /**
+   * The page for a day, found or made — through the format and nothing else.
+   *
+   * A daily note is not a search. `LIMITS.md` closed that entry by observing it
+   * is an object with a date identity, which is what the `journal` profile
+   * says: a type declares `journal.date` naming the field that holds the day,
+   * and a stranger can then find the page for a date without knowing anything
+   * about how this producer spells "today".
+   *
+   * **Found by declaration and never by title.** A note somebody named after a
+   * day is not that day's page, and guessing from the shape of a title is how a
+   * tool starts appending to somebody's meeting notes.
+   *
+   * Duplicates are reported rather than resolved. Producers create these
+   * lazily, so one that has raced with itself has two pages for a date; picking
+   * between them silently is how the one with somebody's morning in it ends up
+   * behind the empty one. The earliest id wins for the sake of determinism and
+   * the caller is told there was a choice.
+   */
+  async journalPage(date: string): Promise<{
+    id: string;
+    version: number;
+    created: boolean;
+    duplicates: number;
+    /** Where this producer keeps a page's date, so a caller can write one. */
+    dateKey: string;
+    typeId: string;
+  } | null> {
+    const env = await this.read({ profile: "journal" });
+    const types = (env.types ?? []) as {
+      id: string;
+      profiles?: Record<string, Record<string, unknown>>;
+    }[];
+
+    // A mapping may name the field directly or as `{field, part}`; `content` is
+    // the reserved body slot rather than a property key.
+    const dateKeyOf = (t: (typeof types)[number]): string | null => {
+      const spec = t.profiles?.journal?.date;
+      const named =
+        typeof spec === "string"
+          ? spec
+          : spec !== null && typeof spec === "object"
+            ? (spec as { field?: unknown }).field
+            : undefined;
+      return typeof named === "string" && named !== "content" ? named : null;
+    };
+
+    const journals = types
+      .map((t) => ({ type: t, key: dateKeyOf(t) }))
+      .filter((x): x is { type: (typeof types)[number]; key: string } => x.key !== null);
+    // Nothing here keeps a journal. Not an error and not something to invent a
+    // type for: the caller decides what to do without one.
+    if (!journals.length) return null;
+
+    const objects = (env.objects ?? []) as {
+      id: string;
+      type?: string;
+      version?: number;
+      properties?: Record<string, unknown>;
+    }[];
+    const byType = new Map(journals.map((j) => [j.type.id, j.key]));
+    const onThatDay = objects
+      .filter((o) => {
+        const key = o.type ? byType.get(o.type) : undefined;
+        if (!key) return false;
+        const held = o.properties?.[key];
+        // A datetime for a day is still that day. Compared on the date part so
+        // a producer storing `2026-09-09T00:00` is not a different page from one
+        // storing `2026-09-09`.
+        return typeof held === "string" && held.slice(0, 10) === date;
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    if (onThatDay.length) {
+      const first = onThatDay[0]!;
+      const key = byType.get(first.type!)!;
+      return {
+        id: first.id,
+        version: first.version ?? 0,
+        created: false,
+        duplicates: onThatDay.length - 1,
+        dateKey: key,
+        typeId: first.type!,
+      };
+    }
+
+    // None yet, so make one. The id is decided here, which is what makes the
+    // create replayable: a request whose answer was lost is recognizably the
+    // same request the second time.
+    const chosen = journals[0]!;
+    const id = randomUUID();
+    await this.put(id, { type: chosen.type.id, properties: { [chosen.key]: date } });
+    return { id, version: 0, created: true, duplicates: 0, dateKey: chosen.key, typeId: chosen.type.id };
+  }
+
   async patch(
     id: string,
     change: {

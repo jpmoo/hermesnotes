@@ -3,7 +3,8 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { PropertySchema } from "@hermes/shared";
-import { attachments, banners, blocks, blockTags, blockTypes, tags } from "@hermes/db";
+import { attachmentBlobs,
+  attachments, banners, blocks, blockTags, blockTypes, tags } from "@hermes/db";
 import { db } from "../db.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
 import { badRequest } from "../lib/errors.js";
@@ -179,9 +180,19 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
           id: attachments.id,
           blockId: attachments.blockId,
           filename: attachments.filename,
-          data: attachments.data,
+          data: attachmentBlobs.data,
         })
         .from(attachments)
+        // The bytes live under their own digest now; the attachment is a name
+        // and a pointer. An export still wants one file per attachment, so two
+        // notes sharing a blob still get two files in the archive.
+        .innerJoin(
+          attachmentBlobs,
+          and(
+            eq(attachmentBlobs.ownerId, attachments.ownerId),
+            eq(attachmentBlobs.sha256, attachments.sha256),
+          ),
+        )
         .where(inArray(attachments.blockId, exportedIds)),
       db
         .select({ blockId: blockTags.blockId, name: tags.name })

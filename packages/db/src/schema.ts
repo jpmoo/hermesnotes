@@ -320,6 +320,39 @@ export const calendarConverted = pgTable("calendar_converted", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * The bytes of a file, once, however many notes point at it.
+ *
+ * An attachment used to carry its own bytes, so the same PDF on three notes was
+ * three copies of it — and copying an attachment between notes doubled a file
+ * every time. The content's own digest is its name here, which is what makes
+ * "do we already have this?" a lookup rather than a comparison.
+ *
+ * **Keyed per owner, not globally.** Deduplicating across accounts would mean
+ * one person's upload silently satisfying another's, and the existence of a
+ * blob becoming a fact one account could learn about another.
+ */
+export const attachmentBlobs = pgTable(
+  "attachment_blobs",
+  {
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sha256: text("sha256").notNull(),
+    size: integer("size").notNull(),
+    data: bytea("data").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.ownerId, t.sha256] }) }),
+);
+
+/**
+ * A file on a block: a name, a type, and a pointer at the bytes.
+ *
+ * Two rows may share one blob and routinely do — that is the point. What is
+ * per-attachment is what a person named it and which note it hangs off, both of
+ * which can differ between two copies of identical content.
+ */
 export const attachments = pgTable(
   "attachments",
   {
@@ -333,7 +366,8 @@ export const attachments = pgTable(
     filename: text("filename").notNull(),
     mime: text("mime").notNull(),
     size: integer("size").notNull(),
-    data: bytea("data").notNull(),
+    /** Which blob holds the bytes. Owner-scoped, like the blob itself. */
+    sha256: text("sha256").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
 );

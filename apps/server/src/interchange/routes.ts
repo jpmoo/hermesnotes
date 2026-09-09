@@ -1,4 +1,4 @@
-import { attachments, blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
+import { attachmentBlobs, attachments, blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
 import {
   CONFORMANCE,
   narrow,
@@ -254,9 +254,16 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
               filename: attachments.filename,
               mime: attachments.mime,
               size: attachments.size,
-              data: attachments.data,
+              data: attachmentBlobs.data,
             })
             .from(attachments)
+            .innerJoin(
+              attachmentBlobs,
+              and(
+                eq(attachmentBlobs.ownerId, attachments.ownerId),
+                eq(attachmentBlobs.sha256, attachments.sha256),
+              ),
+            )
             .where(eq(attachments.ownerId, userId))
         : undefined;
 
@@ -512,8 +519,16 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
     ): Promise<{ properties: Record<string, unknown> | undefined; reports: string[]; commit: () => Promise<void> }> {
       if (!properties) return { properties, reports: [], commit: async () => {} };
       const reports: string[] = [];
-      const rows: { blockId: string; ownerId: string; filename: string; mime: string; size: number; data: Buffer }[] =
-        [];
+      const rows: {
+        blockId: string;
+        ownerId: string;
+        filename: string;
+        mime: string;
+        size: number;
+        sha256: string;
+        /** Dropped before the metadata is written; the blob keeps them. */
+        data: Buffer;
+      }[] = [];
       const out: Record<string, unknown> = {};
 
       for (const [key, value] of Object.entries(properties)) {
@@ -551,6 +566,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
             filename: name,
             mime: typeof a.mediaType === "string" && a.mediaType ? a.mediaType : "application/octet-stream",
             size: data.byteLength,
+            sha256: a.sha256,
             data,
           });
         }
@@ -571,7 +587,18 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
        * files behind pointing at nothing.
        */
       const commit = async () => {
-        if (rows.length) await db.insert(attachments).values(rows);
+        if (rows.length) {
+        // The blob first, or the attachment would point at nothing. One row per
+        // distinct digest: a payload carrying the same file twice — the same
+        // picture on two nodes of one canvas — writes its bytes once.
+        const blobs = new Map(
+          rows.map((r) => [r.sha256, { ownerId: userId, sha256: r.sha256, size: r.size, data: r.data }]),
+        );
+        await db.insert(attachmentBlobs).values([...blobs.values()]).onConflictDoNothing();
+        await db.insert(attachments).values(
+          rows.map(({ data: _data, ...meta }) => meta),
+        );
+      }
       };
       return { properties: out, reports, commit };
     }

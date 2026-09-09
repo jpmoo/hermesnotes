@@ -13,6 +13,7 @@ import { UserManagement } from "../components/UserManagement.tsx";
 import { WeeklyReviewSettings } from "../components/WeeklyReviewSettings.tsx";
 import { ExportSettings } from "../components/ExportSettings.tsx";
 import { ImportSettings } from "../components/ImportSettings.tsx";
+import { FileMaintenance } from "../components/FileMaintenance.tsx";
 import { TagMaintenance } from "../components/TagMaintenance.tsx";
 
 interface BackupSettings {
@@ -598,6 +599,7 @@ export function SettingsPage() {
         </div>
       </div>
       <TagMaintenance />
+      <FileMaintenance />
       </>
       )}
 

@@ -8539,3 +8539,103 @@ body:has(.embed-scratchpad) #root {
   gap: 4px;
   cursor: pointer;
 }
+
+/* Attaching a file that is already stored. A quiet link beside the drop zone:
+   uploading is still the obvious action, and this is the one you want on the
+   second and third note a file belongs to. */
+.attach-existing {
+  display: block;
+  margin: 6px auto 0;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.attach-existing:hover {
+  color: var(--accent);
+}
+
+.modal-card.file-library {
+  max-width: 720px;
+}
+.file-library-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.file-library-head .modal-title {
+  flex: 1;
+}
+.file-library-head .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+/* A grid, because the question a picker answers is "which one" and the answer
+   is usually the picture rather than the name. */
+.file-grid {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.file-tile {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+}
+.file-tile:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.file-tile:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.file-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.file-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+/* No thumbnail to be had: the extension, which is what somebody scanning a
+   grid of PDFs and spreadsheets is actually reading. */
+.file-ext {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.file-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-meta {
+  font-size: 11px;
+  color: var(--text-faint);
+}

@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, apiBase, type Attachment, type BlockType } from "../api.ts";
 import { AttachmentPlaceModal } from "./AttachmentPlaceModal.tsx";
+import { FileLibraryModal } from "./FileLibraryModal.tsx";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
@@ -91,6 +92,8 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
    * `unchanged` for that case anyway.
    */
   const [todayId, setTodayId] = useState<string | null>(null);
+  /** The library, for attaching a file that is already here. */
+  const [library, setLibrary] = useState(false);
   const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -181,6 +184,19 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
           }}
         />
       </div>
+
+      {/* Uploading is not the only way to attach a file, now that the same
+          bytes can be pointed at from anywhere. Beside the drop zone rather
+          than inside it, so dropping a file still means what it always did. */}
+      <button
+        className="attach-existing"
+        onClick={(e) => {
+          e.stopPropagation();
+          setLibrary(true);
+        }}
+      >
+        or attach a file you already have
+      </button>
 
       {files.length > 0 && (
         <ul className="attach-list">
@@ -285,6 +301,10 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {library && (
+        <FileLibraryModal blockId={blockId} onClose={() => setLibrary(false)} onAttached={load} />
       )}
 
       {placing && (

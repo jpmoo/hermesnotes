@@ -8746,3 +8746,17 @@ body:has(.embed-scratchpad) #root {
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* A relation pill's label opens the note it names, so it has to look like it
+   can be pressed while staying a pill rather than becoming a button. */
+.ref-chip-open {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.ref-chip-open:hover {
+  text-decoration: underline;
+}

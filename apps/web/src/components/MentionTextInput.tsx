@@ -73,13 +73,30 @@ function serializeLine(doc: PMNode): string {
   return chunks.join(" ").replace(/\s+/g, " ").trimEnd();
 }
 
-/** Swallow Enter (single-line field); blur instead, like pressing Tab. */
-const SingleLine = Extension.create({
+/**
+ * Swallow Enter (single-line field); blur instead, like pressing Tab.
+ *
+ * Except while the mention menu is up, and that exception is the whole reason
+ * this takes an option. `priority: 1001` puts this ahead of everything —
+ * deliberately, so a stray Enter never breaks the line — and that included the
+ * suggestion plugin, so typing `@Ma`, seeing the right person at the top of the
+ * list and pressing Enter blurred the field instead of choosing them. The key
+ * never reached the menu at all.
+ *
+ * Returning `false` rather than not registering the shortcut: the plugin has to
+ * stay first for every *other* Enter, and false is how a ProseMirror handler
+ * says "not mine" and lets the next one have it.
+ */
+const SingleLine = Extension.create<{ menuOpen: () => boolean }>({
   name: "singleLine",
   priority: 1001,
+  addOptions() {
+    return { menuOpen: () => false };
+  },
   addKeyboardShortcuts() {
     return {
       Enter: () => {
+        if (this.options.menuOpen()) return false;
         this.editor.commands.blur();
         return true;
       },
@@ -102,8 +119,20 @@ export function MentionTextInput({
   className?: string;
   onFocus?: () => void;
 }) {
-  const [sug, setSug] = useState<MentionState | null>(null);
+  const [sug, setSugRaw] = useState<MentionState | null>(null);
+  /**
+   * Set through one function so the ref and the render agree.
+   *
+   * The Enter rule reads a ref and the menu reads state; two `setSug` call
+   * sites updating only one of them is how they come apart.
+   */
+  const setSug = (s: MentionState | null) => {
+    menuOpen.current = s !== null;
+    setSugRaw(s);
+  };
   const keydown = useRef<((e: KeyboardEvent) => boolean) | null>(null);
+  /** Whether the suggestion menu is up, for the Enter rule above. */
+  const menuOpen = useRef(false);
   const lastEmit = useRef(value);
 
   // `@` picks are stored by NAME (raw `@Name` form), so rewrite their href
@@ -148,7 +177,10 @@ export function MentionTextInput({
         horizontalRule: false,
         hardBreak: false,
       }),
-      SingleLine,
+      // Read through a ref rather than closed over `sug`: the extension list is
+      // built once, so a value captured here would be the one from first render
+      // and the menu would always look shut.
+      SingleLine.configure({ menuOpen: () => menuOpen.current }),
       Placeholder.configure({ placeholder: placeholder ?? "" }),
       MentionNode,
       Mentions.configure({ handlers }),

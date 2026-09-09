@@ -6,6 +6,7 @@ import { firstLineHtml } from "../lib/markdown-excerpt.ts";
 import { oneLineText } from "../lib/display.ts";
 import { resolveRef } from "../lib/resolve-ref.ts";
 import { BlockIcon } from "../lib/icons.tsx";
+import { usePanels } from "../lib/right-panel.tsx";
 
 /**
  * Reference picker with a dynamic search box. Holds one or more selections as
@@ -33,6 +34,7 @@ export function ReferenceInput({
   const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
   const fetched = useRef<Set<string>>(new Set());
   const ref = useRef<HTMLDivElement>(null);
+  const { openBlock } = usePanels();
   const popRef = useRef<HTMLDivElement>(null);
 
   // The target type's icon labels every result (all hits share the type).
@@ -195,7 +197,34 @@ export function ReferenceInput({
             className={`ref-chip${refStatus[id] === "missing" ? " missing" : ""}${refStatus[id] === "archived" ? " archived" : ""}`}
             key={id}
           >
-            <span className="ref-chip-label">{labels[id] ?? "…"}</span>
+            {/*
+              The pill is the thing it names, so pressing it goes there.
+              
+              It was a span inside a container whose job is "open the picker",
+              so the one gesture anybody would try on a link to a note added a
+              second note instead. The picker is still reachable from the rest
+              of the row and from the input beside the pills — this only claims
+              the label itself.
+              
+              Not offered when the block is gone: a pill saying `missing` is a
+              record of something that was there, and navigating to it would go
+              nowhere and look broken rather than absent.
+            */}
+            {refStatus[id] === "missing" ? (
+              <span className="ref-chip-label">{labels[id] ?? "…"}</span>
+            ) : (
+              <button
+                type="button"
+                className="ref-chip-label ref-chip-open"
+                title={`Open ${labels[id] ?? "this"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openBlock(id);
+                }}
+              >
+                {labels[id] ?? "…"}
+              </button>
+            )}
             {refStatus[id] === "archived" && <span className="ref-badge">archived</span>}
             <button
               className="ref-chip-x"

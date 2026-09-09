@@ -32,6 +32,7 @@ export function TextBlockEditor({
   canDelete = true,
   compact = false,
   hideBanner = false,
+  autofocus,
   archived = false,
   noRegister = false,
 }: {
@@ -44,6 +45,16 @@ export function TextBlockEditor({
   compact?: boolean;
   /** Suppress banner UI entirely (e.g. the Today scratchpad). */
   hideBanner?: boolean;
+  /**
+   * Whether to take the caret. Defaults to "yes when the note is empty".
+   *
+   * Overridable because focusing scrolls: the browser brings a focused editor
+   * into view, so an empty note partway down a long page pulls the page to
+   * itself and somebody arriving lands in the middle of it. On a page that is
+   * a list of sections, arriving at the top matters more than arriving ready
+   * to type.
+   */
+  autofocus?: boolean;
   /** In the Archive view: offer Unarchive + permanent Delete instead of Archive. */
   archived?: boolean;
   /** Don't register as a viewport editor (the info panel's own instance). */
@@ -245,7 +256,9 @@ export function TextBlockEditor({
           value={ext.content}
           onChange={scheduleSave}
           placeholder="Write a note…"
-          autofocus={!block.content}
+          // Empty notes take the caret, except where taking it would move the
+          // page. See `autofocus` in this component's props.
+          autofocus={autofocus ?? !block.content}
           blockId={block.id}
           periodicKind={
             block.properties?.today_note != null

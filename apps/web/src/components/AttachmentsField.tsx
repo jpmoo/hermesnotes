@@ -85,11 +85,33 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
   }, [menuFor]);
 
   /** Straight to today's page — no picker, because there is nothing to pick. */
+  /**
+   * Today's scratchpad, asked about first and reported afterwards.
+   *
+   * The same two courtesies the picker gives: a move takes the file off the
+   * note in front of you, and a success that says nothing looks exactly like a
+   * failure that says nothing — especially for a copy, where the note you are
+   * looking at is unchanged either way.
+   */
+  const [pendingToday, setPendingToday] = useState<{ file: Attachment; mode: "move" | "copy" } | null>(
+    null,
+  );
+  const [placedNote, setPlacedNote] = useState<string | null>(null);
+
   const toToday = async (file: Attachment, mode: "move" | "copy") => {
-    setMenuFor(null);
+    setPendingToday(null);
     if (!todayId) return;
-    await api.post(`/attachments/${file.id}/place`, { blockId: todayId, mode }).catch(() => {});
-    load();
+    try {
+      await api.post(`/attachments/${file.id}/place`, { blockId: todayId, mode });
+      setPlacedNote(
+        mode === "move"
+          ? `Moved “${file.filename}” to today's scratchpad.`
+          : `Copied “${file.filename}” to today's scratchpad — stored once, on both notes.`,
+      );
+      load();
+    } catch {
+      setPlacedNote(`Could not ${mode} “${file.filename}” to today's scratchpad.`);
+    }
   };
 
   const uploadFiles = async (list: FileList | File[]) => {
@@ -277,10 +299,16 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
                     </button>
                     {todayId !== blockId && (
                       <>
-                        <button className="menu-item" onClick={() => void toToday(f, "move")}>
+                        <button className="menu-item" onClick={() => {
+                            setMenuFor(null);
+                            setPendingToday({ file: f, mode: "move" });
+                          }}>
                           Move to today's scratchpad
                         </button>
-                        <button className="menu-item" onClick={() => void toToday(f, "copy")}>
+                        <button className="menu-item" onClick={() => {
+                            setMenuFor(null);
+                            setPendingToday({ file: f, mode: "copy" });
+                          }}>
                           Copy to today's scratchpad
                         </button>
                       </>
@@ -295,6 +323,28 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
           ))}
         </ul>
       )}
+
+      {placedNote && (
+        <p className="hint" style={{ marginTop: 6 }}>
+          {placedNote}
+        </p>
+      )}
+
+      <ConfirmDialog
+        open={pendingToday !== null}
+        title={pendingToday?.mode === "move" ? "Move to today's scratchpad?" : "Copy to today's scratchpad?"}
+        message={
+          pendingToday
+            ? pendingToday.mode === "move"
+              ? `“${pendingToday.file.filename}” moves to today's note and comes off this one. The file itself is not duplicated or deleted.`
+              : `“${pendingToday.file.filename}” is added to today's note as well. Both point at the same stored file, so this costs no extra space.`
+            : ""
+        }
+        confirmLabel={pendingToday?.mode === "move" ? "Move" : "Copy"}
+        danger={false}
+        onCancel={() => setPendingToday(null)}
+        onConfirm={() => pendingToday && void toToday(pendingToday.file, pendingToday.mode)}
+      />
 
       {previewing && (
         <AttachmentPreview file={previewing} onClose={() => setPreviewing(null)} />

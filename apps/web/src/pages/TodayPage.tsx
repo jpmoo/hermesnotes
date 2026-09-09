@@ -385,6 +385,11 @@ export function TodayPage() {
               onDeleted={load}
               canDelete={false}
               hideBanner
+              // Not here. An empty scratchpad would take the caret, and the
+              // browser scrolls a focused editor into view — so opening Today
+              // on a fresh day landed halfway down the page, at whichever
+              // section the scratchpad happens to sit in.
+              autofocus={false}
             />
           </section>
         ) : null;

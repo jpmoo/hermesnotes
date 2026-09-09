@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { api, ApiError, type Attachment, type Block, type BlockSearchResult, type BlockType } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
@@ -84,13 +85,28 @@ export function AttachmentPlaceModal({
     return () => clearTimeout(t);
   }, [q, holderIds]);
 
-  const place = async (blockId: string) => {
+  /**
+   * Chosen, but not yet done.
+   *
+   * A move takes a file off the note somebody is looking at, and a list where
+   * one tap in the wrong row rearranges their library is a list people use
+   * carefully and slowly. The confirm step costs a tap and buys the ability to
+   * scan the results without holding your breath.
+   */
+  const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);
+  const [went, setWent] = useState<string | null>(null);
+
+  const place = async (blockId: string, title: string) => {
     setBusy(true);
     setError(null);
     try {
       await api.post(`/attachments/${attachment.id}/place`, { blockId, mode });
       onDone();
-      onClose();
+      // Said, rather than assumed from the modal closing. A move that silently
+      // succeeds looks exactly like a move that silently did nothing, and the
+      // file is no longer on the note you are looking at to prove otherwise.
+      setWent(title);
+      setChosen(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : `could not ${mode} that file`);
       setBusy(false);
@@ -115,6 +131,8 @@ export function AttachmentPlaceModal({
       });
       await api.post(`/attachments/${attachment.id}/place`, { blockId: made.id, mode });
       onDone();
+      // A new note is opened rather than announced: landing on it is the
+      // stronger confirmation, and it is the thing somebody wants next.
       onClose();
       openBlock(made.id);
     } catch (err) {
@@ -132,7 +150,7 @@ export function AttachmentPlaceModal({
       if (holders.length === 1) void makeAndPlace(holders[0]!);
       return;
     }
-    void place(row.id);
+    setChosen({ id: row.id, title: row.label });
   };
 
   return (
@@ -141,6 +159,15 @@ export function AttachmentPlaceModal({
         <h2 className="modal-title">
           {mode === "move" ? "Move" : "Copy"} {attachment.filename}
         </h2>
+        {went ? (
+          <p className="hint" style={{ marginBottom: 10 }}>
+            {mode === "move" ? "Moved" : "Copied"} to <strong>{went}</strong>.{" "}
+            {mode === "copy"
+              ? "The file is on both notes and stored once."
+              : "It is no longer on the note you came from."}
+          </p>
+        ) : null}
+
         <input
           type="text"
           placeholder="Search notes that can hold a file…"
@@ -196,7 +223,7 @@ export function AttachmentPlaceModal({
                 key={r.id}
                 className={`finder-row${active === at ? " active" : ""}`}
                 onMouseEnter={() => setActive(at)}
-                onClick={() => void place(r.id)}
+                onClick={() => setChosen({ id: r.id, title: r.label })}
               >
                 <BlockIcon
                   iconKey={(() => {
@@ -222,6 +249,22 @@ export function AttachmentPlaceModal({
           </p>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={chosen !== null}
+        title={mode === "move" ? "Move this file?" : "Copy this file?"}
+        message={
+          chosen
+            ? mode === "move"
+              ? `“${attachment.filename}” moves to “${chosen.title}” and comes off the note you came from. The file itself is not duplicated or deleted.`
+              : `“${attachment.filename}” is added to “${chosen.title}”. Both notes point at the same stored file, so this costs no extra space.`
+            : ""
+        }
+        confirmLabel={mode === "move" ? "Move" : "Copy"}
+        danger={false}
+        onCancel={() => setChosen(null)}
+        onConfirm={() => chosen && void place(chosen.id, chosen.title)}
+      />
     </div>
   );
 }

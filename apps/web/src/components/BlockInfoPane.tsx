@@ -146,6 +146,16 @@ export function BlockInfoPane({
   const [types, setTypes] = useState<BlockType[]>([]);
   const [connTab, setConnTab] = useState<"active" | "archived" | "deleted">("active");
   const [menuOpen, setMenuOpen] = useState(false);
+  /**
+   * How many files would go with this block, if it were deleted now.
+   *
+   * Files are shared: a block's attachment may be the last thing pointing at
+   * the bytes, or one of four. Deleting the block collects only the ones
+   * nothing else holds, and somebody agreeing to a permanent delete should be
+   * told which of those two this is. Counted when the question is asked rather
+   * than kept up to date, because it is only ever read once.
+   */
+  const [doomedFiles, setDoomedFiles] = useState<number | null>(null);
   const [confirming, setConfirming] = useState<null | "archive" | "delete" | "unarchive" | "convert">(null);
   /** The type a conversion is heading for, while the confirmation is up. */
   const [convertTo, setConvertTo] = useState<BlockType | null>(null);
@@ -395,6 +405,11 @@ export function BlockInfoPane({
                       className="menu-item menu-danger"
                       onClick={() => {
                         setMenuOpen(false);
+                        setDoomedFiles(null);
+                        void api
+                          .get<{ uses?: number }[]>(`/blocks/${blockId}/attachments`)
+                          .then((all) => setDoomedFiles(all.filter((a) => (a.uses ?? 1) <= 1).length))
+                          .catch(() => setDoomedFiles(null));
                         setConfirming("delete");
                       }}
                     >
@@ -564,7 +579,11 @@ export function BlockInfoPane({
             : confirming === "delete"
             ? isCollection
               ? "This permanently removes the collection. Blocks that aren't in any other collection become Unattached. This can't be undone."
-              : "This permanently removes the block and its embedding. This can't be undone."
+              : `This permanently removes the block and its embedding.${
+                  doomedFiles
+                    ? ` ${doomedFiles} attached file${doomedFiles === 1 ? "" : "s"} no other note uses will be deleted with it; anything shared with another note stays.`
+                    : ""
+                } This can't be undone.`
             : isCollection
               ? withMembers
                 ? "The collection and every block in it are archived together. They stay in the Archive and can be brought back together."

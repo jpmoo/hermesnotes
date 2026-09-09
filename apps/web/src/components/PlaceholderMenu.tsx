@@ -67,7 +67,27 @@ export function PlaceholderMenu({
   );
 
   return createPortal(
-    <div ref={ref} className="menu ph-menu" style={style}>
+    /*
+     * The portal is not far enough away.
+     *
+     * This renders into `document.body`, so in the DOM it is nowhere near the
+     * chip that opened it — but React propagates events through the *component*
+     * tree rather than the DOM one, so a press in here still reached the chip's
+     * `onMouseDown`, which reopens the menu at the pointer. Pressing an item
+     * moved the menu to wherever the press was and the item never completed its
+     * click: the thing under the pointer had changed between down and up.
+     *
+     * Stopped at the menu's own root, where it is one statement about this
+     * whole subtree rather than a rule every item has to remember.
+     */
+    <div
+      ref={ref}
+      className="menu ph-menu"
+      style={style}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="hint" style={{ padding: "6px 10px" }}>
         {/* Named, not typed: the server strips the underscores a spaceless
             trigger obliged you to write, so offer the name it will get. */}

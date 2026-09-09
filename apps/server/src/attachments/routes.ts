@@ -42,13 +42,29 @@ async function ownedBlock(userId: string, blockId: string) {
 export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
+  /**
+   * How many attachments share one file, counted per row.
+   *
+   * A correlated count rather than a join and a group-by: a listing is a
+   * handful of rows, and this keeps it one query returning one row per
+   * attachment, which is the shape the caller wants back.
+   *
+   * It exists so the interface can tell the truth when somebody deletes. The
+   * same bytes may hang off several notes, and "permanently removed from the
+   * server" is only true of the last one.
+   */
+  const uses = sql<number>`(
+    SELECT count(*)::int FROM ${attachments} u
+    WHERE u.owner_id = ${attachments.ownerId} AND u.sha256 = ${attachments.sha256}
+  )`;
+
   /** List a block's attachments (metadata only). */
   app.get("/blocks/:id/attachments", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     await ownedBlock(userId, id);
     return db
-      .select(META)
+      .select({ ...META, uses })
       .from(attachments)
       .where(eq(attachments.blockId, id))
       .orderBy(asc(attachments.createdAt));

@@ -149,6 +149,9 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
     await api.del(`/attachments/${att.id}`).catch(() => load());
   };
 
+  // Whether the file being deleted lives anywhere else. One is this one.
+  const shared = (confirm?.uses ?? 1) > 1;
+
   return (
     <div className="attach-field">
       <div
@@ -343,13 +346,24 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
 
       <ConfirmDialog
         open={confirm !== null}
-        title="Delete this file?"
+        title={shared ? "Remove this file from this note?" : "Delete this file?"}
         message={
           confirm
-            ? `“${confirm.filename}” will be permanently removed from the server. This can't be undone.`
+            ? shared
+              ? /*
+                 * Shared bytes, so this is a detach rather than a delete.
+                 * Saying "permanently removed from the server" here would be a
+                 * plain lie — the file stays, because other notes still point
+                 * at it — and the kind of lie that stops somebody tidying up
+                 * for fear of breaking a note they cannot see from here.
+                 */
+                `“${confirm.filename}” is on ${(confirm.uses ?? 1) - 1} other note${
+                  (confirm.uses ?? 1) - 1 === 1 ? "" : "s"
+                }, so the file stays on the server. It will only be removed from this note.`
+              : `“${confirm.filename}” is only on this note, so the file will be permanently removed from the server. This can't be undone.`
             : ""
         }
-        confirmLabel="Delete"
+        confirmLabel={shared ? "Remove" : "Delete"}
         onCancel={() => setConfirm(null)}
         onConfirm={() => confirm && void remove(confirm)}
       />

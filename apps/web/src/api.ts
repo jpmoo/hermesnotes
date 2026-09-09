@@ -165,6 +165,12 @@ export interface Attachment {
   size: number;
   /** Which stored file this points at — see `/attachments/blob/:digest`. */
   sha256: string;
+  /**
+   * How many attachments across the library share these bytes, this one
+   * included. Only present on a block's listing, which is where it is needed:
+   * deleting the last one removes the file, deleting any other does not.
+   */
+  uses?: number;
   createdAt: string;
 }
 

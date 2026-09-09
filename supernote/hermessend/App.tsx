@@ -24,7 +24,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { PluginManager } from 'sn-plugin-lib';
+import { FileUtils, NativeUIUtils, PluginManager } from 'sn-plugin-lib';
 import {
   Hermes,
   HermesError,
@@ -37,7 +37,7 @@ import {
 import { HermesFile } from './src/native';
 import { load, save, type Settings } from './src/settings';
 import { current, watch, type Capture } from './src/session';
-import { INTERNET, ensure, explain } from './src/permissions';
+import { INTERNET, WRITE, ensure, explain } from './src/permissions';
 
 type Kind = 'note' | 'task';
 
@@ -82,15 +82,15 @@ function App(): React.JSX.Element {
   }, [capture.seq]);
 
   /*
-   * Every type that could hold this, note or task alike.
+   * No type picker at all.
    *
-   * The kind is chosen by which button gets pressed rather than by a toggle set
-   * beforehand, so the picker below the title is only about *which* note type
-   * when a library has more than one — not about note versus task.
+   * The kind is chosen by which button gets pressed, and which *type* of note
+   * is resolved at send time from what declares the profile — see `send`. A
+   * library with two kinds of task is a real thing, and choosing between them
+   * on an e-ink screen before you have said what this is would be a question
+   * asked at the wrong moment. First one wins, and the note can be retyped in
+   * Hermes where that is a comfortable thing to do.
    */
-  const types = (settings?.types ?? []) as HermesType[];
-  const choices = offer(types);
-  const choosable = [...new Set([...choices.note, ...choices.task])];
 
   const stop = () => {
     if (polling.current) clearInterval(polling.current);
@@ -111,6 +111,62 @@ function App(): React.JSX.Element {
    * cancelling the pairing, and the key should still land if the code is
    * approved a minute later on a laptop.
    */
+  /**
+   * Say it happened, and wait to be acknowledged.
+   *
+   * A toast is gone in three seconds and can be missed entirely on a screen
+   * that redraws as slowly as this one — and the view deliberately stays open
+   * afterwards so somebody can save *and* send, which makes "did that work?" a
+   * question they will actually have. A dialog answers it.
+   */
+  const say = async (message: string) => {
+    try {
+      await NativeUIUtils.showRattaDialog(message, '', 'OK', true);
+    } catch {
+      // Older firmware, or a dialog the host declined to show. The work is
+      // done either way, and a toast is better than silence.
+      try {
+        ToastAndroid.show(message, ToastAndroid.LONG);
+      } catch {
+        // Nothing left to try.
+      }
+    }
+  };
+
+  /**
+   * A copy in EXPORT, where the device's own file browser can reach it.
+   *
+   * Through `FileUtils` rather than by writing the bytes again: the PNG already
+   * exists in the plugin's directory, and going through the SDK is also what
+   * puts the new file in Supernote's own index rather than leaving it invisible
+   * until something rescans.
+   */
+  const saveToDevice = useCallback(async () => {
+    if (!capture.png) return;
+    setBusy(true);
+    setTrouble(null);
+    try {
+      const allowed = await ensure(WRITE);
+      if (!allowed.ok) {
+        setTrouble(explain(allowed, 'saving to the device'));
+        return;
+      }
+      const dir = await FileUtils.getExportPath();
+      if (!dir) throw new Error('cannot find the EXPORT folder');
+      await FileUtils.makeDir(dir);
+      const base = (title.trim() || capture.noteName || 'note').replace(/[^A-Za-z0-9._ -]+/g, '_');
+      const name = `${base}-${Date.now()}.png`;
+      const to = `${String(dir).replace(/\/+$/, '')}/${name}`;
+      const ok = await FileUtils.copyFile(capture.png, to);
+      if (!ok) throw new Error('the file could not be written to EXPORT');
+      await say(`Saved to EXPORT as ${name}.`);
+    } catch (err) {
+      setTrouble(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [capture, title]);
+
   const close = () => {
     try {
       PluginManager.closePluginView();
@@ -253,9 +309,10 @@ function App(): React.JSX.Element {
         return;
       }
       const lost = (answer.reports ?? []).filter((r) => r.startsWith('attachment.'));
-      ToastAndroid.show(
-        lost.length ? `Sent — without the picture (${lost[0]})` : "Added to today's note",
-        ToastAndroid.LONG,
+      await say(
+        lost.length
+          ? `Added to today's note, without the picture (${lost[0]}).`
+          : "Added to today's daily note in Hermes.",
       );
     } catch (err) {
       setTrouble(err instanceof Error ? err.message : String(err));
@@ -302,18 +359,21 @@ function App(): React.JSX.Element {
       // plain success either. Reports name what was reduced, and this is the
       // one place somebody will ever see them.
       const lost = (answer.reports ?? []).filter((r) => r.startsWith('attachment.'));
-      ToastAndroid.show(
-        lost.length ? `Sent — without the picture (${lost[0]})` : 'Sent to Hermes',
-        ToastAndroid.LONG,
-      );
-
       await save({ ...settings, lastTypeId: chosen.id });
       setSettings({ ...settings, lastTypeId: chosen.id });
-      try {
-        PluginManager.closePluginView();
-      } catch {
-        // Nothing to do about it; the block was made.
-      }
+      /*
+       * Said, and the view left open.
+       *
+       * Closing on success would be tidier and is wrong here: somebody may want
+       * to save the picture to the device as well, or send it to today's page
+       * too, and a view that vanishes the moment one of those succeeds makes
+       * the second one a second lasso. Closing is a button, and it is theirs.
+       */
+      await say(
+        lost.length
+          ? `Made a new ${as} in Hermes, without the picture (${lost[0]}).`
+          : `Made a new Hermes ${as}: “${named}”.`,
+      );
     } catch (err) {
       setTrouble(err instanceof Error ? err.message : String(err));
     } finally {
@@ -401,19 +461,27 @@ function App(): React.JSX.Element {
       )}
 
       {/*
-        Today first, and without a title.
+        The two things that need no title, above the field that asks for one.
         
-        The commonest thing to do with a piece of a page is put it where today's
-        thinking already is, and that destination needs no name — the page is
-        named after the day. Above the title field because it is the answer that
-        skips the question below it.
+        Sending to today's page and saving a copy to the device are both
+        complete actions on their own — today's page is named after the day, and
+        a file on disk is named after the note. The title field below belongs to
+        the two buttons under it and to nothing else.
       */}
       <TouchableOpacity
         style={[styles.button, (busy || !capture.png) && styles.buttonOff]}
         disabled={busy || !capture.png}
         onPress={() => void sendToday()}
       >
-        <Text style={styles.buttonText}>Add to today's daily note</Text>
+        <Text style={styles.buttonText}>Add to today's daily note in Hermes</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.button, (busy || !capture.png) && styles.buttonOff]}
+        disabled={busy || !capture.png}
+        onPress={() => void saveToDevice()}
+      >
+        <Text style={styles.buttonText}>Save PNG to device</Text>
       </TouchableOpacity>
 
       <View style={styles.rule} />
@@ -425,45 +493,28 @@ function App(): React.JSX.Element {
         placeholder={capture.noteName ? `Title (from ${capture.noteName})` : 'Title'}
       />
 
-      {/* The types the library actually has, by what they declare — shown only
-          when there is a choice to make. A library with two kinds of task shows
-          both, under their own names. */}
-      {choosable.length > 1 ? (
-        <View style={styles.kinds}>
-          {choosable.map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[styles.kind, typeId === t.id && styles.kindOn]}
-              onPress={() => setTypeId(t.id)}
-            >
-              <Text style={[styles.kindText, typeId === t.id && styles.kindTextOn]}>{t.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      ) : null}
+      <TouchableOpacity
+        style={[styles.button, (busy || !capture.png) && styles.buttonOff]}
+        disabled={busy || !capture.png}
+        onPress={() => void send('note')}
+      >
+        <Text style={styles.buttonText}>New Hermes Note</Text>
+      </TouchableOpacity>
 
-      <View style={styles.pair}>
-        <TouchableOpacity
-          style={[styles.button, styles.half, (busy || !capture.png) && styles.buttonOff]}
-          disabled={busy || !capture.png}
-          onPress={() => void send('note')}
-        >
-          <Text style={styles.buttonText}>New note</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.button, styles.half, (busy || !capture.png) && styles.buttonOff]}
-          disabled={busy || !capture.png}
-          onPress={() => void send('task')}
-        >
-          <Text style={styles.buttonText}>New task</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={[styles.button, (busy || !capture.png) && styles.buttonOff]}
+        disabled={busy || !capture.png}
+        onPress={() => void send('task')}
+      >
+        <Text style={styles.buttonText}>New Hermes Task</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={[styles.button, styles.buttonQuiet]} onPress={close}>
+        <Text style={styles.buttonText}>Close</Text>
+      </TouchableOpacity>
 
       {trouble ? <Text style={styles.trouble}>{trouble}</Text> : null}
 
-      <TouchableOpacity style={styles.quiet} onPress={close}>
-        <Text style={styles.quietText}>Cancel</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -524,6 +575,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonOff: { backgroundColor: '#999' },
+  /* Closing is not the thing anybody came here to do, so it is the same shape
+     as the rest and a lighter weight rather than a different kind of control. */
+  buttonQuiet: { backgroundColor: '#555' },
   /* The two ways to make something new, side by side and equal. */
   pair: { flexDirection: 'row', gap: 10 },
   half: { flex: 1 },

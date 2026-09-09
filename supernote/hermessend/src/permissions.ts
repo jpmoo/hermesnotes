@@ -14,17 +14,19 @@ import { PluginManager } from "sn-plugin-lib";
  * declared fails with code 1500 before any dialog is shown, which is what
  * "could not ask for INTERNET permission" meant the first time this shipped.
  *
- * Two, not four. The plugin's own private directory is exempt from every
- * permission by default, and that is where the PNG and the settings file live —
- * so `FILE:WRITE` and `FILE:DELETE` would be two dialogs asking for something
- * already granted. `FILE:READ` is here because the lasso is read out of a note
- * in shared storage, which is not exempt.
+ * Three, not four. The plugin's own private directory is exempt from every
+ * permission by default, and that is where the working PNG and the settings
+ * file live — so `FILE:DELETE` would be a dialog asking for something already
+ * granted. `FILE:READ` is here because a note is read out of shared storage,
+ * and `FILE:WRITE` because saving a copy to EXPORT puts a file there.
  *
  * Each is asked for at the moment it is needed rather than at launch: a dialog
  * that arrives while somebody is looking at the thing it is about can be
  * answered, and a stack of them before anything has happened is a wall.
  */
 export const READ = "plugin.permission.FILE:READ";
+/** Saving a PNG into EXPORT, which is shared storage and not exempt. */
+export const WRITE = "plugin.permission.FILE:WRITE";
 export const INTERNET = "plugin.permission.INTERNET";
 
 /** A short name for a message, since the full string is mostly namespace. */

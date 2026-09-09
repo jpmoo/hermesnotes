@@ -2,13 +2,14 @@
   "name": "Send to Hermes",
   "desc": "Send a lassoed selection or a whole note to Hermes Notes as a PNG \u2014 onto today's page, or as a new note or task.",
   "iconPath": "./assets/icon.png",
-  "versionName": "0.2.0",
-  "versionCode": "2",
+  "versionName": "0.3.0",
+  "versionCode": "3",
   "pluginID": "kwqy7npwqmstbw8s",
   "pluginKey": "hermessend",
   "jsMainPath": "index",
   "uses-permissions": [
     "plugin.permission.INTERNET",
-    "plugin.permission.FILE:READ"
+    "plugin.permission.FILE:READ",
+    "plugin.permission.FILE:WRITE"
   ]
 }

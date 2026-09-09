@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { createHash } from "node:crypto";
@@ -43,31 +43,44 @@ export async function attachmentRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
   /**
-   * How many attachments share one file, counted per row.
+   * How many attachments share each of these files.
    *
-   * A correlated count rather than a join and a group-by: a listing is a
-   * handful of rows, and this keeps it one query returning one row per
-   * attachment, which is the shape the caller wants back.
+   * Two queries, deliberately. This began as a correlated subquery —
+   * `SELECT count(*) FROM attachments u WHERE u.sha256 = attachments.sha256` —
+   * which looked right and was not: with the inner table aliased, the outer
+   * name did not resolve the way the shape of the SQL suggested, both sides of
+   * the comparison referred to the inner row, the condition was true of
+   * everything, and every file reported the total number of attachments in the
+   * library. Twenty-two of them, on every row, which is a number obviously
+   * wrong enough to be caught — and would have been silently plausible on a
+   * smaller library.
    *
-   * It exists so the interface can tell the truth when somebody deletes. The
-   * same bytes may hang off several notes, and "permanently removed from the
-   * server" is only true of the last one.
+   * A group-by over exactly the digests in question cannot express that
+   * mistake. The listing is a handful of rows; the second round trip is not
+   * worth the cleverness.
    */
-  const uses = sql<number>`(
-    SELECT count(*)::int FROM ${attachments} u
-    WHERE u.owner_id = ${attachments.ownerId} AND u.sha256 = ${attachments.sha256}
-  )`;
+  async function usesOf(userId: string, digests: string[]): Promise<Map<string, number>> {
+    if (!digests.length) return new Map();
+    const counts = await db
+      .select({ sha256: attachments.sha256, n: sql<number>`count(*)::int` })
+      .from(attachments)
+      .where(and(eq(attachments.ownerId, userId), inArray(attachments.sha256, digests)))
+      .groupBy(attachments.sha256);
+    return new Map(counts.map((c) => [c.sha256, c.n]));
+  }
 
   /** List a block's attachments (metadata only). */
   app.get("/blocks/:id/attachments", async (req) => {
     const userId = requireUser(req);
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     await ownedBlock(userId, id);
-    return db
-      .select({ ...META, uses })
+    const rows = await db
+      .select(META)
       .from(attachments)
       .where(eq(attachments.blockId, id))
       .orderBy(asc(attachments.createdAt));
+    const shared = await usesOf(userId, [...new Set(rows.map((r) => r.sha256))]);
+    return rows.map((r) => ({ ...r, uses: shared.get(r.sha256) ?? 1 }));
   });
 
   /** Upload one or more files (multipart) against a block. */

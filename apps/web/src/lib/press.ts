@@ -36,7 +36,21 @@ export function classifyPress(target: EventTarget | null): Press {
   // press on the page — which is the distinction both panels turn on.
   const thing = el.closest<HTMLElement>("[data-block-id], [data-feed-key]");
   const id = thing?.dataset.blockId || thing?.dataset.feedKey;
-  if (id) return { kind: "thing", id };
+  /*
+   * A thing's own background is the page, not the thing.
+   *
+   * A card is mostly padding, and the gaps between the modules on the Today
+   * page are inside the sections either side of them. Pressing there landed on
+   * `[data-block-id]`, classified as a press on that card, and left the panel
+   * alone — so clicking what plainly looks like empty space did nothing at all.
+   *
+   * `el === thing` is the whole test: a press on a child is a press on the
+   * card's contents and still means the card, while a press that stopped at the
+   * element itself went through everything and hit the backing. That keeps
+   * selecting a card by its blank area working — the card's own click handler
+   * fires either way — while letting the panels treat it as the page.
+   */
+  if (id && el !== thing) return { kind: "thing", id };
   if (el.closest(CONTROL)) return { kind: "control" };
   return { kind: "empty" };
 }

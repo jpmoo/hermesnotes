@@ -199,16 +199,12 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
         }}
       />
 
-      {/* Two ways in, side by side and equally weighted. Uploading is not the
-          only way to attach a file now that the same bytes can be pointed at
-          from anywhere, and the second way was a text link under the drop zone
-          — which reads as a footnote to the first rather than an alternative
-          to it. Outside the drop zone, so dropping a file still means what it
-          always did. */}
+      {/* The other way in. There is no "upload" button beside it because the
+          drop zone above already is one — it says so and it does it, and a
+          second button for the same job is a choice nobody has to make.
+          Outside the drop zone, so dropping a file still means what it always
+          did. */}
       <div className="attach-ways">
-        <button className="ghost" type="button" onClick={() => inputRef.current?.click()}>
-          <Upload size={14} /> Upload a file
-        </button>
         <button className="ghost" type="button" onClick={() => setLibrary(true)}>
           <Paperclip size={14} /> Attach an existing file
         </button>

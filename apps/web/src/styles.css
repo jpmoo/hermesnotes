@@ -8648,8 +8648,9 @@ body:has(.embed-scratchpad) #root {
   gap: 8px;
   margin-top: 8px;
 }
+/* One button, so it takes its own width rather than stretching across the
+   field the way a pair of them shared it. */
 .attach-ways .ghost {
-  flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;

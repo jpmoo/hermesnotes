@@ -1,5 +1,6 @@
 import {
   Download,
+  FolderInput,
   File as FileIcon,
   FileArchive,
   FileAudio,
@@ -15,7 +16,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, apiBase, type Attachment } from "../api.ts";
+import { api, apiBase, type Attachment, type BlockType } from "../api.ts";
+import { AttachmentPlaceModal } from "./AttachmentPlaceModal.tsx";
 import { useIsMobile } from "../lib/useIsMobile.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 
@@ -74,12 +76,53 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [confirm, setConfirm] = useState<Attachment | null>(null);
+  /** Which row's move menu is open, by attachment id. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  /** The picker, once somebody has said move or copy. */
+  const [placing, setPlacing] = useState<{ file: Attachment; mode: "move" | "copy" } | null>(null);
+  const [types, setTypes] = useState<BlockType[]>([]);
+  /**
+   * Today's scratchpad, so this block can tell whether it *is* one.
+   *
+   * Offering "send this to today's note" while looking at today's note is an
+   * offer to move a thing to where it already is. A failure to find out leaves
+   * this null, which shows the options — the safe direction, since a redundant
+   * menu item is a smaller injury than a missing one, and the server answers
+   * `unchanged` for that case anyway.
+   */
+  const [todayId, setTodayId] = useState<string | null>(null);
   const isMobile = useIsMobile();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const load = () =>
     void api.get<Attachment[]>(`/blocks/${blockId}/attachments`).then(setFiles).catch(() => {});
   useEffect(load, [blockId]);
+
+  useEffect(() => {
+    void api.get<BlockType[]>("/block-types").then(setTypes).catch(() => setTypes([]));
+    const today = new Date().toLocaleDateString("en-CA");
+    void api
+      .get<{ id: string }>(`/today/${today}/note`)
+      .then((n) => setTodayId(n.id))
+      .catch(() => setTodayId(null));
+  }, []);
+
+  // A click anywhere else closes the menu, which is what a menu does and what
+  // somebody who opened one by accident tries first.
+  useEffect(() => {
+    if (!menuFor) return;
+    const away = () => setMenuFor(null);
+    window.addEventListener("click", away);
+    return () => window.removeEventListener("click", away);
+  }, [menuFor]);
+
+  /** Straight to today's page — no picker, because there is nothing to pick. */
+  const toToday = async (file: Attachment, mode: "move" | "copy") => {
+    setMenuFor(null);
+    if (!todayId) return;
+    await api.post(`/attachments/${file.id}/place`, { blockId: todayId, mode }).catch(() => {});
+    load();
+  };
 
   const uploadFiles = async (list: FileList | File[]) => {
     const arr = [...list];
@@ -192,12 +235,66 @@ export function AttachmentsField({ blockId }: { blockId: string }) {
               >
                 <Download size={14} />
               </a>
+              <span className="attach-move">
+                <button
+                  className="icon-btn"
+                  title="Move or copy this file"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuFor((open) => (open === f.id ? null : f.id));
+                  }}
+                >
+                  <FolderInput size={14} />
+                </button>
+                {menuFor === f.id && (
+                  <div className="menu" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setMenuFor(null);
+                        setPlacing({ file: f, mode: "move" });
+                      }}
+                    >
+                      Move to a different note…
+                    </button>
+                    <button
+                      className="menu-item"
+                      onClick={() => {
+                        setMenuFor(null);
+                        setPlacing({ file: f, mode: "copy" });
+                      }}
+                    >
+                      Copy to a different note…
+                    </button>
+                    {todayId !== blockId && (
+                      <>
+                        <button className="menu-item" onClick={() => void toToday(f, "move")}>
+                          Move to today's scratchpad
+                        </button>
+                        <button className="menu-item" onClick={() => void toToday(f, "copy")}>
+                          Copy to today's scratchpad
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </span>
               <button className="icon-btn attach-del" title="Remove" onClick={() => setConfirm(f)}>
                 <Trash2 size={14} />
               </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {placing && (
+        <AttachmentPlaceModal
+          attachment={placing.file}
+          mode={placing.mode}
+          types={types}
+          onClose={() => setPlacing(null)}
+          onDone={load}
+        />
       )}
 
       <ConfirmDialog

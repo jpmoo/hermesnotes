@@ -8509,3 +8509,33 @@ body:has(.embed-scratchpad) #root {
   height: 100%;
   object-fit: contain;
 }
+
+/* The move/copy control on an attachment row. Positioned so its menu hangs
+   from the button rather than from the row, which would put it under the
+   next file. */
+.attach-move {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.attach-move .menu {
+  top: 100%;
+  right: 0;
+  left: auto;
+  white-space: nowrap;
+}
+/* The type choices on the "create a new one" row of the attachment picker.
+   Several small buttons rather than a select: with one type there is nothing
+   to choose and it reads as a single action, which is the common case. */
+.finder-new-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+}
+.finder-new-types .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}

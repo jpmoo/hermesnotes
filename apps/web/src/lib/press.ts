@@ -34,6 +34,19 @@ export function classifyPress(target: EventTarget | null): Press {
   // A thing outranks the controls it contains: a card is covered in buttons and
   // fields, and pressing one is still a press on that card. What it isn't is a
   // press on the page — which is the distinction both panels turn on.
+  /*
+   * A section's heading is furniture, not the thing under it.
+   *
+   * The Today page's modules are `<section data-block-id>`, and their headings
+   * live inside — so pressing the word EISENHOWER classified as a press on that
+   * collection and left the panel alone, while plainly being a press on the
+   * page. Nothing in a heading answers a press except the open button, and that
+   * is checked for here rather than relied on: `[data-block-id]` outranks
+   * controls further down, deliberately, so a button inside a section would
+   * otherwise be swallowed by the same rule this is stepping around.
+   */
+  if (el.closest(".today-h") && !el.closest("button, a")) return { kind: "empty" };
+
   const thing = el.closest<HTMLElement>("[data-block-id], [data-feed-key]");
   const id = thing?.dataset.blockId || thing?.dataset.feedKey;
   /*

@@ -97,14 +97,52 @@ const callCount = () => {
   }
 };
 
+/**
+ * A fake accessibility reader.
+ *
+ * The real one is a signed binary in the app bundle whose whole job is to hold
+ * a permission this suite must not depend on. What is under test is the
+ * *fallback* — that a title still arrives when the window manager does not
+ * answer — and that is a question about the watcher, not about AX.
+ */
+const ax = join(home, "talaria-ax");
+type Ax =
+  /** A title and no opinion about which app it belongs to — the ordinary case. */
+  | "answering"
+  /** A title belonging to some *other* application, which must be refused. */
+  | "stale"
+  /** The accessibility grant was not given. */
+  | "denied";
+const setAx = (state: Ax) => {
+  const body =
+    state === "answering"
+      ? `{"title":"A page with a name"}`
+      : state === "stale"
+        ? `{"app":"com.apple.Safari","title":"The app you just left"}`
+        : `{"denied":true}`;
+  writeFileSync(ax, `#!/bin/sh\nprintf '${body}'\n`);
+  chmodSync(ax, 0o755);
+};
+setAx("answering");
+
 const mirror = new Mirror(join(home, "mirror.sqlite"));
-const record = new ContextRecord(mirror, []);
+/*
+ * Titles trusted, which this suite has to say out loud.
+ *
+ * `TITLE_TRUSTED` is a curated list of bundle ids, and a title from anything
+ * else is dropped before it is stored — the right default and the reason an
+ * earlier version of the accessibility cases failed while the code under test
+ * was working perfectly. What is frontmost on the machine running this suite is
+ * not something the suite can choose, so the filter is turned off here and
+ * tested where it belongs, in `contextcheck`.
+ */
+const record = new ContextRecord(mirror, [], true);
 record.start();
 
 try {
   // ---- while it is answering ---------------------------------------------
   setWm(true);
-  const watcher = new FrontmostWatcher(record, 50, cli);
+  const watcher = new FrontmostWatcher(record, 50, cli, ax);
   watcher.start();
   // Both halves of the same answer, so they arrive on the same tick — waited for
   // together, then asserted separately so a failure names the value it actually
@@ -151,6 +189,53 @@ try {
   // ---- Launch Services still names what is in front ------------------------
   const front = record.recent(1)[0];
   check("the record keeps going without it", Boolean(front?.app), String(front?.app));
+
+  /*
+   * ---- The title outlives the window manager --------------------------------
+   *
+   * A window title is not AeroSpace's to give — it is an accessibility
+   * attribute, and the helper has been reading it for Glance all along. Before
+   * this, losing the window manager lost the title with it and the record fell
+   * back to an application name, because nothing else was ever asked.
+   */
+  setWm(false);
+  await settles(() => {
+    const row = record.recent(1)[0];
+    return Boolean(row && row.title === "A page with a name");
+  });
+  const viaAx = record.recent(1)[0];
+  check("a title survives the window manager going away", viaAx?.title === "A page with a name", String(viaAx?.title));
+  check("and it is still filed under the real frontmost app", Boolean(viaAx?.app), String(viaAx?.app));
+
+  // A refused grant is not a title. It must not read as one, and must not stop
+  // the record: the application name is still worth having.
+  setAx("denied");
+  await settles(() => {
+    const row = record.recent(1)[0];
+    return Boolean(row && row.title !== "A page with a name");
+  });
+  const denied = record.recent(1)[0];
+  check("a refused accessibility grant is not recorded as a title",
+    denied?.title !== "A page with a name", String(denied?.title));
+  check("and the application is still recorded", Boolean(denied?.app), String(denied?.app));
+
+  /*
+   * A title read a moment after the frontmost application can belong to the app
+   * you just left. Filed under the app you just entered, it is worse than no
+   * title: it is a confident wrong answer in the one field a person reads.
+   */
+  setAx("stale");
+  await settles(() => {
+    const row = record.recent(1)[0];
+    return Boolean(row && row.title !== "A page with a name");
+  });
+  const stale = record.recent(1)[0];
+  check(
+    "a title from a different application is refused",
+    stale?.title !== "The app you just left",
+    String(stale?.title),
+  );
+  setAx("answering");
 
   /*
    * ---- Running, and switched off -------------------------------------------

@@ -388,6 +388,41 @@ export async function frontmostFromAerospace(cliPath?: string): Promise<
   return undefined;
 }
 
+/**
+ * The focused window's title, from the accessibility API.
+ *
+ * The second source for the one field that matters most and is hardest to get.
+ * AeroSpace answers application, title and workspace together, so when it is not
+ * running — or is running and switched off — the title disappears along with the
+ * workspace, and the record falls back to Launch Services, which knows the
+ * application's name and nothing about its windows.
+ *
+ * But a window title is not AeroSpace's to give: it is `kAXTitleAttribute` on
+ * `kAXFocusedWindowAttribute`, and `talaria-ax` has been reading exactly that
+ * for Glance since it was written. Only the workspace is genuinely gone.
+ *
+ * **Without `--deep`**, unlike Glance's use of the same helper. That flag asks a
+ * browser to build its whole accessibility tree and walks it, which is worth
+ * doing once when somebody presses a key and is not worth doing every two
+ * seconds forever. The title is read before any of that and does not need it.
+ */
+export async function focusedTitle(helper: string): Promise<{ app?: string; title?: string } | undefined> {
+  const { execFile } = await import("node:child_process");
+  const out = await new Promise<string>((resolve) =>
+    execFile(helper, [], { timeout: 1500, maxBuffer: 1 << 18 }, (err, stdout) => resolve(err ? "" : stdout)),
+  );
+  try {
+    const got = JSON.parse(out || "{}") as { app?: string; title?: string; denied?: boolean };
+    // A refused accessibility grant answers, and answers nothing useful. Told
+    // apart from an empty title so the caller does not read "no window title"
+    // as a fact about the window.
+    if (got.denied) return undefined;
+    return got.title || got.app ? { app: got.app, title: got.title } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Recording can be switched off, and the switch has to survive a restart. */
 const OFF_KEY = "context.off";
 
@@ -630,7 +665,25 @@ export class FrontmostWatcher {
     private everyMs = 2000,
     /** Where `aerospace` lives, when it is not somewhere obvious. */
     private aerospaceCli?: string,
+    /**
+     * The accessibility reader, when this build ships one.
+     *
+     * Optional because the daemon runs on Linux too, where there is no such
+     * thing — and absent is not an error anywhere, it is one fewer source.
+     */
+    private axHelper?: string,
   ) {}
+
+  /**
+   * Whether the helper is worth asking.
+   *
+   * Same shape as the window-manager latch above and for the same reason: a
+   * machine that has refused the accessibility grant would otherwise spawn a
+   * process every two seconds forever to be told no again. Retried on the slow
+   * timer, because a grant can be given at any point.
+   */
+  private axAnswered = true;
+  private axCheckedAt = 0;
 
   start(): void {
     if (this.timer) return;
@@ -673,10 +726,32 @@ export class FrontmostWatcher {
 
       const front = await frontmostApp();
       if (!front) return;
-      // Launch Services has no window title to give, so this records the
-      // application's display name instead — less informative, and much less
-      // revealing.
-      this.record.note({ app: front.app, title: front.title, workspace: this.record.workspace });
+
+      /*
+       * Launch Services knows which application is in front and nothing about
+       * its windows, so the title would be the application's display name —
+       * less informative, and the thing that quietly disappeared whenever the
+       * window manager did.
+       *
+       * The accessibility helper knows the title, so it is asked for one. Only
+       * when there is nothing better: this is a poll, and a process per tick to
+       * confirm what AeroSpace already said would be a cost paid for nothing.
+       */
+      let title = front.title;
+      if (this.axHelper) {
+        const askAx = this.axAnswered || Date.now() - this.axCheckedAt > WM_RECHECK_MS;
+        if (askAx) {
+          const seen = await focusedTitle(this.axHelper);
+          this.axCheckedAt = Date.now();
+          this.axAnswered = seen !== undefined;
+          // Only when it agrees about which application is in front. The two
+          // are read a moment apart, and a title from the app you just left
+          // filed under the app you just entered is worse than no title.
+          if (seen?.title && (!seen.app || seen.app === front.app)) title = seen.title;
+        }
+      }
+
+      this.record.note({ app: front.app, title, workspace: this.record.workspace });
     } catch {
       // A poll that fails is a poll. It will run again in two seconds.
     }

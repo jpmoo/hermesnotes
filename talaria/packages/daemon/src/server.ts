@@ -219,7 +219,10 @@ export function buildServer(deps: {
    * Measured, not assumed: a window manager's events describe windows and
    * workspaces, and ⌘-Tab between two applications produces none of them.
    */
-  const frontmost = new FrontmostWatcher(context, 2000, config.aerospaceCli);
+  // The accessibility reader is handed to the watcher as well as to Glance: a
+  // window title is not the window manager's to give, and without this it
+  // vanished whenever AeroSpace did. See `focusedTitle`.
+  const frontmost = new FrontmostWatcher(context, 2000, config.aerospaceCli, AX_HELPER);
   frontmost.start();
   app.addHook("onClose", async () => frontmost.stop());
 

@@ -26,7 +26,8 @@ import {
   type StandardTodaySection,
   type TodayLayout,
 } from "@hermes/shared";
-import { blocks, blockTypes, userSettings } from "@hermes/db";
+import { createHash } from "node:crypto";
+import { attachmentBlobs, attachments, blocks, blockTypes, userSettings } from "@hermes/db";
 import { templateBody } from "../blocks/routes.js";
 import { db } from "../db.js";
 import { badRequest } from "../lib/errors.js";
@@ -384,6 +385,71 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
     return findOrCreateNote(userId, date);
+  });
+
+  /**
+   * A file straight onto today's page, in one request.
+   *
+   * For anything holding a photo and no patience: an iOS share-sheet shortcut,
+   * a watch, a script. Everything here already existed separately — the day's
+   * note is `findOrCreateNote`, the storing is what `/blocks/:id/attachments`
+   * does — and joining them matters because the caller is often something that
+   * chains requests badly. Two calls means fetching the note, digging an id out
+   * of JSON, and posting a file to a URL built from it; one call means a form
+   * and a URL.
+   *
+   * **The date comes from the caller.** A phone knows what day it is where the
+   * person is standing; this server keeps its own clock and has been wrong
+   * about the boundary before. A photo taken at eight in the evening belongs on
+   * the day the person had, not the day UTC was having.
+   *
+   * Attaching creates the page if it does not exist, which is the same thing
+   * opening the day does — a photo sent to a day nobody visited should not have
+   * to wait for somebody to visit it.
+   */
+  app.post("/today/:date/attachments", async (req) => {
+    const userId = requireUser(req);
+    const { date } = z.object({ date: DATE }).parse(req.params);
+    if (!req.isMultipart()) throw badRequest("expected multipart/form-data");
+
+    const note = await findOrCreateNote(userId, date);
+    const saved: { id: string; filename: string; size: number }[] = [];
+    for await (const part of req.files()) {
+      const buf = await part.toBuffer();
+      // The bytes once, under their own digest — the same photo shared twice
+      // costs a row the second time. See `attachment_blobs`.
+      const digest = createHash("sha256").update(buf).digest("hex");
+      await db
+        .insert(attachmentBlobs)
+        .values({ ownerId: userId, sha256: digest, size: buf.length, data: buf })
+        .onConflictDoNothing();
+      const [row] = await db
+        .insert(attachments)
+        .values({
+          blockId: note.id,
+          ownerId: userId,
+          filename: part.filename || `photo-${date}`,
+          mime: part.mimetype || "application/octet-stream",
+          size: buf.length,
+          sha256: digest,
+        })
+        .returning({ id: attachments.id, filename: attachments.filename, size: attachments.size });
+      saved.push(row!);
+    }
+    if (!saved.length) throw badRequest("no files uploaded");
+    await db.update(blocks).set({ updatedAt: new Date() }).where(eq(blocks.id, note.id));
+
+    // A sentence rather than a shape. Whatever posted this is likely to show
+    // the answer verbatim in a notification, and "attached 1 file to Sep 10"
+    // is a better notification than a block id.
+    return {
+      ok: true,
+      noteId: note.id,
+      date,
+      attached: saved.length,
+      files: saved,
+      message: `Attached ${saved.length} file${saved.length === 1 ? "" : "s"} to ${date}.`,
+    };
   });
 
   /**

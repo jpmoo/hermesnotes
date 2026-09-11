@@ -123,10 +123,14 @@ export function MarkdownEditor({
   periodicDate?: string | null;
 }) {
   const [mode, setMode] = useState<Mode>("live");
+  // What the Raw textarea shows. Only Raw renders it, so it is filled in when
+  // Raw opens rather than on every keystroke in Live: a state change here
+  // re-renders the editor, which refreshes its options and recomputes every
+  // decoration in the note — per character typed.
   const [markdown, setMarkdown] = useState(value);
-  // The current text, readable from callbacks that were made once.
+  // The current text, whichever mode is showing, readable from callbacks that
+  // were made once.
   const markdownRef = useRef(value);
-  markdownRef.current = markdown;
   // Whether this visit has already been sent to the template's mark.
   const landed = useRef(false);
   const [sug, setSug] = useState<MentionState | null>(null);
@@ -304,7 +308,7 @@ export function MarkdownEditor({
     },
     onUpdate: ({ editor }) => {
       const md = normalizeMarkdown(editor.storage.markdown.getMarkdown() as string);
-      setMarkdown(md);
+      markdownRef.current = md;
       // Cursor-move source swaps (and link→mention conversion) don't change the
       // markdown — only emit real edits so they don't spuriously re-save.
       if (md === lastEmit.current) return;
@@ -326,14 +330,16 @@ export function MarkdownEditor({
 
   const toggle = () => {
     if (mode === "live") {
+      setMarkdown(markdownRef.current);
       setMode("raw");
     } else {
-      editor?.commands.setContent(markdown, false);
+      editor?.commands.setContent(markdownRef.current, false);
       if (editor) linksToMentions(editor);
       setMode("live");
     }
   };
   const onRawChange = (v: string) => {
+    markdownRef.current = v;
     setMarkdown(v);
     onChange(normalizeMarkdown(v));
     autosize();
@@ -367,7 +373,7 @@ export function MarkdownEditor({
     setPendingTemplate(null);
     setExtract(null);
     editor.commands.setContent(body);
-    setMarkdown(body);
+    markdownRef.current = body;
     onChange(body);
     // Straight to the spot the template marked, if it marked one.
     placeCaret(editor, body);

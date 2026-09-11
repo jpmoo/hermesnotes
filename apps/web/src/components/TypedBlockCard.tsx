@@ -82,6 +82,21 @@ export function TypedBlockCard({
 }) {
   useRegisterEditor(block.id, !noRegister);
   const [props, setProps] = useState<Record<string, unknown>>(block.properties ?? {});
+  /**
+   * The current properties, including edits that deliberately didn't render.
+   *
+   * A long-text field owns its own content, so re-rendering the card on each of
+   * its keystrokes redraws nothing anyone can see — and it isn't free: every
+   * editor in the card refreshes its options on a render, which recomputes every
+   * decoration in every one of them. In a list, that was the lag. So a long-text
+   * edit lands here and not in state; everything that builds the next save reads
+   * this, so no edit is lost by not being rendered.
+   */
+  const propsRef = useRef(props);
+  const adopt = (next: Record<string, unknown>) => {
+    propsRef.current = next;
+    setProps(next);
+  };
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [confirm, setConfirm] = useState<null | "archive" | "unarchive" | "delete">(null);
   const [updatedAt, setUpdatedAt] = useState(block.updatedAt);
@@ -113,7 +128,7 @@ export function TypedBlockCard({
     block.id,
     origin,
     (b) => {
-      setProps(b.properties ?? {});
+      adopt(b.properties ?? {});
       versionRef.current = b.version;
       setUpdatedAt(b.updatedAt);
       setExt((n) => n + 1);
@@ -129,7 +144,7 @@ export function TypedBlockCard({
   useEffect(() => {
     if (block.version === versionRef.current) return;
     if (focusedRef.current || dirty()) return;
-    setProps(block.properties ?? {});
+    adopt(block.properties ?? {});
     versionRef.current = block.version;
     setUpdatedAt(block.updatedAt);
     setExt((n) => n + 1);
@@ -161,8 +176,11 @@ export function TypedBlockCard({
       pendingKeys.current.clear();
       emitBlockChange(block.id, origin);
       // A remote change that arrived mid-edit was held; now that we're settled
-      // and not typing, catch up to it.
-      if (!dirty()) releaseSync();
+      // and not typing, catch up to it. Not while a field still has focus:
+      // catching up remounts the long-text editors, and a save settling during
+      // a pause in typing is not the same thing as having stopped. Blur releases
+      // it instead, as TextBlockEditor already does.
+      if (!focusedRef.current && !dirty()) releaseSync();
       // A recurring task just spawned its next occurrence — refresh the list.
       if (updated.recurred) onConflict();
     } catch (err) {
@@ -177,7 +195,7 @@ export function TypedBlockCard({
             versionRef.current = fresh.version;
             const merged = { ...((fresh.properties ?? {}) as Record<string, unknown>) };
             for (const key of edited) merged[key] = next[key];
-            setProps(merged);
+            adopt(merged);
             await save(merged, true);
             return;
           } catch {
@@ -192,8 +210,10 @@ export function TypedBlockCard({
   };
 
   const update = (key: string, value: unknown) => {
-    const next = { ...props, [key]: value };
-    setProps(next);
+    const next = { ...propsRef.current, [key]: value };
+    propsRef.current = next;
+    // See `propsRef`: a long-text keystroke changes nothing on screen.
+    if (fields.find((f) => f.key === key)?.type !== "longtext") setProps(next);
     pendingProps.current = next;
     pendingKeys.current.add(key);
     if (timer.current) clearTimeout(timer.current);
@@ -275,7 +295,10 @@ export function TypedBlockCard({
       onFocusCapture={() => {
         focusedRef.current = true;
       }}
-      onBlurCapture={() => {
+      onBlurCapture={(e) => {
+        // Moving from one field to another inside the card is still editing it.
+        // Releasing here would remount the long-text field being moved into.
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
         focusedRef.current = false;
         // Settled: adopt any remote edit that was held while editing here.
         if (!dirty()) releaseSync();

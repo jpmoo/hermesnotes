@@ -153,6 +153,22 @@ export function useBlockSync(
   const versionRef = useRef(heldVersion);
   versionRef.current = heldVersion;
   const deferred = useRef<Block | null>(null);
+  /**
+   * Older than what this surface already holds — its own later saves are past it.
+   *
+   * Checked when the snapshot is used, not only when the event arrives, because
+   * a stashed snapshot can sit for a long time. An echo of this surface's own
+   * save can come in before that save's response does (the log is published a
+   * few hundred milliseconds after commit, and a slow response loses that race),
+   * and a tag added by a save announces itself with no version at all. Either
+   * way the snapshot was stashed while typing, and the release after some *later*
+   * save applied it: the field remounted on text from a save or two ago, and
+   * everything typed since was gone from the screen and then from the block.
+   */
+  const stale = (b: Block) => {
+    const held = versionRef.current?.();
+    return held != null && b.version < held;
+  };
   useEffect(() => {
     const l: Listener = (id, src, version) => {
       if (id !== blockId || src === origin) return;
@@ -163,8 +179,11 @@ export function useBlockSync(
       void api
         .get<Block>(`/blocks/${blockId}`)
         .then((b) => {
-          if (holdRef.current?.()) deferred.current = b;
-          else applyRef.current(b);
+          if (stale(b)) return;
+          if (holdRef.current?.()) {
+            // Refetches can land out of order; keep the newest one.
+            if (!deferred.current || b.version >= deferred.current.version) deferred.current = b;
+          } else applyRef.current(b);
         })
         .catch(() => {});
     };
@@ -172,14 +191,13 @@ export function useBlockSync(
     return () => {
       listeners.delete(l);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blockId, origin]);
-  // Stable release: apply the newest stashed block, if any.
+  // Stable release: apply the newest stashed block, if it is still news.
   const release = useRef(() => {
-    if (deferred.current) {
-      const b = deferred.current;
-      deferred.current = null;
-      applyRef.current(b);
-    }
+    const b = deferred.current;
+    deferred.current = null;
+    if (b && !stale(b)) applyRef.current(b);
   });
   return release.current;
 }

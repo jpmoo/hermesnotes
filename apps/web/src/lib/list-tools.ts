@@ -45,7 +45,12 @@ export const ListIndent = Extension.create({
   },
 });
 
-const GUTTER_KEY = new PluginKey<number[]>("listGutter");
+/** Which rows are folded, and the controls drawn for the document as it stands. */
+interface GutterState {
+  collapsed: number[];
+  decos: DecorationSet;
+}
+const GUTTER_KEY = new PluginKey<GutterState>("listGutter");
 /** Transaction meta carrying the item position whose fold state should flip. */
 const TOGGLE_FOLD = "listGutterToggleFold";
 
@@ -61,8 +66,8 @@ const TOGGLE_FOLD = "listGutterToggleFold";
  * collapses a drag-selection in progress. Keeping it declarative avoids that
  * entirely, and costs no layout measurement.
  */
-function listLevel(state: EditorState, pos: number): number {
-  const $pos = state.doc.resolve(pos);
+function listLevel(doc: PMNode, pos: number): number {
+  const $pos = doc.resolve(pos);
   let level = 0;
   for (let d = 1; d <= $pos.depth; d++) {
     if (LIST_TYPES.has($pos.node(d).type.name)) level++;
@@ -313,6 +318,75 @@ function buildTwisty(view: EditorView, collapsed: boolean): HTMLElement {
 }
 
 /**
+ * Every row's controls, for one document and one set of folds.
+ *
+ * Built when either of those changes and kept in plugin state, not built in the
+ * `decorations` prop. ProseMirror asks that prop on every view update, and a
+ * view updates far more often than its document changes: on a caret move, and
+ * on every React render of the editor that hosts it, since the React binding
+ * refreshes the editor's options each time. A walk of the whole note per ask
+ * was several walks per keystroke in a long list.
+ */
+function gutterDecorations(doc: PMNode, folded: number[]): DecorationSet {
+  const collapsed = new Set(folded);
+  const decos: Decoration[] = [];
+  // Rows are counted in document order across the whole note, so the
+  // banding alternates continuously instead of restarting inside each
+  // nested list — CSS can't count across nesting levels. Descendants of a
+  // collapsed row aren't walked, so hidden rows correctly don't count.
+  let rowNumber = 0;
+  doc.descendants((node, pos) => {
+    if (!ITEM_TYPES.has(node.type.name)) {
+      // Walk through containers (lists, quotes) but not into text.
+      return !node.isTextblock;
+    }
+    const isCollapsed = collapsed.has(pos);
+    rowNumber += 1;
+    // One class carries both the row's indent (which the stylesheet
+    // turns into the control offsets and how far the band reaches) and
+    // whether this row is banded.
+    const banded = rowNumber % 2 === 0;
+    decos.push(
+      Decoration.node(pos, pos + node.nodeSize, {
+        class: `li-lvl-${listLevel(doc, pos)}${banded ? " li-stripe" : ""}`,
+      }),
+    );
+    // Keys carry no position on purpose: ProseMirror reuses a widget
+    // whose key is unchanged, so editing elsewhere in the note doesn't
+    // tear down and rebuild every control. Rebuilding them mid-gesture
+    // used to collapse drag-selections across rows — and now nothing
+    // about a control depends on where its row sits, so the keys are
+    // constant and the elements simply persist.
+    decos.push(
+      Decoration.widget(pos + 1, (view) => buildGrip(view), {
+        side: -1,
+        // The controls aren't content: never let them affect the selection.
+        ignoreSelection: true,
+        key: "li-drag",
+      }),
+    );
+    const kids = nestedLists(node, pos);
+    if (kids.length) {
+      decos.push(
+        Decoration.widget(pos + 1, (view) => buildTwisty(view, isCollapsed), {
+          side: -2, // ahead of the grip
+          ignoreSelection: true,
+          key: `li-fold:${isCollapsed}`,
+        }),
+      );
+      if (isCollapsed) {
+        for (const kid of kids) {
+          decos.push(Decoration.node(kid.from, kid.to, { class: "li-nested-hidden" }));
+        }
+      }
+    }
+    // A collapsed item's descendants are hidden, so they need nothing.
+    return !isCollapsed;
+  });
+  return decos.length ? DecorationSet.create(doc, decos) : DecorationSet.empty;
+}
+
+/**
  * The list gutter: a muted grip on every list item that drags it (with anything
  * nested under it) to a new spot, plus a twisty on items that have nested
  * children to fold them away.
@@ -327,83 +401,30 @@ export const ListGutter = Extension.create({
   addProseMirrorPlugins() {
     const editor = this.editor;
     return [
-      new Plugin<number[]>({
+      new Plugin<GutterState>({
         key: GUTTER_KEY,
         state: {
-          init: () => [],
-          apply(tr, collapsed) {
-            // Follow the items as the document changes around them.
-            let next = tr.docChanged
-              ? collapsed.map((pos) => tr.mapping.map(pos, 1)).filter((pos) => pos >= 0)
-              : collapsed;
+          init: (_config, state) => ({ collapsed: [], decos: gutterDecorations(state.doc, []) }),
+          apply(tr, prev, _oldState, newState) {
             const toggle = tr.getMeta(TOGGLE_FOLD) as number | undefined;
+            // A caret move, a focus ping, a re-render: the controls are the same.
+            if (!tr.docChanged && typeof toggle !== "number") return prev;
+            // Follow the items as the document changes around them.
+            let collapsed = tr.docChanged
+              ? prev.collapsed.map((pos) => tr.mapping.map(pos, 1)).filter((pos) => pos >= 0)
+              : prev.collapsed;
             if (typeof toggle === "number") {
-              next = next.includes(toggle)
-                ? next.filter((pos) => pos !== toggle)
-                : [...next, toggle];
+              collapsed = collapsed.includes(toggle)
+                ? collapsed.filter((pos) => pos !== toggle)
+                : [...collapsed, toggle];
             }
-            return next;
+            return { collapsed, decos: gutterDecorations(newState.doc, collapsed) };
           },
         },
         props: {
           decorations(state) {
             if (!editor.isEditable) return DecorationSet.empty; // nothing to drag or fold
-            const collapsed = new Set(GUTTER_KEY.getState(state) ?? []);
-            const decos: Decoration[] = [];
-            // Rows are counted in document order across the whole note, so the
-            // banding alternates continuously instead of restarting inside each
-            // nested list — CSS can't count across nesting levels. Descendants of a
-            // collapsed row aren't walked, so hidden rows correctly don't count.
-            let rowNumber = 0;
-            state.doc.descendants((node, pos) => {
-              if (!ITEM_TYPES.has(node.type.name)) {
-                // Walk through containers (lists, quotes) but not into text.
-                return !node.isTextblock;
-              }
-              const isCollapsed = collapsed.has(pos);
-              rowNumber += 1;
-              // One class carries both the row's indent (which the stylesheet
-              // turns into the control offsets and how far the band reaches) and
-              // whether this row is banded.
-              const banded = rowNumber % 2 === 0;
-              decos.push(
-                Decoration.node(pos, pos + node.nodeSize, {
-                  class: `li-lvl-${listLevel(state, pos)}${banded ? " li-stripe" : ""}`,
-                }),
-              );
-              // Keys carry no position on purpose: ProseMirror reuses a widget
-              // whose key is unchanged, so editing elsewhere in the note doesn't
-              // tear down and rebuild every control. Rebuilding them mid-gesture
-              // used to collapse drag-selections across rows — and now nothing
-              // about a control depends on where its row sits, so the keys are
-              // constant and the elements simply persist.
-              decos.push(
-                Decoration.widget(pos + 1, (view) => buildGrip(view), {
-                  side: -1,
-                  // The controls aren't content: never let them affect the selection.
-                  ignoreSelection: true,
-                  key: "li-drag",
-                }),
-              );
-              const kids = nestedLists(node, pos);
-              if (kids.length) {
-                decos.push(
-                  Decoration.widget(pos + 1, (view) => buildTwisty(view, isCollapsed), {
-                    side: -2, // ahead of the grip
-                    ignoreSelection: true,
-                    key: `li-fold:${isCollapsed}`,
-                  }),
-                );
-                if (isCollapsed) {
-                  for (const kid of kids) {
-                    decos.push(Decoration.node(kid.from, kid.to, { class: "li-nested-hidden" }));
-                  }
-                }
-              }
-              // A collapsed item's descendants are hidden, so they need nothing.
-              return !isCollapsed;
-            });
-            return decos.length ? DecorationSet.create(state.doc, decos) : DecorationSet.empty;
+            return GUTTER_KEY.getState(state)?.decos ?? DecorationSet.empty;
           },
         },
       }),

@@ -1,9 +1,16 @@
 """
-Who is in front, told to us by KWin.
+Who is in front, told to us by the compositor.
 
 The Mac polls `lsappinfo` every two seconds. This is pushed instead, because
-KWin will say when it changes and there is nothing to gain from asking a
-question whose answer has not moved.
+the compositor will say when it changes and there is nothing to gain from
+asking a question whose answer has not moved.
+
+**Which compositor is not this file's business.** KWin reports over D-Bus from
+a script it runs; Hyprland announces it on an event socket and is then asked for
+the details. Both arrive at `_arrive` below as the same five fields, and the
+difference lives in `wm/`. What is here is what is true of every desktop: our
+own windows are not "what is in front", our own helpers are not either, and the
+blindlist is applied before anything can look at a caption.
 
 **The blindlist is applied on arrival, not on use.** A window that must not be
 read has its caption dropped here, in the receiving callback, before anything
@@ -15,16 +22,11 @@ about it.
 Nothing is written down. This holds one window in memory and replaces it when
 the next one arrives, which is the same promise Glance makes about the text it
 embeds.
-
-GDBus rather than QtDBus because `python3-pyside6.qtdbus` is not installed and
-this already keeps a GLib loop on a thread for the shortcuts portal; a second
-one is cheaper than another dependency.
 """
 
 from __future__ import annotations
 
 import os
-import subprocess
 import threading
 import time
 from dataclasses import dataclass
@@ -32,36 +34,10 @@ from dataclasses import dataclass
 from PySide6.QtCore import QObject, Signal
 
 import blindlist
+import wm
 
-BUS_NAME = "dev.talaria.Shell"
-OBJECT_PATH = "/Window"
-INTERFACE = "dev.talaria.Window"
-
-#: What KWin calls our own windows — `QApplication.setDesktopFileName`.
+#: What the compositor calls our own windows — `QApplication.setDesktopFileName`.
 OURS = "dev.talaria."
-
-INTROSPECTION = f"""
-<node>
-  <interface name='{INTERFACE}'>
-    <method name='Changed'>
-      <arg type='s' name='windowClass' direction='in'/>
-      <arg type='s' name='resourceName' direction='in'/>
-      <arg type='i' name='pid' direction='in'/>
-      <arg type='s' name='caption' direction='in'/>
-      <arg type='s' name='workspace' direction='in'/>
-    </method>
-  </interface>
-</node>
-"""
-
-SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kwin", "talaria-window.js")
-
-#: Where the daemon keeps its things — `config.json` sits beside the socket.
-SOCKET_DIR = os.path.join(
-    (os.environ.get("XDG_DATA_HOME") or "").strip()
-    or os.path.join(os.path.expanduser("~"), ".local", "share"),
-    "talaria", "talaria.sock",
-)
 
 
 #: Our own tools, which are not windows anybody switched to.
@@ -245,145 +221,65 @@ class Frontmost(QObject):
     # ------------------------------------------------------------------ thread
 
     def _run(self) -> None:
-        try:
-            import gi
+        """Hand the thread to whichever backend this session has."""
+        wm.run_window_source(self._arrive, self._failed)
 
-            gi.require_version("Gio", "2.0")
-            gi.require_version("GLib", "2.0")
-            from gi.repository import Gio, GLib
-        except Exception as err:  # noqa: BLE001
-            self.failure = f"no GLib/Gio bindings, so no window source — {err}"
+    def _failed(self, message: str) -> None:
+        """
+        No window source, said once and kept.
+
+        Read by `talaria doctor`, which is the only place it can be seen — a
+        shell with no window source still works, it simply cannot say what you
+        were looking at, and stopping over that would be the wrong trade.
+        """
+        self.failure = message
+
+    def _arrive(
+        self,
+        window_class: str,
+        resource_name: str,
+        pid: int,
+        caption: str,
+        workspace: str,
+    ) -> None:
+        """
+        One window, from any compositor, judged before anything else sees it.
+
+        Called on whatever thread the backend is running; everything it touches
+        is either an attribute replaced wholesale or a Qt signal, which is a
+        boundary Qt already guarantees is safe.
+        """
+        # Our own windows are not "what is in front" for any purpose here.
+        # Opening a panel would otherwise overwrite the thing the panel exists
+        # to look at, and pressing the hotkey a second time while it is open
+        # would read Talaria's own title. Reading is ordered to avoid this too,
+        # but a window source that answers "Talaria" to "what were you doing?"
+        # is wrong on its own account.
+        if pid == os.getpid() or (window_class or "").startswith(OURS):
             return
 
-        context = GLib.MainContext.new()
-        context.push_thread_default()
-
-        def on_call(_conn, _sender, _path, _iface, method, params, invocation):
-            if method != "Changed":
-                invocation.return_value(None)
-                return
-            window_class, resource_name, pid, caption, workspace = params.unpack()
-
-            # Our own windows are not "what is in front" for any purpose here.
-            # Opening a panel would otherwise overwrite the thing the panel
-            # exists to look at, and pressing the hotkey a second time while it
-            # is open would read Talaria's own title. Reading is ordered to
-            # avoid this too, but a window source that answers "Talaria" to
-            # "what were you doing?" is wrong on its own account.
-            if pid == os.getpid() or (window_class or "").startswith(OURS):
-                return invocation.return_value(None)
-
-            # **Never our own helpers.**
-            #
-            # An earlier version fingerprinted the primary selection here by
-            # running `wl-paste`, which connects to the display, becomes a
-            # Wayland client for an instant, and is reported by KWin as the
-            # newly activated window — which ran this again, which spawned
-            # another one. The screen flashed continuously and Glance solemnly
-            # reported that the front window was `wl-paste`. Nothing is spawned
-            # from this callback now, and the tools are ignored besides.
-            if (window_class or "") in HELPERS or (resource_name or "") in HELPERS:
-                return invocation.return_value(None)
-
-            # Here, and before anything else touches it.
-            blind = blindlist.is_blind(window_class or None, pid or None)
-            # Only a timestamp. What the selection *holds* is never sampled on a
-            # window change — see `SelectionClock`.
-            self.focused_at = time.monotonic()
-            self.changed.emit(Window(
-                window_class=window_class,
-                resource_name=resource_name,
-                pid=pid,
-                caption=None if blind else (caption or None),
-                workspace=workspace or None,
-                blind=blind,
-            ))
-            invocation.return_value(None)
-
-        try:
-            node = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION)
-            conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-            conn.register_object(OBJECT_PATH, node.interfaces[0], on_call, None, None)
-            Gio.bus_own_name_on_connection(
-                conn, BUS_NAME, Gio.BusNameOwnerFlags.REPLACE, None, None
-            )
-        except Exception as err:  # noqa: BLE001
-            self.failure = f"couldn't take {BUS_NAME} — {err}"
+        # **Never our own helpers.**
+        #
+        # An earlier version fingerprinted the primary selection here by running
+        # `wl-paste`, which connects to the display, becomes a Wayland client
+        # for an instant, and is reported by the compositor as the newly
+        # activated window — which ran this again, which spawned another one.
+        # The screen flashed continuously and Glance solemnly reported that the
+        # front window was `wl-paste`. Nothing is spawned from here now, and the
+        # tools are ignored besides.
+        if (window_class or "") in HELPERS or (resource_name or "") in HELPERS:
             return
 
-        # The script is loaded after the name exists, or its first call lands on
-        # nothing and the current window is unknown until the next switch.
-        self._load_script()
-        GLib.MainLoop.new(context, False).run()
-
-    @staticmethod
-    def _load_script() -> None:
-        """
-        Ask KWin to run the reporter.
-
-        Reloaded on every start rather than installed once: this is a
-        development tree, the file changes, and a KWin holding an old copy of it
-        is a confusing thing to debug. `unloadScript` first because loading the
-        same path twice leaves two of them connected to `windowActivated`, and
-        every window change then arrives in duplicate.
-        """
-        script = _generated_script()
-        for method, arg in (("unloadScript", script), ("loadScript", script)):
-            subprocess.run(
-                ["busctl", "--user", "call", "org.kde.KWin", "/Scripting",
-                 "org.kde.kwin.Scripting", method, "s", arg],
-                capture_output=True, timeout=5,
-            )
-        subprocess.run(
-            ["busctl", "--user", "call", "org.kde.KWin", "/Scripting",
-             "org.kde.kwin.Scripting", "start"],
-            capture_output=True, timeout=5,
-        )
-
-
-PLACEMENTS = (
-    "top-left", "top-center", "top-right",
-    "middle-left", "middle-center", "middle-right",
-    "bottom-left", "bottom-center", "bottom-right",
-)
-
-
-def _generated_script() -> str:
-    """
-    The KWin script, with the placement written into it.
-
-    A KWin script has no filesystem and cannot read `config.json`, so the value
-    is substituted here and the result written beside the runtime state — a
-    rendering of the source rather than a second source, which is the same
-    arrangement `systemd/talaria.service.in` uses for `ExecStart`.
-    """
-    from PySide6.QtCore import QStandardPaths
-
-    placement, opacity = "bottom-center", 1.0
-    try:
-        import json
-
-        with open(os.path.join(os.path.dirname(SOCKET_DIR), "config.json"), encoding="utf8") as h:
-            raw = json.load(h)
-        if raw.get("glancePlacement") in PLACEMENTS:
-            placement = raw["glancePlacement"]
-        asked = 1.0
-        # Clamped rather than trusted. A panel at 0.2 is unreadable and a panel
-        # somebody cannot find is a panel they cannot turn back up.
-        opacity = min(1.0, max(0.6, asked))
-    except Exception:  # noqa: BLE001
-        pass
-
-    with open(SCRIPT, encoding="utf8") as handle:
-        body = (
-            handle.read()
-            .replace("__PLACEMENT__", placement)
-            .replace("__OPACITY__", f"{opacity:.2f}")
-        )
-    out = os.path.join(
-        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.RuntimeLocation) or "/tmp",
-        "talaria-window.js",
-    )
-    with open(out, "w", encoding="utf8") as handle:
-        handle.write(body)
-    return out
+        # Here, and before anything else touches it.
+        blind = blindlist.is_blind(window_class or None, pid or None)
+        # Only a timestamp. What the selection *holds* is never sampled on a
+        # window change — see `SelectionClock`.
+        self.focused_at = time.monotonic()
+        self.changed.emit(Window(
+            window_class=window_class,
+            resource_name=resource_name,
+            pid=pid,
+            caption=None if blind else (caption or None),
+            workspace=workspace or None,
+            blind=blind,
+        ))

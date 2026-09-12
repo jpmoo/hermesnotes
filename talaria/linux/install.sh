@@ -136,5 +136,50 @@ if [ "${XDG_CURRENT_DESKTOP:-}" = "KDE" ] || [ -n "${KDE_FULL_SESSION:-}" ]; the
   fi
 fi
 
+# --- Hyprland ---------------------------------------------------------------
+#
+# Two things this session needs that Plasma does not, and neither can be done
+# to somebody's config behind their back.
+#
+# The hotkeys: both desktops bind through the GlobalShortcuts portal, but KDE's
+# portal asks you to press a key and keeps the binding, while Hyprland's leaves
+# the key to the compositor's own config. So one `bind` line per shortcut has to
+# exist in hyprland.conf, naming the same action ids Talaria registers.
+#
+# The start: Hyprland does not read XDG autostart entries, so nothing starts the
+# shell at login unless the config says so.
+#
+# Both are written to a file of our own and sourced by one line the user adds
+# once. `hyprland.conf` is theirs — and Omarchy and Ryoku assemble it
+# differently, one in Hyprland's own syntax and one in Lua — so a tool that
+# edits it is a tool that will eventually eat somebody's setup.
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "Hyprland" ]; then
+  HYPR_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+  SNIPPET="$HYPR_DIR/talaria.conf"
+  SHELL_BIN="$ROOT/linux/shell/talaria-shell"
+  mkdir -p "$HYPR_DIR"
+  if "$SHELL_BIN" --hypr-binds > "$SNIPPET.new" 2>/dev/null; then
+    {
+      echo
+      echo "# Start the shell with the session."
+      echo "#"
+      echo "# Through systemd-run rather than directly: the portal names a"
+      echo "# non-sandboxed app after the process that launched it, so a shell"
+      echo "# started as a child of the compositor files its hotkeys under the"
+      echo "# compositor and they are bound to nothing. This has been diagnosed"
+      echo "# three times on the other desktop."
+      echo "exec-once = systemd-run --user --scope --unit=app-dev.talaria.shell -- $SHELL_BIN"
+    } >> "$SNIPPET.new"
+    mv "$SNIPPET.new" "$SNIPPET"
+    echo "==> Hyprland: wrote $SNIPPET"
+    echo "    Add this line to hyprland.conf once, then run 'hyprctl reload':"
+    echo "        source = $SNIPPET"
+  else
+    rm -f "$SNIPPET.new"
+    echo "!! Hyprland: couldn't work out the hotkey lines (is PySide6 installed?)"
+    echo "   Talaria will still run; its hotkeys will not be bound to anything."
+  fi
+fi
+
 echo "==> Up. Checking:"
 exec "$ROOT/bin/talaria" doctor

@@ -1,6 +1,7 @@
 # Talaria on Linux
 
-Orientation for a coding agent picking this up on a KDE desktop. **All five
+Orientation for a coding agent picking this up on a KDE or Hyprland
+desktop. **All five
 steps below are done.** The daemon runs under systemd; a tray shell holds six
 panels and a full-screen desk; hotkeys come through the shortcuts portal; the
 canvas is a fork of Hermes' own, editable, with its own tool strip and chat; and
@@ -74,6 +75,10 @@ Do not start with Glance because it is the interesting problem. Starting there
 means weeks before anything runs.
 
 ## Decisions already made
+
+**KDE was first, and it is no longer the only one.** Hyprland is supported
+too — see *Two compositors, one shell* below. Nothing in that changed the
+reasoning here, which is why it is kept as it was written:
 
 **KDE, and the reasoning is not aesthetic.** KWin implements
 `wlr-layer-shell`, which GNOME refuses and which is what an always-on-top panel
@@ -186,6 +191,7 @@ was a second toolkit's idea of a tray icon. Needs
 | `settings.py` | every field the Mac panel edits, plus model discovery. |
 | `probe.py` | `/api/tags`, filtered by capability. A port of `Probe`. |
 | `shortcuts.py` | hotkeys, through the portal. |
+| `wm/` | the compositor backends — see *Two compositors, one shell*. |
 | `krunner.py` | the library in KDE's search box — the entrance you reach by typing on the desktop. `org.kde.krunner1` on a GLib thread, answered out of the daemon; `dev.talaria.runner.desktop` is how Plasma finds it, and `install.sh` puts it in place on a Plasma session. |
 | `ui/` | the pages. `board.html` renders all six collection kinds; `desk.html` is the full-screen surface, with the canvas and a writing surface either side of it. |
 | `ui/writing.html` · `ui/richtext.js` | the writing surface — a blank page with a real toolbar, saving itself into `~/.local/share/talaria/writing` as Markdown. **No connection to Hermes Notes**: no blocks, no types, no interchange, no daemon. `/shell/writing` is answered by `scheme.py` out of a directory, so it works with the daemon stopped. |
@@ -386,6 +392,85 @@ that bindings live in the portal's store rather than System Settings;
   took 32.6. `read1` returns what has landed.
 - **A tray app must refuse to be a second copy.** Autostart plus one manual
   launch is two icons, and the second is indistinguishable from the first.
+
+## Two compositors, one shell
+
+KDE was the first desktop and Hyprland is the second. **There is no second copy
+of this shell**, and there must not be: of the 5,750 lines of Python in
+`shell/`, about 1,400 touch the compositor at all. Forking the directory would
+mean maintaining 4,350 identical lines in two places so that the other 1,400
+could differ, and they would drift in exactly the places nobody is looking.
+
+So the compositor is a backend, chosen once at startup:
+
+| | |
+|---|---|
+| `shell/wm/__init__.py` | which session this is, and the six things a compositor is asked for. Every one of them answers harmlessly when there is no backend, because an unknown desktop should mean plain panels rather than a shell that refuses to start. |
+| `shell/wm/kde.py` | KWin: the D-Bus name its script reports into, loading the script, blur through `frosting.py`. |
+| `shell/wm/hypr.py` | Hyprland: its two IPC sockets, window rules, and the dispatcher that presses a key in somebody else's window. |
+
+The six: who is in front, where a panel goes, blur it, does focus follow the
+mouse, is there a search box to answer into, and (Hyprland only) press a key
+over there.
+
+**What Hyprland does differently, and why each one is not a KDE bug.**
+
+- **Geometry is a window rule, not a script.** KWin runs `kwin/talaria-window.js`,
+  which sizes and places every panel. Hyprland takes rules over its command
+  socket, and matches them against a window *as it opens* — so `wm.place` is
+  called from the panel's constructor rather than once at startup. Rules are
+  sent as `windowrulev2` and retried as `windowrule`, because the keyword was
+  renamed between releases and a version table is one more thing to get wrong.
+- **The focused window is pulled, not pushed.** The event socket says *that* the
+  focus moved; `activewindow` is then asked for class, title, pid and workspace
+  in one reply. No process is spawned — the KDE path learned the hard way that
+  spawning anything from a focus callback creates a Wayland client, which is
+  itself a focus change.
+- **Blur needs no protocol.** `org_kde_kwin_blur` is KWin's, which is why KDE
+  needs a C++ binding. Hyprland blurs behind anything translucent when blur is
+  on in its config, and the panels already paint themselves at
+  `--surface-alpha`. So `frost` reports what is true and asks for nothing.
+- **Glance's last rung costs nothing here.** The synthetic copy goes through the
+  RemoteDesktop portal on KDE — a permission dialog, a held session, a list of
+  modifiers to release first. Hyprland has `sendshortcut`, which puts a chord
+  into a named window, so `fakeinput.py` skips the whole apparatus when the
+  backend offers one.
+- **The hotkeys are half in the user's config.** Both desktops bind through
+  `org.freedesktop.portal.GlobalShortcuts`, but KDE's portal asks you to press a
+  key and stores the binding, while Hyprland's leaves the key to the compositor.
+  `talaria-shell --hypr-binds` prints the `bind` lines; `install.sh` writes them
+  to `~/.config/hypr/talaria.conf` along with an `exec-once`, because Hyprland
+  reads no XDG autostart entry. **It never edits `hyprland.conf`** — that file
+  is the user's, and Omarchy and Ryoku assemble it differently.
+- **There is no KRunner.** Hyprland's launcher is whatever the distribution
+  ships, so the runner is not started at all there rather than registering a
+  D-Bus service nothing will call.
+- **No tray is an ordinary session.** A missing tray used to be fatal, which was
+  right when the only desktop was Plasma. Hyprland's tray comes from the bar —
+  waybar on Omarchy, the Quickshell bar on Ryoku — so it is now a line on stderr
+  and the shell carries on, since the hotkeys are the main entrance anyway.
+- **Focus follows the mouse by default.** A summoned panel dismisses itself when
+  it loses focus, and on Hyprland a hand brushing the mouse moves the focus to
+  whatever is under the pointer — so New Block closed mid-sentence. A panel the
+  pointer is still resting on is not a panel anybody looked away from, and
+  `Panel._hide_if_still_inactive` says so. Talaria does not change anybody's
+  `follow_mouse` setting.
+
+**Omarchy and Ryoku are the same target.** Both are Arch with a Hyprland
+session; what differs is the furniture — walker and waybar on one, a Quickshell
+shell on the other — and the syntax of the config file the hotkeys go in, which
+is why that file is written rather than edited.
+
+**None of the Hyprland side has been run.** It is written from the IPC protocol
+and Hyprland's documented rules, and there is no Hyprland session in this
+project's reach. Treat every claim in `wm/hypr.py` as unverified until somebody
+boots it, and check these first, in this order: does the event socket deliver
+(`talaria: session — hyprland` in the log, then a focused window in
+`talaria doctor`); do the rules land (panels the right size, in the right
+corner, not under the bar); does `--hypr-binds` produce lines the config
+accepts; does `sendshortcut` reach the focused window. The Glance rungs that
+matter most — the primary selection and AT-SPI — are compositor-independent and
+should behave exactly as they do on KDE.
 
 ## Glance, which is the hard part
 

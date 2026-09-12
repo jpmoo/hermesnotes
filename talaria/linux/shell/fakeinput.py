@@ -73,6 +73,31 @@ SETTLE = 0.35
 DEVICE_KEYBOARD = 1
 
 
+def _compositor_chord(key: str) -> tuple[bool, str] | None:
+    """
+    The compositor's own way of pressing a key, where it has one.
+
+    Hyprland does: `sendshortcut` puts a chord into a named window, with no
+    portal, no permission dialog and no session to hold — so the whole apparatus
+    below is skipped there. None means this desktop has no such thing and the
+    portal is the way, which is the case on KDE.
+
+    The pause is the one thing that carries over. This rung is reached from a
+    hotkey, and a hotkey is held: firing instantly means the chord lands while
+    Meta and Shift are still physically down. See SETTLE.
+    """
+    import wm
+
+    send = getattr(wm.backend(), "send_chord", None)
+    if send is None:
+        return None
+    time.sleep(SETTLE)
+    try:
+        return send(key)
+    except Exception as err:  # noqa: BLE001
+        return False, f"the key press failed ({err})"
+
+
 class FakeInput:
     """A held remote-desktop session, able to send one chord."""
 
@@ -88,6 +113,9 @@ class FakeInput:
 
     def copy(self, timeout: float = 6.0) -> tuple[bool, str]:
         """Send ctrl+c to whatever is focused. Returns (sent, why)."""
+        straight = _compositor_chord("C")
+        if straight is not None:
+            return straight
         return self._chord(KEY_C, "ctrl+c", timeout)
 
     def paste(self, timeout: float = 6.0) -> tuple[bool, str]:
@@ -100,6 +128,9 @@ class FakeInput:
         session, one different keycode — but it is the direction that writes, so
         it is only ever sent for a paste somebody just asked for.
         """
+        straight = _compositor_chord("V")
+        if straight is not None:
+            return straight
         return self._chord(KEY_V, "ctrl+v", timeout)
 
     def _chord(self, code: int, name: str, timeout: float) -> tuple[bool, str]:

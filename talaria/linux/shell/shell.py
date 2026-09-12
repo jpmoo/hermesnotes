@@ -31,6 +31,7 @@ import daemon
 import glance
 import scheme
 import webprofile
+import wm
 from frontmost import Frontmost
 from krunner import Runner
 from shortcuts import Shortcuts
@@ -249,6 +250,15 @@ class Panel(QWidget):
         self._frosted = False
         self.setWindowTitle(f"Talaria — {title}")
         self.resize(size)
+        if floating:
+            # Where this one goes, said before it is shown.
+            #
+            # On KDE the KWin script already knows and this does nothing. On
+            # Hyprland it writes the window rules — and those are matched
+            # against a window as it opens, so they have to be set here rather
+            # than once at startup.
+            wm.place(self.windowTitle(), size.width(), size.height(),
+                     is_desk=title == "Desk")
         self.view = QWebEngineView(self)
         # On the shell's own profile, not the default one — which is off the
         # record, and would hand each window its own amnesiac cookie jar.
@@ -341,8 +351,19 @@ class Panel(QWidget):
         runs: `event` only schedules a hide for a window that had the focus to
         lose.
         """
-        if not self.isActiveWindow():
-            self.hide()
+        if self.isActiveWindow():
+            return
+        # **Unless the pointer is still on it.**
+        #
+        # Where the keyboard follows the mouse — Hyprland's default, and not
+        # something Talaria should change on somebody's desktop — a hand
+        # brushing the mouse while typing into New Block moves the focus to
+        # whatever is under the pointer, and this panel would close in the
+        # middle of a sentence. A panel the pointer is resting on is not a
+        # panel anybody looked away from.
+        if wm.focus_follows_mouse() and self.underMouse():
+            return
+        self.hide()
 
     def _frost(self) -> None:
         """
@@ -358,9 +379,7 @@ class Panel(QWidget):
         """
         if not getattr(self, "view_is_panel", False) or self._frosted:
             return
-        import frosting
-
-        if frosting.apply_to(self):
+        if wm.frost(self):
             self._frosted = True
 
     def summon(self) -> None:
@@ -437,6 +456,10 @@ class Shell(QObject):
 
     def __init__(self, app: QApplication) -> None:
         super().__init__()
+        # Said once, because everything below behaves differently depending on
+        # the answer and a log that does not name the session makes every
+        # report of "the panels are in the wrong place" start with a question.
+        print(f"talaria: session — {wm.session()}", file=sys.stderr, flush=True)
         self.app = app
         self.settings = QSettings("talaria", "shell")
         self.panels: dict[str, Panel] = {}
@@ -484,11 +507,15 @@ class Shell(QObject):
         # the desktop and does not need a hotkey of ours at all. Queued for the
         # same reason as the shortcuts — it answers on a GLib thread, and
         # opening a window is the main thread's.
-        self.krunner = Runner()
-        self.krunner.open_url.connect(self._open_from_runner, Qt.ConnectionType.QueuedConnection)
-        self.krunner.put.connect(self._put_from_runner, Qt.ConnectionType.QueuedConnection)
-        self.krunner.said.connect(self._note, Qt.ConnectionType.QueuedConnection)
-        self.krunner.start()
+        # Only where there is a search box to answer into. Hyprland has none
+        # of its own — the launcher is a separate program the distribution
+        # chooses — so this would be a D-Bus service nothing ever calls.
+        self.krunner = Runner() if wm.offers_search_entrance() else None
+        if self.krunner is not None:
+            self.krunner.open_url.connect(self._open_from_runner, Qt.ConnectionType.QueuedConnection)
+            self.krunner.put.connect(self._put_from_runner, Qt.ConnectionType.QueuedConnection)
+            self.krunner.said.connect(self._note, Qt.ConnectionType.QueuedConnection)
+            self.krunner.start()
 
 
     def _listen(self) -> None:
@@ -1240,7 +1267,37 @@ def _save_as(download) -> None:
     download.accept()
 
 
+def hypr_binds() -> int:
+    """
+    Print the `bind` lines Hyprland needs, and say nothing else.
+
+    **Why this is a thing you run rather than something Talaria does.** Hotkeys
+    go through `org.freedesktop.portal.GlobalShortcuts` on both desktops, but
+    the two implementations divide the work differently: KDE's portal asks you
+    to press a key and stores the binding, while Hyprland's leaves the key to
+    the compositor's own config. So Talaria registers the same shortcuts either
+    way, and on Hyprland one line per shortcut has to reach `hyprland.conf`.
+
+    Printed rather than written. That file is the user's, the distributions
+    assemble it differently — Omarchy keeps Hyprland's own syntax, Ryoku writes
+    its desktop in Lua — and a tool that edits it behind somebody is a tool that
+    eventually eats their setup.
+    """
+    from wm import hypr
+
+    print("# Talaria's hotkeys. Add these to hyprland.conf (or source this file")
+    print("# from it), then reload with:  hyprctl reload")
+    for action, (_title, _page, default) in PANELS.items():
+        line = hypr.bind_line(action, config_hotkey(action, default))
+        if line:
+            print(line)
+    return 0
+
+
 def main() -> int:
+    if "--hypr-binds" in sys.argv:
+        return hypr_binds()
+
     if "--toggle" in sys.argv:
         action = sys.argv[sys.argv.index("--toggle") + 1]
         # QLocalSocket needs an application object but not a window; this path
@@ -1268,8 +1325,15 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
-        print("talaria: no system tray on this session", file=sys.stderr)
-        return 1
+        # Said, and carried on. This used to be fatal, which was right when the
+        # only desktop was Plasma — it always has a tray, so its absence meant
+        # something was badly wrong. Hyprland has no tray of its own: it comes
+        # from whichever bar the distribution ships, and a session without one
+        # is an ordinary setup rather than a broken one. The hotkeys are the
+        # main entrance anyway; what is lost without a tray is the menu and the
+        # balloons, which is worth a line on stderr and not a refusal to start.
+        print("talaria: no system tray on this session — the menu will be "
+              "unreachable, but the hotkeys still work", file=sys.stderr, flush=True)
 
     # Before the tray, so a second icon never appears even briefly. A second
     # copy asked to start is told to go away rather than treated as an error —

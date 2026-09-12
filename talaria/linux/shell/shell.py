@@ -725,6 +725,17 @@ class Shell(QObject):
                 return
             self.panels[action] = panel
         panel.summon()
+        if action == "desk":
+            # **Look at once, not at the next focus change.** The desk's Glance
+            # quadrant is ambient — it redraws when the focus moves — but opening
+            # a full-screen desk is the last focus change it will see: from then
+            # on the only windows taking focus are Talaria's own, which the
+            # window source ignores on purpose. So it sat on "Waiting for
+            # something to look at" for as long as the desk was up. What was in
+            # front when the desk opened is exactly what it should show; the
+            # reading reaches the frame once the desk has loaded, through
+            # `when_loaded` in `_glance`.
+            self._ambient(self.frontmost.current)
         if action == "proposals":
             panel.view.page().runJavaScript("window.proposalsRefresh && window.proposalsRefresh()")
         if action == "reference":

@@ -158,6 +158,12 @@ class SelectionClock(QObject):
         self._watcher.readAllStandardOutput()
         if time.monotonic() - self._watch_started > 0.5:
             self._tick()
+        elif self.changed_at is None:
+            # Whatever was selected before the shell started was made before
+            # every focus this process will see, so it is dated that way.
+            # Left unknown, `selection_is_stale` counts it fresh — and the first
+            # summon after a restart offered text highlighted who knows when.
+            self.changed_at = 0.0
 
     def _unwatched(self, *_args) -> None:
         # Gone — no data-control, or the display went away. Blind again, which

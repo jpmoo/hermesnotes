@@ -582,6 +582,20 @@ selection twice.
   it can see anything but itself — from the platform name, not from a runtime
   probe, because the first probe was fooled within the hour by a tray
   application with no window reporting `ApplicationInactive`.
+- **On Hyprland the clock has eyes after all.** Hyprland implements the
+  wlroots `data-control` protocol KWin lacks, so `SelectionClock` keeps one
+  `wl-paste --primary --watch echo` running and ticks on its output: every
+  primary selection on the desktop, timestamped, never read (`echo` ignores
+  the text on stdin), and no window, so no focus change and no flashing loop.
+  A watcher still running is what declares the clock sighted; one that exits
+  leaves it blind, which is what KWin gets. With the clock sighted, Glance is
+  back to the plain test — a selection older than the focus came from
+  somewhere else, so a summon falls to the title instead of offering text
+  highlighted an hour ago. **Focus is stamped only when the window changes, not
+  its title**: Hyprland re-announces the active window on every retitle, a
+  terminal retitles constantly, and stamping each one made a selection made
+  seconds ago in that same terminal read as inherited. The identity is class,
+  resource name and pid, so two windows of one process are one window to it.
 
 ### What the rungs actually returned here
 

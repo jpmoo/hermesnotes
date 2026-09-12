@@ -31,7 +31,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QProcess, Signal
 
 import blindlist
 import wm
@@ -119,6 +119,50 @@ class SelectionClock(QObject):
             return
         self.blind = app.platformName().startswith("wayland")
         clipboard.selectionChanged.connect(self._tick)
+        if self.blind:
+            self._watch()
+
+    def _watch(self) -> None:
+        """
+        Give the clock eyes where the compositor offers `data-control`.
+
+        The history above is KWin's: `wl-paste --watch` needs the wlroots
+        `data-control` protocol, KWin has none, and the watcher died at once.
+        Hyprland implements it, and there the watcher sees every primary
+        selection on the desktop without being focused — measured: it stays up,
+        fires on a highlight in another application, and the active window does
+        not move. So a watcher that is *still running* is the proof, and only
+        then is the clock declared sighted; one that exits leaves it blind,
+        exactly as before.
+
+        One long-lived client rather than a spawn per focus change, so the
+        flashing loop recorded above cannot happen. And still only a timestamp:
+        `echo` ignores the selection it is handed on stdin, so nothing
+        highlighted anywhere is read into this process.
+        """
+        watcher = QProcess(self)
+        watcher.setProgram("wl-paste")
+        watcher.setArguments(["--primary", "--watch", "echo"])
+        watcher.setStandardErrorFile(QProcess.nullDevice())
+        watcher.readyReadStandardOutput.connect(self._watched)
+        watcher.finished.connect(self._unwatched)
+        self._watcher = watcher
+        #: `--watch` runs once for whatever is selected when it starts. That is
+        #: not a change anybody made, so it must not look like a fresh one.
+        self._watch_started = time.monotonic()
+        watcher.start()
+        if watcher.waitForStarted(1000):
+            self.blind = False
+
+    def _watched(self) -> None:
+        self._watcher.readAllStandardOutput()
+        if time.monotonic() - self._watch_started > 0.5:
+            self._tick()
+
+    def _unwatched(self, *_args) -> None:
+        # Gone — no data-control, or the display went away. Blind again, which
+        # is the honest state, rather than trusting a clock that stopped.
+        self.blind = True
 
     def _tick(self) -> None:
         self.changed_at = time.monotonic()
@@ -274,7 +318,17 @@ class Frontmost(QObject):
         blind = blindlist.is_blind(window_class or None, pid or None)
         # Only a timestamp. What the selection *holds* is never sampled on a
         # window change — see `SelectionClock`.
-        self.focused_at = time.monotonic()
+        #
+        # **And only when the window changed, not its title.** Hyprland reports
+        # the active window again on every title change, and a terminal
+        # retitles itself constantly — a spinner, the running command, the
+        # working directory. Stamping focus on each of those made a selection
+        # made seconds ago in that same terminal read as older than the focus,
+        # so Glance refused it as inherited and fell to the title.
+        identity = (window_class, resource_name, pid)
+        if identity != getattr(self, "_focused_identity", None):
+            self._focused_identity = identity
+            self.focused_at = time.monotonic()
         self.changed.emit(Window(
             window_class=window_class,
             resource_name=resource_name,

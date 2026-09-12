@@ -441,20 +441,31 @@ over there.
   modifiers to release first. Hyprland has `sendshortcut`, which puts a chord
   into a named window, so `fakeinput.py` skips the whole apparatus when the
   backend offers one.
-- **The hotkeys are half in the user's config.** Both desktops bind through
-  `org.freedesktop.portal.GlobalShortcuts`, but KDE's portal asks you to press a
-  key and stores the binding, while Hyprland's leaves the key to the compositor.
-  `talaria-shell --hypr-binds` prints the `bind` lines; `install.sh` writes them
-  to `~/.config/hypr/talaria.conf` along with an `exec-once`, because Hyprland
-  reads no XDG autostart entry. **It never edits `hyprland.conf`** — that file
-  is the user's, and Omarchy and Ryoku assemble it differently.
-  **Omarchy has since moved to Lua** (`~/.config/hypr/hyprland.lua`), which
-  cannot `source` a hyprlang snippet, so `talaria.conf` is dead weight there.
-  What works is one `o.bind` per panel in the user's `bindings.lua` running
-  `talaria-shell --toggle <panel>` — no portal involved, the running shell is
-  reached over its local socket — plus `o.exec_on_start` with the
-  `systemd-run` line in `autostart.lua`. Unbind Omarchy's defaults first where
-  they collide: Super+Shift+C, A, N and G are all taken out of the box.
+- **The hotkeys live in the user's config, and go around the portal.** Both
+  desktops register shortcuts through `org.freedesktop.portal.GlobalShortcuts`,
+  but KDE's portal asks you to press a key and stores the binding, while
+  Hyprland's leaves the key to the compositor — and on the first Omarchy run the
+  shortcuts registered and stayed `unbound`. So on Hyprland each key runs
+  `talaria-shell --toggle <panel>`, which reaches the running shell over its own
+  local socket and was what that run saw working.
+  `talaria-shell --hypr-binds lua|conf` prints the file, and `install.sh` writes
+  it as `~/.config/hypr/talaria.lua` or `talaria.conf` — whichever language the
+  config already uses, since **Omarchy has moved to Lua**
+  (`~/.config/hypr/hyprland.lua`) and a Lua config cannot `source` hyprlang. It
+  then prints the one line to add at the end of the main config
+  (`dofile(os.getenv("HOME") .. "/.config/hypr/talaria.lua")`, or `source =`).
+  **It never edits `hyprland.lua` or `hyprland.conf`**; they are the user's.
+  The Lua file uses Hyprland's own `hl.bind`, `hl.unbind` and `hl.on`, not
+  Omarchy's `o.*` helpers, so it works on any Lua-configured Hyprland, Ryoku
+  included. Each key is unbound first, under `pcall`: Omarchy ships Super+Shift
+  +C, A, N and G bound to its own apps, and `hl.bind` on a bound key adds a
+  second action rather than replacing the first. Loading the file *after* the
+  distribution's defaults is what lets the unbind see them. The same file starts
+  the shell at login through `systemd-run`, since Hyprland reads no XDG
+  autostart entry. `install.sh` also warns when `bindings.lua` or `autostart.lua`
+  already mention `talaria-shell` from a hand setup, which would now fire twice.
+  Rules set through `eval` are runtime state: a `hyprctl reload` drops them, and
+  panels tile until the shell restarts.
 - **There is no KRunner.** Hyprland's launcher is whatever the distribution
   ships, so the runner is not started at all there rather than registering a
   D-Bus service nothing will call.
@@ -484,7 +495,8 @@ not:
   through `eval`; before that, none did. The tray item registers. The portal
   opens a session, and `--toggle` from a `bindings.lua` bind opens the panel.
 - **Found and fixed.** *The portal refused the session with "An app id is
-  required."* Newer xdg-desktop-portal will not take a host app's id from its
+  required."* `install.sh` now puts the desktop file in place on any machine
+  with a Hyprland config. Newer xdg-desktop-portal will not take a host app's id from its
   systemd unit, so `shortcuts.py` now calls
   `org.freedesktop.host.portal.Registry.Register("dev.talaria.shell")` first —
   before any other portal call on that connection, and only with
@@ -497,8 +509,8 @@ not:
   start. Anything that changes a tray item's status or icon is worth watching
   for the same thing.
 - **Still unverified.** A focused window in `talaria doctor` from the event
-  socket; `--hypr-binds` output (install.sh ran before PySide6 was installed,
-  and a Lua config could not source it anyway); `sendshortcut` reaching the
+  socket; the Lua file `install.sh` now writes, which follows the hand-written
+  bindings that worked but has not itself been loaded by Hyprland; `sendshortcut` reaching the
   focused window; the portal's shortcuts themselves, which registered and
   report `unbound`, as expected where the compositor owns the key. The Glance
   rungs that matter most — the primary selection and AT-SPI — are

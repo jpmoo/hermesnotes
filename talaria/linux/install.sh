@@ -138,46 +138,78 @@ fi
 
 # --- Hyprland ---------------------------------------------------------------
 #
-# Two things this session needs that Plasma does not, and neither can be done
-# to somebody's config behind their back.
+# Three things this session needs that Plasma does not.
 #
-# The hotkeys: both desktops bind through the GlobalShortcuts portal, but KDE's
-# portal asks you to press a key and keeps the binding, while Hyprland's leaves
-# the key to the compositor's own config. So one `bind` line per shortcut has to
-# exist in hyprland.conf, naming the same action ids Talaria registers.
+# A desktop file in ~/.local/share/applications. Newer xdg-desktop-portal will
+# not take a host app's id from its systemd unit, and the registry `shortcuts.py`
+# asks refuses an id with no desktop file behind it. The first run on Omarchy
+# got "An app id is required" — and the warning that followed crashed the bar.
+# This registers the app; it does not start it, which is still the user's call.
 #
-# The start: Hyprland does not read XDG autostart entries, so nothing starts the
-# shell at login unless the config says so.
+# Hotkeys, and a start at login. Hyprland reads no XDG autostart entry, and its
+# portal leaves keys to the compositor's config, so both go in a file of our own
+# that the user loads with one line. Written in whichever language their config
+# already uses: Omarchy moved to Lua, and a Lua config cannot `source` hyprlang.
+# `hyprland.lua` and `hyprland.conf` themselves are never touched.
 #
-# Both are written to a file of our own and sourced by one line the user adds
-# once. `hyprland.conf` is theirs — and Omarchy and Ryoku assemble it
-# differently, one in Hyprland's own syntax and one in Lua — so a tool that
-# edits it is a tool that will eventually eat somebody's setup.
-if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "Hyprland" ]; then
-  HYPR_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
-  SNIPPET="$HYPR_DIR/talaria.conf"
+# Recognized by the config directory as well as by the session, because this is
+# as likely to be run over ssh as from inside Hyprland, and there the session's
+# variables are not set.
+HYPR_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "Hyprland" ] \
+   || [ -f "$HYPR_DIR/hyprland.lua" ] || [ -f "$HYPR_DIR/hyprland.conf" ]; then
   SHELL_BIN="$ROOT/linux/shell/talaria-shell"
-  mkdir -p "$HYPR_DIR"
-  if "$SHELL_BIN" --hypr-binds > "$SNIPPET.new" 2>/dev/null; then
-    {
-      echo
-      echo "# Start the shell with the session."
-      echo "#"
-      echo "# Through systemd-run rather than directly: the portal names a"
-      echo "# non-sandboxed app after the process that launched it, so a shell"
-      echo "# started as a child of the compositor files its hotkeys under the"
-      echo "# compositor and they are bound to nothing. This has been diagnosed"
-      echo "# three times on the other desktop."
-      echo "exec-once = systemd-run --user --scope --unit=app-dev.talaria.shell -- $SHELL_BIN"
-    } >> "$SNIPPET.new"
+
+  APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+  mkdir -p "$APPS"
+  sed "s|__ROOT__|$ROOT|g" "$ROOT/linux/shell/dev.talaria.shell.desktop.in" > "$APPS/dev.talaria.shell.desktop"
+  echo "==> Hyprland: registered $APPS/dev.talaria.shell.desktop"
+
+  if [ -f "$HYPR_DIR/hyprland.lua" ]; then
+    STYLE=lua; MAIN="$HYPR_DIR/hyprland.lua"; SNIPPET="$HYPR_DIR/talaria.lua"
+    LOAD_LINE='dofile(os.getenv("HOME") .. "/.config/hypr/talaria.lua")'
+  else
+    STYLE=conf; MAIN="$HYPR_DIR/hyprland.conf"; SNIPPET="$HYPR_DIR/talaria.conf"
+    LOAD_LINE="source = $SNIPPET"
+  fi
+
+  # The shell imports Qt to read its own panel table, so this is the one part of
+  # the install that needs PySide6. Checked first and said plainly: the first
+  # run on Omarchy got an empty file and a vague warning because it was missing.
+  if ! python3 -c "import PySide6" >/dev/null 2>&1; then
+    echo "!! Hyprland: PySide6 isn't installed, so the hotkey file wasn't written."
+    echo "   Install it (Arch: sudo pacman -S pyside6), then run this script again."
+  elif "$SHELL_BIN" --hypr-binds "$STYLE" > "$SNIPPET.new"; then
     mv "$SNIPPET.new" "$SNIPPET"
-    echo "==> Hyprland: wrote $SNIPPET"
-    echo "    Add this line to hyprland.conf once, then run 'hyprctl reload':"
-    echo "        source = $SNIPPET"
+    echo "==> Hyprland: wrote $SNIPPET ($STYLE)"
+
+    # A hyprlang file left by an earlier install cannot be read by a Lua config.
+    # Removed only if it is ours.
+    if [ "$STYLE" = lua ] && [ -f "$HYPR_DIR/talaria.conf" ] \
+       && grep -q "talaria-shell" "$HYPR_DIR/talaria.conf"; then
+      rm -f "$HYPR_DIR/talaria.conf"
+      echo "    (removed the old talaria.conf, which a Lua config can't load)"
+    fi
+
+    if [ -f "$MAIN" ] && grep -qF "talaria.$STYLE" "$MAIN"; then
+      echo "    Already loaded from $(basename "$MAIN")."
+    else
+      echo "    Add this line at the end of $MAIN:"
+      echo "        $LOAD_LINE"
+    fi
+
+    # Talaria bound by hand before this file existed would now fire twice.
+    for f in "$HYPR_DIR/bindings.lua" "$HYPR_DIR/autostart.lua" "$HYPR_DIR/bindings.conf" "$HYPR_DIR/autostart.conf"; do
+      if [ -f "$f" ] && grep -q "talaria-shell" "$f"; then
+        echo "    !! $f already mentions talaria-shell — remove those lines, or"
+        echo "       every hotkey will open its panel twice."
+      fi
+    done
+    echo "    Then reload Hyprland and restart the shell: a reload drops the"
+    echo "    window rules the running shell set, and panels tile until it restarts."
   else
     rm -f "$SNIPPET.new"
-    echo "!! Hyprland: couldn't work out the hotkey lines (is PySide6 installed?)"
-    echo "   Talaria will still run; its hotkeys will not be bound to anything."
+    echo "!! Hyprland: talaria-shell --hypr-binds failed — run it by hand to see why."
   fi
 fi
 

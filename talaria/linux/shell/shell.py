@@ -1312,28 +1312,31 @@ def _save_as(download) -> None:
 
 def hypr_binds() -> int:
     """
-    Print the `bind` lines Hyprland needs, and say nothing else.
+    Print Talaria's hotkeys and autostart as a Hyprland config file.
 
-    **Why this is a thing you run rather than something Talaria does.** Hotkeys
-    go through `org.freedesktop.portal.GlobalShortcuts` on both desktops, but
-    the two implementations divide the work differently: KDE's portal asks you
-    to press a key and stores the binding, while Hyprland's leaves the key to
-    the compositor's own config. So Talaria registers the same shortcuts either
-    way, and on Hyprland one line per shortcut has to reach `hyprland.conf`.
+    `--hypr-binds lua` or `--hypr-binds conf`; with neither, whichever language
+    this user's config is already written in. `install.sh` writes the output to
+    `~/.config/hypr/` and says the one line to add.
 
-    Printed rather than written. That file is the user's, the distributions
-    assemble it differently — Omarchy keeps Hyprland's own syntax, Ryoku writes
-    its desktop in Lua — and a tool that edits it behind somebody is a tool that
-    eventually eats their setup.
+    Printed rather than written into anybody's config. `hyprland.lua` and
+    `hyprland.conf` are the user's files, and a tool that edits them behind
+    somebody is a tool that eventually eats their setup.
     """
     from wm import hypr
 
-    print("# Talaria's hotkeys. Add these to hyprland.conf (or source this file")
-    print("# from it), then reload with:  hyprctl reload")
-    for action, (_title, _page, default) in PANELS.items():
-        line = hypr.bind_line(action, config_hotkey(action, default))
-        if line:
-            print(line)
+    after = sys.argv[sys.argv.index("--hypr-binds") + 1:]
+    if "lua" in after:
+        style = "lua"
+    elif "conf" in after:
+        style = "conf"
+    else:
+        config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+        style = "lua" if os.path.isfile(os.path.join(config_home, "hypr", "hyprland.lua")) else "conf"
+    hotkeys = [
+        (action, title, config_hotkey(action, default))
+        for action, (title, _page, default) in PANELS.items()
+    ]
+    sys.stdout.write(hypr.snippet(style, hotkeys, os.path.join(HERE, "talaria-shell")))
     return 0
 
 

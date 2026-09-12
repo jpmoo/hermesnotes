@@ -5,9 +5,17 @@
 # ~/.config/autostart with __ROOT__ substituted, or run:
 #   sed "s|__ROOT__|$PWD|" dev.talaria.shell.desktop.in > ~/.config/autostart/dev.talaria.shell.desktop
 #
-# Not installed by `linux/install.sh`. That script sets up the daemon, which is
-# a background service somebody asked for; a tray icon appearing at every login
-# is a decision about somebody's desktop and belongs to them.
+# Not installed *as autostart* by `linux/install.sh`. That script sets up the
+# daemon, which is a background service somebody asked for; a tray icon
+# appearing at every login is a decision about somebody's desktop and belongs
+# to them.
+#
+# On Hyprland it does install a copy into ~/.local/share/applications, which is
+# a different thing: that registers the app rather than starting it. Newer
+# xdg-desktop-portal will not take a host app's id from its systemd unit, and
+# `org.freedesktop.host.portal.Registry.Register` — which `shortcuts.py` calls —
+# refuses an id with no desktop file behind it. Without it the portal answered
+# "An app id is required", and that refusal took Quickshell's bar down.
 [Desktop Entry]
 Type=Application
 Name=Talaria

@@ -456,39 +456,111 @@ _MODS = {
     "alt": "ALT", "opt": "ALT", "option": "ALT",
     "shift": "SHIFT",
 }
+_ORDER = ["SUPER", "CTRL", "ALT", "SHIFT"]
+
+#: How the shell is started with the session. Through systemd-run rather than
+#: directly: the portal names a non-sandboxed app after the process that
+#: launched it, so a shell started as a child of the compositor files itself
+#: under the compositor. This was diagnosed three times on KDE.
+SYSTEMD_RUN = "systemd-run --user --scope --unit=app-dev.talaria.shell -- "
 
 
-def bind_line(action: str, spec: str) -> str | None:
-    """
-    One `bind` line for the user's Hyprland config, or None if the spec is odd.
-
-    **Why this is needed at all, when the portal is what binds hotkeys.**
-    `org.freedesktop.portal.GlobalShortcuts` works on Hyprland, but the two
-    implementations divide the work differently. KDE's portal asks the user to
-    press a key and stores the binding itself. Hyprland's does not: the app
-    registers the shortcut and the *compositor config* says which key reaches
-    it. So Talaria registers exactly as it does on KDE, and this is the line
-    that connects a key to it.
-
-    It is printed rather than written into anybody's config. `hyprland.conf` is
-    the user's file, the distributions differ in how it is assembled — Omarchy
-    keeps hyprlang, Ryoku authors its desktop in Lua — and a tool that edits it
-    behind them is a tool that loses somebody's setup.
-    """
-    mods: list[str] = []
+def _keys(spec: str) -> tuple[list[str], str] | None:
+    """`"meta+shift+g"` to `(["SUPER", "SHIFT"], "G")`, or None if it makes no sense."""
+    mods: set[str] = set()
     key: str | None = None
     for part in (p.strip().lower() for p in spec.split("+")):
         if not part:
             continue
         if part in _MODS:
-            name = _MODS[part]
-            if name not in mods:
-                mods.append(name)
+            mods.add(_MODS[part])
         else:
             key = part
     if key is None:
         return None
-    return f"bind = {' '.join(mods)}, {key.upper()}, global, {APP_ID}:{action}"
+    return [m for m in _ORDER if m in mods], key.upper()
+
+
+def snippet(style: str, hotkeys: list[tuple[str, str, str]], shell_bin: str) -> str:
+    """
+    Talaria's hotkeys and its autostart, as a file a Hyprland config can load.
+
+    `hotkeys` is `(action, name, spec)` per panel. `style` is `"lua"` or
+    `"conf"`, because Hyprland now has two config languages and the
+    distributions have split between them — Omarchy moved to Lua, and a Lua
+    config cannot `source` a hyprlang file.
+
+    **Each key runs `talaria-shell --toggle <panel>`, not a portal shortcut.**
+    Both desktops register their shortcuts through the GlobalShortcuts portal,
+    and on KDE that is the whole story. On Hyprland the portal registers them
+    and leaves the key to the compositor's config — the first run on Omarchy
+    found them registered and permanently `unbound`. `--toggle` reaches the
+    running shell over its own local socket, involves no portal at all, and is
+    what that run actually saw working.
+
+    **The Lua form removes a default before binding.** Omarchy ships Super+Shift
+    +C, A, N and G bound to its own apps, and `hl.bind` on a key that is already
+    bound adds a second action rather than replacing the first — so one press
+    would open both. `pcall` because unbinding a key nobody bound is not
+    something to stop a config over, whatever this release thinks of it.
+    """
+    import json
+    import shlex
+
+    command = shlex.quote(shell_bin)
+    if style == "lua":
+        out = [
+            "-- Talaria's hotkeys, and the shell starting with the session.",
+            "-- Written by talaria/linux/install.sh; it is safe to re-run, and it will",
+            "-- overwrite this file. Load it from the end of hyprland.lua, after the",
+            "-- distribution's own defaults, so the unbinds below can see them:",
+            '--   dofile(os.getenv("HOME") .. "/.config/hypr/talaria.lua")',
+            "",
+            f"local shell = {json.dumps(command, ensure_ascii=False)}",
+            "",
+            "local function panel(keys, name, action)",
+            "  pcall(hl.unbind, keys)",
+            '  hl.bind(keys, hl.dsp.exec_cmd(shell .. " --toggle " .. action),',
+            '    { description = "Talaria: " .. name })',
+            "end",
+            "",
+        ]
+        for action, name, spec in hotkeys:
+            parsed = _keys(spec)
+            if parsed is None:
+                out.append(f"-- {action}: could not make sense of the hotkey {spec!r}")
+                continue
+            mods, key = parsed
+            keys = " + ".join(mods + [key])
+            out.append(
+                f"panel({json.dumps(keys)}, {json.dumps(name, ensure_ascii=False)}, "
+                f"{json.dumps(action)})"
+            )
+        out += [
+            "",
+            'hl.on("hyprland.start", function()',
+            f"  hl.exec_cmd({json.dumps(SYSTEMD_RUN, ensure_ascii=False)} .. shell)",
+            "end)",
+        ]
+        return "\n".join(out) + "\n"
+
+    out = [
+        "# Talaria's hotkeys, and the shell starting with the session.",
+        "# Written by talaria/linux/install.sh; it is safe to re-run, and it will",
+        "# overwrite this file. Load it from the end of hyprland.conf with:",
+        "#   source = ~/.config/hypr/talaria.conf",
+        "",
+    ]
+    for action, name, spec in hotkeys:
+        parsed = _keys(spec)
+        if parsed is None:
+            out.append(f"# {action}: could not make sense of the hotkey {spec!r}")
+            continue
+        mods, key = parsed
+        out.append(f"unbind = {' '.join(mods)}, {key}")
+        out.append(f"bind = {' '.join(mods)}, {key}, exec, {command} --toggle {action}")
+    out += ["", f"exec-once = {SYSTEMD_RUN}{command}"]
+    return "\n".join(out) + "\n"
 
 
 def send_chord(key: str) -> tuple[bool, str]:

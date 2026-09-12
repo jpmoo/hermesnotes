@@ -250,6 +250,31 @@ def _keyword(rule: str) -> bool:
     return False
 
 
+def _lua_rule(title: str, fields: str) -> bool:
+    """
+    The same rule, for a Hyprland whose config is Lua.
+
+    A Lua-configured Hyprland (Omarchy's `hyprland.lua`) answers every
+    `keyword` with "keyword can't work with non-legacy parsers. Use eval." —
+    so none of the rules below ever landed, and every panel opened tiled.
+    `eval` takes the same `hl.window_rule` table the config itself uses, and
+    names an unknown field rather than ignoring it, so "ok" means it held.
+
+    Tried first: on a hyprlang config `eval` is not a command, the answer is
+    not "ok", and `place` falls through to the keywords as before.
+
+    Border and rounding go with every rule for the reason `place` gives.
+    """
+    lua = (
+        f"hl.window_rule({{ match = {{ title = [==[^({_escape(title)})$]==] }}, "
+        f"float = true, {fields}, border_size = 0, rounding = 0 }})"
+    )
+    try:
+        return request(f"eval {lua}").strip().lower().startswith("ok")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
     """
     Write the rules that catch this panel when it opens.
@@ -273,6 +298,8 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
 
     if is_desk:
         ax, ay, aw, ah = area
+        if _lua_rule(title, f"size = {{ {aw}, {ah} }}, move = {{ {ax}, {ay} }}, no_anim = true"):
+            return
         rules = [
             f"float, {match}",
             f"size {aw} {ah}, {match}",
@@ -283,6 +310,8 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
         width = min(width, area[2] - 2 * MARGIN)
         height = min(height, area[3] - 2 * MARGIN)
         x, y = _spot(_placement(), area, width, height)
+        if _lua_rule(title, f"size = {{ {width}, {height} }}, move = {{ {x}, {y} }}, animation = \"slide\""):
+            return
         rules = [
             f"float, {match}",
             f"size {width} {height}, {match}",

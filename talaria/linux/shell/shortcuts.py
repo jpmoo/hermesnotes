@@ -184,6 +184,23 @@ class Shortcuts(QObject):
         # with a token the portal still holds fails outright. No session means
         # no `Activated` subscription, which looks exactly like hotkeys that
         # have stopped working while their bindings sit correctly in the config.
+        #
+        # **Say who we are first.** A host (non-Flatpak) app is identified by
+        # its systemd unit only where the portal backend chooses to; newer
+        # xdg-desktop-portal on Hyprland does not, and refuses `CreateSession`
+        # with "An app id is required". `host.portal.Registry.Register` is the
+        # documented answer, must come before any other portal call on this
+        # connection, and needs `dev.talaria.shell.desktop` to exist. A failure
+        # here is only reported: KDE resolves the id without it.
+        try:
+            bus.call_sync(
+                PORTAL, PORTAL_PATH, "org.freedesktop.host.portal.Registry", "Register",
+                GLib.Variant("(sa{sv})", ("dev.talaria.shell", {})),
+                None, Gio.DBusCallFlags.NONE, 5_000, None,
+            )
+        except Exception as err:  # noqa: BLE001
+            print(f"talaria: shortcuts — portal registry declined: {err}", file=sys.stderr)
+
         token = uuid.uuid4().hex[:8]
         created = ask("CreateSession", GLib.Variant("(a{sv})", ({
             "handle_token": GLib.Variant("s", f"talaria_{token}"),

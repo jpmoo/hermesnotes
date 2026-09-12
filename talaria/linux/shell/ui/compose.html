@@ -250,8 +250,10 @@ function fields(typeId) {
  * format reserves. A type with neither takes nothing, and says so.
  */
 function sow() {
-  if (!seed) return;
   const box = document.getElementById("fields");
+  // Before `/types` has answered there are no fields yet. The seed is kept, and
+  // `fields()` sows it the moment they exist.
+  if (!seed || !box) return;
   const body = box.querySelector('[data-kind="richtext"]');
   const title = box.querySelector('[data-key="title"]');
   const first = (seed.split("\n").find((line) => line.trim()) || "").trim();

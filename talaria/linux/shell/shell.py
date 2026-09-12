@@ -297,6 +297,13 @@ class Panel(QWidget):
                 f"'--surface-alpha', '{frosting_alpha():.2f}')"
             )
         )
+        #: Whether the page has finished loading, and what is waiting for it.
+        #: See `when_loaded`. A reload — after a sync, after settings — starts
+        #: the wait over.
+        self._loaded = False
+        self._waiting: list = []
+        self.view.loadStarted.connect(self._load_started)
+        self.view.loadFinished.connect(self._load_finished)
         self.view.load(url)
         QShortcut(QKeySequence("Escape"), self, activated=self.hide)
 
@@ -381,6 +388,34 @@ class Panel(QWidget):
             return
         if wm.frost(self):
             self._frosted = True
+
+    def when_loaded(self, call) -> None:
+        """
+        Run `call` now if the page is ready, or as soon as it is.
+
+        Panels are built on first summon, so the first New Block after a start
+        handed its selection to a page that was still `about:blank`:
+        `window.composeWith && …` found nothing, did nothing, and the text was
+        gone. Glance guarded the same case with `url().isEmpty()`, which is
+        never true — the URL is set the moment loading *starts* — so it had the
+        same hole. Asking whether the load finished is the actual question.
+        """
+        if self._loaded:
+            call()
+        else:
+            self._waiting.append(call)
+
+    def _load_started(self) -> None:
+        self._loaded = False
+
+    def _load_finished(self, _ok: bool) -> None:
+        # Run on failure too: every waiting script guards on the function it
+        # calls, so a page that did not load simply declines, which beats
+        # holding the call forever.
+        self._loaded = True
+        waiting, self._waiting = self._waiting, []
+        for call in waiting:
+            call()
 
     def summon(self) -> None:
         """
@@ -969,10 +1004,10 @@ class Shell(QObject):
             import json
 
             # Through `runJavaScript` rather than a URL, for the reason `_glance`
-            # gives: the argument is the user's selected text.
-            panel.view.page().runJavaScript(
-                f"window.composeWith && window.composeWith({json.dumps(text)})"
-            )
+            # gives: the argument is the user's selected text. Once the page has
+            # loaded — see `Panel.when_loaded`.
+            script = f"window.composeWith && window.composeWith({json.dumps(text)})"
+            panel.when_loaded(lambda: panel.view.page().runJavaScript(script))
 
     def _glance(self, panel: Panel, reading, relay: bool = False) -> None:
         """
@@ -1019,10 +1054,7 @@ class Shell(QObject):
 
         # The page may still be loading on the first summon; asking a blank
         # document does nothing and leaves the panel saying it is waiting.
-        if panel.view.url().isEmpty():
-            panel.view.loadFinished.connect(lambda _ok: ask())
-        else:
-            ask()
+        panel.when_loaded(ask)
 
     def _build(self, action: str) -> Panel | None:
         title, page, _hotkey = PANELS[action]

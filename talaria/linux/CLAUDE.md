@@ -421,6 +421,12 @@ over there.
   called from the panel's constructor rather than once at startup. Rules are
   sent as `windowrulev2` and retried as `windowrule`, because the keyword was
   renamed between releases and a version table is one more thing to get wrong.
+  **On a Lua config neither keyword exists** — every one is answered "keyword
+  can't work with non-legacy parsers. Use eval." — so `place` first sends the
+  rule as an `hl.window_rule` table through `eval`, and only falls back to the
+  keywords when that is not "ok". `eval` names an unknown field rather than
+  ignoring it, so "ok" means the rule held. Rules set this way are runtime
+  state: `hyprctl reload` drops them, and panels tile until the shell restarts.
 - **The focused window is pulled, not pushed.** The event socket says *that* the
   focus moved; `activewindow` is then asked for class, title, pid and workspace
   in one reply. No process is spawned — the KDE path learned the hard way that
@@ -442,6 +448,13 @@ over there.
   to `~/.config/hypr/talaria.conf` along with an `exec-once`, because Hyprland
   reads no XDG autostart entry. **It never edits `hyprland.conf`** — that file
   is the user's, and Omarchy and Ryoku assemble it differently.
+  **Omarchy has since moved to Lua** (`~/.config/hypr/hyprland.lua`), which
+  cannot `source` a hyprlang snippet, so `talaria.conf` is dead weight there.
+  What works is one `o.bind` per panel in the user's `bindings.lua` running
+  `talaria-shell --toggle <panel>` — no portal involved, the running shell is
+  reached over its local socket — plus `o.exec_on_start` with the
+  `systemd-run` line in `autostart.lua`. Unbind Omarchy's defaults first where
+  they collide: Super+Shift+C, A, N and G are all taken out of the box.
 - **There is no KRunner.** Hyprland's launcher is whatever the distribution
   ships, so the runner is not started at all there rather than registering a
   D-Bus service nothing will call.
@@ -461,16 +474,35 @@ session; what differs is the furniture — walker and waybar on one, a Quickshel
 shell on the other — and the syntax of the config file the hotkeys go in, which
 is why that file is written rather than edited.
 
-**None of the Hyprland side has been run.** It is written from the IPC protocol
-and Hyprland's documented rules, and there is no Hyprland session in this
-project's reach. Treat every claim in `wm/hypr.py` as unverified until somebody
-boots it, and check these first, in this order: does the event socket deliver
-(`talaria: session — hyprland` in the log, then a focused window in
-`talaria doctor`); do the rules land (panels the right size, in the right
-corner, not under the bar); does `--hypr-binds` produce lines the config
-accepts; does `sendshortcut` reach the focused window. The Glance rungs that
-matter most — the primary selection and AT-SPI — are compositor-independent and
-should behave exactly as they do on KDE.
+**The Hyprland side has now been run once** — Omarchy on Hyprland 0.56.2, a Lua
+config, xdg-desktop-portal 1.22.1 with the Hyprland backend 1.4.1, and
+Quickshell's bar holding the tray. What that run established, and what it did
+not:
+
+- **Verified.** The session is detected (`talaria: session — hyprland`). Panels
+  land floating, sized, borderless and clear of the bar — once the rules went
+  through `eval`; before that, none did. The tray item registers. The portal
+  opens a session, and `--toggle` from a `bindings.lua` bind opens the panel.
+- **Found and fixed.** *The portal refused the session with "An app id is
+  required."* Newer xdg-desktop-portal will not take a host app's id from its
+  systemd unit, so `shortcuts.py` now calls
+  `org.freedesktop.host.portal.Registry.Register("dev.talaria.shell")` first —
+  before any other portal call on that connection, and only with
+  `~/.local/share/applications/dev.talaria.shell.desktop` in place (the
+  `.desktop.in` template with `__ROOT__` filled in). *And the refusal crashed
+  the bar.* The "some hotkeys didn't take" warning puts the tray item into
+  NeedsAttention with a themed `dialog-warning` icon; Quickshell 0.3.1 loaded it
+  on its pixmap reader thread and segfaulted in `QIcon::pixmap`. That is
+  Quickshell's bug, but Talaria set it off, and it would have done so on every
+  start. Anything that changes a tray item's status or icon is worth watching
+  for the same thing.
+- **Still unverified.** A focused window in `talaria doctor` from the event
+  socket; `--hypr-binds` output (install.sh ran before PySide6 was installed,
+  and a Lua config could not source it anyway); `sendshortcut` reaching the
+  focused window; the portal's shortcuts themselves, which registered and
+  report `unbound`, as expected where the compositor owns the key. The Glance
+  rungs that matter most — the primary selection and AT-SPI — are
+  compositor-independent and should behave exactly as they do on KDE.
 
 ## Glance, which is the hard part
 

@@ -507,6 +507,13 @@ def send_chord(key: str) -> tuple[bool, str]:
     """
     try:
         answer = request(f"dispatch sendshortcut CTRL,{key},activewindow").strip().lower()
+        # A Lua-configured Hyprland reads `dispatch` as Lua and rejects the
+        # hyprlang argument list outright, the same way it rejects `keyword`.
+        # The dispatcher is the same one under its Lua name, built from a table.
+        if not answer.startswith("ok"):
+            lua = (f'hl.dispatch(hl.dsp.send_shortcut({{ mods = "CTRL", '
+                   f'key = "{key.lower()}", window = "activewindow" }}))')
+            answer = request(f"eval {lua}").strip().lower()
     except Exception as err:  # noqa: BLE001
         return False, f"the compositor would not send the key press ({err})"
     if answer.startswith("ok"):

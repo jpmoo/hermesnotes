@@ -622,19 +622,23 @@ export function buildServer(deps: {
       const last = rows[0] ? new Date(rows[0].at) : null;
       const mins = last ? Math.round((Date.now() - last.getTime()) / 60000) : null;
       // A gap and a fault are different things, and reporting them the same way
-      // is how a diagnostic starts lying. On Linux nothing here is broken:
-      // `lsappinfo` and AeroSpace are macOS, KWin is what replaces them, and it
-      // is not built yet. Saying so is more useful than a FAIL that invites
-      // somebody to go looking for a binary that cannot exist.
+      // is how a diagnostic starts lying. Off macOS nothing here polls:
+      // `lsappinfo` and AeroSpace are macOS, and the Linux shell pushes the
+      // focused window instead — from the KWin script or Hyprland's event
+      // socket. So a recent row *is* the window source, and its absence means
+      // the shell is not running rather than that anything is broken.
       const noWindowSource = process.platform !== "darwin";
+      const pushed = noWindowSource ? rows[0] : undefined;
       add(
         "context",
         Boolean(front) || noWindowSource,
         front
           ? `watching — ${front.app}` + (mins === null ? ", nothing recorded yet" : `, last row ${mins}m ago`)
-          : noWindowSource
-            ? "no window source on this platform yet — KWin is the Linux answer and is not built"
-            : "lsappinfo told us nothing — the frontmost poll is doing nothing at all",
+          : pushed
+            ? `watching — ${pushed.app}, pushed by the shell, last row ${mins}m ago`
+            : noWindowSource
+              ? "nothing pushed yet — the focused window arrives from the shell, so start talaria-shell"
+              : "lsappinfo told us nothing — the frontmost poll is doing nothing at all",
       );
 
       /**

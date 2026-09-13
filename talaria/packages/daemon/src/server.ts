@@ -657,17 +657,25 @@ export function buildServer(deps: {
       const wm = withWorkspace || noWindowSource ? "answering" : await wmStatus(config.aerospaceCli);
       add(
         "workspace",
-        withWorkspace || noWindowSource,
+        // Quit or switched off is a choice somebody made, not a fault. The
+        // record still names the app and the title without it — Launch
+        // Services and Accessibility answer those — so failing doctor over it
+        // would put a red line in front of a machine that is working exactly
+        // as its owner set it up. Only a binary that cannot be found is a
+        // problem worth failing on, because that one was meant to be there.
+        withWorkspace || noWindowSource || wm === "disabled" || wm === "stopped",
         withWorkspace
           ? "arriving from the window manager"
           : noWindowSource
             ? "no window manager wired up yet — KDE virtual desktops are the Linux analogue"
-            : wm === "disabled"
-              // Found, running, and refusing — which is not a PATH problem, and
-              // telling somebody to go looking for a binary that is sitting
-              // right there is how a diagnostic wastes an afternoon.
-              ? "AeroSpace is running but switched off — `aerospace enable on`. While it is off it answers nothing, so workspaces, the desk's Workspaces pane, and window titles in context all go quiet"
-              : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
+            : wm === "stopped"
+              ? "AeroSpace isn't running, so there are no workspace names — apps and window titles still arrive from Launch Services and Accessibility"
+              : wm === "disabled"
+                // Found, running, and refusing — which is not a PATH problem, and
+                // telling somebody to go looking for a binary that is sitting
+                // right there is how a diagnostic wastes an afternoon.
+                ? "AeroSpace is running but switched off, so there are no workspace names — `aerospace enable on` brings them back; apps and titles still arrive from Accessibility"
+                : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
       );
     }
 

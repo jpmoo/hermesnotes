@@ -810,11 +810,28 @@ export function aerospaceCandidates(cliPath?: string): string[] {
  */
 const DISABLED = /server is disabled/i;
 
+/**
+ * Installed, and not running.
+ *
+ * The third way AeroSpace can be quiet, and the commonest once somebody stops
+ * using it: the app is quit, the CLI is still on the PATH, and every command
+ * says "Can't connect to AeroSpace server. Is AeroSpace.app running?" and exits
+ * 2. That used to read as `absent`, so `talaria doctor` failed and asked whether
+ * the binary was on the daemon's PATH — about a binary sitting right there,
+ * belonging to an app somebody had simply chosen to quit.
+ *
+ * Matched on the words rather than the exit status, for the reason given above
+ * `DISABLED`. `can.t` because the apostrophe is AeroSpace's to typeset.
+ */
+const STOPPED = /can.t connect to aerospace server|is aerospace\.app running/i;
+
 export interface WmAnswer {
   /** stdout, or empty when there was nothing usable to say. */
   out: string;
   /** The server is there and refusing. Never true when `out` is non-empty. */
   disabled: boolean;
+  /** The CLI is there and the app is not running. Never true with output. */
+  stopped: boolean;
   /** The binary ran. False for a path with nothing at it, which is how the
    *  candidate list is walked — and the difference between "did not work" and
    *  "is not there", which `focusWorkspace` reports as the same word. */
@@ -827,27 +844,31 @@ export async function askAerospace(bin: string, args: string[], timeout = 3000):
     execFile(bin, args, { timeout, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
       const said = `${stdout}${stderr}`;
       // A refusal is not output. See the note above `DISABLED`.
-      if (DISABLED.test(said)) resolve({ out: "", disabled: true, ran: true });
-      else resolve({ out: stdout ?? "", disabled: false, ran: !err });
+      if (DISABLED.test(said)) resolve({ out: "", disabled: true, stopped: false, ran: true });
+      else if (STOPPED.test(said)) resolve({ out: "", disabled: false, stopped: true, ran: false });
+      else resolve({ out: stdout ?? "", disabled: false, stopped: false, ran: !err });
     }),
   );
 }
 
 /**
- * Why the workspace half is quiet, in the three words a diagnostic needs.
+ * Why the workspace half is quiet, in the four words a diagnostic needs.
  *
  * `absent` — nothing at any of the candidate paths answered at all.
- * `disabled` — AeroSpace is there and switched off.
+ * `stopped` — the CLI is installed and AeroSpace itself is not running.
+ * `disabled` — AeroSpace is running and switched off.
  * `answering` — it told us the focused workspace.
  */
-export async function wmStatus(cliPath?: string): Promise<"answering" | "disabled" | "absent"> {
+export async function wmStatus(cliPath?: string): Promise<"answering" | "disabled" | "stopped" | "absent"> {
   let refused = false;
+  let stopped = false;
   for (const bin of aerospaceCandidates(cliPath)) {
     const said = await askAerospace(bin, ["list-workspaces", "--focused"], 2000);
     if (said.out.trim()) return "answering";
     if (said.disabled) refused = true;
+    if (said.stopped) stopped = true;
   }
-  return refused ? "disabled" : "absent";
+  return refused ? "disabled" : stopped ? "stopped" : "absent";
 }
 
 export interface WorkspaceWindow {

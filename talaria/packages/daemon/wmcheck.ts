@@ -64,14 +64,15 @@ const cli = join(home, "aerospace");
 const calls = join(home, "calls");
 
 /**
- * Rewrite the fake, into one of the three states a window manager can be in.
+ * Rewrite the fake, into one of the four states a window manager can be in.
  *
  * `answering` — a real row. `absent` — nothing at that path. `disabled` — there,
- * running, and refusing, which is `aerospace enable off` and is the state this
- * suite did not have. It is the interesting one: the refusal is a *sentence*,
- * and everything downstream reads AeroSpace's output as data.
+ * running, and refusing, which is `aerospace enable off`. `stopped` — the CLI is
+ * installed and the app is quit, which is simply what a machine looks like once
+ * somebody stops using AeroSpace. The last two are the interesting ones: each is
+ * a *sentence*, and everything downstream reads AeroSpace's output as data.
  */
-type Wm = "answering" | "absent" | "disabled";
+type Wm = "answering" | "absent" | "disabled" | "stopped";
 const setWm = (state: Wm | boolean) => {
   const wm: Wm = state === true ? "answering" : state === false ? "absent" : state;
   const script =
@@ -85,7 +86,11 @@ const setWm = (state: Wm | boolean) => {
           // the worst case of the two, and the one that turns a refusal into a
           // workspace named after it if anything treats stdout as output.
           `#!/bin/sh\necho x >> ${calls}\necho "AeroSpace server is disabled and doesn't accept commands. You can use 'aerospace enable on' to enable the server"\nexit 0\n`
-        : `#!/bin/sh\necho x >> ${calls}\nexit 127\n`;
+        : wm === "stopped"
+          ? // Word for word what AeroSpace 0.21 says with the app quit: two
+            // lines on stderr and exit 2.
+            `#!/bin/sh\necho x >> ${calls}\necho "Can't connect to AeroSpace server. Is AeroSpace.app running?" >&2\necho "The operation couldn’t be completed. (Network.NWError error 61 - Connection refused)" >&2\nexit 2\n`
+          : `#!/bin/sh\necho x >> ${calls}\nexit 127\n`;
   writeFileSync(cli, script);
   chmodSync(cli, 0o755);
 };
@@ -258,6 +263,18 @@ try {
 
   const went = await focusWorkspace("first", cli);
   check("and does not claim a move it refused", went === false, String(went));
+
+  /*
+   * ---- Installed, and quit -------------------------------------------------
+   *
+   * The state this machine is in once somebody stops using AeroSpace. It read as
+   * `absent`, and doctor failed asking whether the binary was on the PATH.
+   */
+  setWm("stopped");
+  const quit = await wmStatus(cli);
+  check("a quit AeroSpace is told from a missing one", quit === "stopped", quit);
+  check("and never becomes a workspace", (await workspaces(cli)).length === 0);
+  check("and does not claim a move", (await focusWorkspace("first", cli)) === false);
 
   setWm("absent");
   check("while a missing binary still reads as absent", (await wmStatus(cli)) === "absent");

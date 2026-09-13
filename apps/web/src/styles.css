@@ -273,6 +273,12 @@ label,
 }
 
 /* ── Export tab: the type checklist ───────────────────────────────── */
+/* The collection finder above a long checklist of collections. */
+.export-filter {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 0 8px;
+}
 .export-types {
   display: flex;
   flex-direction: column;

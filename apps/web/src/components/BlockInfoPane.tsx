@@ -1,5 +1,5 @@
 import { isPeriodicNote } from "@hermes/shared";
-import { ArrowRight, CalendarDays, Copy, Maximize2, MoreHorizontal, Star, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Copy, Download, Maximize2, MoreHorizontal, Star, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, type Block, type BlockInfo, type BlockType, type ConnRef } from "../api.ts";
@@ -10,6 +10,7 @@ import { useEditorMounted } from "../lib/editor-registry.ts";
 import { usePanels } from "../lib/right-panel.tsx";
 import { usePreferences } from "../lib/preferences.tsx";
 import { ConfirmDialog, MembersChoice } from "./ConfirmDialog.tsx";
+import { collectionName, downloadExport } from "./ExportSettings.tsx";
 import { planConversion } from "@hermes/shared";
 import { LongTextField } from "./LongTextField.tsx";
 import { TextBlockEditor } from "./TextBlockEditor.tsx";
@@ -163,6 +164,8 @@ export function BlockInfoPane({
    *  so a decision made once is never carried into the next one. */
   const [withMembers, setWithMembers] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** What happened to an export asked for from this menu, said where it was asked. */
+  const [exportNote, setExportNote] = useState<{ text: string; bad: boolean } | null>(null);
   const { pathname } = useLocation();
   const nav = useNavigate();
   const { infoTick, openBlock } = usePanels();
@@ -449,6 +452,26 @@ export function BlockInfoPane({
                         <div className="menu-sep" />
                       </>
                     )}
+                    {/* The same export as Settings, narrowed to this one
+                        collection — the place somebody looking at a collection
+                        would think to look. */}
+                    {isCollection && block && (
+                      <button
+                        className="menu-item"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setExportNote({ text: "Preparing the export…", bad: false });
+                          const name = collectionName(block);
+                          void downloadExport({ collectionIds: [blockId] }, `${name}.zip`)
+                            .then(() => setExportNote({ text: `Exported “${name}”.`, bad: false }))
+                            .catch((e: unknown) =>
+                              setExportNote({ text: e instanceof Error ? e.message : "export failed", bad: true }),
+                            );
+                        }}
+                      >
+                        <Download size={14} /> Export to Markdown
+                      </button>
+                    )}
                     <button
                       className="menu-item"
                       onClick={() => {
@@ -513,6 +536,11 @@ export function BlockInfoPane({
             <span className="info-title-text">{titleOverride ?? info.title}</span>
           </div>
         )
+      )}
+      {exportNote && (
+        <div className={exportNote.bad ? "error" : "hint"} role="status">
+          {exportNote.text}
+        </div>
       )}
       {isCollection && block && (
         <div className="collection-desc">

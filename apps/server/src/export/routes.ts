@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { PropertySchema } from "@hermes/shared";
+import { normalizeFilter, type PropertySchema } from "@hermes/shared";
 import { attachmentBlobs,
-  attachments, banners, blocks, blockTags, blockTypes, tags } from "@hermes/db";
+  attachments, banners, blocks, blockTags, blockTypes, memberships, tags } from "@hermes/db";
 import { db } from "../db.js";
 import { authenticate, requireUser } from "../auth/middleware.js";
+import { runQuery } from "../collections/query.js";
 import { badRequest } from "../lib/errors.js";
 import {
   blockToMarkdown,
+  bodyToObsidian,
+  frontmatter,
   plainTitle,
   safeName,
   type BodyResolvers,
@@ -40,21 +43,53 @@ function unique(base: string, ext: string, used: Set<string>): string {
 export async function exportRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
-  /** Export blocks of the chosen types as an Obsidian-compatible .zip: one
-   *  markdown file per block, one folder per type, plus an attachments/ folder
-   *  (deduped). Collections aren't exported. */
+  /**
+   * Export blocks as an Obsidian-compatible .zip: one markdown file per block,
+   * plus an attachments/ folder (deduped). Chosen by type, by collection, or
+   * both.
+   *
+   * **A type gets a folder; a collection gets a folder and an index.** Each
+   * chosen collection becomes `Collections/<name>/`, holding its members and a
+   * `<name>.md` that lists them as wikilinks in the collection's own order —
+   * which is the part of a collection a folder of files cannot say by itself.
+   * Its layout does not survive (a matrix's quadrants, a canvas's positions, a
+   * kanban's columns): markdown has nowhere to put them, and inventing a
+   * convention nobody reads would be worse than saying so.
+   *
+   * **Every block is written once.** A block in two chosen collections, or in a
+   * chosen collection and a chosen type, lives in the first place it is found —
+   * collections in the order they were asked for, then types — and every other
+   * index links to it by name. Two copies of one note would be two notes in
+   * Obsidian, and editing one would quietly leave the other behind.
+   */
   app.post("/export", async (req, reply) => {
     const userId = requireUser(req);
-    const { typeIds } = z
-      .object({ typeIds: z.array(z.string().uuid()).min(1).max(100) })
+    const body = z
+      .object({
+        typeIds: z.array(z.string().uuid()).max(100).optional(),
+        collectionIds: z.array(z.string().uuid()).max(100).optional(),
+      })
+      .refine((b) => (b.typeIds?.length ?? 0) + (b.collectionIds?.length ?? 0) > 0, {
+        message: "choose at least one type or collection",
+      })
       .parse(req.body);
+    const typeIds = body.typeIds ?? [];
+    const collectionIds = [...new Set(body.collectionIds ?? [])];
 
-    // Three independent reads, issued together: the chosen types; every owned
-    // non-archived block of those types (text notes include daily scratchpads +
-    // weekly reflections, filtered to non-empty below); and light metadata for
-    // EVERY owned block, to resolve link targets (only a content PREFIX — just
-    // enough for a first-line title fallback, not whole bodies).
-    const [types, rows, metaRows] = await Promise.all([
+    const rowColumns = {
+      id: blocks.id,
+      blockTypeId: blocks.blockTypeId,
+      content: blocks.content,
+      properties: blocks.properties,
+    };
+
+    // Four independent reads, issued together: every type (a collection's
+    // members can be of any type, chosen or not); every owned non-archived block
+    // of the chosen types (text notes include daily scratchpads + weekly
+    // reflections, filtered to non-empty below); light metadata for EVERY owned
+    // block, to resolve link targets (only a content PREFIX — just enough for a
+    // first-line title fallback, not whole bodies); and the chosen collections.
+    const [types, typeRows, metaRows, collectionRows] = await Promise.all([
       db
         .select({
           id: blockTypes.id,
@@ -63,18 +98,15 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
           schema: blockTypes.propertySchema,
         })
         .from(blockTypes)
-        .where(and(eq(blockTypes.ownerId, userId), inArray(blockTypes.id, typeIds))),
-      db
-        .select({
-          id: blocks.id,
-          blockTypeId: blocks.blockTypeId,
-          content: blocks.content,
-          properties: blocks.properties,
-        })
-        .from(blocks)
-        .where(
-          and(eq(blocks.ownerId, userId), isNull(blocks.archivedAt), inArray(blocks.blockTypeId, typeIds)),
-        ),
+        .where(eq(blockTypes.ownerId, userId)),
+      typeIds.length
+        ? db
+            .select(rowColumns)
+            .from(blocks)
+            .where(
+              and(eq(blocks.ownerId, userId), isNull(blocks.archivedAt), inArray(blocks.blockTypeId, typeIds)),
+            )
+        : Promise.resolve([]),
       db
         .select({
           id: blocks.id,
@@ -87,10 +119,30 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
         })
         .from(blocks)
         .where(eq(blocks.ownerId, userId)),
+      collectionIds.length
+        ? db
+            .select({ id: blocks.id, collectionKind: blocks.collectionKind, properties: blocks.properties })
+            .from(blocks)
+            .where(
+              and(
+                eq(blocks.ownerId, userId),
+                isNull(blocks.archivedAt),
+                inArray(blocks.id, collectionIds),
+                sql`${blocks.collectionKind} IS NOT NULL`,
+              ),
+            )
+        : Promise.resolve([]),
     ]);
-    if (!types.length) throw badRequest("no exportable types selected");
     const typeById = new Map(types.map((t) => [t.id, t]));
     const meta = new Map(metaRows.map((m) => [m.id, m]));
+    if (typeIds.length && !typeIds.some((id) => typeById.has(id)) && !collectionRows.length) {
+      throw badRequest("no exportable types selected");
+    }
+    // In the order they were asked for, which decides where a shared member lives.
+    const byCollectionId = new Map(collectionRows.map((c) => [c.id, c]));
+    const collections = collectionIds
+      .map((id) => byCollectionId.get(id))
+      .filter((c): c is (typeof collectionRows)[number] => c !== undefined);
 
     const metaTitle = (m: (typeof metaRows)[number]): string => {
       if (m.today) return `Daily Note ${m.today}`;
@@ -98,34 +150,101 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       return firstLine(m.content) || "Untitled";
     };
 
+    /**
+     * A collection's members, in its own order — the order its page shows.
+     *
+     * The same split `GET /collections/:id` makes: a smart, dynamic collection's
+     * membership is its query, run now, and every other kind is its membership
+     * rows. A matrix is exempt from the query even when smart, because its
+     * placements are always explicit and the query only fills its drawer.
+     */
+    const membersOf = async (c: (typeof collections)[number]): Promise<string[]> => {
+      const props = (c.properties ?? {}) as Record<string, unknown>;
+      if (props.membership_mode === "smart" && props.smart_mode === "dynamic" && c.collectionKind !== "matrix") {
+        return (await runQuery(userId, normalizeFilter(props.filter_query))).map((b) => b.id);
+      }
+      const rows = await db
+        .select({ id: blocks.id })
+        .from(memberships)
+        .innerJoin(blocks, eq(blocks.id, memberships.blockId))
+        .where(
+          and(
+            eq(memberships.collectionId, c.id),
+            eq(blocks.ownerId, userId),
+            // Archived members keep their membership but are out of sight, on
+            // the page and here alike.
+            isNull(blocks.archivedAt),
+          ),
+        )
+        .orderBy(asc(memberships.position));
+      return rows.map((r) => r.id);
+    };
+    const memberLists = await Promise.all(collections.map(membersOf));
+
+    // The members' own rows, for any not already read as part of a chosen type.
+    // Nested collections are left out: they get an index of their own when they
+    // were chosen too, and a line naming them when they were not.
+    const haveRow = new Set(typeRows.map((r) => r.id));
+    const memberIds = [...new Set(memberLists.flat())].filter((id) => !haveRow.has(id));
+    const memberRows = memberIds.length
+      ? await db
+          .select(rowColumns)
+          .from(blocks)
+          .where(
+            and(
+              eq(blocks.ownerId, userId),
+              isNull(blocks.archivedAt),
+              isNull(blocks.collectionKind),
+              inArray(blocks.id, memberIds),
+            ),
+          )
+      : [];
+    const rowById = new Map([...typeRows, ...memberRows].map((r) => [r.id, r]));
+
     // Title + folder + file name for each block we're exporting.
     interface Prepared extends ExportBlockInput {
       folder: string;
       basename: string;
     }
     const usedByFolder = new Map<string, Set<string>>();
+    const usedIn = (folder: string): Set<string> => {
+      const used = usedByFolder.get(folder) ?? new Set<string>();
+      usedByFolder.set(folder, used);
+      return used;
+    };
     const prepared: Prepared[] = [];
     const exportedBasename = new Map<string, string>(); // id -> basename (for links)
 
-    for (const row of rows) {
+    // Every collection's folder and index name, before any note takes a name:
+    // the index is what `<name>.md` should mean in its own folder, and a member
+    // that happens to share the collection's title is the one that gets " 2".
+    // Under `Collections/` so a collection called "Task" and a type called
+    // "Task" do not become one folder.
+    const usedCollectionFolders = new Set<string>();
+    const indexOf = new Map<string, { folder: string; basename: string }>();
+    for (const c of collections) {
+      const m = meta.get(c.id);
+      const title = m ? metaTitle(m) : "Untitled collection";
+      const folder = `Collections/${unique(safeName(title), "", usedCollectionFolders)}`;
+      indexOf.set(c.id, { folder, basename: unique(safeName(title), "", usedIn(folder)) });
+    }
+
+    const placeRow = (row: (typeof typeRows)[number], folder: string): void => {
+      if (exportedBasename.has(row.id)) return; // already written somewhere earlier
       const t = row.blockTypeId ? typeById.get(row.blockTypeId) : undefined;
-      if (!t) continue;
-      const props = (row.properties ?? {}) as Record<string, unknown>;
-      const m = meta.get(row.id)!;
+      if (!t) return;
       // Text notes: skip empties (blank daily scratchpads etc.).
-      if (t.isText && !firstLine(row.content)) continue;
+      if (t.isText && !firstLine(row.content)) return;
+      const m = meta.get(row.id);
+      if (!m) return;
 
       const title = metaTitle(m);
-      const folder = safeName(t.name);
-      const used = usedByFolder.get(folder) ?? new Set<string>();
-      usedByFolder.set(folder, used);
-      const basename = unique(safeName(title), "", used);
+      const basename = unique(safeName(title), "", usedIn(folder));
       exportedBasename.set(row.id, basename);
-
       prepared.push({
         id: row.id,
         content: row.content,
-        properties: props,
+        properties: (row.properties ?? {}) as Record<string, unknown>,
         isText: t.isText,
         schema: (t.schema as PropertySchema | null) ?? null,
         title,
@@ -135,8 +254,20 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
         folder,
         basename,
       });
+    };
+
+    collections.forEach((c, i) => {
+      const folder = indexOf.get(c.id)!.folder;
+      for (const id of memberLists[i] ?? []) {
+        const row = rowById.get(id);
+        if (row) placeRow(row, folder);
+      }
+    });
+    for (const row of typeRows) {
+      const t = row.blockTypeId ? typeById.get(row.blockTypeId) : undefined;
+      if (t) placeRow(row, safeName(t.name));
     }
-    if (!prepared.length) throw badRequest("nothing to export for those types");
+    if (!prepared.length && !collections.length) throw badRequest("nothing to export for those types");
 
     const exportedIds = prepared.map((p) => p.id);
 
@@ -167,7 +298,8 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
     };
 
     // ── Attachments, tags, and banner images for the exported blocks —
-    //    independent reads issued together. (exportedIds is non-empty here.)
+    //    independent reads issued together. Skipped outright when nothing but
+    //    empty collections was chosen: `inArray` over no ids is not a query.
     const bannerIdByBlock = new Map<string, string>();
     for (const p of prepared) {
       const bv = p.properties.banner as { id?: string } | undefined;
@@ -175,30 +307,34 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
     }
     const bannerIds = [...new Set(bannerIdByBlock.values())];
     const [attRows, tagRows, bRows] = await Promise.all([
-      db
-        .select({
-          id: attachments.id,
-          blockId: attachments.blockId,
-          filename: attachments.filename,
-          data: attachmentBlobs.data,
-        })
-        .from(attachments)
-        // The bytes live under their own digest now; the attachment is a name
-        // and a pointer. An export still wants one file per attachment, so two
-        // notes sharing a blob still get two files in the archive.
-        .innerJoin(
-          attachmentBlobs,
-          and(
-            eq(attachmentBlobs.ownerId, attachments.ownerId),
-            eq(attachmentBlobs.sha256, attachments.sha256),
-          ),
-        )
-        .where(inArray(attachments.blockId, exportedIds)),
-      db
-        .select({ blockId: blockTags.blockId, name: tags.name })
-        .from(blockTags)
-        .innerJoin(tags, eq(tags.id, blockTags.tagId))
-        .where(inArray(blockTags.blockId, exportedIds)),
+      exportedIds.length
+        ? db
+            .select({
+              id: attachments.id,
+              blockId: attachments.blockId,
+              filename: attachments.filename,
+              data: attachmentBlobs.data,
+            })
+            .from(attachments)
+            // The bytes live under their own digest now; the attachment is a
+            // name and a pointer. An export still wants one file per
+            // attachment, so two notes sharing a blob still get two files.
+            .innerJoin(
+              attachmentBlobs,
+              and(
+                eq(attachmentBlobs.ownerId, attachments.ownerId),
+                eq(attachmentBlobs.sha256, attachments.sha256),
+              ),
+            )
+            .where(inArray(attachments.blockId, exportedIds))
+        : Promise.resolve([]),
+      exportedIds.length
+        ? db
+            .select({ blockId: blockTags.blockId, name: tags.name })
+            .from(blockTags)
+            .innerJoin(tags, eq(tags.id, blockTags.tagId))
+            .where(inArray(blockTags.blockId, exportedIds))
+        : Promise.resolve([]),
       bannerIds.length
         ? db
             .select({ id: banners.id, mime: banners.mime, data: banners.data })
@@ -235,8 +371,9 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       tagsByBlock.set(t.blockId, list);
     }
 
-    // Link resolver: exported → its file base name; collections/empties → drop;
-    // weekly-review → its reflection; daily note → its scratchpad (if exported).
+    // Link resolver: exported → its file base name; an exported collection → its
+    // index; other collections/empties → drop; weekly-review → its reflection;
+    // daily note → its scratchpad (if exported).
     const resolvers: BodyResolvers = {
       attachmentName: (id) => attNameById.get(id),
       titleOf: (id) => {
@@ -245,7 +382,7 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
         if (m.weeklyReview === "true") return newestReflection?.name; // → reflection
         const exp = exportedBasename.get(id);
         if (exp) return exp;
-        if (m.collectionKind) return undefined; // collections aren't exported
+        if (m.collectionKind) return indexOf.get(id)?.basename; // only if it was chosen
         if (m.today || m.reflection) return undefined; // scratchpad/reflection not exported
         return metaTitle(m); // normal block not in this export → dangling wikilink
       },
@@ -260,6 +397,46 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       const md = blockToMarkdown(p, resolvers);
       entries.push({ name: `${p.folder}/${p.basename}.md`, data: Buffer.from(md, "utf8") });
     }
+
+    // ── And each chosen collection's index: what it is, what it says about
+    //    itself, and its members in order.
+    collections.forEach((c, i) => {
+      const { folder, basename } = indexOf.get(c.id)!;
+      const props = (c.properties ?? {}) as Record<string, unknown>;
+      const m = meta.get(c.id);
+      const description =
+        typeof props.description === "string" && props.description.trim()
+          ? bodyToObsidian(props.description, resolvers).body.trim()
+          : "";
+      const lines: string[] = [];
+      for (const id of memberLists[i] ?? []) {
+        const name = resolvers.titleOf(id);
+        if (name) {
+          lines.push(`- [[${name}]]`);
+          continue;
+        }
+        // A member with no file of its own — a nested collection that was not
+        // chosen. Named, so the list does not silently have a hole in it.
+        const member = meta.get(id);
+        if (member?.collectionKind) lines.push(`- ${metaTitle(member)}`);
+      }
+      const md = [
+        frontmatter(
+          [
+            { key: "title", value: m ? metaTitle(m) : basename },
+            { key: "collection", value: c.collectionKind },
+          ],
+          [],
+        ),
+        description,
+        "",
+        lines.length ? lines.join("\n") : "_This collection is empty._",
+      ]
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trimEnd() + "\n";
+      entries.push({ name: `${folder}/${basename}.md`, data: Buffer.from(md, "utf8") });
+    });
     entries.push(...attFiles);
 
     const zip = zipStore(entries, new Date());

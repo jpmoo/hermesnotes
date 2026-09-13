@@ -1,18 +1,16 @@
 import { Download } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { api, apiBase, CLIENT_ID, type BlockType, type Collection } from "../api.ts";
+import { CollectionIcon } from "../lib/icons.tsx";
+import { CollectionPicker, collectionName } from "./CollectionPicker.tsx";
+
+export { collectionName };
 
 /** What to export: blocks of these types, members of these collections, or both. */
 export interface ExportChoice {
   typeIds?: string[];
   collectionIds?: string[];
 }
-
-/** A collection's name as its page shows it. */
-export const collectionName = (c: Pick<Collection, "properties">): string => {
-  const title = c.properties?.title;
-  return typeof title === "string" && title.trim() ? title.trim() : "Untitled collection";
-};
 
 /**
  * Ask the server for the .zip and hand it to the browser as a download.
@@ -47,7 +45,14 @@ export async function downloadExport(choice: ExportChoice, filename: string): Pr
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // **Released later, not now.** The click only *starts* a download; the
+  // browser reads the file after this function has returned, and revoking the
+  // URL first is a race some browsers lose. A minute is far longer than any of
+  // them takes to begin reading, and the blob is only memory until then.
+  //
+  // (Not the reason an export once never arrived — that was Talaria's Mac
+  // window, which had no download handling at all. See HermesWindow.swift.)
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /**
@@ -59,8 +64,7 @@ export function ExportSettings() {
   const [types, setTypes] = useState<BlockType[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [chosenCollections, setChosenCollections] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState("");
+  const [chosenCollections, setChosenCollections] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,22 +80,16 @@ export function ExportSettings() {
       .catch(() => {});
   }, []);
 
-  const toggleIn = (set: (f: (s: Set<string>) => Set<string>) => void, id: string) =>
-    set((s) => {
+  const toggle = (id: string) =>
+    setSelected((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
 
-  // A library can hold a great many collections, and a checklist nobody can
-  // search is one nobody finds anything in.
-  const shownCollections = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    return q ? collections.filter((c) => collectionName(c).toLowerCase().includes(q)) : collections;
-  }, [collections, filter]);
-
-  const count = selected.size + chosenCollections.size;
+  // Types and collections are independent: either alone is a whole export.
+  const count = selected.size + chosenCollections.length;
 
   const runExport = async () => {
     if (!count) return;
@@ -100,7 +98,7 @@ export function ExportSettings() {
     setStatus(null);
     try {
       await downloadExport(
-        { typeIds: [...selected], collectionIds: [...chosenCollections] },
+        { typeIds: [...selected], collectionIds: chosenCollections },
         "hermes-export.zip",
       );
       setStatus("Export downloaded.");
@@ -117,15 +115,28 @@ export function ExportSettings() {
       <p className="hint" style={{ marginTop: 0 }}>
         Download an Obsidian-compatible <code>.zip</code>: one markdown file per block, and a shared{" "}
         <code>attachments/</code> folder. Properties become YAML frontmatter (by their labels);
-        connections become <code>[[wikilinks]]</code>. Choose types, collections, or both.
+        connections become <code>[[wikilinks]]</code>. Choose collections, types, or both — either
+        on its own is a whole export.
       </p>
+
+      <div className="panel-h export-h">
+        <CollectionIcon size={15} />
+        Collections
+      </div>
+      <p className="hint" style={{ marginTop: 0 }}>
+        A folder per collection, holding its blocks and an index that lists them in the
+        collection’s order. Its layout — quadrants, columns, canvas positions — isn’t kept, because
+        markdown has nowhere to put it. A block in two chosen collections is written once and linked
+        from both.
+      </p>
+      <CollectionPicker collections={collections} value={chosenCollections} onChange={setChosenCollections} />
 
       <div className="panel-h">Types</div>
       <p className="hint" style={{ marginTop: 0 }}>A folder per type.</p>
       <div className="export-types">
         {types.map((t) => (
           <label key={t.id} className="export-type">
-            <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggleIn(setSelected, t.id)} />
+            <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
             <span style={{ textTransform: "capitalize" }}>{t.name}</span>
             {t.isText && (
               <span className="hint"> — text notes (incl. non-empty daily & weekly reflections)</span>
@@ -133,39 +144,6 @@ export function ExportSettings() {
           </label>
         ))}
         {types.length === 0 && <div className="hint">No types.</div>}
-      </div>
-
-      <div className="panel-h">Collections</div>
-      <p className="hint" style={{ marginTop: 0 }}>
-        A folder per collection, holding its blocks and an index that lists them in the
-        collection’s order. Its layout — quadrants, columns, canvas positions — isn’t kept, because
-        markdown has nowhere to put it. A block chosen twice is written once and linked from both.
-      </p>
-      {collections.length > 12 && (
-        <input
-          type="search"
-          className="export-filter"
-          placeholder="Find a collection…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-      )}
-      <div className="export-types">
-        {shownCollections.map((c) => (
-          <label key={c.id} className="export-type">
-            <input
-              type="checkbox"
-              checked={chosenCollections.has(c.id)}
-              onChange={() => toggleIn(setChosenCollections, c.id)}
-            />
-            <span>{collectionName(c)}</span>
-            <span className="hint"> — {c.collectionKind}</span>
-          </label>
-        ))}
-        {collections.length === 0 && <div className="hint">No collections.</div>}
-        {collections.length > 0 && shownCollections.length === 0 && (
-          <div className="hint">No collection matches that.</div>
-        )}
       </div>
 
       <div className="row" style={{ marginTop: 14, alignItems: "center", gap: 12 }}>
@@ -178,7 +156,7 @@ export function ExportSettings() {
             className="ghost"
             onClick={() => {
               setSelected(new Set());
-              setChosenCollections(new Set());
+              setChosenCollections([]);
             }}
           >
             Clear

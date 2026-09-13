@@ -10,7 +10,7 @@ import WebKit
 /// already owns `talaria://` and already resolves an id to an address; giving it
 /// somewhere to put the result closes the loop without a second wrapper.
 @MainActor
-final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKDownloadDelegate {
     static let shared = HermesWindow()
 
     private var window: NSWindow?
@@ -121,6 +121,14 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
+        // A link the page marked as a download — `<a download>`, which is how
+        // every export in Hermes hands over its file. Before anything else,
+        // because a blob URL has no host and would otherwise be allowed as an
+        // ordinary navigation that goes nowhere. See `MARK: Downloads`.
+        if navigationAction.shouldPerformDownload {
+            decisionHandler(.download)
+            return
+        }
         guard let url = navigationAction.request.url else {
             decisionHandler(.allow)
             return
@@ -133,6 +141,87 @@ final class HermesWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUI
             return
         }
         decisionHandler(.allow)
+    }
+
+    /// A response the page can't show, or one the server marked as a file.
+    ///
+    /// The other way a download arrives: a plain link to something served with
+    /// `Content-Disposition: attachment` — an attachment's own download button.
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationResponse: WKNavigationResponse,
+        decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
+    ) {
+        let disposition = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition") ?? ""
+        if !navigationResponse.canShowMIMEType || disposition.lowercased().hasPrefix("attachment") {
+            decisionHandler(.download)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    // MARK: Downloads
+
+    /*
+     Files the page hands over.
+
+     **A `WKWebView` downloads nothing unless the app says where to put it.**
+     There is no default: without these, an `<a download>` click is accepted,
+     turned into nothing, and the page carries on as though it worked. A
+     Markdown export came back from the server whole — 8 MB, the right folders —
+     and never reached the disk, with nothing on screen to say so. It is the
+     same shape of failure `runWebOpenPanel` below was written for, in the other
+     direction.
+
+     A save panel rather than a silent write into Downloads, because this is a
+     window somebody is looking at and choosing where a file goes is part of
+     asking for it. Cancelling the panel cancels the download.
+     */
+
+    func webView(_: WKWebView, navigationAction _: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_: WKWebView, navigationResponse _: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func download(
+        _ download: WKDownload,
+        decideDestinationUsing _: URLResponse,
+        suggestedFilename: String,
+        completionHandler: @escaping (URL?) -> Void
+    ) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedFilename
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.canCreateDirectories = true
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else {
+                completionHandler(nil)
+                return
+            }
+            // The panel has already asked whether to replace an existing file,
+            // and WebKit refuses to write over one — so a yes has to be carried
+            // out here, or the download fails after the person agreed to it.
+            try? FileManager.default.removeItem(at: url)
+            completionHandler(url)
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: finish) } else { panel.begin(completionHandler: finish) }
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        NSLog("talaria: download finished — \(download.progress.fileURL?.path ?? "?")")
+    }
+
+    func download(_: WKDownload, didFailWithError error: Error, resumeData _: Data?) {
+        // Said, because the failure this section exists to fix was silence.
+        NSLog("talaria: download failed — \(error.localizedDescription)")
+        let alert = NSAlert()
+        alert.messageText = "The download didn't finish."
+        alert.informativeText = error.localizedDescription
+        if let window { alert.beginSheetModal(for: window) } else { alert.runModal() }
     }
 
     func webView(

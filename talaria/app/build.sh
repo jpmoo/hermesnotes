@@ -72,7 +72,23 @@ echo "==> Icon"
 # Needs Pillow. A build-time dependency on this machine only — nothing the
 # daemon or the app depends on at runtime.
 mkdir -p "$APP/Contents/Resources"
-python3 "$HERE/make-icon.py" "$REPO_ROOT/../assets/HermesLogo.png" "$APP/Contents/Resources"
+# Whichever Python has Pillow, not whichever one is called `python3`. Homebrew
+# moves `python3` to each new release as it lands, and a fresh interpreter has
+# none of the last one's packages — so an upgrade nobody asked this build about
+# broke it at this line with "No module named 'PIL'", after the running agent
+# had already been stopped.
+ICON_PY=""
+for candidate in python3 python3.14 python3.13 python3.12 python3.11; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import PIL" >/dev/null 2>&1; then
+    ICON_PY="$candidate"
+    break
+  fi
+done
+if [ -z "$ICON_PY" ]; then
+  echo "!! no Python here has Pillow, which the icon needs — python3 -m pip install Pillow"
+  exit 1
+fi
+"$ICON_PY" "$HERE/make-icon.py" "$REPO_ROOT/../assets/HermesLogo.png" "$APP/Contents/Resources"
 rm -rf "$APP/Contents/Resources/Talaria.iconset"
 
 # The menu bar mark, which is not the app icon and never was.

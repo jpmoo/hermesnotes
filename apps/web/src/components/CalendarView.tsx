@@ -1,7 +1,7 @@
 import { isComplete, optionLabel } from "@hermes/shared";
 import type { FieldDef, PropertySchema } from "@hermes/shared";
 import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Block, type BlockType, type CalendarFeed, type Collection, type FeedEvent, type Member } from "../api.ts";
 import { useAnyBlockChange, useBlockDeleted } from "../lib/block-events.ts";
 import { useCalendarRefresh, useFeedEventConverted } from "../lib/calendar-events.ts";
@@ -923,36 +923,63 @@ export function CalendarView({
 
   /**
    * Two fingers sideways moves to the next range, the way a trackpad moves
-   * anything else sideways. A horizontal wheel is what that gesture arrives as;
-   * the guard is that it has to be plainly horizontal and plainly deliberate,
-   * or scrolling the hours would drag the days along with it.
+   * anything else sideways. A horizontal wheel is what that gesture arrives as.
    *
-   * One gesture is one step: a swipe arrives as a burst of events, and the
-   * latch only lifts once they stop coming.
+   * **The page has to claim the gesture from its first event, not its largest.**
+   * Inside Talaria's window — and in Safari — a two-finger swipe that nothing
+   * claims is a back/forward swipe, and WebKit decides which it is from the
+   * opening events of the gesture. Those are small. This used to ignore any
+   * event under 24px, so a swipe that started gently went unclaimed, the window
+   * took it as history navigation, and the calendar never saw the rest: it
+   * worked when the fingers started fast and fell back to the browser when they
+   * did not.
+   *
+   * So a gesture is claimed on its first plainly horizontal event, however
+   * small, and every event after that until the gesture settles is claimed too
+   * — momentum included, which is the other half that used to leak out. The
+   * distance is accumulated, and one step is taken once it adds up to a
+   * deliberate swipe. Plainly horizontal is the guard that keeps scrolling the
+   * hours from dragging the days along: a vertical scroll never starts one.
+   *
+   * One gesture is one step: the latch only lifts once the events stop coming.
    */
-  const swipeRef = useRef<HTMLDivElement>(null);
   // Reached through a ref so the listener is bound once rather than on every
   // render — `step` is rebuilt each time the anchor moves.
   const stepRef = useRef<(dir: -1 | 1) => void>(() => {});
-  const swiping = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    const el = swipeRef.current;
+  const gesture = useRef<{ travel: number; stepped: boolean; settle?: ReturnType<typeof setTimeout> } | null>(null);
+  const detachSwipe = useRef<(() => void) | null>(null);
+  /**
+   * A callback ref rather than an effect that runs once, so the listener is on
+   * whatever element is actually mounted — including one that arrives after a
+   * first render that showed something else.
+   */
+  const swipeRef = useCallback((el: HTMLDivElement | null) => {
+    detachSwipe.current?.();
+    detachSwipe.current = null;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (e.ctrlKey) return; // pinch-zoom, not a swipe
-      if (Math.abs(e.deltaX) < 24 || Math.abs(e.deltaX) < Math.abs(e.deltaY) * 1.4) return;
+      // Lines and pages, for a wheel that reports in them, as pixels.
+      const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1;
+      const dx = e.deltaX * scale;
+      const dy = e.deltaY * scale;
+      const horizontal = dx !== 0 && Math.abs(dx) > Math.abs(dy) * 1.4;
+      if (!gesture.current && !horizontal) return; // an ordinary scroll
       e.preventDefault();
-      if (swiping.current) {
-        // Still the same gesture — keep the latch shut until it settles.
-        clearTimeout(swiping.current);
-        swiping.current = setTimeout(() => (swiping.current = undefined), 260);
-        return;
+      const g = gesture.current ?? (gesture.current = { travel: 0, stepped: false });
+      clearTimeout(g.settle);
+      g.settle = setTimeout(() => {
+        gesture.current = null;
+      }, 260);
+      if (g.stepped) return;
+      g.travel += dx;
+      if (Math.abs(g.travel) >= 40) {
+        g.stepped = true;
+        stepRef.current(g.travel > 0 ? 1 : -1);
       }
-      swiping.current = setTimeout(() => (swiping.current = undefined), 260);
-      stepRef.current(e.deltaX > 0 ? 1 : -1);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    detachSwipe.current = () => el.removeEventListener("wheel", onWheel);
   }, []);
 
   /** How many distinct things sit in the all-day band — one thing spanning

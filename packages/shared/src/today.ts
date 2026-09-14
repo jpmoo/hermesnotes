@@ -114,6 +114,8 @@ export function composeTodayLayout(
   suppress: string[] | undefined,
   defaults: DefaultTodayLayout,
   date: string,
+  /** The order somebody last arranged this day in — see `applyTodayOrder`. */
+  order?: string[],
 ): TodayLayout {
   const base = normalizeTodayLayout(dayLayout);
   const present = new Set(base.map(sectionKey));
@@ -131,7 +133,39 @@ export function composeTodayLayout(
       out.push(e.section);
     }
   }
-  return out;
+  return order?.length ? applyTodayOrder(out, order) : out;
+}
+
+/**
+ * Put a composed sheet back in the order somebody dragged it into.
+ *
+ * **Why composition alone could not keep a drag.** A standing section is
+ * injected right under its anchor every time the sheet is built, and a reorder
+ * deliberately stores only the day's own sections, so a drag can never pin a
+ * standing one to a single day. Together those meant "this day's note above the
+ * standing Eisenhower matrix" had no way to be written down: the day's list came
+ * out identical to before the drag, the matrix was injected under the
+ * scratchpad again, and the note fell back beneath it on the next load.
+ *
+ * So the arranged order is kept beside the day's list as keys, and applied here
+ * as a permutation of what composition already produced — it never adds a
+ * section and never keeps one alive. A standing section later removed is simply
+ * not there to be placed, which is the property the day-only storage protects.
+ * Sections the order does not mention stay in the slot composition gave them,
+ * so one added after the drag still lands under its anchor.
+ */
+export function applyTodayOrder(layout: TodayLayout, order: string[]): TodayLayout {
+  const rank = new Map<string, number>();
+  order.forEach((key, i) => {
+    if (!rank.has(key)) rank.set(key, i);
+  });
+  const ranked = layout
+    .filter((s) => rank.has(sectionKey(s)))
+    .sort((a, b) => rank.get(sectionKey(a))! - rank.get(sectionKey(b))!);
+  let next = 0;
+  // The ranked sections trade places among the slots ranked sections held; an
+  // unranked one keeps its own slot.
+  return layout.map((s) => (rank.has(sectionKey(s)) ? ranked[next++]! : s));
 }
 
 /** Merge overlapping/adjacent ranges for the same section so the list stays

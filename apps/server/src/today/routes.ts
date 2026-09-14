@@ -25,6 +25,7 @@ import {
   type PropertySchema,
   type StandardTodaySection,
   type TodayLayout,
+  MAX_TODAY_SECTIONS,
 } from "@hermes/shared";
 import { createHash } from "node:crypto";
 import { attachmentBlobs, attachments, blocks, blockTypes, userSettings } from "@hermes/db";
@@ -275,23 +276,33 @@ async function saveDefaults(userId: string, defaults: DefaultTodayLayout): Promi
 }
 
 /** A note's stored per-day layout + the global sections it suppresses. */
-function noteLayoutState(note: { properties: unknown }): { layout: TodayLayout; suppress: string[] } {
+function noteLayoutState(note: { properties: unknown }): {
+  layout: TodayLayout;
+  suppress: string[];
+  /** Section keys in the order this day was last arranged. See `applyTodayOrder`. */
+  order: string[];
+} {
   const props = (note.properties ?? {}) as Record<string, unknown>;
-  const suppress = Array.isArray(props.layout_suppress)
-    ? (props.layout_suppress as unknown[]).filter((k): k is string => typeof k === "string")
-    : [];
-  return { layout: normalizeTodayLayout(props.layout), suppress };
+  const strings = (v: unknown) =>
+    Array.isArray(v) ? (v as unknown[]).filter((k): k is string => typeof k === "string") : [];
+  return {
+    layout: normalizeTodayLayout(props.layout),
+    suppress: strings(props.layout_suppress),
+    order: strings(props.layout_order),
+  };
 }
 
 async function writeNoteLayout(
   userId: string,
   note: { id: string; properties: unknown },
-  patch: { layout?: TodayLayout; suppress?: string[] },
+  patch: { layout?: TodayLayout; suppress?: string[]; order?: string[] },
 ): Promise<void> {
   const props = (note.properties ?? {}) as Record<string, unknown>;
   const nextProps: Record<string, unknown> = { ...props };
   if (patch.layout) nextProps.layout = normalizeTodayLayout(patch.layout);
   if (patch.suppress) nextProps.layout_suppress = [...new Set(patch.suppress)];
+  // Capped like the layout itself: it is replayed on every load of this day.
+  if (patch.order) nextProps.layout_order = [...new Set(patch.order)].slice(0, MAX_TODAY_SECTIONS);
   await db
     .update(blocks)
     .set({ properties: nextProps, version: sql`${blocks.version} + 1`, updatedAt: new Date() })
@@ -660,9 +671,9 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       ),
     );
 
-    const { layout: dayLayout, suppress } = noteLayoutState(note);
+    const { layout: dayLayout, suppress, order } = noteLayoutState(note);
     const defaults = await loadDefaults(userId);
-    const layout = composeTodayLayout(dayLayout, suppress, defaults, date);
+    const layout = composeTodayLayout(dayLayout, suppress, defaults, date, order);
     return { note, relevant, activity, layout, pristine: isPristine(note) };
   });
 
@@ -679,11 +690,16 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const covered = new Set(
       defaults.filter((e) => rangeCovers(e, date)).map((e) => sectionKey(e.section)),
     );
-    const dayOnly = normalizeTodayLayout(layout).filter(
+    const arranged = normalizeTodayLayout(layout);
+    const dayOnly = arranged.filter(
       (s) => (s.t !== "collection" && s.t !== "block") || !covered.has(sectionKey(s)),
     );
-    await writeNoteLayout(userId, note, { layout: dayOnly });
-    return { layout: composeTodayLayout(dayOnly, noteLayoutState(note).suppress, defaults, date) };
+    // The whole order as dragged, standing sections included — kept as keys
+    // beside the day's list rather than in it, so it can place a standing
+    // section without keeping it on this day. See `applyTodayOrder`.
+    const order = arranged.map(sectionKey);
+    await writeNoteLayout(userId, note, { layout: dayOnly, order });
+    return { layout: composeTodayLayout(dayOnly, noteLayoutState(note).suppress, defaults, date, order) };
   });
 
   /** Inspect the cross-day default layout (the "all Dailies" entries). */
@@ -699,9 +715,9 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const { date } = z.object({ date: DATE }).parse(req.params);
     const note = await findOrCreateNote(userId, date);
-    const { layout: dayLayout, suppress } = noteLayoutState(note);
+    const { layout: dayLayout, suppress, order } = noteLayoutState(note);
     const defaults = await loadDefaults(userId);
-    const composed = composeTodayLayout(dayLayout, suppress, defaults, date);
+    const composed = composeTodayLayout(dayLayout, suppress, defaults, date, order);
     const daySet = new Set(dayLayout.map(sectionKey));
 
     const ids = composed
@@ -759,7 +775,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       if (suppress.length !== state.suppress.length) await writeNoteLayout(userId, note, { suppress });
     }
     const defaults = await loadDefaults(userId);
-    return { layout: composeTodayLayout(noteLayoutState(note).layout, suppress, defaults, date) };
+    return { layout: composeTodayLayout(noteLayoutState(note).layout, suppress, defaults, date, state.order) };
   });
 
   const rescopeBody = z.object({
@@ -787,7 +803,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
 
     // Which standard section it currently sits under, so it lands back in the
     // same place rather than at the top.
-    const composed = composeTodayLayout(state.layout, state.suppress, defaults, date);
+    const composed = composeTodayLayout(state.layout, state.suppress, defaults, date, state.order);
     let after: StandardTodaySection = "scratchpad";
     for (const sec of composed) {
       if (sectionKey(sec) === key) break;
@@ -813,7 +829,7 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     const fresh = noteLayoutState(await findOrCreateNote(userId, date));
-    return { layout: composeTodayLayout(fresh.layout, fresh.suppress, await loadDefaults(userId), date) };
+    return { layout: composeTodayLayout(fresh.layout, fresh.suppress, await loadDefaults(userId), date, fresh.order) };
   });
   const removeBody = z.object({
     section: customTodaySectionSchema,
@@ -847,6 +863,6 @@ export async function todayRoutes(app: FastifyInstance): Promise<void> {
       }
     }
     const fresh = noteLayoutState(await findOrCreateNote(userId, date));
-    return { layout: composeTodayLayout(fresh.layout, fresh.suppress, await loadDefaults(userId), date) };
+    return { layout: composeTodayLayout(fresh.layout, fresh.suppress, await loadDefaults(userId), date, fresh.order) };
   });
 }

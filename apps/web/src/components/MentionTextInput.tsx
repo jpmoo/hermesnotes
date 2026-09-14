@@ -86,6 +86,12 @@ function serializeLine(doc: PMNode): string {
  * Returning `false` rather than not registering the shortcut: the plugin has to
  * stay first for every *other* Enter, and false is how a ProseMirror handler
  * says "not mine" and lets the next one have it.
+ *
+ * **Stepping aside was not enough on its own**, and this is now a backstop. The
+ * next handler after this one was Tiptap's paragraph keymap, not the menu, so
+ * Enter still never chose anybody. The menu now runs ahead of everything —
+ * see `priority` in `lib/mentions.ts` — and this check only matters if that
+ * ever changes.
  */
 const SingleLine = Extension.create<{ menuOpen: () => boolean }>({
   name: "singleLine",

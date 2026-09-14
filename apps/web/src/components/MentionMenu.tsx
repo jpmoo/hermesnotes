@@ -1,5 +1,5 @@
 import { Hash, Plus } from "lucide-react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { api, type Block, type BlockRef, type BlockSearchResult, type BlockType } from "../api.ts";
 import { BlockIcon } from "../lib/icons.tsx";
@@ -29,6 +29,18 @@ export function MentionMenu({
   const [types, setTypes] = useState<BlockType[]>([]);
   const [options, setOptions] = useState<Opt[]>([]);
   const [index, setIndex] = useState(0);
+  /**
+   * Which query `options` answers — the trigger and the text after it.
+   *
+   * The list arrives 150ms after the last keystroke plus a round trip, so for a
+   * moment after typing `@Ma` it still holds the answer to `@M`. Enter in that
+   * moment chose the top of the *old* list, which can be somebody else entirely,
+   * or chose nothing when there was no list yet.
+   */
+  const [optionsFor, setOptionsFor] = useState<string | null>(null);
+  /** An Enter that arrived before the current query's answer did. */
+  const pendingEnter = useRef(false);
+  const queryKey = `${state.char}${state.query}`;
 
   const personType = types.find((t) => !t.isText && t.name.toLowerCase() === "person");
 
@@ -128,6 +140,7 @@ export function MentionMenu({
       }
       if (alive) {
         setOptions(opts);
+        setOptionsFor(`${state.char}${q}`);
         setIndex(0);
       }
     }, 150);
@@ -175,6 +188,13 @@ export function MentionMenu({
         return true;
       }
       if (e.key === "Enter" || e.key === "Tab") {
+        // Still answering an earlier query: hold the Enter and take the top
+        // match the moment this query's list lands, rather than choosing from
+        // a list that is about something else.
+        if (optionsFor !== queryKey) {
+          pendingEnter.current = true;
+          return true;
+        }
         const o = options[index];
         if (o) void choose(o);
         return true;
@@ -189,7 +209,20 @@ export function MentionMenu({
       keydown.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options, index, personType]);
+  }, [options, index, personType, optionsFor, queryKey]);
+
+  // A held Enter is spent on the first list that answers the query it was
+  // pressed on. Typing on afterwards is a change of mind, so it is dropped.
+  useEffect(() => {
+    pendingEnter.current = false;
+  }, [queryKey]);
+  useEffect(() => {
+    if (!pendingEnter.current || optionsFor !== queryKey) return;
+    pendingEnter.current = false;
+    const top = options[0];
+    if (top) void choose(top);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options, optionsFor]);
 
   const rect = state.rect();
   if (!rect) return null;

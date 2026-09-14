@@ -32,6 +32,22 @@ export interface MentionHandlers {
  */
 export const Mentions = Extension.create<{ handlers: MentionHandlers | null }>({
   name: "mentions",
+  /**
+   * First in line for every key, while a menu is open and only then.
+   *
+   * Enter chose nothing: somebody typed `@Ma`, saw the right person at the top
+   * and had to click. The keyboard reaches ProseMirror plugins in priority
+   * order, and this sat at the default 100 behind everything that also wants
+   * Enter — the live-preview line in a long text field (1000), which committed
+   * the line instead; the title field's single-line rule (1001), which blurred;
+   * and Tiptap's own paragraph keymap, which splits the block and was still
+   * ahead of this after the single-line rule learned to step aside.
+   *
+   * Above all of them is safe because the suggestion plugin answers `false` for
+   * any key while its menu is shut, so every other Enter, Tab and arrow goes
+   * exactly where it went before.
+   */
+  priority: 1100,
   addOptions() {
     return { handlers: null };
   },

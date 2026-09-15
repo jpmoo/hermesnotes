@@ -31,6 +31,7 @@ import { escapeLabel, linksToMentions, MentionNode } from "../lib/mention-node.t
 import { Mentions, type MentionHandlers, type MentionState } from "../lib/mentions.ts";
 import { captureField, runFieldClipboard, type FieldSelection } from "../lib/field-clipboard.ts";
 import { useMenuPosition } from "../lib/menu-position.ts";
+import { titleLine } from "../lib/title-line.ts";
 import { emitBlockChange } from "../lib/block-events.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
@@ -598,15 +599,14 @@ export function MarkdownEditor({
       setFailNote("That selection has moved — try again.");
       return;
     }
-    // The first row names it; everything under that is its body. The row is
-    // found in the document rather than by splitting text, so a selection that
-    // starts mid-paragraph or inside a list item still ends its title where
-    // that line ends.
+    // The first line with words in it names it; everything after that line is
+    // its body. See `titleLine` for why a line and not a paragraph.
     const doc = editor.state.doc;
-    const $from = doc.resolve(from);
-    const firstEnd = Math.min(to, $from.end($from.depth));
-    const titleText = doc.textBetween(from, firstEnd, " ", asLabel).trim();
-    const title = doc.textBetween(from, firstEnd, " ", asTitleRaw).replace(/\s+/g, " ").trim() || "Untitled";
+    const line = titleLine(doc, from, to, (a, b) => doc.textBetween(a, b, " ", asLabel));
+    const titleStart = line.start;
+    const firstEnd = line.end;
+    const titleText = doc.textBetween(titleStart, firstEnd, " ", asLabel).trim();
+    const title = doc.textBetween(titleStart, firstEnd, " ", asTitleRaw).replace(/\s+/g, " ").trim() || "Untitled";
 
     // Serialized rather than read as text, so what arrives is what was written:
     // the bullets stay bullets, the bold stays bold, and a mention stays a
@@ -614,7 +614,9 @@ export function MarkdownEditor({
     const md = editor.storage.markdown as { serializer: { serialize: (f: Fragment) => string | undefined } };
     const asMd = (a: number, b: number) =>
       a >= b ? "" : String(md.serializer.serialize(doc.slice(a, b).content) ?? "").trim();
-    const rest = asMd(firstEnd, to);
+    // From just past the title's line break — a break inside the paragraph is
+    // part of the title's line, not the body's.
+    const rest = asMd(line.next, to);
 
     const key = bodyFieldKey(type.propertySchema);
     const body = type.isText

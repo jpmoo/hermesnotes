@@ -75,7 +75,7 @@ export function Sidebar() {
   const [newCollection, setNewCollection] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [types, setTypes] = useState<BlockType[]>([]);
-  const { openBlock } = usePanels();
+  const { openBlock, dropOrigin } = usePanels();
   /**
    * Unfolded, because the rail was asked for.
    *
@@ -213,7 +213,9 @@ export function Sidebar() {
     const c = colors(key);
     return (
       <div className="nav-row" style={rowStyleOf(key)}>
-        <NavLink to={to} end={end} className="nav-link" title={label}>
+        {/* A rail button asks for the page, not for wherever you were last —
+            see `dropOrigin`. */}
+        <NavLink to={to} end={end} className="nav-link" title={label} onClick={dropOrigin}>
           <Icon size={18} className="nav-row-icon" style={c.icon ? { color: c.icon } : undefined} />
           <span className="label">{label}</span>
         </NavLink>
@@ -362,7 +364,7 @@ export function Sidebar() {
           {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
           <span className="label">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
         </button>
-        <NavLink to="/settings" className="nav-link" title="Settings">
+        <NavLink to="/settings" className="nav-link" title="Settings" onClick={dropOrigin}>
           <Settings size={18} />
           <span className="label">Settings</span>
         </NavLink>

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePanels } from "./right-panel.tsx";
 
 /**
@@ -16,24 +16,21 @@ import { usePanels } from "./right-panel.tsx";
  *              giving up on the first frame.
  */
 export function useOriginScroll(ready: boolean) {
-  const { scrollTarget } = usePanels();
-  const id = scrollTarget?.id ?? null;
+  const { scrollTarget, takeOrigin } = usePanels();
   const nonce = scrollTarget?.nonce ?? 0;
-  // An origin is somewhere you came FROM, once. It stays set until the next
-  // navigation records one, so a page that stays mounted and merely changes
-  // what it's showing — stepping from day to day on the Today sheet — kept
-  // being handed the same one and kept hunting for it. Landing halfway down
-  // today, on a card you opened from some other day, was that: the block was
-  // in the day's lists, so it was found and centered.
-  const consumed = useRef(0);
 
   useEffect(() => {
     if (!ready) return;
     // The scroll container survives the route change, so without this a new page
     // opens at the old page's offset.
     document.querySelector<HTMLElement>(".main")?.scrollTo({ top: 0 });
-    if (!id || nonce === consumed.current) return;
-    consumed.current = nonce;
+    // An origin is somewhere you came FROM, once — and once for the whole app,
+    // not once per page that looks. Spending it here is what keeps a later
+    // arrival that asked for nothing at the top of the page: clicking Today in
+    // the rail used to find the block some earlier navigation had recorded,
+    // still sitting there, and center on it halfway down the day.
+    const id = takeOrigin();
+    if (!id) return;
 
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -70,5 +67,5 @@ export function useOriginScroll(ready: boolean) {
       window.removeEventListener("touchmove", cancel);
       window.removeEventListener("keydown", cancel);
     };
-  }, [ready, id, nonce]);
+  }, [ready, nonce, takeOrigin]);
 }

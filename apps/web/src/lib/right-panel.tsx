@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { dailyNotePeriod } from "@hermes/shared";
 import type { FeedEvent } from "../api.ts";
@@ -56,6 +56,25 @@ interface PanelsApi {
    * Bumped per navigation so landing twice on the same page still scrolls.
    */
   scrollTarget: { id: string; nonce: number } | null;
+  /**
+   * The origin, if it has not been used yet — and spent by asking.
+   *
+   * One navigation is one landing. An origin used to sit until the next one
+   * replaced it, and each page that looked was free to take it again: opening a
+   * block from a list set it, and every later arrival on the Today page found
+   * that block among the day's cards and centered on it. Clicking Today in the
+   * rail is not asking to be put back anywhere, and it landed halfway down.
+   */
+  takeOrigin: () => string | null;
+  /**
+   * Forget where we came from — this navigation is not a walk back.
+   *
+   * A rail button is an errand, not a return: pressing Today means the top of
+   * today. Without this the marker left by the last block you opened was still
+   * unspent (the block's own page never looks for one), so the day page found
+   * that block among its cards and opened halfway down.
+   */
+  dropOrigin: () => void;
   /** Record where we're leaving from — for navigations made outside here. */
   rememberOrigin: () => void;
   /**
@@ -136,6 +155,9 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
   const [revealTick, setRevealTick] = useState(0);
   const scrollNonce = useRef(0);
+  /** The origin as a ref, and the nonce already spent — see `takeOrigin`. */
+  const originRef = useRef<{ id: string; nonce: number } | null>(null);
+  const spentOrigin = useRef(0);
   const [infoTick, setInfoTick] = useState(0);
   const refreshInfo = () => setInfoTick((t) => t + 1);
 
@@ -267,8 +289,27 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
    * section you were in on a day — rather than dropping you at the top.
    */
   const rememberOrigin = () => {
-    setScrollTarget(cur && !cur.page ? { id: cur.id, nonce: ++scrollNonce.current } : null);
+    const next = cur && !cur.page ? { id: cur.id, nonce: ++scrollNonce.current } : null;
+    // Held in a ref as well as in state: `takeOrigin` is handed to effects that
+    // must not re-run when it changes, so it reads the ref rather than closing
+    // over a render's value.
+    originRef.current = next;
+    setScrollTarget(next);
   };
+
+  /** See `dropOrigin` in PanelsApi. */
+  const dropOrigin = useCallback(() => {
+    originRef.current = null;
+    setScrollTarget(null);
+  }, []);
+
+  /** See `takeOrigin` in PanelsApi: an origin is good for one landing. */
+  const takeOrigin = useCallback(() => {
+    const target = originRef.current;
+    if (!target || target.nonce <= spentOrigin.current) return null;
+    spentOrigin.current = target.nonce;
+    return target.id;
+  }, []);
 
   const selectBlock = (id: string, opts?: { collection?: boolean; quiet?: boolean }) =>
     append({ id, collection: opts?.collection ?? false }, opts?.quiet);
@@ -350,6 +391,8 @@ export function PanelsProvider({ children }: { children: ReactNode }) {
       recents,
       revealTick,
       scrollTarget,
+      takeOrigin,
+      dropOrigin,
       rememberOrigin,
       infoTick,
       refreshInfo,

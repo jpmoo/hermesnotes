@@ -106,15 +106,6 @@ const configSchema = z.object({
    * keeping those two decisions apart is why they are two lists.
    */
   contextTrustAllTitles: z.boolean().default(false),
-  /**
-   * Where `aerospace` lives, if it is not in one of the obvious places.
-   *
-   * A LaunchAgent's `PATH` is not your shell's, so a binary you can run by name
-   * in a terminal may be unfindable to the daemon. Set this if `talaria doctor`
-   * says the workspace is missing while `aerospace list-workspaces --focused`
-   * works.
-   */
-  aerospaceCli: z.string().optional(),
 });
 export type Config = z.infer<typeof configSchema>;
 

@@ -968,19 +968,6 @@ enum Daemon {
         let error: String?
     }
 
-    struct WorkspaceWindow: Decodable {
-        let id: Int
-        let app: String
-        let bundleId: String?
-        let title: String
-    }
-
-    struct Workspace: Decodable {
-        let name: String
-        let focused: Bool
-        let windows: [WorkspaceWindow]
-    }
-
     static func scratchpad() throws -> Scratchpad {
         try JSONDecoder().decode(Scratchpad.self, from: get("/scratchpad"))
     }
@@ -990,22 +977,6 @@ enum Daemon {
             SaveResult.self,
             from: send("PUT", "/scratchpad", ["id": id, "content": content, "version": version])
         )
-    }
-
-    private struct WorkspaceList: Decodable { let workspaces: [Workspace] }
-
-    static func workspaces() throws -> [Workspace] {
-        try JSONDecoder().decode(WorkspaceList.self, from: get("/workspaces")).workspaces
-    }
-
-    @discardableResult
-    static func focusWorkspace(_ name: String) throws -> Bool {
-        // The name goes in the path and can be anything somebody typed into a
-        // config file — "Writ/Reading" has a slash in it, which is a path
-        // separator to everything in between here and the route.
-        let escaped = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? name
-        let out = try send("POST", "/workspace/\(escaped)", [:])
-        return (try? JSONDecoder().decode(SaveResult.self, from: out))?.ok ?? false
     }
 
     static func health() throws -> Health {

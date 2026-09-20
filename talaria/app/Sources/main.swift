@@ -186,7 +186,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     private let scratchpadModel = ScratchpadModel()
-    private let workspacesModel = WorkspacesModel()
     private var deskHotkey: Hotkey?
     private var settingsWindow: NSPanel?
     private var composeWindow: NSPanel?
@@ -629,35 +628,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             insets: deskInsets,
             chrome: deskChrome,
             scratchpad: scratchpadModel,
-            workspaces: workspacesModel,
             compose: composeModel,
             glance: glanceModel,
             canvas: canvasModel,
             assistant: assistantModel,
             canvasChat: canvasChatModel,
             onCompose: { [weak self] seed, image, made in self?.compose(seed: seed, image: image, then: made) },
-            onLeave: { [weak self] in self?.hideDesk() },
-            onPickWorkspace: { [weak self] name in
-                // Leave first, then go. Going somewhere is leaving here — but
-                // the order matters more than it looks.
-                //
-                // Switching first did switch: the daemon accepted it and
-                // AeroSpace moved. Then the desk closed, this app went back to
-                // being an accessory, and macOS handed the foreground to
-                // whatever had it before — an application living on the
-                // workspace we had just left, which AeroSpace duly followed
-                // back. The click worked and its effect was undone a moment
-                // later by the dismissal, which is indistinguishable from the
-                // click doing nothing.
-                //
-                // So: dismiss, let the handover settle, then ask. A tenth of a
-                // second is the smallest delay that reliably lands after
-                // AppKit's own activation work.
-                self?.hideDesk()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self?.workspacesModel.focus(name)
-                }
-            }
+            onLeave: { [weak self] in self?.hideDesk() }
         ))
         // The window decides the size, not the content.
         //
@@ -691,7 +668,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Focused.forgetCopied()
         composeModel.load(seed: Focused.selection(allowCopy: true))
         scratchpadModel.load()
-        workspacesModel.load()
 
         let screen = NSScreen.screens.first(where: { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) })
             ?? NSScreen.main

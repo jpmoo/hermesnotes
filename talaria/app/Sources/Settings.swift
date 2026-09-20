@@ -44,7 +44,6 @@ struct TalariaConfig: Equatable, Sendable {
     var inferenceUrl = "http://localhost:11434"
     var inferenceModel = ""
     var contextExclude: [String] = []
-    var aerospaceCli = ""
 
     // Read by the app, ignored by the daemon: zod strips what it does not
     // declare rather than rejecting it, which is what lets these live here.
@@ -97,7 +96,6 @@ enum ConfigStore {
         if !str("inferenceUrl").isEmpty { c.inferenceUrl = str("inferenceUrl") }
         c.inferenceModel = str("inferenceModel")
         c.contextExclude = (obj["contextExclude"] as? [String]) ?? []
-        c.aerospaceCli = str("aerospaceCli")
         c.boardHotkey = str("boardHotkey")
         c.assistantHotkey = str("assistantHotkey")
         c.glanceHotkey = str("glanceHotkey")
@@ -138,7 +136,6 @@ enum ConfigStore {
             if value.trimmingCharacters(in: .whitespaces).isEmpty { obj.removeValue(forKey: key) }
             else { obj[key] = value.trimmingCharacters(in: .whitespaces) }
         }
-        optional("aerospaceCli", c.aerospaceCli)
         optional("boardHotkey", c.boardHotkey)
         optional("assistantHotkey", c.assistantHotkey)
         optional("glanceHotkey", c.glanceHotkey)

@@ -41,6 +41,20 @@ This is the same argument `DESIGN.md` §1.1 makes about re-implementing
 | **Talaria** | **the bus** | socket, mirror, FTS, queue, URL scheme, `doctor` — all of it already exists |
 | **Local inference box** | the thing that runs when nobody is asking | lives on the LAN where Hermes lives, not on the Mac |
 
+**AeroSpace support was removed on 2026-09-20, and everything below is kept as
+the record rather than as instructions.** What it contributed had split in two.
+The window title — the part that mattered — moved to `talaria-ax` and the
+accessibility API, which reads `kAXTitleAttribute` on the focused window and
+answers whatever is in front, managed or not; the application name comes from
+Launch Services. Workspaces were the only thing AeroSpace alone could say, and
+with it quit they were a column that was always null and a desk pane nothing
+referenced. So the probe, the `/workspaces` routes, the `aerospaceCli` setting
+and the pane went, leaving the record with the two facts it actually uses.
+
+On Linux none of this applies: the shell pushes application, title *and*
+workspace from the compositor, which is the arrangement this document argued
+for and the one that survived.
+
 **The window manager is the sensor, not BTT.** An earlier draft of this document
 had it the other way round, on the assumption that window titles were BTT's to
 observe. They are not — a window manager already tracks them, and can run a

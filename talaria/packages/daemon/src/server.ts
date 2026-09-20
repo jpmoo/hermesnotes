@@ -20,7 +20,7 @@ import {
 } from "@talaria/canonical";
 import { HOME, type Config } from "./config.js";
 import { pictureValue, readCanvas, sweepImages, writeCanvas, type CanvasDocument } from "./canvas.js";
-import { ContextRecord, FrontmostWatcher, focusWorkspace, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS, wmStatus, workspaces } from "./context.js";
+import { ContextRecord, FrontmostWatcher, frontmostApp, LAUNCHERS, stripMarkers, TITLE_BLIND, WINDOW_HOURS } from "./context.js";
 import { focusedText, Glance, MAX_SOURCE, mayEmbedTitle, ollamaEmbedder } from "./glance.js";
 import { HermesError, OfflineError, type Hermes } from "./hermes.js";
 import { createHash } from "node:crypto";
@@ -220,22 +220,19 @@ export function buildServer(deps: {
    * Measured, not assumed: a window manager's events describe windows and
    * workspaces, and ⌘-Tab between two applications produces none of them.
    */
-  // The accessibility reader is handed to the watcher as well as to Glance: a
-  // window title is not the window manager's to give, and without this it
-  // vanished whenever AeroSpace did. See `focusedTitle`.
-  const frontmost = new FrontmostWatcher(context, 2000, config.aerospaceCli, AX_HELPER);
+  // The accessibility reader is handed to the watcher as well as to Glance:
+  // Launch Services names the application and nothing else, so without this a
+  // context row carries an app and no title. See `focusedTitle`.
+  const frontmost = new FrontmostWatcher(context, 2000, AX_HELPER);
   frontmost.start();
   app.addHook("onClose", async () => frontmost.stop());
 
   /**
    * Record a moment. Called by whatever is watching the desktop.
    *
-   * The window manager's part is the workspace and only the workspace — it is
-   * the one thing here that knows about them, and the one thing it can tell us
-   * that the poll cannot see:
-   *
-   *   aerospace list-windows --focused \
-   *     --format '%{app-bundle-id}\t%{workspace}\t%{window-title}'
+   * The Linux shell is what calls it: the compositor tells it which window is
+   * focused, its title and its workspace, and it hands all three on. macOS has
+   * no caller — the daemon polls there, and has no workspaces to report.
    *
    * Answers with what was actually stored rather than an acknowledgement, so a
    * caller can see the redaction instead of trusting it.
@@ -623,9 +620,8 @@ export function buildServer(deps: {
       const mins = last ? Math.round((Date.now() - last.getTime()) / 60000) : null;
       // A gap and a fault are different things, and reporting them the same way
       // is how a diagnostic starts lying. Off macOS nothing here polls:
-      // `lsappinfo` and AeroSpace are macOS, and the Linux shell pushes the
-      // focused window instead — from the KWin script or Hyprland's event
-      // socket. So a recent row *is* the window source, and its absence means
+      // `lsappinfo` is macOS, and the Linux shell pushes the focused window
+      // instead — from the KWin script or Hyprland's event socket. So a recent row *is* the window source, and its absence means
       // the shell is not running rather than that anything is broken.
       const noWindowSource = process.platform !== "darwin";
       const pushed = noWindowSource ? rows[0] : undefined;
@@ -641,42 +637,6 @@ export function buildServer(deps: {
               : "lsappinfo told us nothing — the frontmost poll is doing nothing at all",
       );
 
-      /**
-       * Is the workspace half alive?
-       *
-       * The poll cannot see workspaces; only the window manager can, and a
-       * subscription is a foreground process that dies with the terminal that
-       * started it. So the most likely state of this wiring is *stopped*, and
-       * the symptom is rows that merely stop carrying a name — invisible unless
-       * something asks.
-       */
-      const withWorkspace = context.recent(1).some((r) => r.workspace);
-      // Asked only when there is something to explain, and it is one short
-      // command: a check that shells out on the happy path is a check that
-      // makes `doctor` slower for everybody to say something nobody needed.
-      const wm = withWorkspace || noWindowSource ? "answering" : await wmStatus(config.aerospaceCli);
-      add(
-        "workspace",
-        // Quit or switched off is a choice somebody made, not a fault. The
-        // record still names the app and the title without it — Launch
-        // Services and Accessibility answer those — so failing doctor over it
-        // would put a red line in front of a machine that is working exactly
-        // as its owner set it up. Only a binary that cannot be found is a
-        // problem worth failing on, because that one was meant to be there.
-        withWorkspace || noWindowSource || wm === "disabled" || wm === "stopped",
-        withWorkspace
-          ? "arriving from the window manager"
-          : noWindowSource
-            ? "no window manager wired up yet — KDE virtual desktops are the Linux analogue"
-            : wm === "stopped"
-              ? "AeroSpace isn't running, so there are no workspace names — apps and window titles still arrive from Launch Services and Accessibility"
-              : wm === "disabled"
-                // Found, running, and refusing — which is not a PATH problem, and
-                // telling somebody to go looking for a binary that is sitting
-                // right there is how a diagnostic wastes an afternoon.
-                ? "AeroSpace is running but switched off, so there are no workspace names — `aerospace enable on` brings them back; apps and titles still arrive from Accessibility"
-                : "the newest row names no workspace — is `aerospace` on the daemon's PATH? set `aerospaceCli` in config.json",
-      );
     }
 
     return { ok: checks.every((c) => c.ok), checks };
@@ -2126,21 +2086,6 @@ export function buildServer(deps: {
       const message = (err as Error).message;
       return reply.code(/409/.test(message) ? 409 : 503).send({ ok: false, error: message });
     }
-  });
-
-  /**
-   * The workspaces, and what is in each.
-   *
-   * Window ids are the point: a window a tiling manager has parked off-screen
-   * still has a backing store, so the app can take a picture of a workspace
-   * nobody is looking at. Without the ids there is nothing to photograph.
-   */
-  app.get("/workspaces", async () => ({ workspaces: await workspaces(config.aerospaceCli) }));
-
-  app.post("/workspace/:name", async (req, reply) => {
-    const { name } = z.object({ name: z.string().min(1).max(128) }).parse(req.params);
-    const ok = await focusWorkspace(name, config.aerospaceCli);
-    return ok ? { ok } : reply.code(502).send({ ok, error: "the window manager did not accept that" });
   });
 
   app.post("/sync", async (req) => {

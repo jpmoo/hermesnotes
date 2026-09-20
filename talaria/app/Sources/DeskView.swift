@@ -215,248 +215,6 @@ private struct ScratchpadPane: View {
     }
 }
 
-// MARK: - Where you were
-
-/**
- The workspaces, as pictures.
-
- A tiling manager parks the workspace you are not on off-screen rather than
- destroying it, and macOS keeps a backing store for a window whether or not it
- is being drawn. So a workspace nobody is looking at can still be photographed,
- which is the whole reason this can show you where you were rather than a list
- of names.
-
- Screen Recording is what that costs. Without it the capture returns nothing and
- the tile falls back to the icons of the applications in that workspace — which
- is less than a picture and still tells you which one is your mail.
- */
-@MainActor
-final class WorkspacesModel: ObservableObject {
-    @Published var spaces: [Daemon.Workspace] = []
-    @Published var shots: [String: NSImage] = [:]
-    @Published var loading = true
-    @Published var denied = false
-
-    /// Whether the prompt has been put up this launch. macOS shows it once and
-    /// then quietly refuses; asking on every open would be a panel that appears
-    /// to do nothing, repeatedly.
-    private static var asked = false
-
-    func load() {
-        loading = true
-        // Preflight rather than assume: this returns false the first time and
-        // the request puts up the system prompt. Both are cheap and neither
-        // captures anything.
-        if !CGPreflightScreenCaptureAccess() && !Self.asked {
-            Self.asked = true
-            _ = CGRequestScreenCaptureAccess()
-        }
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let got = (try? Daemon.workspaces()) ?? []
-            await MainActor.run {
-                guard let self else { return }
-                self.spaces = got
-                self.loading = false
-            }
-            // Pictures after names. The list is the useful part and arrives in
-            // milliseconds; a capture is tens of them per window, and making the
-            // panel wait for all of them would be the difference between opening
-            // and appearing to hang.
-            for space in got {
-                guard let shot = Self.picture(of: space) else { continue }
-                await MainActor.run { self?.shots[space.name] = shot }
-            }
-            await MainActor.run { self?.denied = (self?.shots.isEmpty ?? true) && got.contains { !Self.others($0).isEmpty } }
-        }
-    }
-
-    /// The largest window in a workspace, which is the one that says where you
-    /// were. Compositing every window into a little diagram was the other
-    /// option and it produces a picture of a layout rather than of work.
-    /**
-     What is in a workspace, not counting us.
-
-     The desk is a real window in whichever workspace it was opened in — it has
-     to be, or the tiling manager cannot see it and will not leave it alone — and
-     it covers the screen, which made it the largest window in the focused
-     workspace and therefore the one photographed. So the tile for the workspace
-     you are in showed a picture of the panel you were looking at, nested inside
-     itself.
-
-     Our own windows are dropped from the count and the icons as well, for the
-     same reason: a workspace's tile should say what is there to go back to, and
-     this app's panels are not that.
-     */
-    nonisolated static func others(_ space: Daemon.Workspace) -> [Daemon.WorkspaceWindow] {
-        let mine = Bundle.main.bundleIdentifier
-        return space.windows.filter { $0.bundleId != mine }
-    }
-
-    nonisolated private static func picture(of space: Daemon.Workspace) -> NSImage? {
-        var best: NSImage?
-        var bestArea: CGFloat = 0
-        for window in others(space) {
-            guard
-                let shot = CGWindowListCreateImage(
-                    .null,
-                    .optionIncludingWindow,
-                    CGWindowID(window.id),
-                    [.boundsIgnoreFraming, .nominalResolution]
-                )
-            else { continue }
-            let area = CGFloat(shot.width * shot.height)
-            if area > bestArea {
-                bestArea = area
-                best = NSImage(cgImage: shot, size: NSSize(width: shot.width, height: shot.height))
-            }
-        }
-        return best
-    }
-
-    func focus(_ name: String) {
-        Task.detached(priority: .userInitiated) { _ = try? Daemon.focusWorkspace(name) }
-    }
-}
-
-private struct WorkspacesPane: View {
-    @ObservedObject var model: WorkspacesModel
-    var onPick: (String) -> Void
-
-    private static let gap: CGFloat = 10
-    private static let inset: CGFloat = 8
-
-    var body: some View {
-        DeskPane(
-            title: "Workspaces",
-            subtitle: model.spaces.first(where: { $0.focused })?.name,
-            note: model.denied ? "no Screen Recording — grant it in System Settings for pictures" : nil
-        ) {
-            if model.loading {
-                DeskPlaceholder("asking the window manager")
-            } else if model.spaces.isEmpty {
-                DeskPlaceholder("no window manager answering")
-            } else {
-                // Filled, not listed.
-                //
-                // An adaptive grid of fixed-height tiles put four workspaces in
-                // a row across the top and left the rest of the quadrant empty,
-                // which is a waste of the one pane whose whole job is to be
-                // looked at. The shape is computed from how many there are and
-                // the tiles take whatever is left over, so the pictures are as
-                // large as the space allows — a thumbnail you have to lean
-                // towards is not doing anything a label would not.
-                GeometryReader { geo in
-                    let count = max(1, model.spaces.count)
-                    let cols = min(count, max(1, Int(ceil(sqrt(Double(count))))))
-                    let rows = Int(ceil(Double(count) / Double(cols)))
-                    let usableW = geo.size.width - Self.inset * 2
-                    let usableH = geo.size.height - Self.inset * 2
-                    let tileW = (usableW - Self.gap * CGFloat(cols - 1)) / CGFloat(cols)
-                    let tileH = (usableH - Self.gap * CGFloat(rows - 1)) / CGFloat(rows)
-                    VStack(spacing: Self.gap) {
-                        ForEach(0..<rows, id: \.self) { row in
-                            HStack(spacing: Self.gap) {
-                                ForEach(0..<cols, id: \.self) { col in
-                                    let i = row * cols + col
-                                    if i < model.spaces.count {
-                                        tile(model.spaces[i], width: tileW, height: tileH)
-                                    } else {
-                                        // Keeps the last row aligned with the
-                                        // ones above rather than centering three
-                                        // tiles under four.
-                                        Color.clear.frame(width: tileW, height: tileH)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(Self.inset)
-                }
-            }
-        }
-    }
-
-    private func tile(_ space: Daemon.Workspace, width: CGFloat, height: CGFloat) -> some View {
-        Button {
-            onPick(space.name)
-        } label: {
-            // The picture gets an exact rectangle, not a share of one.
-            //
-            // `.aspectRatio(.fill)` makes an image larger than its container on
-            // purpose, and a clip afterwards changes what is *drawn* and not
-            // what is *laid out* — so a wide window's thumbnail still measured
-            // wide, pushed its own tile out, and four equal tiles came back
-            // unequal. Sizing the frame first and clipping to that is the only
-            // arrangement where fill means "cover this" rather than "become this
-            // big".
-            let caption: CGFloat = 16
-            let spacing: CGFloat = 5
-            let pictureH = max(24, height - caption - spacing)
-            VStack(alignment: .leading, spacing: spacing) {
-                ZStack {
-                    // A hollow in the surface rather than a panel on top of
-                    // it: at 0.06 of the foreground color an empty tile reads
-                    // as a recess, and the frost behind still shows.
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.primary.opacity(0.04))
-                    if let shot = model.shots[space.name] {
-                        // A photograph is opaque by nature, and four of them at
-                        // full strength turned this quadrant into a contact
-                        // sheet stuck to the glass. Slightly sunk into the
-                        // surface instead — still legible as a picture of a
-                        // workspace, no longer the brightest thing on the desk.
-                        Image(nsImage: shot)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .opacity(0.82)
-                    } else if WorkspacesModel.others(space).isEmpty {
-                        Text("empty")
-                            .font(Theme.chrome(10))
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        // No picture: the applications themselves, which is
-                        // still enough to recognize a workspace by.
-                        HStack(spacing: 4) {
-                            ForEach(Array(WorkspacesModel.others(space).prefix(4).enumerated()), id: \.offset) { _, window in
-                                if let icon = Self.icon(for: window.bundleId) {
-                                    Image(nsImage: icon).resizable().frame(width: 22, height: 22)
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(width: width, height: pictureH)
-                .clipped()
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7)
-                        .strokeBorder(space.focused ? Theme.accent : Color.primary.opacity(0.12),
-                                      lineWidth: space.focused ? 2 : 1)
-                )
-
-                HStack(spacing: 5) {
-                    Text(space.name).font(Theme.chrome(11, weight: .medium)).lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text(WorkspacesModel.others(space).isEmpty ? "—" : "\(WorkspacesModel.others(space).count)")
-                        .font(Theme.chrome(10))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(width: width, height: caption)
-            }
-        }
-        .buttonStyle(.plain)
-        .frame(width: width, height: height)
-        .help(WorkspacesModel.others(space).map(\.app).joined(separator: ", "))
-    }
-
-    private static func icon(for bundleId: String?) -> NSImage? {
-        guard let bundleId,
-              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId)
-        else { return nil }
-        return NSWorkspace.shared.icon(forFile: url.path)
-    }
-}
-
 // MARK: - Furniture
 
 /// One quadrant: a titled card over the frost.
@@ -650,7 +408,6 @@ struct DeskView: View {
     @ObservedObject var insets: DeskInsets
     @ObservedObject var chrome: DeskChrome
     @ObservedObject var scratchpad: ScratchpadModel
-    @ObservedObject var workspaces: WorkspacesModel
     @ObservedObject var compose: ComposeModel
     @ObservedObject var glance: GlanceModel
     @ObservedObject var canvas: CanvasModel
@@ -668,7 +425,6 @@ struct DeskView: View {
     var onCompose: (String, String?, @escaping (String) -> Void) -> Void
     /// Put the desk away — for an action that sends somebody out of it.
     var onLeave: () -> Void
-    var onPickWorkspace: (String) -> Void
 
     private static let gap: CGFloat = 14
     private static let margin: CGFloat = 18
@@ -848,14 +604,9 @@ struct DeskView: View {
                     GlanceView(model: glance, standalone: false)
                 }
                 .frame(width: w, height: h)
-                // Chat, where the workspace picker was.
-                //
-                // `WorkspacesPane` above is deliberately still here and
-                // deliberately unreferenced. The intention is that the four
-                // quadrants become a choice rather than a layout — pick what
-                // goes in each — and deleting the pane now would mean writing
-                // it again then. It compiles, it works, and the day the desk
-                // learns to be arranged it goes straight back in.
+                // Chat, where the workspace picker used to be. The pane that
+                // drew workspaces went with AeroSpace support: macOS has no
+                // workspaces of its own to draw.
                 DeskPane(title: "Chat") {
                     AssistantView(model: assistant, standalone: false, autofocus: false)
                 }

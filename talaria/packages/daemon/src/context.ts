@@ -91,13 +91,13 @@ export const TRANSIENT = [
 /**
  * Whether the two things that answer "what is in front" can exist here.
  *
- * `lsappinfo` and AeroSpace are both macOS, and both are polled on a timer, so
- * off macOS they are not a failure to handle but a question not to ask. What
- * replaces them is KWin, which is compositor work and is not this change.
+ * `lsappinfo` is macOS and is polled on a timer, so off macOS it is not a
+ * failure to handle but a question not to ask. What answers there instead is
+ * the Linux shell, which pushes the focused window to `POST /context` from the
+ * compositor rather than being polled at all.
  *
- * Named for the sources rather than for the platform because that is the fact
- * being tested. When KWin lands, this constant does not become wrong — it stops
- * being the only thing consulted, and the flag beside it says so.
+ * Named for the source rather than for the platform because that is the fact
+ * being tested.
  */
 const MACOS_WINDOW_SOURCES = process.platform === "darwin";
 
@@ -205,7 +205,7 @@ export const MAX_TITLE = 120;
  * Long enough that a machine without it stops paying for the question, short
  * enough that starting it is noticed within a coffee.
  */
-export const WM_RECHECK_MS = 5 * 60 * 1000;
+export const RECHECK_MS = 5 * 60 * 1000;
 
 /**
  * Decoration a window manager hangs on a title, which is not part of the title.
@@ -280,8 +280,7 @@ export async function frontmostApp(): Promise<{ app: string; title: string | nul
   //
   // Guarded at the source rather than left to fail. `execFile` on a path that
   // does not exist is a spawn, an error and a rejected promise, and this runs
-  // every two seconds forever: precisely the shape this codebase already
-  // learned to stop doing with the AeroSpace candidate list below.
+  // every two seconds forever, which is a cost paid to learn nothing.
   if (!MACOS_WINDOW_SOURCES) return undefined;
   const { execFile } = await import("node:child_process");
   const run = (args: string[]): Promise<string> =>
@@ -318,88 +317,15 @@ export async function frontmostApp(): Promise<{ app: string; title: string | nul
 }
 
 /**
- * Ask the window manager what is focused, and where.
- *
- * Preferred over `frontmostApp` because it answers all three questions at once
- * — application, window title and workspace — and because it *establishes*
- * state rather than waiting for a transition. That distinction is why this
- * exists at all: an event subscription only fires on change, so nothing ever
- * re-announces the workspace you were already sitting in. A poll has neither
- * problem and needs no wiring to survive a reboot.
- *
- * Talaria reading a window manager is a sensor being read, which is fine. A
- * window manager reading Hermes would be the thing this project does not do.
- *
- * AeroSpace answers a formatted query, so one call carries everything and there
- * is no tree to walk. That is the whole of the difference from the Rift version
- * this replaces, which fetched every workspace, found the active one, then
- * found the focused window inside it — and returned an empty title for Chrome
- * and several other applications, which is why window titles moved to an
- * accessibility read in the app and stayed there.
- *
- * It can still legitimately answer nothing: a workspace with no windows in it,
- * or AeroSpace not running at all. `frontmostApp` covers those.
- */
-export async function frontmostFromAerospace(cliPath?: string): Promise<
-  { app: string; title: string | null; workspace: string | null } | undefined
-> {
-  if (!MACOS_WINDOW_SOURCES) return undefined;
-  const candidates = aerospaceCandidates(cliPath);
-
-  const run = async (bin: string, args: string[]): Promise<string> =>
-    (await askAerospace(bin, args, 2000)).out;
-
-  for (const bin of candidates) {
-    // Tab-separated rather than JSON: `--json` omits the bundle id and the
-    // workspace, and a format string is the documented way to ask for exactly
-    // the fields you want.
-    const line = (
-      await run(bin, [
-        "list-windows",
-        "--focused",
-        "--format",
-        "%{app-bundle-id}\t%{workspace}\t%{window-title}",
-      ])
-    ).trim();
-
-    if (line) {
-      // Split twice and keep the remainder whole: a window title may contain a
-      // tab, and losing everything after one would be a silent truncation of
-      // the one field most likely to carry it.
-      const first = line.indexOf("\t");
-      const second = line.indexOf("\t", first + 1);
-      if (first > 0 && second > first) {
-        const app = line.slice(0, first);
-        const workspace = line.slice(first + 1, second).trim();
-        const title = line.slice(second + 1).trim();
-        return { app, title: title || null, workspace: workspace || null };
-      }
-    }
-
-    // A workspace can be active with nothing focused in it — an empty one, or
-    // focus resting on something AeroSpace does not manage. The workspace is
-    // still true and still worth having.
-    const ws = (await run(bin, ["list-workspaces", "--focused"])).trim();
-    if (ws) return { app: "", title: null, workspace: ws };
-
-    // This binary answered nothing at all for either question, which is what an
-    // absent or stopped AeroSpace looks like. Try the next path.
-  }
-  return undefined;
-}
-
-/**
  * The focused window's title, from the accessibility API.
  *
- * The second source for the one field that matters most and is hardest to get.
- * AeroSpace answers application, title and workspace together, so when it is not
- * running — or is running and switched off — the title disappears along with the
- * workspace, and the record falls back to Launch Services, which knows the
- * application's name and nothing about its windows.
+ * The source for the one field that matters most and is hardest to get.
+ * Launch Services names the application in front and knows nothing about its
+ * windows, so on its own the title is the application's display name.
  *
- * But a window title is not AeroSpace's to give: it is `kAXTitleAttribute` on
- * `kAXFocusedWindowAttribute`, and `talaria-ax` has been reading exactly that
- * for Glance since it was written. Only the workspace is genuinely gone.
+ * A window title is `kAXTitleAttribute` on `kAXFocusedWindowAttribute`, and
+ * `talaria-ax` has been reading exactly that for Glance since it was written.
+ * This is the same helper, asked the same question, on the poll's behalf.
  *
  * **Without `--deep`**, unlike Glance's use of the same helper. That flag asks a
  * browser to build its whole accessibility tree and walks it, which is worth
@@ -580,10 +506,11 @@ export class ContextRecord {
   /**
    * The last workspace anybody told us about.
    *
-   * The window manager knows this and the poll does not, so the two halves of a
-   * context row
-   * arrive from different places at different times. Carrying the workspace
-   * forward is what stops a poll two seconds after a workspace switch from
+   * Only a compositor knows this, and only the Linux shell has one to ask: it
+   * pushes the workspace with each window to `POST /context`, while the macOS
+   * poll answers the other half. So the two halves of a context row arrive from
+   * different places at different times. Carrying the workspace forward is what
+   * stops a poll two seconds after a workspace switch from
    * writing a row that says the workspace is unknown — which would then be the
    * newest row, and therefore the answer.
    *
@@ -602,20 +529,6 @@ export class ContextRecord {
     if (name) this.mirror.set(WORKSPACE_KEY, name);
   }
 
-  /**
-   * Stop claiming a workspace.
-   *
-   * The remembered one is a guess that survives a restart, which is right while
-   * something is still answering for it. When nothing is — the window manager
-   * has been quit, or was never installed — the guess stops being stale and
-   * becomes false: every row would go on being stamped with the last workspace
-   * anybody saw, indefinitely, in a record whose whole contract is that it
-   * decays. It is the only field here that can quietly assert something untrue.
-   */
-  forgetWorkspace(): void {
-    this.mirror.set(WORKSPACE_KEY, null);
-  }
-
   get workspace(): string | null {
     return this.mirror.get(WORKSPACE_KEY);
   }
@@ -630,12 +543,6 @@ export class ContextRecord {
  * windows and workspaces and none of which is focus: tabbing between two
  * applications produced no event at all.
  *
- * The finding outlived the window manager it was made against. AeroSpace has
- * `on-focus-changed`, which would remove the need for a poll here — worth
- * doing, and a bigger change than swapping the reader, because a callback is
- * configured in AeroSpace's own file rather than in ours and the two would have
- * to be installed together.
- *
  * Two seconds misses anything shorter than two seconds. For this purpose that is
  * a feature: a glance at a calculator is not a change of what you are working
  * on, and the record is meant to answer "what were you doing" rather than
@@ -647,24 +554,9 @@ export class ContextRecord {
  */
 export class FrontmostWatcher {
   private timer: NodeJS.Timeout | null = null;
-  /**
-   * Whether the window manager answered last time, and when we last asked.
-   *
-   * `frontmostFromAerospace` tries several candidate paths, so a machine with
-   * no window manager spawned a process per path that missed, every two
-   * seconds, forever — a poll that had already learned its answer and asked
-   * again anyway. Now it asks again on a slow timer instead, because one may be
-   * installed or started at any point and a daemon that decided once would
-   * never notice.
-   */
-  private wmAnswered = true;
-  private wmCheckedAt = 0;
-
   constructor(
     private record: ContextRecord,
     private everyMs = 2000,
-    /** Where `aerospace` lives, when it is not somewhere obvious. */
-    private aerospaceCli?: string,
     /**
      * The accessibility reader, when this build ships one.
      *
@@ -700,30 +592,6 @@ export class FrontmostWatcher {
   private async tick(): Promise<void> {
     if (!this.record.recording) return;
     try {
-      // The window manager first: it answers application, title and workspace
-      // together, and it is the only thing here that knows about workspaces at
-      // all. Falling back to Launch Services covers an unmanaged space, a
-      // floating panel, or AeroSpace not running.
-      // Skipped entirely once it is known to be absent, and retried on the
-      // slow timer so installing or starting it is still noticed.
-      const askWm = this.wmAnswered || Date.now() - this.wmCheckedAt > WM_RECHECK_MS;
-      const wm = askWm ? await frontmostFromAerospace(this.aerospaceCli) : undefined;
-      if (askWm) {
-        this.wmCheckedAt = Date.now();
-        this.wmAnswered = wm !== undefined;
-      }
-
-      if (wm?.workspace) this.record.rememberWorkspace(wm.workspace);
-      // Nothing is answering for workspaces, so stop claiming one. A stale
-      // guess is worth keeping while its source is alive; once it is not, the
-      // guess is simply wrong and says so to everything downstream.
-      if (askWm && wm === undefined) this.record.forgetWorkspace();
-
-      if (wm?.app) {
-        this.record.note({ app: wm.app, title: wm.title, workspace: wm.workspace });
-        return;
-      }
-
       const front = await frontmostApp();
       if (!front) return;
 
@@ -733,13 +601,14 @@ export class FrontmostWatcher {
        * less informative, and the thing that quietly disappeared whenever the
        * window manager did.
        *
-       * The accessibility helper knows the title, so it is asked for one. Only
-       * when there is nothing better: this is a poll, and a process per tick to
-       * confirm what AeroSpace already said would be a cost paid for nothing.
+       * The accessibility helper knows the title, so it is asked for one —
+       * on the same slow retry as anything else that may not answer, because a
+       * machine that has never granted the permission should not be spawning a
+       * helper every two seconds to be told so again.
        */
       let title = front.title;
       if (this.axHelper) {
-        const askAx = this.axAnswered || Date.now() - this.axCheckedAt > WM_RECHECK_MS;
+        const askAx = this.axAnswered || Date.now() - this.axCheckedAt > RECHECK_MS;
         if (askAx) {
           const seen = await focusedTitle(this.axHelper);
           this.axCheckedAt = Date.now();
@@ -756,202 +625,4 @@ export class FrontmostWatcher {
       // A poll that fails is a poll. It will run again in two seconds.
     }
   }
-}
-
-/**
- * Where the aerospace binary is, tried in the usual places.
- *
- * Shared with `frontmostFromAerospace`, which had this list inline first. A
- * second copy would have been a second thing to update the day somebody
- * installs it somewhere new — and the copy had in fact already drifted out of
- * reach of this comment, so `frontmostFromAerospace` now calls this rather than
- * repeating it.
- *
- * Empty off macOS, which makes every loop over it a loop that does not run.
- * AeroSpace is a macOS tiling manager; an explicit `aerospaceCli` pointing at
- * something on a Linux box would be a person configuring a binary that cannot
- * be there, so the override does not rescue it either.
- */
-export function aerospaceCandidates(cliPath?: string): string[] {
-  if (!MACOS_WINDOW_SOURCES) return [];
-  return cliPath
-    ? [cliPath]
-    : [
-        "/opt/homebrew/bin/aerospace",
-        "/usr/local/bin/aerospace",
-        `${process.env.HOME}/.local/bin/aerospace`,
-      ];
-}
-
-/**
- * What the window manager said, and whether it refused to say anything.
- *
- * AeroSpace can be running and *disabled* — `aerospace enable off` — and in that
- * state the server does not merely stop tiling: it refuses every query, with
- *
- *     AeroSpace server is disabled and doesn't accept commands.
- *
- * The refusal has to be told from an answer, for two reasons. The obvious one
- * is that "not installed" and "installed and switched off" are different
- * problems and a diagnostic that reports them identically is a diagnostic that
- * sends somebody hunting for a binary sitting right there.
- *
- * The other is worse. `list-workspaces --all` is read as *a list of workspace
- * names, one per line*, and nothing downstream asks whether a line looks like a
- * name. If that sentence arrives on stdout it becomes a workspace called "AeroSpace
- * server is disabled…" — a row in the desk's pane, an entry in the picker, and a
- * value stamped onto context rows. Refusing to treat it as output at all is the
- * only place that can be fixed once.
- *
- * Both streams are read and the exit status is ignored on purpose: which of
- * those the message travels on is AeroSpace's business and has no reason to
- * stay the same, and being wrong about it here restores exactly the bug this
- * exists to prevent.
- */
-const DISABLED = /server is disabled/i;
-
-/**
- * Installed, and not running.
- *
- * The third way AeroSpace can be quiet, and the commonest once somebody stops
- * using it: the app is quit, the CLI is still on the PATH, and every command
- * says "Can't connect to AeroSpace server. Is AeroSpace.app running?" and exits
- * 2. That used to read as `absent`, so `talaria doctor` failed and asked whether
- * the binary was on the daemon's PATH — about a binary sitting right there,
- * belonging to an app somebody had simply chosen to quit.
- *
- * Matched on the words rather than the exit status, for the reason given above
- * `DISABLED`. `can.t` because the apostrophe is AeroSpace's to typeset.
- */
-const STOPPED = /can.t connect to aerospace server|is aerospace\.app running/i;
-
-export interface WmAnswer {
-  /** stdout, or empty when there was nothing usable to say. */
-  out: string;
-  /** The server is there and refusing. Never true when `out` is non-empty. */
-  disabled: boolean;
-  /** The CLI is there and the app is not running. Never true with output. */
-  stopped: boolean;
-  /** The binary ran. False for a path with nothing at it, which is how the
-   *  candidate list is walked — and the difference between "did not work" and
-   *  "is not there", which `focusWorkspace` reports as the same word. */
-  ran: boolean;
-}
-
-export async function askAerospace(bin: string, args: string[], timeout = 3000): Promise<WmAnswer> {
-  const { execFile } = await import("node:child_process");
-  return new Promise<WmAnswer>((resolve) =>
-    execFile(bin, args, { timeout, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
-      const said = `${stdout}${stderr}`;
-      // A refusal is not output. See the note above `DISABLED`.
-      if (DISABLED.test(said)) resolve({ out: "", disabled: true, stopped: false, ran: true });
-      else if (STOPPED.test(said)) resolve({ out: "", disabled: false, stopped: true, ran: false });
-      else resolve({ out: stdout ?? "", disabled: false, stopped: false, ran: !err });
-    }),
-  );
-}
-
-/**
- * Why the workspace half is quiet, in the four words a diagnostic needs.
- *
- * `absent` — nothing at any of the candidate paths answered at all.
- * `stopped` — the CLI is installed and AeroSpace itself is not running.
- * `disabled` — AeroSpace is running and switched off.
- * `answering` — it told us the focused workspace.
- */
-export async function wmStatus(cliPath?: string): Promise<"answering" | "disabled" | "stopped" | "absent"> {
-  let refused = false;
-  let stopped = false;
-  for (const bin of aerospaceCandidates(cliPath)) {
-    const said = await askAerospace(bin, ["list-workspaces", "--focused"], 2000);
-    if (said.out.trim()) return "answering";
-    if (said.disabled) refused = true;
-    if (said.stopped) stopped = true;
-  }
-  return refused ? "disabled" : stopped ? "stopped" : "absent";
-}
-
-export interface WorkspaceWindow {
-  id: number;
-  app: string;
-  bundleId: string | null;
-  title: string;
-}
-
-export interface WorkspaceSummary {
-  name: string;
-  focused: boolean;
-  windows: WorkspaceWindow[];
-}
-
-/**
- * Every workspace, and what is in it.
- *
- * Windows are listed with their ids because that is what a thumbnail is taken
- * of: a window parked off-screen by a tiling manager still has a backing store,
- * so it can be captured without being shown — which is the whole reason a
- * picture of a workspace you are not looking at is possible at all.
- *
- * Empty workspaces are kept. A workspace with nothing in it is still somewhere
- * to go, and leaving it out of the list would make the one place you want to
- * move a window *to* the one place you cannot click.
- */
-export async function workspaces(cliPath?: string): Promise<WorkspaceSummary[]> {
-  const run = async (bin: string, args: string[]): Promise<string> =>
-    (await askAerospace(bin, args)).out;
-
-  for (const bin of aerospaceCandidates(cliPath)) {
-    const names = (await run(bin, ["list-workspaces", "--all"]))
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!names.length) continue;
-
-    const focused = (await run(bin, ["list-workspaces", "--focused"])).trim();
-    // One call for every window rather than one per workspace: the format
-    // carries which workspace each is in, and a shell round trip per workspace
-    // is latency nobody needs on a panel that opens under a hotkey.
-    const rows = (
-      await run(bin, [
-        "list-windows",
-        "--all",
-        "--format",
-        "%{workspace}\t%{window-id}\t%{app-bundle-id}\t%{app-name}\t%{window-title}",
-      ])
-    )
-      .split("\n")
-      .map((line) => line.split("\t"))
-      .filter((parts) => parts.length >= 5);
-
-    const byWorkspace = new Map<string, WorkspaceWindow[]>();
-    for (const [ws, id, bundleId, app, ...rest] of rows) {
-      const n = Number(id);
-      if (!Number.isFinite(n)) continue;
-      const list = byWorkspace.get(ws!) ?? [];
-      // The remainder joined back up: a window title may contain a tab, and
-      // taking only the fifth field would truncate exactly the string most
-      // likely to have one in it.
-      list.push({ id: n, app: app ?? "", bundleId: bundleId || null, title: rest.join("\t") });
-      byWorkspace.set(ws!, list);
-    }
-
-    return names.map((name) => ({
-      name,
-      focused: name === focused,
-      windows: byWorkspace.get(name) ?? [],
-    }));
-  }
-  return [];
-}
-
-/** Go to a workspace. Returns whether the manager accepted it. */
-export async function focusWorkspace(name: string, cliPath?: string): Promise<boolean> {
-  for (const bin of aerospaceCandidates(cliPath)) {
-    // A disabled server exits cleanly while doing nothing, so `!err` used to
-    // report the move as accepted and the desk closed on a workspace it had
-    // not gone to.
-    const said = await askAerospace(bin, ["workspace", name]);
-    if (said.ran && !said.disabled) return true;
-  }
-  return false;
 }

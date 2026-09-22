@@ -199,8 +199,16 @@ def _area(monitor: dict) -> tuple[int, int, int, int]:
     from opening underneath the bar.
     """
     scale = float(monitor.get("scale") or 1.0) or 1.0
-    width = int(float(monitor.get("width") or 0) / scale)
-    height = int(float(monitor.get("height") or 0) / scale)
+    # Rounded, not truncated: 2560 / 2.1333334 is 1199.99…, and a desk one
+    # pixel short leaves a hairline of wallpaper down the right edge.
+    width = round(float(monitor.get("width") or 0) / scale)
+    height = round(float(monitor.get("height") or 0) / scale)
+    # Rotation matters too: `width` and `height` are the panel's own, before
+    # `transform` turns it. A portrait panel mounted landscape — a handheld's
+    # 1600x2560 at transform 1 — would otherwise size the desk as a tall strip.
+    # Odd transforms (90°, 270°, and their flipped forms) swap the axes.
+    if int(monitor.get("transform") or 0) % 2:
+        width, height = height, width
     reserved = monitor.get("reserved") or [0, 0, 0, 0]
     try:
         left, top, right, bottom = (int(v) for v in reserved[:4])

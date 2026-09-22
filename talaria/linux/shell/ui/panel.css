@@ -87,9 +87,19 @@ table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--line); }
 th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
 
-/* Forms, used by compose. */
+/* Forms, used by compose.
+ *
+ * **Not a checkbox or a radio**, which are the two inputs that are a mark
+ * rather than a field. `width: 100%` on a box that draws itself 13px wide does
+ * not make a wider box: it makes a 13px mark centered in a line-wide element,
+ * and everything beside it in the flex row gets what is left. In today's note
+ * that was a task's text wrapping at two characters per line down the right of
+ * the pane, with a horizontal scrollbar under it — which reads as a broken
+ * renderer rather than as a form rule reaching somewhere it was never meant
+ * to. Same for the padding and the border below.
+ */
 label { display: block; margin: 12px 0 4px; color: var(--muted); font-size: 12px; }
-input, textarea, select {
+input:not([type="checkbox"]):not([type="radio"]), textarea, select {
   width: 100%;
   padding: 7px 9px;
   border: 1px solid var(--line);

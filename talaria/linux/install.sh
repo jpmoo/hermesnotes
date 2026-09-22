@@ -165,6 +165,17 @@ if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "
   sed "s|__ROOT__|$ROOT|g" "$ROOT/linux/shell/dev.talaria.shell.desktop.in" > "$APPS/dev.talaria.shell.desktop"
   echo "==> Hyprland: registered $APPS/dev.talaria.shell.desktop"
 
+  # The tray mark, which was installed on Plasma only — and the tray is not
+  # Plasma's alone. `Shell._icon` asks the theme for `talaria-symbolic` and a
+  # bar that finds nothing draws nothing: the item registers on the
+  # StatusNotifier watcher, the bar lists it, and the row stays empty. It looks
+  # exactly like a shell that failed to start. Same file, same place, for the
+  # same reason as the KRunner branch above.
+  ICONS="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+  mkdir -p "$ICONS"
+  cp "$ROOT/linux/shell/icons/talaria-symbolic.svg" "$ICONS/"
+  echo "==> Hyprland: installed $ICONS/talaria-symbolic.svg"
+
   if [ -f "$HYPR_DIR/hyprland.lua" ]; then
     STYLE=lua; MAIN="$HYPR_DIR/hyprland.lua"; SNIPPET="$HYPR_DIR/talaria.lua"
     LOAD_LINE='dofile(os.getenv("HOME") .. "/.config/hypr/talaria.lua")'

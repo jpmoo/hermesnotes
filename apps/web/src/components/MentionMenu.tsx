@@ -56,8 +56,12 @@ export function MentionMenu({
       try {
         if (state.char === "@") {
           if (personType) {
+            // Asked for by name, not as typed. `@` cannot carry a space, so a
+            // two-word name arrives as `Robert_Hohn` — and searching for that
+            // string found nobody, so the menu offered to create a second
+            // Robert Hohn beside the one already there.
             const rows = await api.get<BlockRef[]>(
-              `/blocks/references?typeId=${personType.id}&q=${encodeURIComponent(q)}`,
+              `/blocks/references?typeId=${personType.id}&q=${encodeURIComponent(q.replace(/_/g, " "))}`,
             );
             opts = rows.map((r) => ({
               key: r.id,
@@ -67,7 +71,12 @@ export function MentionMenu({
               iconColor: personType.iconColor,
             }));
           }
-          if (q.trim() && personType)
+          // Offered only when nobody by that name is already listed: the
+          // name is what identifies a person here, so a second block with the
+          // same one is a duplicate rather than a choice.
+          const wanted = q.replace(/_/g, " ").trim().toLowerCase();
+          const already = opts.some((o) => o.label.replace(/_/g, " ").trim().toLowerCase() === wanted);
+          if (wanted && personType && !already)
             opts.push({ key: "create", label: `Create person “${q.replace(/_/g, " ")}”`, create: "person", raw: q });
           // No Person type set up: name it now, decide what it is later.
           if (q.trim() && !personType)

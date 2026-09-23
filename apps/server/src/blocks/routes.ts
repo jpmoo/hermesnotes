@@ -1433,14 +1433,49 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
             sql`${blocks.properties}::text LIKE ${`%block:${id}%`}`,
             // Raw `|<id>` mention in a title/text field.
             sql`${blocks.properties}::text LIKE ${`%|${id}%`}`,
-            // Raw `@Name` mention of this block's title (underscores = spaces).
-            ...(myTitle
-              ? [sql`${blocks.properties}::text ILIKE ${`%@${myTitle.replace(/[%_]/g, "_").replace(/ /g, "_")}%`}`]
+            /*
+             * Raw `@Name` mention of this block's title (underscores = spaces).
+             *
+             * **A prefilter, verified below.** This was the whole test, and it
+             * was wrong twice over. `_` is LIKE's single-character wildcard, and
+             * the replacement meant to escape it produced one instead — so a
+             * person titled `Robert_Hohn` and a person titled `Robert Hohn`
+             * both matched the text `@Robert_Hohn`, each claiming every task
+             * that named the other, while the outbound side (which matches the
+             * normalized name) linked only to the spaced one. The two
+             * directions disagreed about the same mention.
+             *
+             * A title carrying a literal underscore is skipped rather than
+             * matched: `@` has no way to write one — an underscore typed there
+             * *is* a space — so nothing in prose can be addressing it.
+             */
+            ...(myTitle && !myTitle.includes("_")
+              ? [
+                  sql`${blocks.properties}::text ILIKE ${`%@${myTitle.replace(/[%\\]/g, "\\$&").replace(/ /g, "_")}%`} ESCAPE '\\'`,
+                ]
               : []),
           ),
         ),
       )
       .limit(50);
+
+    /*
+     * What the prefilter let through, checked against the mention itself.
+     *
+     * `@Robert_Hohn` says "robert hohn" — the same thing `inlineMentions` reads
+     * for the outbound side — and a row only links here if it says this block's
+     * title. Without this the wildcard above also matched `@RobertXHohn`, and a
+     * name that is a prefix of a longer one matched that too.
+     *
+     * Rows that reached the list by id are kept as they are: an id is exact and
+     * needs no reading.
+     */
+    const meNamed = myTitle.toLowerCase();
+    const fromKept = fromRows.filter((r) => {
+      const props = (r.properties ?? {}) as Record<string, unknown>;
+      if (`${JSON.stringify(props)}${r.content ?? ""}`.includes(id)) return true;
+      return inlineMentions(props, r.content, r.id).names.includes(meNamed);
+    });
 
     // Canvas edges: user-drawn connections on any canvas containing this block.
     const canvasRows = await db
@@ -1485,7 +1520,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
     // Resolve type icons for every connected block in one query.
     const connTypeIds = [
       ...new Set(
-        [...inRows, ...linkRows, ...fromRows, ...canvasOtherRows]
+        [...inRows, ...linkRows, ...fromKept, ...canvasOtherRows]
           .map((r) => r.blockTypeId)
           .filter((v): v is string => Boolean(v)),
       ),
@@ -1524,7 +1559,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
 
     const inCollections = inRows.map(withIcon);
     const linksTo = linkRows.map(withIcon);
-    const linkedFrom = fromRows.map(withIcon);
+    const linkedFrom = fromKept.map(withIcon);
     // Outbound links whose target no longer resolves (hard-deleted, or no longer
     // owned) — surfaced under the info box's "Deleted" tab so the dead reference
     // can be cleared. Inbound/collection/canvas partners can't dangle: those come

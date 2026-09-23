@@ -193,8 +193,12 @@ export async function ensurePersons(api: Api, ctx: Ctx, texts: (string | undefin
         items: [{ kind: "property", key: "title", op: "contains", value: name } as Condition],
       },
     });
+    // Normalized on both sides. A person stored as `Robert_Hohn` — written by
+    // an older build, or typed with the underscore — is the same person as
+    // `Robert Hohn`, and comparing the raw strings made a second one.
+    const same = (t: string) => t.replace(/_/g, " ").trim().toLowerCase();
     const exact = found.some(
-      (b) => String((b.properties as Record<string, unknown>).title ?? "").toLowerCase() === name.toLowerCase(),
+      (b) => same(String((b.properties as Record<string, unknown>).title ?? "")) === same(name),
     );
     if (!exact) {
       await api.post("/blocks", { blockTypeId: ctx.personTypeId, properties: { title: name } });

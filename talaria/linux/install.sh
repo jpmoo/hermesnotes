@@ -176,6 +176,29 @@ if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || [ "${XDG_CURRENT_DESKTOP:-}" = "
   cp "$ROOT/linux/shell/icons/talaria-symbolic.svg" "$ICONS/"
   echo "==> Hyprland: installed $ICONS/talaria-symbolic.svg"
 
+  # And the application's own mark, under the name the desktop file gives it.
+  # `setWindowIcon` in the shell does nothing for a dock on Wayland: there is no
+  # window icon there, only an app id, which a dock matches to this desktop
+  # file and then asks the theme for `Icon=talaria`. Nothing by that name was
+  # installed, so the Hermes window sat in Noctalia's dock as a blank square.
+  # The Mac's glyph, scaled to the sizes hicolor defines — a 1024 in a
+  # directory the theme does not list is a file nothing will find.
+  if python3 -c "import PySide6" >/dev/null 2>&1; then
+    for size in 256 512; do
+      dir="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/${size}x${size}/apps"
+      mkdir -p "$dir"
+      python3 - "$ROOT/app/glyph-1024.png" "$dir/talaria.png" "$size" <<'PY'
+import sys
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage
+size = int(sys.argv[3])
+QImage(sys.argv[1]).scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation).save(sys.argv[2])
+PY
+    done
+    echo "==> Hyprland: installed the talaria app icon (256, 512)"
+  fi
+
   if [ -f "$HYPR_DIR/hyprland.lua" ]; then
     STYLE=lua; MAIN="$HYPR_DIR/hyprland.lua"; SNIPPET="$HYPR_DIR/talaria.lua"
     LOAD_LINE='dofile(os.getenv("HOME") .. "/.config/hypr/talaria.lua")'

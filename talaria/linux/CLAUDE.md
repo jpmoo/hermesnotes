@@ -425,7 +425,12 @@ over there.
   can't work with non-legacy parsers. Use eval." — so `place` first sends the
   rule as an `hl.window_rule` table through `eval`, and only falls back to the
   keywords when that is not "ok". `eval` names an unknown field rather than
-  ignoring it, so "ok" means the rule held. Rules set this way are runtime
+  ignoring it, so "ok" means the rule held. **A hyprlang config at 0.53 has a
+  third syntax**, and the two keywords both fail on it: `windowrulev2` answers
+  "deprecated", and `windowrule float, title:…` answers "missing a value". It
+  wants `windowrule match:title ^(…)$, float on, size W H, …` — the Lua field
+  names, every effect valued, one line validated as a whole. So the order is
+  `eval`, then that, then the old keywords. Rules set this way are runtime
   state: `hyprctl reload` drops them, and panels tile until the shell restarts.
 - **The focused window is pulled, not pushed.** The event socket says *that* the
   focus moved; `activewindow` is then asked for class, title, pid and workspace
@@ -508,9 +513,21 @@ not:
   Quickshell's bug, but Talaria set it off, and it would have done so on every
   start. Anything that changes a tray item's status or icon is worth watching
   for the same thing.
-- **Still unverified.** A focused window in `talaria doctor` from the event
-  socket; the Lua file `install.sh` now writes, which follows the hand-written
-  bindings that worked but has not itself been loaded by Hyprland; `sendshortcut` reaching the
+**A second run, on the other kind of config** — Ubuntu 26.04, Hyprland 0.53.3
+with a hyprlang `hyprland.conf`, Noctalia's bar holding the tray:
+
+- **Verified.** `install.sh` writes `talaria.conf`, and the `source =` line
+  loads all eight binds with no config errors. `exec-once` through
+  `systemd-run` starts the shell. The focused window reaches `talaria doctor`
+  from the event socket. Noctalia draws the tray mark. Panels float, sized and
+  clear of the bar, once `_match_rule` was added — before it, none did.
+- **Found.** On a machine with no `config.json` yet, `install.sh` stops at the
+  daemon's exit 78 and never reaches the Hyprland section, although nothing in
+  it needs the daemon.
+
+- **Still unverified.** The Lua file `install.sh` now writes, which follows the
+  hand-written bindings that worked but has not itself been loaded by Hyprland;
+  `sendshortcut` reaching the
   focused window; the portal's shortcuts themselves, which registered and
   report `unbound`, as expected where the compositor owns the key. The Glance
   rungs that matter most — the primary selection and AT-SPI — are

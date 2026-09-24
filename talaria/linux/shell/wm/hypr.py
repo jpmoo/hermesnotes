@@ -15,10 +15,11 @@ asked for the details. Both arrive at `frontmost.py` as the same five fields.
 **Two Hyprland facts worth knowing before changing anything here.** Window rules
 are matched against a window as it opens, so they must be set before a panel is
 shown — which is why `place` is called from the panel's constructor rather than
-at startup. And the rule keyword was renamed between releases (`windowrulev2`
-became `windowrule`), so every rule is sent under the newer name and retried
-under the older one rather than the version being detected: detection would be
-one more thing to get wrong on a compositor that moves this fast.
+at startup. And the rule syntax has changed three times — `windowrulev2`,
+then `windowrule`, then 0.53's `match:` form, with a Lua config taking none of
+them — so each form is tried in turn until one answers "ok" rather than the
+version being detected: detection would be one more thing to get wrong on a
+compositor that moves this fast.
 
 This is written from the protocol rather than from a running machine — there is
 no Hyprland session in this project's reach — so the failure of anything here is
@@ -283,6 +284,29 @@ def _lua_rule(title: str, fields: str) -> bool:
         return False
 
 
+def _match_rule(title: str, fields: str) -> bool:
+    """
+    The same rule, in the syntax hyprlang took on at 0.53.
+
+    0.53 reworked window rules: `windowrulev2` answers "deprecated", and
+    `windowrule` no longer takes a bare `float` — every effect carries a value,
+    and the window is named by a `match:` field. So on a hyprlang config newer
+    than the keywords below were written for, both of them failed and every
+    panel opened tiled, exactly as on a Lua config before `eval`. Found on
+    Hyprland 0.53.3 with a `hyprland.conf`.
+
+    The effect names are the Lua table's (`no_anim`, `border_size`), and the
+    whole rule is one line, validated as one: a single unknown field is refused
+    by name and nothing is set. So "ok" means every effect held, as it does for
+    `eval`.
+    """
+    rule = f"match:title ^({_escape(title)})$, float on, {fields}, border_size 0, rounding 0"
+    try:
+        return request(f"keyword windowrule {rule}").strip().lower().startswith("ok")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
     """
     Write the rules that catch this panel when it opens.
@@ -308,6 +332,8 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
         ax, ay, aw, ah = area
         if _lua_rule(title, f"size = {{ {aw}, {ah} }}, move = {{ {ax}, {ay} }}, no_anim = true"):
             return
+        if _match_rule(title, f"size {aw} {ah}, move {ax} {ay}, no_anim on"):
+            return
         rules = [
             f"float, {match}",
             f"size {aw} {ah}, {match}",
@@ -319,6 +345,8 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
         height = min(height, area[3] - 2 * MARGIN)
         x, y = _spot(_placement(), area, width, height)
         if _lua_rule(title, f"size = {{ {width}, {height} }}, move = {{ {x}, {y} }}, animation = \"slide\""):
+            return
+        if _match_rule(title, f"size {width} {height}, move {x} {y}, animation slide"):
             return
         rules = [
             f"float, {match}",

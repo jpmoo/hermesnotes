@@ -1349,9 +1349,22 @@ def main() -> int:
         # QLocalSocket needs an application object but not a window; this path
         # must never start a web engine, because it is on the hot end of a
         # keypress and QtWebEngine takes the best part of a second to come up.
-        QApplication(sys.argv)
+        app = QApplication(sys.argv)
         if forward(action):
             return 0
+        # Settings is the one panel that needs no shell behind it: plain Qt, no
+        # web engine, and it edits a file rather than talking to the daemon. It
+        # is also the one somebody reaches for *before* anything runs — a fresh
+        # install has no config, so the daemon will not start, and the daemon's
+        # own error sends them here. Refusing because the tray is not up yet
+        # would be a dead end on the first step.
+        if action == "settings":
+            from settings import SettingsWindow
+
+            app.setDesktopFileName("dev.talaria.shell")
+            window = SettingsWindow()
+            window.show()
+            return app.exec()
         print("talaria: the shell isn't running", file=sys.stderr)
         return 1
 

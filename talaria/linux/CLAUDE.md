@@ -521,9 +521,13 @@ with a hyprlang `hyprland.conf`, Noctalia's bar holding the tray:
   `systemd-run` starts the shell. The focused window reaches `talaria doctor`
   from the event socket. Noctalia draws the tray mark. Panels float, sized and
   clear of the bar, once `_match_rule` was added — before it, none did.
-- **Found.** On a machine with no `config.json` yet, `install.sh` stops at the
-  daemon's exit 78 and never reaches the Hyprland section, although nothing in
-  it needs the daemon.
+- **Found and fixed.** On a machine with no `config.json` yet, `install.sh`
+  stopped at the daemon's exit 78 and never reached the Hyprland section,
+  although nothing in it needs the daemon. The daemon is installed last now.
+  Its missing-config message also still said Linux had no settings panel; it
+  names the tray and `talaria-shell --toggle settings`, which opens the panel
+  on its own when no shell is running — a first install is exactly when none
+  is.
 
 - **Still unverified.** The Lua file `install.sh` now writes, which follows the
   hand-written bindings that worked but has not itself been loaded by Hyprland;

@@ -125,15 +125,20 @@ export function loadConfig(): Config {
   } catch {
     throw new ConfigError(
       `No config at ${CONFIG_PATH}.\n` +
-        // Two platforms, two true answers. macOS has a settings panel that
-        // writes this file, and telling somebody to compose JSON by hand when a
-        // panel exists is worse advice. Linux has no panel yet, and pointing at
-        // a menu bar icon that is not there is the kind of instruction that
-        // makes a person doubt they have the right software.
+        // Two platforms, two true answers, and both have a panel that writes
+        // this file — telling somebody to compose JSON by hand when a panel
+        // exists is worse advice. Linux's is `shell/settings.py`, which starts
+        // from an empty form when there is no file, writes it at mode 600 and
+        // restarts this daemon. Its entrance is the tray, which a Hyprland
+        // session may not draw, so the command is named too. Hand-writing stays
+        // as the fallback for a machine reached over ssh, with no desktop to
+        // open a window on.
         (process.platform === "darwin"
           ? `Open Talaria's menu bar icon (right-click) → Settings…, or run:\n` +
             `  open talaria://settings\n`
-          : `Write it yourself — there is no settings panel on this platform yet:\n` +
+          : `Open Talaria's tray icon → Settings…, or run:\n` +
+            `  talaria/linux/shell/talaria-shell --toggle settings\n` +
+            `With no desktop to open it on, write it by hand:\n` +
             `  mkdir -p ${HOME} && cp talaria/config.example.json ${CONFIG_PATH}\n` +
             `then put your address and key in it.\n`) +
         `You will need a Hermes address and an access key, minted under Settings → Access keys.`,

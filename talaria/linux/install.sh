@@ -68,47 +68,6 @@ else
 fi
 [ -f "$ROOT/packages/daemon/src/index.ts" ] || { echo "!! no daemon at $ROOT"; exit 1; }
 
-echo "==> node:  $NODE (v$("$NODE" -p 'process.versions.node'))"
-echo "==> unit:  $UNIT"
-
-mkdir -p "$UNIT_DIR"
-sed -e "s|__NODE__|$NODE|g" -e "s|__ROOT__|$ROOT|g" "$ROOT/linux/systemd/talaria.service.in" > "$UNIT"
-# A template that failed to substitute produces a unit systemd will accept and
-# an ExecStart that cannot run, which reads as a daemon that will not start
-# rather than as an install that did not finish.
-! grep -q "__NODE__\|__ROOT__" "$UNIT" || { echo "!! unit template not fully substituted"; exit 1; }
-
-systemctl --user daemon-reload
-systemctl --user enable talaria.service >/dev/null
-
-# `restart` rather than stop-then-start, and it matters more here than it looks.
-# A dying daemon once deleted the socket its successor had just bound, leaving a
-# live process listening on an inode with no name. The daemon guards that
-# itself now, but overlapping two of them is the condition that produced it, and
-# `restart` is the one form that does not.
-echo "==> Starting"
-systemctl --user restart talaria.service
-
-# What "up" means. `systemctl is-active` reports on a process, and a process
-# proves nothing — the daemon's whole job is the socket, so the socket is what
-# gets asked.
-SOCK="${TALARIA_SOCKET:-${XDG_DATA_HOME:-$HOME/.local/share}/talaria/talaria.sock}"
-echo "==> Waiting for $SOCK"
-for _ in $(seq 1 150); do
-  [ -S "$SOCK" ] && curl -sf --max-time 2 --unix-socket "$SOCK" http://talaria/health >/dev/null && break
-  # A unit that has already given up will never bind, so stop waiting for it.
-  if systemctl --user is-failed --quiet talaria.service; then
-    echo "!! the daemon exited. Its own words:"
-    journalctl --user -u talaria -n 30 --no-pager -o cat
-    exit 1
-  fi
-  sleep 0.2
-done
-
-if ! curl -sf --max-time 2 --unix-socket "$SOCK" http://talaria/health >/dev/null 2>&1; then
-  echo "!! no answer on $SOCK after 30s — journalctl --user -u talaria"
-  exit 1
-fi
 
 # --- KDE's search box -------------------------------------------------------
 #
@@ -247,6 +206,57 @@ PY
     rm -f "$SNIPPET.new"
     echo "!! Hyprland: talaria-shell --hypr-binds failed — run it by hand to see why."
   fi
+fi
+
+# --- The daemon, last ---------------------------------------------------------
+#
+# After the desktop, not before it, because the desktop does not need it and
+# the daemon has one ordinary way to fail. A first install has no config.json,
+# so the daemon exits 78 — and when this came first, that stopped the script
+# before any of the above was written. The hotkeys, the desktop file and the
+# icons all waited on a file the settings panel exists to write, and the panel
+# is reached through them. Found on the first Ubuntu run.
+
+echo "==> node:  $NODE (v$("$NODE" -p 'process.versions.node'))"
+echo "==> unit:  $UNIT"
+
+mkdir -p "$UNIT_DIR"
+sed -e "s|__NODE__|$NODE|g" -e "s|__ROOT__|$ROOT|g" "$ROOT/linux/systemd/talaria.service.in" > "$UNIT"
+# A template that failed to substitute produces a unit systemd will accept and
+# an ExecStart that cannot run, which reads as a daemon that will not start
+# rather than as an install that did not finish.
+! grep -q "__NODE__\|__ROOT__" "$UNIT" || { echo "!! unit template not fully substituted"; exit 1; }
+
+systemctl --user daemon-reload
+systemctl --user enable talaria.service >/dev/null
+
+# `restart` rather than stop-then-start, and it matters more here than it looks.
+# A dying daemon once deleted the socket its successor had just bound, leaving a
+# live process listening on an inode with no name. The daemon guards that
+# itself now, but overlapping two of them is the condition that produced it, and
+# `restart` is the one form that does not.
+echo "==> Starting"
+systemctl --user restart talaria.service
+
+# What "up" means. `systemctl is-active` reports on a process, and a process
+# proves nothing — the daemon's whole job is the socket, so the socket is what
+# gets asked.
+SOCK="${TALARIA_SOCKET:-${XDG_DATA_HOME:-$HOME/.local/share}/talaria/talaria.sock}"
+echo "==> Waiting for $SOCK"
+for _ in $(seq 1 150); do
+  [ -S "$SOCK" ] && curl -sf --max-time 2 --unix-socket "$SOCK" http://talaria/health >/dev/null && break
+  # A unit that has already given up will never bind, so stop waiting for it.
+  if systemctl --user is-failed --quiet talaria.service; then
+    echo "!! the daemon exited. Its own words:"
+    journalctl --user -u talaria -n 30 --no-pager -o cat
+    exit 1
+  fi
+  sleep 0.2
+done
+
+if ! curl -sf --max-time 2 --unix-socket "$SOCK" http://talaria/health >/dev/null 2>&1; then
+  echo "!! no answer on $SOCK after 30s — journalctl --user -u talaria"
+  exit 1
 fi
 
 echo "==> Up. Checking:"

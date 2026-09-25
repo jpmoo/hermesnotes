@@ -6327,8 +6327,23 @@ input.cv-add-input {
 .cal-tg-grid {
   display: grid;
 }
+/* Every row keeps the same scrollbar strip, so the day columns line up.
+   The hours scroll and the band above them may; the header never does. Where
+   scrollbars take room — Linux, Windows, a Mac set to always show them — the
+   hours were a scrollbar narrower than the header, and each day drifted left
+   of its heading, the last by the whole width. `stable` reserves that strip on
+   every row, and reserves nothing where scrollbars overlay. It only applies to
+   a scroll container, which is why the header and the opened band are
+   `overflow-y: hidden` rather than visible: with no height limit, hidden
+   clips nothing. */
+.cal-tg-head,
+.cal-tg-allday,
+.cal-tg-scroll {
+  scrollbar-gutter: stable;
+}
 .cal-tg-head {
   border-bottom: 1px solid var(--border);
+  overflow-y: hidden;
 }
 .cal-tg-corner {
   border-right: 1px solid var(--border);
@@ -6372,7 +6387,7 @@ input.cv-add-input {
    their own scroll, so a long day pushes them down rather than off. */
 .cal-tg-allday.open {
   max-height: none;
-  overflow-y: visible;
+  overflow-y: hidden;
 }
 /* The label is the handle. Same caret the rest of the app folds with, and the
    count is what's behind it while it's shut. */

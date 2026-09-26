@@ -678,3 +678,40 @@ def capture(pid: int) -> tuple[bytes | None, str]:
     if done.returncode != 0 or not done.stdout:
         return None, f"grim failed ({done.stderr.decode('utf8', 'replace').strip()[:80]})"
     return done.stdout, "grim"
+
+
+# ------------------------------------------------------------------- pointer
+
+
+def bring_pointer(title: str) -> bool:
+    """
+    Put the pointer in the middle of our window called `title`.
+
+    Where the keyboard follows the mouse, a summoned panel is in a race it
+    cannot win: it opens where the placement puts it, the pointer is wherever
+    it was, and reaching for the panel drags the pointer across other windows —
+    each of which takes the focus on the way past, which the panel reads as
+    somebody looking away, and closes. So the pointer is brought to the panel
+    instead, the way Hyprland itself warps it on a focus change it makes.
+
+    False while the window is not mapped yet — the caller tries again. Only
+    windows of this process are looked at: a title is not an identity.
+    """
+    clients = ask("clients")
+    if not isinstance(clients, list):
+        return False
+    for client in clients:
+        if (isinstance(client, dict) and client.get("pid") == os.getpid()
+                and client.get("title") == title and client.get("mapped")):
+            try:
+                (x, y), (w, h) = client["at"], client["size"]
+            except Exception:  # noqa: BLE001
+                return False
+            if w <= 0 or h <= 0:
+                return False
+            try:
+                return request(f"dispatch movecursor {int(x + w / 2)} {int(y + h / 2)}") \
+                    .strip().lower().startswith("ok")
+            except Exception:  # noqa: BLE001
+                return False
+    return False

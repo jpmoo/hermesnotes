@@ -436,6 +436,24 @@ class Panel(QWidget):
         self.raise_()
         self.activateWindow()
         self._frost()
+        # Where the keyboard follows the mouse, the pointer comes to the panel
+        # rather than the other way round — reaching for it across other
+        # windows would hand them the focus and dismiss it. Only for a panel
+        # that dismisses: the desk fills the screen and the pointer is already
+        # on it, and the Hermes window is an ordinary window somebody moves to.
+        if getattr(self, "dismisses", False) and wm.focus_follows_mouse() and not self.underMouse():
+            self._pointer_tries = 0
+            QTimer.singleShot(40, self._bring_pointer)
+
+    def _bring_pointer(self) -> None:
+        # The window is mapped a moment after `show`, and the compositor only
+        # knows where it is once it is. A few short tries, then give up: a
+        # pointer left where it was is the old behavior, not a failure.
+        if not self.isVisible() or wm.bring_pointer(self.windowTitle()):
+            return
+        self._pointer_tries += 1
+        if self._pointer_tries < 10:
+            QTimer.singleShot(50, self._bring_pointer)
 
 
 class Reader(QObject):

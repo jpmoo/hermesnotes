@@ -135,6 +135,16 @@ def offers_search_entrance() -> bool:
     return bool(_ask("offers_search_entrance", False))
 
 
+def bring_pointer(title: str) -> bool:
+    """
+    Move the pointer onto our window `title`, where the compositor allows it.
+
+    For desktops where focus follows the mouse — see `hypr.bring_pointer`.
+    False where there is nothing to do or it could not be done yet.
+    """
+    return bool(_ask("bring_pointer", False, title))
+
+
 def capture(pid: int) -> tuple[bytes | None, str]:
     """
     The focused window's pixels, as a PPM — if it is still the window `pid` owns.

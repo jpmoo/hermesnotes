@@ -48,12 +48,13 @@ window.glanceAsk = async (reading) => {
   body.innerHTML = "";
 
   // Three places, in reading order, filled at different speeds: what was read,
-  // what the window is called, and what its contents are like. The middle one
-  // is a lookup on this machine and often lands first.
+  // what its contents are like, and what the window is called. The last is a
+  // lookup on this machine and often lands first, which is why each has its
+  // own box rather than being appended in the order they finish.
   const head = el("div");
-  const about = el("div", "about-box");
   const related = el("div", "related");
-  body.append(head, about, related);
+  const about = el("div", "about-box");
+  body.append(head, related, about);
   void showAbout(reading.about, about, turn, reading.settings || {});
 
   // The screen is being read: the pixels are captured, the text is not back

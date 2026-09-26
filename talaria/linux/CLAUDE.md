@@ -491,7 +491,14 @@ over there.
   whatever is under the pointer — so New Block closed mid-sentence. A panel the
   pointer is still resting on is not a panel anybody looked away from, and
   `Panel._hide_if_still_inactive` says so. Talaria does not change anybody's
-  `follow_mouse` setting.
+  `follow_mouse` setting. **And the pointer is brought to the panel.** Keeping
+  a panel the pointer rests on was not enough: reaching for a panel from across
+  the screen crossed other windows, each took the focus on the way past, and
+  the panel closed before the pointer arrived. So `summon` moves the pointer to
+  the middle of any panel that dismisses (`dispatch movecursor`, once the
+  window is mapped) — the same warp Hyprland makes on a focus change of its
+  own. Not the desk, which is under the pointer already, and not the Hermes
+  window, which is an ordinary window.
 
 **Omarchy and Ryoku are the same target.** Both are Arch with a Hyprland
 session; what differs is the furniture — walker and waybar on one, a Quickshell

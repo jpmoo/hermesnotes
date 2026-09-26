@@ -611,7 +611,14 @@ export function buildServer(deps: {
      *
      * So it is asked directly, every time, rather than inferred from rows.
      */
-    if (!context.recording) {
+    if (process.platform !== "darwin") {
+      // The Linux shell stopped pushing the focused window here: nothing on
+      // Linux read the record but `talaria link` choosing a format, and eight
+      // hours of every window and its title was the wrong price for that.
+      // Glance asks the shell directly. So an empty record is the design, not
+      // a shell that is not running.
+      add("context", true, "not kept on Linux — Glance reads the focused window from the shell");
+    } else if (!context.recording) {
       add("context", true, "recording is off");
     } else {
       const front = await frontmostApp();

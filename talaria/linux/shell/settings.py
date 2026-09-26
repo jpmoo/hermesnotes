@@ -35,7 +35,7 @@ import subprocess
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGroupBox,
-    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea,
+    QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QScrollArea,
     QSpinBox, QVBoxLayout, QWidget,
 )
 
@@ -342,23 +342,16 @@ class SettingsWindow(QDialog):
         desk = QGroupBox("Desktop")
         rows = QFormLayout(desk)
         self.symbol = QLineEdit(placeholderText="talaria")
-        self.context_exclude = QPlainTextEdit()
-        self.context_exclude.setFixedHeight(90)
         rows.addRow("Tray icon", self.symbol)
         rows.addRow(_hint(
             "A freedesktop icon name from the current theme. The Mac reads this key as an SF Symbol "
             "name, so a file shared between the two will not name the same picture — it is one key "
             "with two meanings, which is the honest cost of one config file."
         ))
-        rows.addRow("Never recorded", self.context_exclude)
-        rows.addRow(_hint(
-            "Window classes, one per line — <tt>org.keepassxc.KeePassXC</tt>, "
-            "<tt>com.anthropic.Claude</tt>. Talaria keeps an eight-hour record of which windows "
-            "you had in front, which is how it picks a link's format and knows what you were "
-            "working in; anything listed here is left out of it entirely. Not Glance's "
-            "blindlist — password managers are never read by Glance whatever is here. The Mac "
-            "reads the same key as bundle ids."
-        ))
+        # No "Never recorded". It listed windows to keep out of the daemon's
+        # record of what was in front, and Linux no longer keeps one — see
+        # `Frontmost._remember`. `contextExclude` is left in the file untouched:
+        # the Mac still reads it.
         form.addWidget(desk)
 
         form.addWidget(_hint(f"Written to {config_path()}, mode 0600."))
@@ -414,10 +407,6 @@ class SettingsWindow(QDialog):
         QTimer.singleShot(0, self.inference_model.refresh)
         QTimer.singleShot(0, self.glance_model.refresh)
 
-        exclude = c.get("contextExclude")
-        self.context_exclude.setPlainText(
-            "\n".join(x for x in exclude if isinstance(x, str)) if isinstance(exclude, list) else ""
-        )
 
     # -------------------------------------------------------------------- save
 
@@ -470,12 +459,6 @@ class SettingsWindow(QDialog):
                 obj[key] = value
             else:
                 obj.pop(key, None)
-
-        excluded = [line.strip() for line in self.context_exclude.toPlainText().splitlines() if line.strip()]
-        if excluded:
-            obj["contextExclude"] = excluded
-        else:
-            obj.pop("contextExclude", None)
 
         # A false is the default, so it is written only when true — which keeps a
         # file nobody has changed identical to the one first written.

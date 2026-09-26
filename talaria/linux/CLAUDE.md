@@ -166,7 +166,15 @@ workspaces through `aerospace` — both macOS, both polled every two seconds. Th
 are guarded behind `MACOS_WINDOW_SOURCES` and return nothing here, so `/context`
 degrades instead of spawning doomed processes forever. **That means the context
 record is empty on Linux**, and it is a gap rather than a fault: `talaria doctor`
-says so in those words. KWin is what fills it, and that is step 4.
+says so in those words. KWin is what filled it, and that was step 4.
+
+**It is empty again, on purpose.** The shell pushed every focused window and its
+title into the record, and on Linux nothing read it but `talaria link` without
+`--for` choosing a link's format. The owner asked for it gone: the shell no
+longer posts to `/context`, Settings no longer offers "Never recorded", and
+`talaria doctor` says the record is not kept on Linux. The daemon's record, its
+routes and `contextExclude` are unchanged — they are the Mac's. The shell still
+tracks the focused window in memory; Glance reads that directly.
 
 One duplication was found rather than introduced: `cli/src/client.ts` keeps its
 own copy of the socket path, because the CLI depends only on `@talaria/canonical`
@@ -518,8 +526,8 @@ with a hyprlang `hyprland.conf`, Noctalia's bar holding the tray:
 
 - **Verified.** `install.sh` writes `talaria.conf`, and the `source =` line
   loads all eight binds with no config errors. `exec-once` through
-  `systemd-run` starts the shell. The focused window reaches `talaria doctor`
-  from the event socket. Noctalia draws the tray mark. Panels float, sized and
+  `systemd-run` starts the shell. The focused window arrives from the event
+  socket (it reached `talaria doctor` until the record was removed). Noctalia draws the tray mark. Panels float, sized and
   clear of the bar, once `_match_rule` was added — before it, none did.
 - **Found and fixed.** On a machine with no `config.json` yet, `install.sh`
   stopped at the daemon's exit 78 and never reached the Hyprland section,
@@ -855,7 +863,8 @@ Named rather than implied, in the order they cost something.
   way it reads anything else. What it does not give is the page beyond the
   visible screenful, or its URL. Revisit if that turns out to matter.
 - **`AMBIENT.md` is partly built now.** #1 the reference picker (Meta+Shift+L),
-  #2 the context record (the KWin script fills it) are done. #3, the ambient
+  are done. #2, the context record, was built and then removed on Linux —
+  see *Making the daemon run here*. #3, the ambient
   panel, was built and then **removed** at the owner's request — once Glance
   read the screen, following the focus meant photographing every window passed
   through; see *The screen is the main answer now*. #4, workspace

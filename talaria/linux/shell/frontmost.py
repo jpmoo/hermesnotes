@@ -231,6 +231,137 @@ class Frontmost(QObject):
         self.changed.connect(self._remember)
 
     def _remember(self, window: Window) -> None:
+        # Kept here and nowhere else. This used to be handed on to the daemon's
+        # `POST /context`, which keeps eight hours of what was in front — and on
+        # Linux nothing read it but `talaria link` without `--for`, choosing a
+        # link's format. Every focused window and its title in a database, for
+        # that, was the wrong trade; the owner asked for it gone. Glance reads
+        # `current` directly and needs nothing stored.
+        self.current = window
+
+    def start(self) -> None:
+        from PySide6.QtGui import QGuiApplication
+
+        app = QGuiApplication.instance()
+        if app is None:
+            return
+        clipboard = app.clipboard()
+        if clipboard is None:
+            return
+        self.blind = app.platformName().startswith("wayland")
+        clipboard.selectionChanged.connect(self._qt_tick)
+        if self.blind:
+            self._watch()
+
+    def _watch(self) -> None:
+        """
+        Give the clock eyes where the compositor offers `data-control`.
+
+        The history above is KWin's: `wl-paste --watch` needs the wlroots
+        `data-control` protocol, KWin has none, and the watcher died at once.
+        Hyprland implements it, and there the watcher sees every primary
+        selection on the desktop without being focused — measured: it stays up,
+        fires on a highlight in another application, and the active window does
+        not move. So a watcher that is *still running* is the proof, and only
+        then is the clock declared sighted; one that exits leaves it blind,
+        exactly as before.
+
+        One long-lived client rather than a spawn per focus change, so the
+        flashing loop recorded above cannot happen. And still only a timestamp:
+        `echo` ignores the selection it is handed on stdin, so nothing
+        highlighted anywhere is read into this process.
+        """
+        watcher = QProcess(self)
+        watcher.setProgram("wl-paste")
+        watcher.setArguments(["--primary", "--watch", "echo"])
+        watcher.setStandardErrorFile(QProcess.nullDevice())
+        watcher.readyReadStandardOutput.connect(self._watched)
+        watcher.finished.connect(self._unwatched)
+        self._watcher = watcher
+        #: `--watch` runs once for whatever is selected when it starts. That is
+        #: not a change anybody made, so it must not look like a fresh one.
+        self._watch_started = time.monotonic()
+        watcher.start()
+        if watcher.waitForStarted(1000):
+            self.blind = False
+
+    def _watched(self) -> None:
+        self._watcher.readAllStandardOutput()
+        if time.monotonic() - self._watch_started > 0.5:
+            self._tick()
+        elif self.changed_at is None:
+            # Whatever was selected before the shell started was made before
+            # every focus this process will see, so it is dated that way.
+            # Left unknown, `selection_is_stale` counts it fresh — and the first
+            # summon after a restart offered text highlighted who knows when.
+            self.changed_at = 0.0
+
+    def _unwatched(self, *_args) -> None:
+        # Gone — no data-control, or the display went away. Blind again, which
+        # is the honest state, rather than trusting a clock that stopped.
+        self.blind = True
+
+    def _qt_tick(self) -> None:
+        """
+        Qt's word, taken only where there is no watcher to take instead.
+
+        **On Wayland, Qt reports a selection change whenever one of our windows
+        takes focus** — it is handed the current offer and calls that a change.
+        Measured: a window shown, nothing highlighted anywhere, and
+        `selectionChanged` 20ms later. With the watcher running that was a
+        second clock, and a wrong one: every panel that opened re-dated
+        whatever was highlighted an hour ago to *now*, after the focus, so the
+        staleness test passed it. Glance and the desk then offered a line
+        selected in a terminal while somebody sat in another application —
+        which is how it was reported, as "Glance is holding what's in the
+        clipboard". The watcher sees every real highlight on the desktop, so
+        while it runs, Qt is not asked.
+        """
+        if self.blind:
+            self._tick()
+
+    def _tick(self) -> None:
+        self.changed_at = time.monotonic()
+
+
+@dataclass(frozen=True)
+class Window:
+    """One window, already judged."""
+
+    window_class: str
+    resource_name: str
+    pid: int
+    #: None when the blindlist refused it. Absent rather than emptied, so the
+    #: difference between "no title" and "not looked at" survives to the UI.
+    caption: str | None
+    #: The virtual desktop that was current. The Mac gets this from AeroSpace;
+    #: here KWin owns the desktops and simply says.
+    workspace: str | None
+    blind: bool
+
+    @property
+    def name(self) -> str:
+        return self.resource_name or self.window_class or "something"
+
+
+class Frontmost(QObject):
+    """Emits `changed(Window)` when the focused window changes."""
+
+    changed = Signal(object)
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.current: Window | None = None
+        self.failure: str | None = None
+        #: When the focused window last changed. Compared against the clock
+        #: below to decide whether a selection was made in this window.
+        self.focused_at: float = time.monotonic()
+        self.selection = SelectionClock(self)
+        self.selection.start()
+        self._thread: threading.Thread | None = None
+        self.changed.connect(self._remember)
+
+    def _remember(self, window: Window) -> None:
         self.current = window
         self._tell_the_daemon(window)
 

@@ -246,17 +246,34 @@ class SettingsWindow(QDialog):
         ))
         form.addWidget(chat)
 
-        # --- Glance -----------------------------------------------------------
-        glance = QGroupBox("Glance")
-        rows = QFormLayout(glance)
+        # --- Glance's embedding model ------------------------------------------
+        #
+        # Its own section, because it is the one Glance setting with a partner
+        # somewhere else: Hermes Notes embeds the same library with a model of
+        # its own, and the two should be the same one.
+        embedding = QGroupBox("Glance Embedding Model")
+        rows = QFormLayout(embedding)
         self.glance_url = QLineEdit(placeholderText="http://localhost:11434")
         self.glance_model = ModelPicker(probe.EMBEDDING, self.glance_url)
-        self.glance_threshold = QDoubleSpinBox(minimum=0.0, maximum=1.0, singleStep=0.01, decimals=2)
-        self.glance_separate_done = QCheckBox("Put finished things in their own section")
-        self.glance_undated = QCheckBox("Include undated items in “Further Out/Undated”")
         rows.addRow("Address", self.glance_url)
         rows.addRow("Model", self.glance_model)
         rows.addRow(self.glance_model.status)
+        rows.addRow(_hint(
+            "<b>Use the same embedding model as your Hermes Notes server</b> — the one under "
+            "Settings → Embedding model in the web app. Talaria cannot read that setting, so it "
+            "is up to you to match them. Glance embeds the library itself, on this machine, so a "
+            "different model still works — but its similarity scores would not mean what Hermes' "
+            "do, and the threshold below would not carry across. Changing the model rebuilds "
+            "Glance's index rather than breaking it."
+        ))
+        form.addWidget(embedding)
+
+        # --- Glance -----------------------------------------------------------
+        glance = QGroupBox("Glance")
+        rows = QFormLayout(glance)
+        self.glance_threshold = QDoubleSpinBox(minimum=0.0, maximum=1.0, singleStep=0.01, decimals=2)
+        self.glance_separate_done = QCheckBox("Put finished things in their own section")
+        self.glance_undated = QCheckBox("Include undated items in “Further Out/Undated”")
         rows.addRow("Threshold", self.glance_threshold)
         rows.addRow(_hint(
             "Anything scoring below this is filed under “less similar” instead of the main list. "
@@ -310,10 +327,6 @@ class SettingsWindow(QDialog):
             "want while writing something. On, they move below the divider with the far-off ones, "
             "leaving the top of the list to what is actually happening this week."
         ))
-        rows.addRow(_hint(
-            "⚠ Glance is not built on Linux yet — it is the last step of the port. These are kept "
-            "and written so the file stays the same shape on both machines."
-        ))
         form.addWidget(glance)
 
         # No hotkey fields. They seeded the portal's *first* request and
@@ -339,9 +352,12 @@ class SettingsWindow(QDialog):
         ))
         rows.addRow("Never recorded", self.context_exclude)
         rows.addRow(_hint(
-            "One per line. These are invisible to the context record — and so to ranking and "
-            "defaulting, which is the price of being invisible. The Mac matches bundle ids; Linux "
-            "will match window classes once the context poll is wired to KWin."
+            "Window classes, one per line — <tt>org.keepassxc.KeePassXC</tt>, "
+            "<tt>com.anthropic.Claude</tt>. Talaria keeps an eight-hour record of which windows "
+            "you had in front, which is how it picks a link's format and knows what you were "
+            "working in; anything listed here is left out of it entirely. Not Glance's "
+            "blindlist — password managers are never read by Glance whatever is here. The Mac "
+            "reads the same key as bundle ids."
         ))
         form.addWidget(desk)
 

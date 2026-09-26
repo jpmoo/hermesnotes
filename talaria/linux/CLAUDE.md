@@ -603,7 +603,8 @@ to see. So the panel has an *About <window>* section above the results by
 meaning: the application's name (`com.anthropic.Claude` → "Claude") looked up
 as written in `/blocks?q=`, and the window's title with the app's name taken
 off — by meaning when it is a sentence, like a web page's, as written when it is
-short. Open tasks first. `glance.about` decides the name; a shell's `~` or a
+short, and held to the Settings threshold like every other result. Open
+tasks first. `glance.about` decides the name; a shell's `~` or a
 bare path is no name at all.
 
 **Only the focused window — as a rectangle.** `grim` 1.4, which Ubuntu ships,

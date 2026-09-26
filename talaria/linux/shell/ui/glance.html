@@ -54,7 +54,7 @@ window.glanceAsk = async (reading) => {
   const about = el("div", "about-box");
   const related = el("div", "related");
   body.append(head, about, related);
-  void showAbout(reading.about, about, turn);
+  void showAbout(reading.about, about, turn, reading.settings || {});
 
   // The screen is being read: the pixels are captured, the text is not back
   // yet. Not a failure, so none of the advice below applies.
@@ -113,11 +113,6 @@ window.glanceAsk = async (reading) => {
   }
 };
 
-/** How well a title has to match, by meaning, to count as being about it. A
- *  search by meaning always answers with *something*; a title's section should
- *  stay empty rather than fill with the least-bad guesses. */
-const ABOUT_FLOOR = 0.65;
-
 /** At most this many in the section. It is a reminder, not a search. */
 const ABOUT_MAX = 10;
 
@@ -135,7 +130,11 @@ const ABOUT_MAX = 10;
  *
  * Things you can still do come first, then the rest, then what is finished.
  */
-async function showAbout(named, into, turn) {
+async function showAbout(named, into, turn, settings) {
+  // A title asked by meaning is held to the same threshold as everything else
+  // Glance shows — the one in Settings, zero meaning no floor — rather than a
+  // second number of its own that nobody can see or change.
+  const floor = Number(settings.threshold || 0);
   if (!named?.app) return;
   const words = (t) => t.split(/\s+/).filter(Boolean).length;
   const literal = [named.app];
@@ -145,7 +144,7 @@ async function showAbout(named, into, turn) {
       .then((blocks) => blocks.map((block) => ({ block, score: null }))));
   if (named.title && words(named.title) > 3) {
     asks.push(get(`/glance?q=${encodeURIComponent(named.title)}&k=8`)
-      .then((hits) => hits.filter((h) => (h.score ?? 0) >= ABOUT_FLOOR)));
+      .then((hits) => hits.filter((h) => (h.score ?? 0) >= floor)));
   }
   // One lookup failing is that lookup having nothing to add.
   const found = (await Promise.all(asks.map((a) => a.catch(() => [])))).flat();

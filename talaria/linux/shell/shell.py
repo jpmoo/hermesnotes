@@ -305,7 +305,24 @@ class Panel(QWidget):
         self.view.loadStarted.connect(self._load_started)
         self.view.loadFinished.connect(self._load_finished)
         self.view.load(url)
-        QShortcut(QKeySequence("Escape"), self, activated=self.hide)
+        QShortcut(QKeySequence("Escape"), self, activated=self._escape)
+
+    def _escape(self) -> None:
+        """
+        Escape closes the innermost thing: the page's own, then the panel.
+
+        The shortcut is Qt's, so it fires before the page sees the key — a
+        page with a sheet open over it (Glance's "Show text") could not keep
+        Escape for itself, and the whole panel went. So the page is asked
+        first: `window.talariaEscape` returns true when it closed something of
+        its own. Any other answer, or no such function, is the panel's.
+        """
+        def answered(handled) -> None:
+            if handled is not True:
+                self.hide()
+
+        self.view.page().runJavaScript(
+            "!!(window.talariaEscape && window.talariaEscape())", answered)
 
     def closeEvent(self, event) -> None:  # noqa: N802 — Qt's name
         event.ignore()

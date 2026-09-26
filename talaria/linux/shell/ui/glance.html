@@ -44,6 +44,7 @@ let asking = 0;
 
 window.glanceAsk = async (reading) => {
   const turn = ++asking;
+  document.querySelector(".textsheet")?.remove();
   source.textContent = reading.rung ? `via ${reading.rung}` : "";
   body.innerHTML = "";
 
@@ -91,6 +92,13 @@ window.glanceAsk = async (reading) => {
   if (reading.rung === "screen" && reading.window) {
     asked.appendChild(document.createTextNode(" "));
     asked.appendChild(el("strong", null, reading.window));
+    // Not quoted, but not hidden either: what the screen reading made of the
+    // window is what the library was searched with, and when the results look
+    // wrong that is the first thing to check.
+    const reveal = el("button", "reveal", "Show text");
+    reveal.title = "What was read off the window";
+    reveal.onclick = () => showText(reading.text, reading.window);
+    asked.appendChild(reveal);
   } else {
     asked.appendChild(el("q", null, reading.text.slice(0, 180) + (reading.text.length > 180 ? "…" : "")));
   }
@@ -163,6 +171,42 @@ async function showAbout(named, into, turn, settings) {
   box.open = true;
   into.appendChild(box);
 }
+
+/*
+ * The full text a screen reading produced, over the panel.
+ *
+ * In the page rather than a window of its own: a second window would take the
+ * focus, and Glance dismisses itself when it loses focus. The text is already
+ * here — it is what was searched with — so nothing is fetched or kept; closing
+ * the sheet removes it from the page.
+ */
+function showText(text, where) {
+  document.querySelector(".textsheet")?.remove();
+  const sheet = el("div", "textsheet");
+  const box = el("div", "textsheet-box");
+  const top = el("div", "textsheet-head");
+  top.appendChild(el("span", null, `Read off ${where} — ${text.length} characters`));
+  const close = el("button", "reveal", "×");
+  close.title = "Close (Esc)";
+  top.appendChild(close);
+  const pre = el("pre", "textsheet-text", text);
+  box.append(top, pre);
+  sheet.appendChild(box);
+
+  close.onclick = () => sheet.remove();
+  sheet.onclick = (e) => { if (e.target === sheet) sheet.remove(); };
+  document.body.appendChild(sheet);
+}
+
+/* Escape is the shell's — a Qt shortcut that fires before this page sees the
+ * key — and it asks here first. True means the sheet took it, so the panel
+ * stays; see `Panel._escape`. */
+window.talariaEscape = () => {
+  const sheet = document.querySelector(".textsheet");
+  if (!sheet) return false;
+  sheet.remove();
+  return true;
+};
 
 /*
  * Where a hit belongs, ported from `Daemon.GlanceSection.of`.

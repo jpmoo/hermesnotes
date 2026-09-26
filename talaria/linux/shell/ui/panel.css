@@ -1081,3 +1081,17 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .related-head { display: none; font-size: 11px; text-transform: uppercase;
   letter-spacing: .04em; color: var(--muted); margin-top: 4px; }
 .related:has(+ .about-box:not(:empty)) > .related-head { display: block; }
+
+/* Glance: "Show text" beside the window a screen reading came from, and the
+   sheet it opens over the panel. */
+.reveal { margin-left: 8px; padding: 1px 8px; font-size: 11.5px; border-radius: 6px;
+  border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.reveal:hover { color: var(--fg); border-color: var(--muted); }
+.textsheet { position: fixed; inset: 0; z-index: 50; display: flex; padding: 10px;
+  background: color-mix(in srgb, Canvas 55%, transparent); }
+.textsheet-box { flex: 1; min-height: 0; display: flex; flex-direction: column;
+  background: Canvas; color: var(--fg); border: 1px solid var(--line); border-radius: 10px; }
+.textsheet-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.textsheet-text { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 12px;
+  white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, monospace; }

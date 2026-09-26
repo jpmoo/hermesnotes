@@ -461,11 +461,14 @@ class Reader(QObject):
     """
 
     done = Signal(object)
+    #: The pixels are in hand and are being read. Emitted at most once, before
+    #: `done`, and only when the ladder reached the screen.
+    progress = Signal(object)
 
     def read(self, **kwargs) -> None:
         def work() -> None:
             try:
-                reading = glance.read(on_gui_thread=False, **kwargs)
+                reading = glance.read(on_gui_thread=False, progress=self.progress.emit, **kwargs)
             except Exception as err:  # noqa: BLE001
                 # A ladder that fell over is a reading of nothing, not a dead
                 # panel: the caller has a window to open either way.
@@ -519,13 +522,10 @@ class Shell(QObject):
         # know what was in front *before* it opened, and the answer has to have
         # arrived by the time a hotkey can fire.
         self.frontmost = Frontmost()
-        # Ambient Glance: redrawn when the desktop says the window changed, once
-        # the changes stop coming. See `_ambient`.
-        self._ambient_at = None
-        self._ambient_timer = QTimer(self)
-        self._ambient_timer.setSingleShot(True)
-        self._ambient_timer.timeout.connect(self._ambient_read)
-        self.frontmost.changed.connect(self._ambient)
+        # No ambient Glance. It redrew on every focus change while Glance or the
+        # desk was open; with the screen as its main source that would be a
+        # camera following you around, so Glance reads when it is asked and not
+        # otherwise. The focus is still tracked — it is what gets read.
         self.frontmost.start()
 
         self.shortcuts = Shortcuts()
@@ -710,6 +710,13 @@ class Shell(QObject):
             self._ask_our_own(self._summon_compose)
             return
 
+        # And the desk. It covers the screen, so what was in front has to be
+        # read — photographed, now — before it opens, or its Glance quadrant
+        # would read the desk.
+        if action == "desk":
+            self._summon_desk()
+            return
+
         # What was in front a moment ago, kept before this panel becomes the
         # front window itself. The picker needs it to choose a link's shape, and
         # asking after it is open answers "Talaria" — the trap `link.ts`
@@ -725,17 +732,6 @@ class Shell(QObject):
                 return
             self.panels[action] = panel
         panel.summon()
-        if action == "desk":
-            # **Look at once, not at the next focus change.** The desk's Glance
-            # quadrant is ambient — it redraws when the focus moves — but opening
-            # a full-screen desk is the last focus change it will see: from then
-            # on the only windows taking focus are Talaria's own, which the
-            # window source ignores on purpose. So it sat on "Waiting for
-            # something to look at" for as long as the desk was up. What was in
-            # front when the desk opened is exactly what it should show; the
-            # reading reaches the frame once the desk has loaded, through
-            # `when_loaded` in `_glance`.
-            self._ambient(self.frontmost.current)
         if action == "proposals":
             panel.view.page().runJavaScript("window.proposalsRefresh && window.proposalsRefresh()")
         if action == "reference":
@@ -779,71 +775,50 @@ class Shell(QObject):
         if board is not None:
             board.setText(text)
 
-    # --------------------------------------------------------------- ambient
+    # ------------------------------------------------------------------ desk
 
-    def _ambient(self, window) -> None:
+    def _summon_desk(self) -> None:
         """
-        Glance follows what you are looking at.
+        Read what is in front, then open the desk over it.
 
-        AMBIENT's third capability, and the whole of it: "not a search box you
-        invoke — a surface that is always showing what the library knows about
-        what you are looking at, **redrawn on the context signal rather than on a
-        timer**."
+        The desk's Glance quadrant used to be ambient: it opened, then read,
+        then followed the focus. Reading after opening was harmless while no
+        rung looked at pixels, and would photograph the desk now. So the order is
+        Glance's: the ladder runs first, the desk opens on `progress` — the
+        pixels are captured by then — and the answer reaches the quadrant when
+        it lands. With a selection there is no progress, and the desk opens
+        with the answer already in hand.
 
-        The Mac cannot do that and says so: it polls every four seconds because
-        "nothing on this machine emits a 'the focused document changed' event".
-        KWin emits one. So this is the same feature arriving by the route the
-        design asked for, and the reason it is a signal here and a timer there is
-        the desktop, not the intent.
-
-        **Only while something is showing it.** A panel nobody has open is not
-        ambient, it is a background job reading windows — which is the one thing
-        this must never be.
-
-        **And never with a synthetic copy.** Rung 6 presses keys in somebody
-        else's window; doing that every time the focus moves would be a hand
-        reaching across the desk all day. It is for the moment you *asked*, which
-        is the first read after a summon — the Mac draws the same line, allowing
-        a copy on `startFollowing` and not on the timer that follows it.
+        No synthetic copy: opening a desk is not asking for one.
         """
-        if not self._following():
-            return
-        # A burst of changes is one gesture — alt-tabbing through five windows is
-        # not five questions. Read when it settles.
-        self._ambient_at = window
-        self._ambient_timer.start(450)
+        state = {"opened": False}
 
-    def _following(self) -> bool:
-        glance = self.panels.get("glance")
-        desk = self.panels.get("desk")
-        return bool((glance and glance.isVisible()) or (desk and desk.isVisible()))
+        def open_desk(reading=None) -> None:
+            if state["opened"]:
+                return
+            state["opened"] = True
+            desk = self.panels.get("desk") or self._build("desk")
+            if desk is None:
+                return
+            self.panels["desk"] = desk
+            desk.summon()
+            if reading is not None:
+                self._glance(desk, reading, relay=True)
 
-    def _ambient_read(self) -> None:
-        window = getattr(self, "_ambient_at", None)
-        if not self._following():
-            return
-        self._reading(
-            lambda reading, w=window: self._ambient_drew(w, reading),
-            window,
-            allow_copy=False,
-        )
+        def landed(reading) -> None:
+            open_desk()
+            desk = self.panels.get("desk")
+            if desk is not None and desk.isVisible():
+                front = self.frontmost.current
+                print(
+                    f"talaria: desk glance — front={front.name if front else 'unknown'} "
+                    f"rung={reading.rung} chars={len(reading.text or '')}",
+                    file=sys.stderr, flush=True,
+                )
+                self._glance(desk, reading, relay=True)
 
-    def _ambient_drew(self, window, reading) -> None:
-        if not self._following():
-            return
-        print(
-            f"talaria: ambient — front={window.name if window else 'unknown'} "
-            f"rung={reading.rung} chars={len(reading.text or '')}",
-            file=sys.stderr, flush=True,
-        )
-        panel = self.panels.get("glance")
-        if panel is not None and panel.isVisible():
-            self._glance(panel, reading)
-        # The desk's own Glance is a frame, which `runJavaScript` cannot reach;
-        # the desk relays it, the way it relays frosting.
-        desk = self.panels.get("desk")
-        if desk is not None and desk.isVisible():
-            self._glance(desk, reading, relay=True)
+        self._reading(landed, self.frontmost.current, allow_copy=False,
+                      screen=True, progress=open_desk)
 
     # ---------------------------------------------------------------- glance
 
@@ -899,13 +874,18 @@ class Shell(QObject):
 
         panel.view.page().runJavaScript(_harvest(), answered)
 
-    def _reading(self, then, window, allow_copy: bool) -> None:
+    def _reading(self, then, window, allow_copy: bool, screen: bool = False,
+                 progress=None) -> None:
         """
         Climb the ladder on a worker, and hand the answer back here.
 
         The reader is held on `self` for the length of the read: a `QObject`
         whose only Python reference is a local goes away when the method
         returns, taking the signal that was about to be emitted with it.
+
+        `screen` lets the ladder read the window's pixels. `progress` is told
+        when they have been captured and are being read — the point after which
+        nothing left in the read looks at the screen, so a panel may open.
         """
         reader = Reader()
         self._readers.append(reader)
@@ -916,10 +896,14 @@ class Shell(QObject):
             then(reading)
 
         reader.done.connect(landed, Qt.ConnectionType.QueuedConnection)
+        if progress is not None:
+            reader.progress.connect(progress, Qt.ConnectionType.QueuedConnection)
         reader.read(
             window=window,
             allow_copy=allow_copy,
-            asked=allow_copy,
+            # Every read is asked for now — there is no ambient read left.
+            asked=True,
+            screen=screen,
             changed_at=self.frontmost.selection.changed_at,
             focused_at=self.frontmost.focused_at,
             clock_blind=self.frontmost.selection.blind,
@@ -946,9 +930,28 @@ class Shell(QObject):
         # Off the GUI thread — see `Reader` — and the panel is opened by the
         # callback, which keeps the order this method exists for: the reading is
         # taken before anything of ours is in front.
-        self._reading(self._glance_read, self.frontmost.current, allow_copy=True)
+        #
+        # The screen rung takes about half a second, so the panel does not wait
+        # for it: it opens on `progress`, the moment the pixels are captured, and
+        # says it is reading. The answer replaces that when it lands — unless the
+        # panel was dismissed in between, which is somebody saying they no longer
+        # want it.
+        state = {"opened": False}
 
-    def _glance_read(self, reading) -> None:
+        def pending(reading) -> None:
+            state["opened"] = True
+            self._glance_read(reading)
+
+        def landed(reading) -> None:
+            panel = self.panels.get("glance")
+            if state["opened"] and (panel is None or not panel.isVisible()):
+                return
+            self._glance_read(reading, summon=not state["opened"])
+
+        self._reading(landed, self.frontmost.current, allow_copy=True,
+                      screen=True, progress=pending)
+
+    def _glance_read(self, reading, summon: bool = True) -> None:
         # What it looked at and where it got it, but never the text itself:
         # this is a log, and the text is the user's document.
         front = self.frontmost.current
@@ -964,7 +967,8 @@ class Shell(QObject):
             if panel is None:
                 return
             self.panels["glance"] = panel
-        panel.summon()
+        if summon:
+            panel.summon()
         self._glance(panel, reading)
 
     #: Rungs that found text somebody *chose*. A window title or the whole of a
@@ -1056,6 +1060,7 @@ class Shell(QObject):
 
         payload = json.dumps({
             "text": reading.text, "rung": reading.rung, "why": reading.why,
+            "window": getattr(reading, "window", None),
             "settings": settings,
         })
 

@@ -74,6 +74,10 @@ class Reading:
     #: Shown to the user when nothing was found, so "it isn't working" and
     #: "nothing was selected" stop looking the same.
     why: str
+    #: The window a screen reading came from, as the panel names it. A
+    #: screenful of recognized text is not worth quoting back at somebody —
+    #: they can see it — so the panel shows where it looked instead.
+    window: str | None = None
 
     @property
     def usable(self) -> bool:
@@ -438,7 +442,8 @@ def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bo
 
 def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
          clock_blind: bool = False, asked: bool = False,
-         on_gui_thread: bool = True) -> Reading:
+         on_gui_thread: bool = True, screen: bool = False,
+         progress=None) -> Reading:
     """
     Climb until something answers.
 
@@ -465,6 +470,12 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
     be text the user highlighted *inside* the password manager, and reading it
     because it arrives by a different route would break the same promise through
     a side door.
+
+    `screen` lets the ladder read the window's pixels when nothing is selected —
+    see `screenread.py`. Off for New Block, which wants only what somebody
+    chose. `progress` is called with a pending reading once the pixels are in
+    hand and before they are read, which is the moment it becomes safe for a
+    Talaria window to appear: everything that looks at the screen is done.
     """
     if window is not None and window.blind:
         return Reading(None, "blindlist", f"{window.name} is on the blindlist — nothing was read")
@@ -485,10 +496,16 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
     # also the rung that fails more often, which is why it is tried first rather
     # than trusted alone: a miss here costs one bounded tree walk.
     text, how = atspi_selection()
-    if text and text.strip():
-        rung = "focused field" if how == FOCUSED_FIELD else "accessibility"
-        return Reading(text[:MAX_CHARS], rung, how)
-    atspi_why = how
+    # A whole field is not a selection. It used to answer here, ahead of
+    # everything; it now waits below the screen, which reads the same field
+    # and everything around it. Where there is no screen to read — KDE, or a
+    # capture that failed — it is still better than a title.
+    field = text if how == FOCUSED_FIELD and text and text.strip() else None
+    if text and text.strip() and how != FOCUSED_FIELD:
+        return Reading(text[:MAX_CHARS], "accessibility", how)
+    # A field that answered was reached and had nothing highlighted, which is
+    # the same evidence as "reached, no selection" for the rung below.
+    atspi_why = REACHED_NO_SELECTION if field else how
 
     # **A window that was reachable and had nothing selected has answered.**
     #
@@ -555,6 +572,32 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
         text, how = primary_selection(allow_qt=on_gui_thread)
         if text and text.strip():
             return Reading(text[:MAX_CHARS], "primary selection", how)
+
+    # **The screen.** Nothing was selected, so the question is what the window
+    # is showing — and on this desktop most windows will only say that in
+    # pixels. Captured here, before `progress` lets anything of ours appear.
+    if screen and window is not None:
+        import screenread
+        import wm
+
+        pixels, how = wm.capture(window.pid)
+        if pixels:
+            # "Claude", not "com.anthropic.Claude": a reverse-domain class is an
+            # identifier, and this is a sentence somebody reads.
+            label = window.name.rsplit(".", 1)[-1]
+            if progress is not None:
+                progress(Reading(None, "screen", f"Reading {label}…", window=label))
+            text, how = screenread.recognize(pixels)
+            print(f"talaria: glance screen — {window.name} {how} chars={len(text or '')}",
+                  file=sys.stderr, flush=True)
+            if text:
+                return Reading(text[:MAX_CHARS], "screen", f"read off {label}'s window",
+                               window=label)
+        else:
+            print(f"talaria: glance screen — not captured ({how})", file=sys.stderr, flush=True)
+
+    if field:
+        return Reading(field[:MAX_CHARS], "focused field", FOCUSED_FIELD)
 
     # Rung 7. The weakest thing that is still better than nothing, and the one
     # the daemon would otherwise have had to guess at.

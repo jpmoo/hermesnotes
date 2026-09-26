@@ -160,6 +160,15 @@ PY
     echo "==> Hyprland: installed the talaria app icon (256, 512)"
   fi
 
+  # Glance reads the window in front off its pixels: `grim` to capture it,
+  # `tesseract` to read it. Without them Glance still works — it falls to the
+  # window title — which is exactly why it is worth saying here rather than
+  # leaving somebody to wonder why it only ever shows "~".
+  for tool in grim tesseract; do
+    command -v "$tool" >/dev/null 2>&1 || \
+      echo "!! Glance can't read the screen without $tool (Ubuntu: sudo apt install ${tool/tesseract/tesseract-ocr})"
+  done
+
   if [ -f "$HYPR_DIR/hyprland.lua" ]; then
     STYLE=lua; MAIN="$HYPR_DIR/hyprland.lua"; SNIPPET="$HYPR_DIR/talaria.lua"
     LOAD_LINE='dofile(os.getenv("HOME") .. "/.config/hypr/talaria.lua")'

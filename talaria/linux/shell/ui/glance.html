@@ -37,11 +37,22 @@ addEventListener("message", (e) => {
   if (e.data?.talaria === "glance" && e.data.reading) void window.glanceAsk(e.data.reading);
 });
 
+/** Which ask is current. A screen read arrives twice — "reading…", then the
+ *  answer — and a library search still in flight for an older ask must not
+ *  land on top of a newer one. */
+let asking = 0;
+
 window.glanceAsk = async (reading) => {
-  // Which rung answered, and — when the reading arrived on its own — that this
-  // is following the window rather than something you asked for.
+  const turn = ++asking;
   source.textContent = reading.rung ? `via ${reading.rung}` : "";
   body.innerHTML = "";
+
+  // The screen is being read: the pixels are captured, the text is not back
+  // yet. Not a failure, so none of the advice below applies.
+  if (!reading.text && reading.rung === "screen") {
+    body.appendChild(el("div", "note", reading.why || "Reading the screen…"));
+    return;
+  }
 
   if (!reading.text) {
     // The two failures are told apart on purpose. "We did not look" is a
@@ -64,7 +75,15 @@ window.glanceAsk = async (reading) => {
 
   const asked = el("div", "asked");
   asked.appendChild(el("span", "fine", "Looking at"));
-  asked.appendChild(el("q", null, reading.text.slice(0, 180) + (reading.text.length > 180 ? "…" : "")));
+  // A selection is quoted back: somebody chose it, and seeing it confirms what
+  // was read. A screen reading is not — it is a screenful of recognized text
+  // they are already looking at, so the window is named instead.
+  if (reading.rung === "screen" && reading.window) {
+    asked.appendChild(document.createTextNode(" "));
+    asked.appendChild(el("strong", null, reading.window));
+  } else {
+    asked.appendChild(el("q", null, reading.text.slice(0, 180) + (reading.text.length > 180 ? "…" : "")));
+  }
   body.appendChild(asked);
 
   const waiting = el("div", "note", "Reading the library…");
@@ -72,9 +91,11 @@ window.glanceAsk = async (reading) => {
 
   try {
     const hits = await get(`/glance?q=${encodeURIComponent(reading.text)}&k=24`);
+    if (turn !== asking) return;
     waiting.remove();
     show(hits, reading.settings || {});
   } catch (err) {
+    if (turn !== asking) return;
     waiting.remove();
     complain(body, err);
   }

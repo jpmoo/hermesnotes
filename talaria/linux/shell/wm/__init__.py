@@ -135,6 +135,17 @@ def offers_search_entrance() -> bool:
     return bool(_ask("offers_search_entrance", False))
 
 
+def capture(pid: int) -> tuple[bytes | None, str]:
+    """
+    The focused window's pixels, as a PPM — if it is still the window `pid` owns.
+
+    For Glance's screen reading. A backend that cannot capture says so and the
+    ladder moves on; KWin has no `wlr-screencopy`, so on KDE this answers None
+    and the rungs below the screen do what they always did.
+    """
+    return _ask("capture", (None, f"no screen capture on this desktop ({session()})"), pid)
+
+
 #: The nine spots a summoned panel can rest in. Named on both desktops and in
 #: the Mac's settings panel, so the word in `config.json` means one thing
 #: everywhere.

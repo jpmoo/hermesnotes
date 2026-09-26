@@ -118,7 +118,7 @@ class SelectionClock(QObject):
         if clipboard is None:
             return
         self.blind = app.platformName().startswith("wayland")
-        clipboard.selectionChanged.connect(self._tick)
+        clipboard.selectionChanged.connect(self._qt_tick)
         if self.blind:
             self._watch()
 
@@ -169,6 +169,25 @@ class SelectionClock(QObject):
         # Gone — no data-control, or the display went away. Blind again, which
         # is the honest state, rather than trusting a clock that stopped.
         self.blind = True
+
+    def _qt_tick(self) -> None:
+        """
+        Qt's word, taken only where there is no watcher to take instead.
+
+        **On Wayland, Qt reports a selection change whenever one of our windows
+        takes focus** — it is handed the current offer and calls that a change.
+        Measured: a window shown, nothing highlighted anywhere, and
+        `selectionChanged` 20ms later. With the watcher running that was a
+        second clock, and a wrong one: every panel that opened re-dated
+        whatever was highlighted an hour ago to *now*, after the focus, so the
+        staleness test passed it. Glance and the desk then offered a line
+        selected in a terminal while somebody sat in another application —
+        which is how it was reported, as "Glance is holding what's in the
+        clipboard". The watcher sees every real highlight on the desktop, so
+        while it runs, Qt is not asked.
+        """
+        if self.blind:
+            self._tick()
 
     def _tick(self) -> None:
         self.changed_at = time.monotonic()

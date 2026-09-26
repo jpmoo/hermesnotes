@@ -566,6 +566,45 @@ ladder of seven, each catching what the one above missed. Read
    selected" and "hasn't landed yet" are harder to separate than on macOS.
 7. Window title, blindlisted the same way.
 
+### The screen is the main answer now
+
+Linux Glance has diverged from the Mac's ladder on purpose, and the owner has
+said not to keep the two in step. A selection still wins when there is one.
+When there is not, Glance reads the **window's pixels** — `grim` to capture,
+`tesseract` to read, `screenread.py` — ahead of the focused field and the title.
+Most windows here only ever said what they were showing through their title,
+which is "~" or "Claude"; the pixels are the one thing every window has, and
+they cover terminals, Electron and a canvas-drawn Google Doc alike. The browser
+extension (rung 5) is not being built; this is the answer to the gap it was for.
+
+The order on a summon: blindlist → our own window (desk canvas, writing page) →
+AT-SPI selection → primary selection, if made since the focus → synthetic copy,
+if switched on → **screen** → focused field → title. New Block does not read the
+screen: it wants what somebody chose, and a screenful was not chosen.
+
+**Glance is not ambient.** It used to redraw on every focus change while Glance
+or the desk was open. With a camera as its main source that would be a
+photograph of every window you pass through, so it reads only when asked: the
+Glance hotkey, or opening the desk.
+
+**Photograph first, then show anything.** The capture is of whatever is drawn
+in the window's box, so every read that looks at the screen finishes before a
+Talaria window appears. The ladder reports `progress` once the pixels are in
+hand; that is when the Glance panel opens ("Reading Claude…") and when the desk
+opens, and the answer replaces the placeholder about half a second later. The
+desk used to open first and read after, which was harmless until a rung looked
+at pixels. `wm.capture` also re-asks the compositor and refuses unless the
+window in front is still the pid the blindlist judged.
+
+What reading real windows taught, all written up at the top of `screenread.py`:
+tesseract's own threading made it four times *slower* (4.2s → 1.1s on one
+thread, ~0.5s in parallel pieces); a translucent terminal over a photograph
+defeats any single threshold, so ink is what differs from a locally blurred
+background; horizontal strips interleaved a sidebar with its page line by line,
+so full-height gaps split columns first; and a chat app's sidebar of other
+conversations' titles drowned the conversation, so columns under half the
+widest are dropped as chrome.
+
 ### The ladder does not run on the thread that draws
 
 Every rung below our own windows blocks: `wl-paste` is a process to spawn and
@@ -629,6 +668,14 @@ selection twice.
   terminal retitles constantly, and stamping each one made a selection made
   seconds ago in that same terminal read as inherited. The identity is class,
   resource name and pid, so two windows of one process are one window to it.
+- **And Qt must not be a second clock while the watcher runs.** On Wayland Qt
+  emits `selectionChanged` whenever one of our windows takes focus — handed the
+  current offer, it calls that a change. Measured: nothing highlighted
+  anywhere, a window shown, and the signal 20ms later. So every panel that
+  opened re-dated an old highlight to after the focus, and Glance offered a line
+  selected in a terminal to somebody sitting in another application — reported
+  as "Glance is holding what's in the clipboard". Qt ticks now count only while
+  the clock is blind.
 
 ### What the rungs actually returned here
 
@@ -786,14 +833,15 @@ Named rather than implied, in the order they cost something.
   the canvas, beside `canvas.json`, and is visible on that canvas and nowhere
   else in the library. Written up as the open entry in
   `../../pkm-interchange/LIMITS.md`, with the two shapes an answer could take.
-- **Glance rung 5 — the browser extension.** Everything else on the ladder is
-  built. What this buys is one application rather than "the browser": Google Docs
-  draws its document to a canvas, so the accessibility tree cannot see it and
-  highlighting sets no primary selection. Everything else a browser shows is
-  already covered by rung 3.
+- **Glance rung 5 — the browser extension — is not being built.** The owner
+  chose to try screen reading instead; it reads a canvas-drawn Google Doc the
+  way it reads anything else. What it does not give is the page beyond the
+  visible screenful, or its URL. Revisit if that turns out to matter.
 - **`AMBIENT.md` is partly built now.** #1 the reference picker (Meta+Shift+L),
-  #2 the context record (the KWin script fills it) and #3 the ambient panel
-  (Glance follows the focus signal while it is open) are done. #4, workspace
+  #2 the context record (the KWin script fills it) are done. #3, the ambient
+  panel, was built and then **removed** at the owner's request — once Glance
+  read the screen, following the focus meant photographing every window passed
+  through; see *The screen is the main answer now*. #4, workspace
   binding, is skipped — nobody here works in workspaces. #5, background
   inference, is done: `packages/daemon/src/propose.ts`, a queue at
   `GET /proposals`, and Meta+Shift+I to read it — waiting and dismissed on two
@@ -811,10 +859,6 @@ Named rather than implied, in the order they cost something.
   *named* the word below any short limit — `q=learning` did not return the note
   called "Learning" in the first ten.
 
-  Worth knowing where this platform beat the design: AMBIENT asks for a panel
-  "redrawn on the context signal rather than on a timer", and the Mac cannot do
-  it — `GlanceView.startFollowing` polls every four seconds because "nothing on
-  this machine emits a 'the focused document changed' event". KWin emits one.
 - **Canvas leftovers, all cosmetic.** No gesture adds a *second* picture to a
   node that already has one (the chooser and the sweep both handle several; only
   loading and converting ever make them). The PNG export is a bitmap of the

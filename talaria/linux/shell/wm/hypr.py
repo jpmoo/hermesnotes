@@ -627,3 +627,54 @@ def send_chord(key: str) -> tuple[bool, str]:
     if answer.startswith("ok"):
         return True, f"ctrl+{key.lower()}"
     return False, answer or "the compositor refused the key press"
+
+
+# ----------------------------------------------------------------- capture
+
+
+def capture(pid: int) -> tuple[bytes | None, str]:
+    """
+    The focused window's pixels, for Glance to read.
+
+    **Only the window that was judged.** The blindlist was applied to the window
+    `frontmost.py` saw arrive, by class and pid. The compositor is asked again
+    here and the capture happens only if the window in front is still that
+    process — so a password manager that took focus in the moment between is
+    never photographed on the strength of somebody else's clearance. A mismatch
+    is an answer, not an error: the ladder moves on.
+
+    `grim` rather than the IPC socket, which carries no pixels: it speaks
+    `wlr-screencopy`, which Hyprland implements. The window's box in logical
+    coordinates, captured at the monitor's own scale, so text is as sharp as it
+    is on screen. PPM because it is uncompressed — measured at 35ms for a
+    half-screen window, where PNG took 180ms encoding a file nobody keeps. It
+    never touches the disk.
+
+    This photographs whatever is drawn in that box, so it has to run before any
+    Talaria window is shown: `shell.py` reads before it summons.
+    """
+    active = ask("activewindow")
+    if not isinstance(active, dict) or not active.get("address"):
+        return None, "nothing is focused"
+    if int(active.get("pid") or 0) != pid:
+        return None, "the focused window changed before it could be read"
+    try:
+        (x, y), (w, h) = active["at"], active["size"]
+    except Exception:  # noqa: BLE001
+        return None, "the compositor did not say where the window is"
+    if int(w) <= 0 or int(h) <= 0:
+        return None, "the window has no size"
+    import subprocess
+
+    try:
+        done = subprocess.run(
+            ["grim", "-t", "ppm", "-g", f"{int(x)},{int(y)} {int(w)}x{int(h)}", "-"],
+            capture_output=True, timeout=3,
+        )
+    except FileNotFoundError:
+        return None, "grim isn't installed"
+    except subprocess.TimeoutExpired:
+        return None, "grim did not answer"
+    if done.returncode != 0 or not done.stdout:
+        return None, f"grim failed ({done.stderr.decode('utf8', 'replace').strip()[:80]})"
+    return done.stdout, "grim"

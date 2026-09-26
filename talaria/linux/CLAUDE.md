@@ -596,6 +596,22 @@ desk used to open first and read after, which was harmless until a rung looked
 at pixels. `wm.capture` also re-asks the compositor and refuses unless the
 window in front is still the pid the blindlist judged.
 
+**The window's name is a second question, asked separately.** A screen
+reading of a chat app is the conversation, and "reimburse the team for Claude"
+shares no words with it — yet that is exactly what somebody using Claude wants
+to see. So the panel has an *About <window>* section above the results by
+meaning: the application's name (`com.anthropic.Claude` → "Claude") looked up
+as written in `/blocks?q=`, and the window's title with the app's name taken
+off — by meaning when it is a sentence, like a web page's, as written when it is
+short. Open tasks first. `glance.about` decides the name; a shell's `~` or a
+bare path is no name at all.
+
+**Only the focused window — as a rectangle.** `grim` 1.4, which Ubuntu ships,
+captures a region, not a toplevel; per-window capture arrived in grim 1.5
+(`-T`). So a notification or a floating window drawn over the focused one is
+read along with it. Rare, since Glance is summoned from inside the window, and
+worth fixing if grim 1.5 lands.
+
 What reading real windows taught, all written up at the top of `screenread.py`:
 tesseract's own threading made it four times *slower* (4.2s → 1.1s on one
 thread, ~0.5s in parallel pieces); a translucent terminal over a photograph

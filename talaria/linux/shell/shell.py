@@ -889,15 +889,22 @@ class Shell(QObject):
         """
         reader = Reader()
         self._readers.append(reader)
+        # The window's name travels with every reading of it, the placeholder
+        # included — its section can be answered while the screen is still
+        # being read.
+        from dataclasses import replace
+
+        named = glance.about(window)
 
         def landed(reading, r=reader) -> None:
             if r in self._readers:
                 self._readers.remove(r)
-            then(reading)
+            then(replace(reading, about=named) if reading.rung != "blindlist" else reading)
 
         reader.done.connect(landed, Qt.ConnectionType.QueuedConnection)
         if progress is not None:
-            reader.progress.connect(progress, Qt.ConnectionType.QueuedConnection)
+            reader.progress.connect(lambda reading: progress(replace(reading, about=named)),
+                                    Qt.ConnectionType.QueuedConnection)
         reader.read(
             window=window,
             allow_copy=allow_copy,
@@ -1061,6 +1068,7 @@ class Shell(QObject):
         payload = json.dumps({
             "text": reading.text, "rung": reading.rung, "why": reading.why,
             "window": getattr(reading, "window", None),
+            "about": getattr(reading, "about", None),
             "settings": settings,
         })
 

@@ -47,10 +47,19 @@ window.glanceAsk = async (reading) => {
   source.textContent = reading.rung ? `via ${reading.rung}` : "";
   body.innerHTML = "";
 
+  // Three places, in reading order, filled at different speeds: what was read,
+  // what the window is called, and what its contents are like. The middle one
+  // is a lookup on this machine and often lands first.
+  const head = el("div");
+  const about = el("div", "about-box");
+  const related = el("div", "related");
+  body.append(head, about, related);
+  void showAbout(reading.about, about, turn);
+
   // The screen is being read: the pixels are captured, the text is not back
   // yet. Not a failure, so none of the advice below applies.
   if (!reading.text && reading.rung === "screen") {
-    body.appendChild(el("div", "note", reading.why || "Reading the screen…"));
+    related.appendChild(el("div", "note", reading.why || "Reading the screen…"));
     return;
   }
 
@@ -69,7 +78,7 @@ window.glanceAsk = async (reading) => {
       note.appendChild(el("p", "fine",
         "Select some text in the window you are working in, then open Glance again."));
     }
-    body.appendChild(note);
+    related.appendChild(note);
     return;
   }
 
@@ -84,22 +93,76 @@ window.glanceAsk = async (reading) => {
   } else {
     asked.appendChild(el("q", null, reading.text.slice(0, 180) + (reading.text.length > 180 ? "…" : "")));
   }
-  body.appendChild(asked);
+  head.appendChild(asked);
 
+  // Only shown when the section above has something in it — see panel.css.
+  related.appendChild(el("div", "related-head",
+    reading.rung === "screen" ? "Like what's on screen" : "Like the selection"));
   const waiting = el("div", "note", "Reading the library…");
-  body.appendChild(waiting);
+  related.appendChild(waiting);
 
   try {
     const hits = await get(`/glance?q=${encodeURIComponent(reading.text)}&k=24`);
     if (turn !== asking) return;
     waiting.remove();
-    show(hits, reading.settings || {});
+    show(hits, reading.settings || {}, related);
   } catch (err) {
     if (turn !== asking) return;
     waiting.remove();
-    complain(body, err);
+    complain(related, err);
   }
 };
+
+/** How well a title has to match, by meaning, to count as being about it. A
+ *  search by meaning always answers with *something*; a title's section should
+ *  stay empty rather than fill with the least-bad guesses. */
+const ABOUT_FLOOR = 0.65;
+
+/** At most this many in the section. It is a reminder, not a search. */
+const ABOUT_MAX = 10;
+
+/*
+ * The window by name: what in the library mentions this application, or this
+ * page. A separate question from the contents, and asked separately — a chat
+ * app's screen is the conversation, and "reimburse the team for Claude" shares
+ * no words with it.
+ *
+ * A name is looked up as written, not by meaning: "Claude" embedded on its own
+ * is one word pulling toward the middle of the library, while the blocks that
+ * *say* Claude are exactly the answer. A title long enough to be a sentence —
+ * a web page's — is asked by meaning instead, since nothing will contain it
+ * word for word.
+ *
+ * Things you can still do come first, then the rest, then what is finished.
+ */
+async function showAbout(named, into, turn) {
+  if (!named?.app) return;
+  const words = (t) => t.split(/\s+/).filter(Boolean).length;
+  const literal = [named.app];
+  if (named.title && words(named.title) <= 3) literal.push(named.title);
+  const asks = literal.map((term) =>
+    get(`/blocks?q=${encodeURIComponent(term)}&limit=40`)
+      .then((blocks) => blocks.map((block) => ({ block, score: null }))));
+  if (named.title && words(named.title) > 3) {
+    asks.push(get(`/glance?q=${encodeURIComponent(named.title)}&k=8`)
+      .then((hits) => hits.filter((h) => (h.score ?? 0) >= ABOUT_FLOOR)));
+  }
+  // One lookup failing is that lookup having nothing to add.
+  const found = (await Promise.all(asks.map((a) => a.catch(() => [])))).flat();
+  if (turn !== asking) return;
+
+  const seen = new Set();
+  const rank = (b) => (b.completion?.done ? 2 : b.completable ? 0 : 1);
+  const hits = found
+    .filter((h) => h.block?.id && !seen.has(h.block.id) && seen.add(h.block.id))
+    .sort((a, b) => rank(a.block) - rank(b.block))
+    .slice(0, ABOUT_MAX);
+  if (!hits.length) return;
+
+  const box = fold(`About ${named.label}`, hits);
+  box.open = true;
+  into.appendChild(box);
+}
 
 /*
  * Where a hit belongs, ported from `Daemon.GlanceSection.of`.
@@ -161,9 +224,9 @@ const SECTIONS = [
   ["done", "Done"],
 ];
 
-function show(hits, settings) {
+function show(hits, settings, into = body) {
   if (!hits?.length) {
-    body.appendChild(el("div", "note", "Nothing in the library looks like this."));
+    into.appendChild(el("div", "note", "Nothing in the library looks like this."));
     return;
   }
   const s = {
@@ -183,7 +246,7 @@ function show(hits, settings) {
     const held = buckets[key];
     if (!held?.length) continue;
     if (key === "main") {
-      for (const hit of held) body.appendChild(card(hit));
+      for (const hit of held) into.appendChild(card(hit));
       continue;
     }
     // Named with the number, because the number is now somebody's choice and a
@@ -192,14 +255,14 @@ function show(hits, settings) {
     const heading = key === "furtherOut"
       ? `Beyond ${s.horizon} days${s.undatedFurtherOut ? ", or undated" : ""}`
       : label;
-    body.appendChild(fold(heading, held));
+    into.appendChild(fold(heading, held));
   }
 
   // Everything was folded away, which reads as "nothing found" unless it says
   // otherwise. The Mac unfolds the first section with anything in it for the
   // same reason.
   if (!buckets.main?.length) {
-    const first = body.querySelector("details");
+    const first = into.querySelector("details");
     if (first) first.open = true;
   }
 }
@@ -225,9 +288,12 @@ function card(hit) {
   // The score is shown rather than hidden. The daemon's own settings panel
   // tells you to "glance at a few and see where the useful ones stop", which is
   // advice you can only follow if the numbers are on screen.
-  const score = el("span", "score", (hit.score ?? 0).toFixed(2));
-  score.title = "similarity";
-  card.appendChild(score);
+  // A match by name has no score — it says the word, which is not a degree.
+  if (hit.score != null) {
+    const score = el("span", "score", hit.score.toFixed(2));
+    score.title = "similarity";
+    card.appendChild(score);
+  }
 
   /*
    * Anything that can be finished can be finished from here.

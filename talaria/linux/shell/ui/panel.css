@@ -1074,3 +1074,11 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   padding: 4px;
   max-height: 260px; overflow-y: auto;
 }
+
+/* Glance: the heading over the results by meaning is only worth showing when
+   the window's own section sits above them — otherwise it labels the only
+   thing on the page. */
+.related-head { display: none; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .04em; color: var(--muted); margin-top: 14px; }
+.about-box:not(:empty) + .related > .related-head { display: block; }
+.about-box > .fold:first-child { margin-top: 0; border-top: 0; padding-top: 0; }

@@ -78,6 +78,8 @@ class Reading:
     #: screenful of recognized text is not worth quoting back at somebody —
     #: they can see it — so the panel shows where it looked instead.
     window: str | None = None
+    #: What the window is called, for the "About …" section — see `about`.
+    about: dict | None = None
 
     @property
     def usable(self) -> bool:
@@ -420,6 +422,42 @@ def copy_enabled() -> bool:
             return bool(json.load(handle).get("glanceSyntheticCopy"))
     except Exception:  # noqa: BLE001
         return False
+
+
+def about(window) -> dict | None:
+    """
+    What the window is called, as something to look the library up by.
+
+    **A separate question from what it shows.** A screen reading of a chat app
+    is the conversation, and a block about the app itself — "reimburse the team
+    for Claude" — shares no words with it. So the panel asks twice: the
+    contents by meaning, and the window by name. This is the name.
+
+    `app` is the application, from its class — `com.anthropic.Claude` is
+    "Claude". `title` is the window's own title with the application's name
+    taken off the end ("Inbox — Mozilla Firefox" is "Inbox"), and empty when it
+    names nothing: a shell's working directory, a path, or the app's name again.
+
+    None for a blindlisted window, whose title was never read and is not about
+    to be searched for.
+    """
+    if window is None or window.blind:
+        return None
+    app = window.name.rsplit(".", 1)[-1]
+
+    def plain(text: str) -> str:
+        return text.lower().replace("-", " ").replace("_", " ").strip()
+
+    title = (window.caption or "").strip()
+    for sep in (" — ", " – ", " - ", " | ", " · "):
+        head, found, tail = title.rpartition(sep)
+        if found and (plain(app) in plain(tail) or plain(tail) in plain(app)):
+            title = head.strip()
+            break
+    if (plain(title) == plain(app) or title.startswith(("~", "/"))
+            or sum(ch.isalpha() for ch in title) < 3):
+        title = ""
+    return {"app": app, "title": title, "label": title or app}
 
 
 def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bool:

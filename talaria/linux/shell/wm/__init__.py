@@ -145,6 +145,11 @@ def bring_pointer(title: str) -> bool:
     return bool(_ask("bring_pointer", False, title))
 
 
+def pointer_over(title: str) -> bool | None:
+    """Whether the pointer is on our window `title` — None where it cannot be asked."""
+    return _ask("pointer_over", None, title)
+
+
 def capture(pid: int) -> tuple[bytes | None, str]:
     """
     The focused window's pixels, as a PPM — if it is still the window `pid` owns.

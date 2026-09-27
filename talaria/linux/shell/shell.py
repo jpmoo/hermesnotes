@@ -366,6 +366,49 @@ class Panel(QWidget):
             QTimer.singleShot(120, self._hide_if_still_inactive)
         return super().event(e)
 
+    #: How long the pointer has to stay off a panel that `leaves` before it
+    #: goes, and how often that is looked at.
+    LEAVE_GRACE = 0.35
+    LEAVE_POLL_MS = 150
+
+    def _watch_leaving(self) -> None:
+        """
+        **Glance goes when the pointer does.**
+
+        Where the keyboard follows the mouse, moving onto another window takes
+        the focus and `event` hides the panel — but moving onto the bar, the
+        dock or bare desktop takes nothing, so Glance stayed. It is a glance:
+        looking away is the gesture, and the pointer leaving is how that is
+        said.
+
+        Watched by asking the compositor where the pointer is, a few times a
+        second while the panel is up, and not by Qt's Enter and Leave: moving
+        from the window onto the web page inside it arrives as a Leave, which
+        closed Glance with the pointer resting in its middle, and a pointer
+        the compositor moves arrives as nothing at all. Only once the pointer
+        has been inside — `summon` brings it — and only after it has stayed
+        out for `LEAVE_GRACE`, so an overshoot that comes straight back is not
+        taken at its word.
+        """
+        over = wm.pointer_over(self.windowTitle()) if self.isVisible() else None
+        # Stopping, for whichever reason, is the one place the watch ends — so
+        # the next summon can start another.
+        if over is None:
+            self._watching = False
+            return
+        now = time.monotonic()
+        if over:
+            self._entered = True
+            self._out_since = None
+        elif self._entered:
+            if self._out_since is None:
+                self._out_since = now
+            elif now - self._out_since >= self.LEAVE_GRACE:
+                self._watching = False
+                self.hide()
+                return
+        QTimer.singleShot(self.LEAVE_POLL_MS, self._watch_leaving)
+
     def _hide_if_still_inactive(self) -> None:
         """
         Gone, if the focus really has gone somewhere else.
@@ -450,6 +493,8 @@ class Panel(QWidget):
         # the focus it had the last time and could vanish on the deactivation
         # that comes with its own reappearance.
         self._had_focus = False
+        self._entered = False
+        self._out_since = None
         self.show()
         self.raise_()
         self.activateWindow()
@@ -462,6 +507,11 @@ class Panel(QWidget):
         if getattr(self, "dismisses", False) and wm.focus_follows_mouse() and not self.underMouse():
             self._pointer_tries = 0
             QTimer.singleShot(40, self._bring_pointer)
+        # Only Glance — see `_watch_leaving`. One watch per summon: a summon of
+        # a panel already up would otherwise start a second.
+        if getattr(self, "leaves", False) and wm.focus_follows_mouse() and not getattr(self, "_watching", False):
+            self._watching = True
+            QTimer.singleShot(self.LEAVE_POLL_MS, self._watch_leaving)
 
     def _bring_pointer(self) -> None:
         # The window is mapped a moment after `show`, and the compositor only
@@ -1192,8 +1242,13 @@ class Shell(QObject):
             "assistant": QSize(720, 460),
             "compose": QSize(620, 500),
         }.get(action, QSize(1080, 560))
-        return Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), size,
-                     route=lambda url, a=action: self._opened(url, a))
+        panel = Panel(title, QUrl(f"{scheme.ORIGIN}/ui/{page}"), size,
+                      route=lambda url, a=action: self._opened(url, a))
+        # Only Glance goes when the pointer leaves — see `Panel.event`. The
+        # others are places you type into, and a hand drifting off New Block
+        # mid-sentence is not somebody finished with it.
+        panel.leaves = action == "glance"
+        return panel
 
     def _opened(self, url: QUrl, source: str) -> bool:
         """

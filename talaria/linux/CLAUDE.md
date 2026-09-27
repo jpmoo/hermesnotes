@@ -498,7 +498,15 @@ over there.
   the middle of any panel that dismisses (`dispatch movecursor`, once the
   window is mapped) — the same warp Hyprland makes on a focus change of its
   own. Not the desk, which is under the pointer already, and not the Hermes
-  window, which is an ordinary window.
+  window, which is an ordinary window. **Glance also goes when the pointer
+  leaves it** — onto the bar or bare desktop takes no focus, so the focus rule
+  never fired. Watched by polling Hyprland's `cursorpos` while it is up, not by
+  Qt's Enter/Leave: moving onto the web view inside the window arrives as a
+  Leave, and a compositor warp arrives as nothing.
+- **Panels are rounded by the compositor too, at the page's radius.** At
+  `rounding 0` Hyprland drew a square shadow and square frosting behind a
+  rounded sheet. `PANEL_RADIUS` in `wm/hypr.py` equals the `border-radius` in
+  `panel.css`; the desk stays square.
 
 **Omarchy and Ryoku are the same target.** Both are Arch with a Hyprland
 session; what differs is the furniture — walker and waybar on one, a Quickshell

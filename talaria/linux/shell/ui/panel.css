@@ -430,6 +430,8 @@ html, body { background: transparent; }
  * element actually contains the panel's content.
  */
 .chat, .frame, body > .pane {
+  /* Equal to PANEL_RADIUS in wm/hypr.py: the compositor rounds the window,
+     its shadow and its blur to that, and a different number here shows. */
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, CanvasText 22%, Canvas);
   background: var(--surface);

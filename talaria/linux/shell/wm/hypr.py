@@ -44,6 +44,16 @@ APP_ID = "dev.talaria.shell"
 #: pixels `kwin/talaria-window.js` uses, so the two desktops look alike.
 MARGIN = 12
 
+#: The corner of a panel's sheet — `.chat, .frame, body > .pane` in
+#: `ui/panel.css`, and the two must stay equal. The page draws its own rounded
+#: sheet, so the compositor's rounding was once set to zero, on the argument
+#: that a second radius shows as a hairline between the two. But the compositor
+#: draws the *shadow* and the *blur* from its own idea of the window's shape:
+#: at zero, a rounded panel sat on a square shadow over square frosting. Given
+#: the same radius, the compositor's clip falls exactly where the page's corner
+#: already is, and the shadow and blur follow it round. The desk is square.
+PANEL_RADIUS = 12
+
 _blur: bool | None = None
 _follow: bool | None = None
 
@@ -259,7 +269,7 @@ def _keyword(rule: str) -> bool:
     return False
 
 
-def _lua_rule(title: str, fields: str) -> bool:
+def _lua_rule(title: str, fields: str, radius: int = 0) -> bool:
     """
     The same rule, for a Hyprland whose config is Lua.
 
@@ -276,7 +286,7 @@ def _lua_rule(title: str, fields: str) -> bool:
     """
     lua = (
         f"hl.window_rule({{ match = {{ title = [==[^({_escape(title)})$]==] }}, "
-        f"float = true, {fields}, border_size = 0, rounding = 0 }})"
+        f"float = true, {fields}, border_size = 0, rounding = {radius} }})"
     )
     try:
         return request(f"eval {lua}").strip().lower().startswith("ok")
@@ -284,7 +294,7 @@ def _lua_rule(title: str, fields: str) -> bool:
         return False
 
 
-def _match_rule(title: str, fields: str) -> bool:
+def _match_rule(title: str, fields: str, radius: int = 0) -> bool:
     """
     The same rule, in the syntax hyprlang took on at 0.53.
 
@@ -300,7 +310,7 @@ def _match_rule(title: str, fields: str) -> bool:
     by name and nothing is set. So "ok" means every effect held, as it does for
     `eval`.
     """
-    rule = f"match:title ^({_escape(title)})$, float on, {fields}, border_size 0, rounding 0"
+    rule = f"match:title ^({_escape(title)})$, float on, {fields}, border_size 0, rounding {radius}"
     try:
         return request(f"keyword windowrule {rule}").strip().lower().startswith("ok")
     except Exception:  # noqa: BLE001
@@ -344,9 +354,10 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
         width = min(width, area[2] - 2 * MARGIN)
         height = min(height, area[3] - 2 * MARGIN)
         x, y = _spot(_placement(), area, width, height)
-        if _lua_rule(title, f"size = {{ {width}, {height} }}, move = {{ {x}, {y} }}, animation = \"slide\""):
+        if _lua_rule(title, f"size = {{ {width}, {height} }}, move = {{ {x}, {y} }}, animation = \"slide\"",
+                     PANEL_RADIUS):
             return
-        if _match_rule(title, f"size {width} {height}, move {x} {y}, animation slide"):
+        if _match_rule(title, f"size {width} {height}, move {x} {y}, animation slide", PANEL_RADIUS):
             return
         rules = [
             f"float, {match}",
@@ -358,10 +369,9 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
             # the user's own curve and speed apply.
             f"animation slide, {match}",
         ]
-    # No border and no rounding from the compositor: the page draws its own
-    # rounded, translucent sheet, and a second radius around it shows as a
-    # hairline of desktop between the two.
-    rules += [f"noborder, {match}", f"rounding 0, {match}"]
+    # No border from the compositor, and its rounding set to the page's own —
+    # see `PANEL_RADIUS`.
+    rules += [f"noborder, {match}", f"rounding {0 if is_desk else PANEL_RADIUS}, {match}"]
     for rule in rules:
         _keyword(rule)
 
@@ -730,4 +740,27 @@ def bring_pointer(title: str) -> bool:
                     .strip().lower().startswith("ok")
             except Exception:  # noqa: BLE001
                 return False
+    return False
+
+
+def pointer_over(title: str) -> bool | None:
+    """
+    Whether the pointer is on our window `title`, by the compositor's account.
+
+    Qt's `underMouse` cannot be trusted for this on a panel that is mostly a web
+    view: moving from the window onto the page inside it arrives as a Leave, and
+    a panel asking "is the pointer still on me?" was told no with the pointer
+    resting in its middle. The compositor knows where the pointer is. None when
+    it cannot be asked, so the caller keeps its own answer.
+    """
+    try:
+        x, y = (int(v) for v in request("cursorpos").replace(",", " ").split()[:2])
+    except Exception:  # noqa: BLE001
+        return None
+    clients = ask("clients")
+    for client in clients if isinstance(clients, list) else []:
+        if (isinstance(client, dict) and client.get("pid") == os.getpid()
+                and client.get("title") == title and client.get("mapped")):
+            (cx, cy), (cw, ch) = client["at"], client["size"]
+            return cx <= x < cx + cw and cy <= y < cy + ch
     return False

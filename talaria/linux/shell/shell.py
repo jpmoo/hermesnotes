@@ -31,6 +31,7 @@ import time
 import daemon
 import glance
 import scheme
+import theme
 import webprofile
 import wm
 from frontmost import Frontmost
@@ -292,12 +293,7 @@ class Panel(QWidget):
         # "amount" can honestly mean is how translucent the panel's own surface
         # is, so this is handed to the page as a CSS variable and the page
         # paints its background with it.
-        self.view.loadFinished.connect(
-            lambda ok: ok and self.view.page().runJavaScript(
-                f"document.documentElement.style.setProperty("
-                f"'--surface-alpha', '{frosting_alpha():.2f}')"
-            )
-        )
+        self.view.loadFinished.connect(lambda ok: ok and self.apply_look())
         #: Whether the page has finished loading, and what is waiting for it.
         #: See `when_loaded`. A reload — after a sync, after settings — starts
         #: the wait over.
@@ -307,6 +303,33 @@ class Panel(QWidget):
         self.view.loadFinished.connect(self._load_finished)
         self.view.load(url)
         QShortcut(QKeySequence("Escape"), self, activated=self._escape)
+
+    def apply_look(self) -> None:
+        """
+        Colors and solidity, laid onto the page. Again whenever they change.
+
+        On a Noctalia desktop a floating panel wears the bar: Noctalia's
+        palette over `panel.css`'s four base colors, and the bar's own
+        `background_opacity` for its solidity — see `theme.py`. Anywhere else,
+        and on the desk and the Hermes window always, the system's colors and
+        the solidity from Settings, as before.
+        """
+        import json as _json
+
+        themed = getattr(self, "dismisses", False) and getattr(self, "view_is_panel", False)
+        sheet = theme.css() if themed else None
+        alpha = (theme.bar_opacity() if sheet else None) or frosting_alpha()
+        self.view.page().runJavaScript(
+            "(() => {"
+            f"  document.documentElement.style.setProperty('--surface-alpha', '{alpha:.2f}');"
+            "  let s = document.getElementById('noctalia-theme');"
+            f"  const css = {_json.dumps(sheet or '')};"
+            "  if (!css) { s?.remove(); return; }"
+            "  if (!s) { s = document.createElement('style'); s.id = 'noctalia-theme';"
+            "            document.head.appendChild(s); }"
+            "  s.textContent = css;"
+            "})()"
+        )
 
     def _escape(self) -> None:
         """
@@ -613,6 +636,7 @@ class Shell(QObject):
         # camera following you around, so Glance reads when it is asked and not
         # otherwise. The focus is still tracked — it is what gets read.
         self.frontmost.start()
+        self._watch_look()
 
         self.shortcuts = Shortcuts()
         # Queued because this Shell is a QObject on the main thread — see the
@@ -860,6 +884,48 @@ class Shell(QObject):
         board = QApplication.instance().clipboard()
         if board is not None:
             board.setText(text)
+
+    # ------------------------------------------------------------------ look
+
+    def _watch_look(self) -> None:
+        """
+        Re-dress the panels when Noctalia's palette or the bar's opacity moves.
+
+        A file watcher on the rendered theme and on Noctalia's settings — and on
+        their directories too, because both are replaced rather than edited, and
+        a watch on a path that was renamed over follows the old file into the
+        void. Changes arrive in bursts (a render writes, a settings save
+        rewrites), so they are gathered for a moment and applied once.
+        """
+        import os
+
+        from PySide6.QtCore import QFileSystemWatcher
+
+        state = (os.environ.get("NOCTALIA_STATE_HOME") or "").strip() or os.path.join(
+            (os.environ.get("XDG_STATE_HOME") or "").strip()
+            or os.path.join(os.path.expanduser("~"), ".local", "state"), "noctalia")
+        self._look_paths = [theme.css_path(), os.path.join(state, "settings.toml")]
+        self._look_watch = QFileSystemWatcher(self)
+        self._look_timer = QTimer(self)
+        self._look_timer.setSingleShot(True)
+        self._look_timer.timeout.connect(self._relook)
+
+        def rewatch(*_args) -> None:
+            for path in self._look_paths:
+                for target in (path, os.path.dirname(path)):
+                    if os.path.exists(target) and target not in (
+                            self._look_watch.files() + self._look_watch.directories()):
+                        self._look_watch.addPath(target)
+            self._look_timer.start(300)
+
+        self._look_watch.fileChanged.connect(rewatch)
+        self._look_watch.directoryChanged.connect(rewatch)
+        rewatch()
+
+    def _relook(self) -> None:
+        for panel in self.panels.values():
+            if panel.isVisible() or getattr(panel, "_loaded", False):
+                panel.apply_look()
 
     # ------------------------------------------------------------------ desk
 

@@ -217,6 +217,31 @@ PY
   fi
 fi
 
+# --- Noctalia -----------------------------------------------------------------
+#
+# The floating panels wear Noctalia's colors when Noctalia is the shell: a user
+# template (`linux/noctalia/talaria.css`) that Noctalia renders with its palette
+# into `noctalia.css` beside the config, on every palette change. Registered in a
+# file of our own under ~/.config/noctalia/, which Noctalia reads alongside its
+# settings — `settings.toml` itself belongs to Noctalia's settings panel, which
+# rewrites it. Then asked to render now, if Noctalia is running.
+NOCT_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/noctalia"
+if command -v noctalia >/dev/null 2>&1 || [ -d "$NOCT_STATE" ]; then
+  NOCT_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/noctalia"
+  mkdir -p "$NOCT_CONF"
+  cat > "$NOCT_CONF/talaria.toml" <<EOF
+# Talaria's floating panels in Noctalia's colors — written by
+# talaria/linux/install.sh, safe to delete (the panels go back to the system's).
+[theme.templates.user.talaria]
+input_path  = "$ROOT/linux/noctalia/talaria.css"
+output_path = "${XDG_DATA_HOME:-$HOME/.local/share}/talaria/noctalia.css"
+EOF
+  echo "==> Noctalia: registered $NOCT_CONF/talaria.toml"
+  if command -v noctalia >/dev/null 2>&1 && noctalia msg config-reload >/dev/null 2>&1; then
+    noctalia msg templates-apply >/dev/null 2>&1 && echo "    (rendered with the current palette)"
+  fi
+fi
+
 # --- The daemon, last ---------------------------------------------------------
 #
 # After the desktop, not before it, because the desktop does not need it and

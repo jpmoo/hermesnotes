@@ -308,6 +308,8 @@ class SettingsWindow(QDialog):
         self.frosting = QDoubleSpinBox(minimum=0.35, maximum=1.0, singleStep=0.05, decimals=2)
         rows.addRow("Panel solidity", self.frosting)
         rows.addRow(_hint(
+            "On a Noctalia desktop the panels take the bar's colors and its translucency instead, "
+            "and this is used only by the desk. "
             "Applies to every summoned panel, not only Glance. What is behind them is genuinely "
             "blurred by the compositor — 1.00 is a solid panel that hides it, lower lets more of "
             "the frosted desktop through. The blur <i>radius</i> is not set here: the protocol has "

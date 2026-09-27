@@ -508,6 +508,19 @@ over there.
   rounded sheet. `PANEL_RADIUS` in `wm/hypr.py` equals the `border-radius` in
   `panel.css`; the desk stays square.
 
+**On Noctalia, the floating panels wear the bar.** Noctalia renders user
+templates with its palette on every change, so `linux/noctalia/talaria.css` is
+one: Noctalia writes it to `noctalia.css` beside `config.json`, `theme.py`
+reads it and the bar's `background_opacity` from Noctalia's `settings.toml`,
+and `Panel.apply_look` lays both over every floating panel — again, through a
+file watcher, whenever either changes. Not the desk and not the Hermes window.
+Registered in `~/.config/noctalia/talaria.toml` by `install.sh`, never in
+`settings.toml`, which Noctalia's settings panel owns. For the palette to reach
+everything, `panel.css` mixes every color from four variables (`--canvas`,
+`--canvas-text`, `--accent-color`, `--accent-color-text`) that default to the
+system keywords — a keyword used directly cannot be redefined, and 100 of them
+were.
+
 **Omarchy and Ryoku are the same target.** Both are Arch with a Hyprland
 session; what differs is the furniture — walker and waybar on one, a Quickshell
 shell on the other — and the syntax of the config file the hotkeys go in, which

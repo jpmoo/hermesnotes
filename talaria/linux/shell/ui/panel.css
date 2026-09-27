@@ -8,20 +8,29 @@
  */
 :root {
   color-scheme: light dark;
-  --bg: Canvas;
-  --fg: CanvasText;
-  --muted: color-mix(in srgb, CanvasText 55%, Canvas);
-  --line: color-mix(in srgb, CanvasText 15%, Canvas);
-  --raised: color-mix(in srgb, CanvasText 4%, Canvas);
+  /* The four colors everything below is mixed from. The system's own by
+     default; on a Noctalia desktop the shell lays Noctalia's palette over
+     them — `talaria/linux/noctalia/talaria.css` — so a panel wears the bar's
+     colors. Written once here and referred to everywhere, because a system
+     keyword used directly cannot be redefined and would stay the system's. */
+  --canvas: Canvas;
+  --canvas-text: CanvasText;
+  --accent-color: AccentColor;
+  --accent-color-text: AccentColorText;
+  --bg: var(--canvas);
+  --fg: var(--canvas-text);
+  --muted: color-mix(in srgb, var(--canvas-text) 55%, var(--canvas));
+  --line: color-mix(in srgb, var(--canvas-text) 15%, var(--canvas));
+  --raised: color-mix(in srgb, var(--canvas-text) 4%, var(--canvas));
   /* The panel's own background. Overridden by the shell when translucency is
      configured — see `--talaria-opacity` below. */
   /* How solid a panel is. Set by the shell from `frostingAmount`; the default
      matters because a page opened outside the shell still has to look like
      something. */
   --surface-alpha: 1;
-  --surface: color-mix(in srgb, Canvas calc(var(--surface-alpha) * 100%), transparent);
-  --accent: color-mix(in srgb, AccentColor 90%, Canvas);
-  --accent-fg: AccentColorText;
+  --surface: color-mix(in srgb, var(--canvas) calc(var(--surface-alpha) * 100%), transparent);
+  --accent: color-mix(in srgb, var(--accent-color) 90%, var(--canvas));
+  --accent-fg: var(--accent-color-text);
 }
 
 * { box-sizing: border-box; }
@@ -61,7 +70,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.side button:hover { background: color-mix(in srgb, CanvasText 8%, Canvas); }
+.side button:hover { background: color-mix(in srgb, var(--canvas-text) 8%, var(--canvas)); }
 .side button[aria-current="true"] { background: var(--accent); color: var(--accent-fg); }
 
 h1 { font-size: 17px; margin: 0 0 14px; font-weight: 600; }
@@ -143,13 +152,13 @@ button.go:disabled { opacity: .5; cursor: default; }
   max-width: 82%;
   padding: 9px 13px;
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, CanvasText 16%, Canvas);
+  border: 1px solid color-mix(in srgb, var(--canvas-text) 16%, var(--canvas));
   background: var(--raised);
   overflow-wrap: anywhere;
 }
 .turn.mine .bubble {
-  background: color-mix(in srgb, AccentColor 16%, Canvas);
-  border-color: color-mix(in srgb, AccentColor 34%, Canvas);
+  background: color-mix(in srgb, var(--accent-color) 16%, var(--canvas));
+  border-color: color-mix(in srgb, var(--accent-color) 34%, var(--canvas));
 }
 
 /* Markdown inside a bubble. Tight margins: these are remarks, not documents,
@@ -165,20 +174,20 @@ button.go:disabled { opacity: .5; cursor: default; }
 .bubble code {
   font-family: ui-monospace, "JetBrains Mono", monospace;
   font-size: .92em;
-  background: color-mix(in srgb, CanvasText 10%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 10%, var(--canvas));
   padding: 1px 4px; border-radius: 4px;
 }
 .bubble pre {
   margin: 0 0 7px;
   padding: 8px 10px;
   border-radius: 7px;
-  background: color-mix(in srgb, CanvasText 9%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 9%, var(--canvas));
   overflow-x: auto;
 }
 .bubble pre code { background: none; padding: 0; font-size: 11.5px; }
 .bubble blockquote {
   margin: 0 0 7px; padding-left: 10px;
-  border-left: 2px solid color-mix(in srgb, AccentColor 45%, Canvas);
+  border-left: 2px solid color-mix(in srgb, var(--accent-color) 45%, var(--canvas));
   color: var(--muted);
 }
 .bubble a { color: var(--accent); }
@@ -201,12 +210,12 @@ button.go:disabled { opacity: .5; cursor: default; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 10.5px; padding: 2px 7px; border-radius: 7px;
-  background: color-mix(in srgb, CanvasText 9%, Canvas);
-  border: 1px solid color-mix(in srgb, CanvasText 16%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 9%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--canvas-text) 16%, var(--canvas));
   color: var(--muted);
 }
 .chip .tick { color: var(--accent); }
-.chip.bad { background: color-mix(in srgb, #d9534f 12%, Canvas); border-color: color-mix(in srgb, #d9534f 34%, Canvas); }
+.chip.bad { background: color-mix(in srgb, #d9534f 12%, var(--canvas)); border-color: color-mix(in srgb, #d9534f 34%, var(--canvas)); }
 .chip.bad .tick { color: #d9534f; }
 
 .bad-box {
@@ -278,7 +287,7 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 .region .bar { width: 3px; height: 11px; border-radius: 2px; flex: none; }
 .region .count {
   margin-left: auto; font-weight: 400; font-size: 10px; color: var(--muted);
-  background: color-mix(in srgb, CanvasText 13%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 13%, var(--canvas));
   border-radius: 99px; padding: 1px 6px;
 }
 .region .body { overflow-y: auto; padding: 0 6px 6px; flex: 1; min-height: 0; }
@@ -302,7 +311,7 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
   font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
 }
 .heading .pill {
-  background: color-mix(in srgb, AccentColor 18%, Canvas);
+  background: color-mix(in srgb, var(--accent-color) 18%, var(--canvas));
   color: var(--fg); border-radius: 99px; padding: 2px 8px;
 }
 .heading .rule { flex: 1; height: 1px; background: var(--line); }
@@ -349,8 +358,8 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 /* Something you can click through to. The pointer is the whole affordance —
  * underlining every card would turn a board into a page of links. */
 .opens { cursor: pointer; }
-.opens:hover { border-color: color-mix(in srgb, AccentColor 55%, Canvas); }
-.node > .self.opens:hover { background: color-mix(in srgb, AccentColor 10%, Canvas); border-radius: 5px; }
+.opens:hover { border-color: color-mix(in srgb, var(--accent-color) 55%, var(--canvas)); }
+.node > .self.opens:hover { background: color-mix(in srgb, var(--accent-color) 10%, var(--canvas)); border-radius: 5px; }
 
 /* Glance. What was read, then what it matched. */
 .asked { margin-bottom: 14px; }
@@ -358,7 +367,7 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 .score {
   font-variant-numeric: tabular-nums;
   font-size: 11px; color: var(--muted);
-  background: color-mix(in srgb, CanvasText 9%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 9%, var(--canvas));
   border-radius: 5px; padding: 1px 5px; flex: none;
 }
 
@@ -368,8 +377,8 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 .picker .chip {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 12px; padding: 3px 6px 3px 8px; border-radius: 7px;
-  background: color-mix(in srgb, AccentColor 16%, Canvas);
-  border: 1px solid color-mix(in srgb, AccentColor 34%, Canvas);
+  background: color-mix(in srgb, var(--accent-color) 16%, var(--canvas));
+  border: 1px solid color-mix(in srgb, var(--accent-color) 34%, var(--canvas));
 }
 .picker .chip .x {
   background: none; border: 0; color: var(--muted);
@@ -390,7 +399,7 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
 .picker .option:hover,
-.typepick .option:hover { background: color-mix(in srgb, AccentColor 14%, Canvas); }
+.typepick .option:hover { background: color-mix(in srgb, var(--accent-color) 14%, var(--canvas)); }
 .picker .option .title,
 .typepick .option .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon { flex: none; opacity: .75; }
@@ -410,7 +419,7 @@ button.go.small { margin-top: 0; padding: 4px 12px; font-size: 12px; }
 .fold > summary:hover { color: var(--fg); }
 .fold > summary .count {
   margin-left: auto; font-weight: 400;
-  background: color-mix(in srgb, CanvasText 12%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 12%, var(--canvas));
   border-radius: 99px; padding: 1px 7px;
 }
 .fold .card { margin-top: 8px; }
@@ -433,7 +442,7 @@ html, body { background: transparent; }
   /* Equal to PANEL_RADIUS in wm/hypr.py: the compositor rounds the window,
      its shadow and its blur to that, and a different number here shows. */
   border-radius: 12px;
-  border: 1px solid color-mix(in srgb, CanvasText 22%, Canvas);
+  border: 1px solid color-mix(in srgb, var(--canvas-text) 22%, var(--canvas));
   background: var(--surface);
   overflow: hidden;
   height: 100vh;
@@ -465,11 +474,11 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
  * A muted olive, mixed from the panel's own text and background rather than
  * written as a hex pair — so it stays legible in a light theme and a dark one
  * without a second palette to keep in step, and sits behind text that is still
- * `CanvasText`. The hue is fixed because it is a choice about this panel; the
+ * `var(--canvas-text)`. The hue is fixed because it is a choice about this panel; the
  * lightness is not, because that belongs to whoever's theme it is.
  */
 .pane .card {
-  --olive: color-mix(in srgb, #6b7a4a 30%, Canvas);
+  --olive: color-mix(in srgb, #6b7a4a 30%, var(--canvas));
   background: color-mix(in srgb, var(--olive) 62%, transparent);
   border-color: color-mix(in srgb, #6b7a4a 34%, var(--line));
 }
@@ -506,7 +515,7 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
 .bubble .table-scroll { overflow-x: auto; margin: 0 0 8px; }
 .bubble table { font-size: 12.5px; width: auto; min-width: 100%; }
 .bubble th, .bubble td { padding: 4px 9px; white-space: nowrap; }
-.bubble th { background: color-mix(in srgb, CanvasText 7%, Canvas); }
+.bubble th { background: color-mix(in srgb, var(--canvas-text) 7%, var(--canvas)); }
 
 /* --- The desk -------------------------------------------------------------
  * Full screen, and the one surface the other panels sit on top of.
@@ -564,18 +573,18 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
  */
 .quadrants .pane {
   display: flex; flex-direction: column; min-height: 0;
-  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--canvas-text) 18%, transparent);
   border-radius: 12px;
   /* Almost nothing. The frosting is the sheet underneath and it must not stop
    * at a pane's edge; what makes a pane a pane is its border and its header,
-   * not a lid. A hair of ink rather than a mix with `Canvas`, so this reads the
+   * not a lid. A hair of ink rather than a mix with `var(--canvas)`, so this reads the
    * same whether the sheet under it is opaque or barely there. */
-  background: color-mix(in srgb, CanvasText 4%, transparent);
+  background: color-mix(in srgb, var(--canvas-text) 4%, transparent);
   overflow: hidden;
 }
 .quadrants .pane > header {
   padding: 7px 13px;
-  background: color-mix(in srgb, CanvasText 5%, transparent);
+  background: color-mix(in srgb, var(--canvas-text) 5%, transparent);
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
   color: var(--muted);
   border-bottom: 1px solid var(--line);
@@ -585,7 +594,7 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
 .waiting {
   height: 100%; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 8px; text-align: center;
-  border: 1px dashed color-mix(in srgb, CanvasText 22%, Canvas);
+  border: 1px dashed color-mix(in srgb, var(--canvas-text) 22%, var(--canvas));
   border-radius: 12px;
   padding: 40px;
 }
@@ -599,7 +608,7 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
   position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
   display: flex; align-items: center; gap: 10px;
   padding: 6px 10px; border-radius: 99px;
-  background: color-mix(in srgb, CanvasText 10%, Canvas);
+  background: color-mix(in srgb, var(--canvas-text) 10%, var(--canvas));
   border: 1px solid var(--line);
   /* Out of the way until the pointer comes down to it — see `desk.html`. The
    * transform keeps it from catching the eye on the way in. */
@@ -620,17 +629,17 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
   display: flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; padding: 0; border-radius: 6px;
 }
-.chrome .step:hover { background: color-mix(in srgb, CanvasText 12%, transparent); }
+.chrome .step:hover { background: color-mix(in srgb, var(--canvas-text) 12%, transparent); }
 .chrome .step svg { display: block; }
 .dots { display: flex; gap: 7px; }
 .dots .dot {
   width: 7px; height: 7px; padding: 0; border: 0; border-radius: 99px;
-  background: color-mix(in srgb, CanvasText 35%, Canvas); cursor: pointer;
+  background: color-mix(in srgb, var(--canvas-text) 35%, var(--canvas)); cursor: pointer;
 }
 /* The grey is declared first so that a browser without `AccentColor` keeps a
  * visible dot rather than an invisible one: an invalid `var()` makes the whole
  * declaration unset, and this is the only thing on screen saying where you are. */
-.dots .dot.here { background: CanvasText; background: var(--accent); }
+.dots .dot.here { background: var(--canvas-text); background: var(--accent); }
 
 /* --- Today's page, and the long-text field it is made of -------------------
  * Hermes' own editor cannot be framed here (`frame-ancestors`), so this is the
@@ -650,7 +659,7 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
    * looks like a document rather than one you can click into. */
   transition: background .12s;
 }
-.note-block:hover { background: color-mix(in srgb, CanvasText 5%, transparent); }
+.note-block:hover { background: color-mix(in srgb, var(--canvas-text) 5%, transparent); }
 .note-block > :first-child { margin-top: 0; }
 .note-block > :last-child { margin-bottom: 0; }
 .note-block p, .note-block ul, .note-block ol { margin: 3px 0; }
@@ -664,7 +673,7 @@ body > .pane { overflow-x: hidden; overflow-y: auto; }
   border: 1px solid var(--accent); border-radius: 6px;
   padding: 2px 4px; min-height: 1.6em;
   font: 13px/1.55 ui-monospace, "Noto Sans Mono", monospace;
-  background: color-mix(in srgb, Canvas 88%, CanvasText); color: var(--fg);
+  background: color-mix(in srgb, var(--canvas) 88%, var(--canvas-text)); color: var(--fg);
 }
 .note-source textarea:focus { outline: none; }
 
@@ -681,8 +690,8 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   color: inherit; border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .chip-link.tag {
-  background: color-mix(in srgb, var(--olive, CanvasText) 20%, transparent);
-  border-color: color-mix(in srgb, CanvasText 18%, transparent);
+  background: color-mix(in srgb, var(--olive, var(--canvas-text)) 20%, transparent);
+  border-color: color-mix(in srgb, var(--canvas-text) 18%, transparent);
   cursor: default;
 }
 .chip-link.block:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -692,7 +701,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   position: absolute; z-index: 20; min-width: 220px; max-width: 340px;
   padding: 4px; border-radius: 8px;
   border: 1px solid var(--line);
-  background: color-mix(in srgb, Canvas 96%, CanvasText);
+  background: color-mix(in srgb, var(--canvas) 96%, var(--canvas-text));
   box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
 }
 .mention-row {
@@ -730,14 +739,14 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
  * So it gets the quadrants' border and radius, and the frosting layers the same
  * way — the desk's sheet outside it, the pane's own thin veil within.
  */
-.surface[data-name="Canvas"] {
+.surface[data-name="var(--canvas)"] {
   display: flex;
 }
 .canvas-frame {
   flex: 1;
   width: 100%;
   height: 100%;
-  border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--canvas-text) 18%, transparent);
   border-radius: 12px;
   background: transparent;
   /* The frame's own corners must clip what the page inside paints, or the
@@ -762,13 +771,13 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 /* Frosting off: the desk is a surface rather than a window onto the desktop.
  * One class on the root, because the sheet, the panes and the chrome all have
  * to agree — a solid desk with a translucent pane on it reads as a bug. */
-.solid .desk { background: Canvas; }
-.solid .quadrants .pane { background: color-mix(in srgb, CanvasText 3%, Canvas); }
+.solid .desk { background: var(--canvas); }
+.solid .quadrants .pane { background: color-mix(in srgb, var(--canvas-text) 3%, var(--canvas)); }
 .chrome .frost { opacity: .55; }
 .chrome .frost.on { opacity: 1; color: var(--accent); }
 .chrome-sep {
   width: 1px; height: 14px; margin: 0 2px;
-  background: color-mix(in srgb, CanvasText 25%, transparent);
+  background: color-mix(in srgb, var(--canvas-text) 25%, transparent);
 }
 
 /* The row the keyboard is on, in the reference picker. */
@@ -817,11 +826,11 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   color: var(--muted); font: inherit; font-size: 11.5px;
   padding: 2px 9px; cursor: pointer;
 }
-.tabs .tab:hover { color: CanvasText; background: color-mix(in srgb, CanvasText 7%, transparent); }
+.tabs .tab:hover { color: var(--canvas-text); background: color-mix(in srgb, var(--canvas-text) 7%, transparent); }
 .tabs .tab.on {
-  color: CanvasText;
+  color: var(--canvas-text);
   border-color: var(--line);
-  background: color-mix(in srgb, CanvasText 6%, transparent);
+  background: color-mix(in srgb, var(--canvas-text) 6%, transparent);
 }
 
 /* --- The writing surface ---------------------------------------------------
@@ -838,7 +847,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: color-mix(in srgb, Canvas 55%, transparent);
+  background: color-mix(in srgb, var(--canvas) 55%, transparent);
   margin-bottom: 14px;
   flex: none;
 }
@@ -853,7 +862,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   min-width: 26px; height: 26px; padding: 0 6px; cursor: pointer;
 }
 .tools button svg { display: block; margin: 0 auto; }
-.tools button:hover:not(:disabled) { background: color-mix(in srgb, CanvasText 8%, transparent); }
+.tools button:hover:not(:disabled) { background: color-mix(in srgb, var(--canvas-text) 8%, transparent); }
 .tools button:disabled { opacity: .3; cursor: default; }
 /* On, meaning the caret is inside one — the toolbar answering rather than
  * offering. */
@@ -879,7 +888,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   flex: 1; min-height: 0; overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: color-mix(in srgb, Canvas 55%, transparent);
+  background: color-mix(in srgb, var(--canvas) 55%, transparent);
 }
 .solid .sheet { background: var(--raised); }
 
@@ -919,14 +928,14 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
  * a quotation and wrong for the paragraph somebody simply moved over.
  */
 .page blockquote {
-  border-left: 2px solid color-mix(in srgb, CanvasText 16%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--canvas-text) 16%, transparent);
   margin: 0 0 .75em; padding: 0 0 0 18px;
 }
 /* Nested levels indent by nesting, so the padding compounds on its own. */
 .page blockquote > * { margin: 0 0 .55em; }
 .page blockquote > :last-child { margin-bottom: 0; }
 .page pre {
-  background: color-mix(in srgb, CanvasText 7%, transparent);
+  background: color-mix(in srgb, var(--canvas-text) 7%, transparent);
   border-radius: 8px; padding: 10px 12px; overflow-x: auto;
   font: 12.5px/1.55 ui-monospace, "JetBrains Mono", monospace;
 }
@@ -951,7 +960,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   content: "";
   position: absolute; left: -1.35em; top: .32em;
   width: 13px; height: 13px;
-  border: 1.5px solid color-mix(in srgb, CanvasText 40%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--canvas-text) 40%, transparent);
   border-radius: 3.5px;
   cursor: pointer;
 }
@@ -978,7 +987,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
 .doc-head { display: flex; align-items: center; gap: 8px; padding: 4px 6px 8px; }
 .doc-head .fine { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-row { display: flex; align-items: center; gap: 4px; border-radius: 7px; }
-.doc-row:hover { background: color-mix(in srgb, CanvasText 7%, transparent); }
+.doc-row:hover { background: color-mix(in srgb, var(--canvas-text) 7%, transparent); }
 .doc-row.here { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .doc-open {
   flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
@@ -999,14 +1008,14 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   font-size: .96em;
 }
 .page th, .page td {
-  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--canvas-text) 20%, transparent);
   padding: 6px 10px;
   vertical-align: top;
   /* A cell has to be clickable when it is empty, which it is not if it has no
    * height of its own. */
   min-width: 3em;
 }
-.page th { font-weight: 650; background: color-mix(in srgb, CanvasText 5%, transparent); }
+.page th { font-weight: 650; background: color-mix(in srgb, var(--canvas-text) 5%, transparent); }
 /* Alignment is the column's, and is carried on every cell in it because that is
  * the only way Markdown can say it — one rule under the heading. */
 .page [data-align="left"] { text-align: left; }
@@ -1027,7 +1036,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   margin: -8px 0 12px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: color-mix(in srgb, Canvas 55%, transparent);
+  background: color-mix(in srgb, var(--canvas) 55%, transparent);
   flex: none;
 }
 .solid .tabletools { background: var(--raised); }
@@ -1036,7 +1045,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   color: var(--fg); font: inherit; font-size: 12px;
   height: 24px; padding: 0 8px; cursor: pointer; white-space: nowrap;
 }
-.tabletools button:hover { background: color-mix(in srgb, CanvasText 8%, transparent); }
+.tabletools button:hover { background: color-mix(in srgb, var(--canvas-text) 8%, transparent); }
 
 /* A line that is arithmetic reads as arithmetic: figures line up, and the
  * answer after the arrow is the machine's rather than the writer's. */
@@ -1065,7 +1074,7 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   background: var(--bg); color: var(--fg); font: inherit;
   cursor: pointer;
 }
-.typepick-current:hover { border-color: color-mix(in srgb, CanvasText 35%, var(--line)); }
+.typepick-current:hover { border-color: color-mix(in srgb, var(--canvas-text) 35%, var(--line)); }
 .typepick-current .caret { margin-left: auto; color: var(--muted); font-size: 11px; }
 /* The list sits over what follows it rather than pushing the form down. */
 .typepick .options {
@@ -1087,9 +1096,9 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
 .reveal:hover { color: var(--fg); border-color: var(--muted); }
 .textsheet { position: fixed; inset: 0; z-index: 50; display: flex; padding: 10px;
-  background: color-mix(in srgb, Canvas 55%, transparent); }
+  background: color-mix(in srgb, var(--canvas) 55%, transparent); }
 .textsheet-box { flex: 1; min-height: 0; display: flex; flex-direction: column;
-  background: Canvas; color: var(--fg); border: 1px solid var(--line); border-radius: 10px; }
+  background: var(--canvas); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; }
 .textsheet-head { display: flex; align-items: center; justify-content: space-between;
   padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .textsheet-text { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 12px;

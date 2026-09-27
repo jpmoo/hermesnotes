@@ -47,21 +47,16 @@ window.glanceAsk = async (reading) => {
   document.querySelector(".textsheet")?.remove();
   source.textContent = reading.rung ? `via ${reading.rung}` : "";
   body.innerHTML = "";
-
-  // Three places, in reading order, filled at different speeds: what was read,
-  // what its contents are like, and what the window is called. The last is a
-  // lookup on this machine and often lands first, which is why each has its
-  // own box rather than being appended in the order they finish.
-  const head = el("div");
-  const related = el("div", "related");
-  const about = el("div", "about-box");
-  body.append(head, related, about);
-  void showAbout(reading.about, about, turn, reading.settings || {});
+  const settings = reading.settings || {};
 
   // The screen is being read: the pixels are captured, the text is not back
-  // yet. Not a failure, so none of the advice below applies.
+  // yet. Not a failure, so none of the advice below applies. What mentions the
+  // window by name needs no text, so it is shown while the rest is read.
   if (!reading.text && reading.rung === "screen") {
-    related.appendChild(el("div", "note", reading.why || "Reading the screen…"));
+    body.appendChild(el("div", "note", reading.why || "Reading the screen…"));
+    const early = await named(reading.about, settings);
+    if (turn !== asking || !early.length) return;
+    show(early, settings);
     return;
   }
 
@@ -80,7 +75,7 @@ window.glanceAsk = async (reading) => {
       note.appendChild(el("p", "fine",
         "Select some text in the window you are working in, then open Glance again."));
     }
-    related.appendChild(note);
+    body.appendChild(note);
     return;
   }
 
@@ -88,10 +83,12 @@ window.glanceAsk = async (reading) => {
   asked.appendChild(el("span", "fine", "Looking at"));
   // A selection is quoted back: somebody chose it, and seeing it confirms what
   // was read. A screen reading is not — it is a screenful of recognized text
-  // they are already looking at, so the window is named instead.
+  // they are already looking at, so the window is named instead, with its
+  // page's title when it has one.
   if (reading.rung === "screen" && reading.window) {
     asked.appendChild(document.createTextNode(" "));
-    asked.appendChild(el("strong", null, reading.window));
+    const title = reading.about?.title;
+    asked.appendChild(el("strong", null, title ? `${reading.window} — ${title}` : reading.window));
     // Not quoted, but not hidden either: what the screen reading made of the
     // window is what the library was searched with, and when the results look
     // wrong that is the first thing to check.
@@ -102,74 +99,73 @@ window.glanceAsk = async (reading) => {
   } else {
     asked.appendChild(el("q", null, reading.text.slice(0, 180) + (reading.text.length > 180 ? "…" : "")));
   }
-  head.appendChild(asked);
+  body.appendChild(asked);
 
-  // Only shown when the section above has something in it — see panel.css.
-  related.appendChild(el("div", "related-head",
-    reading.rung === "screen" ? "Like what's on screen" : "Like the selection"));
   const waiting = el("div", "note", "Reading the library…");
-  related.appendChild(waiting);
+  body.appendChild(waiting);
 
   try {
-    const hits = await get(`/glance?q=${encodeURIComponent(reading.text)}&k=24`);
+    // One list, two questions about the same window: what mentions it by name,
+    // and what is like what it shows. They were two sections, which read as two
+    // subjects when there is one. Names first — a task that says "Claude" is
+    // the most direct answer to "what do I have to do here" — then the rest by
+    // similarity, anything already named left out.
+    const [byName, byMeaning] = await Promise.all([
+      named(reading.about, settings),
+      get(`/glance?q=${encodeURIComponent(reading.text)}&k=24`),
+    ]);
     if (turn !== asking) return;
     waiting.remove();
-    show(hits, reading.settings || {}, related);
+    const seen = new Set(byName.map((h) => h.block.id));
+    show([...byName, ...(byMeaning || []).filter((h) => !seen.has(h.block?.id))], settings);
   } catch (err) {
     if (turn !== asking) return;
     waiting.remove();
-    complain(related, err);
+    complain(body, err);
   }
 };
 
-/** At most this many in the section. It is a reminder, not a search. */
-const ABOUT_MAX = 10;
+/** At most this many found by name. A reminder, not a search. */
+const NAMED_MAX = 10;
 
 /*
- * The window by name: what in the library mentions this application, or this
- * page. A separate question from the contents, and asked separately — a chat
- * app's screen is the conversation, and "reimburse the team for Claude" shares
- * no words with it.
+ * What in the library mentions this window by name — the application, or the
+ * page it is showing.
  *
- * A name is looked up as written, not by meaning: "Claude" embedded on its own
- * is one word pulling toward the middle of the library, while the blocks that
- * *say* Claude are exactly the answer. A title long enough to be a sentence —
- * a web page's — is asked by meaning instead, since nothing will contain it
- * word for word.
+ * Asked apart from the contents because it is a different kind of match: a
+ * chat app's screen is the conversation, and "reimburse the team for Claude"
+ * shares no words with it. A name is looked up as written, not by meaning —
+ * "Claude" embedded on its own is one word pulling toward the middle of the
+ * library, while the blocks that *say* Claude are exactly the answer. A title
+ * long enough to be a sentence, a web page's, is asked by meaning instead,
+ * since nothing will contain it word for word, and held to the Settings
+ * threshold like everything else.
  *
- * Things you can still do come first, then the rest, then what is finished.
+ * Things you can still do first, then the rest, then what is finished. Each
+ * hit carries `named`, which the card shows in place of a score.
  */
-async function showAbout(named, into, turn, settings) {
-  // A title asked by meaning is held to the same threshold as everything else
-  // Glance shows — the one in Settings, zero meaning no floor — rather than a
-  // second number of its own that nobody can see or change.
+async function named(about, settings) {
+  if (!about?.app) return [];
   const floor = Number(settings.threshold || 0);
-  if (!named?.app) return;
   const words = (t) => t.split(/\s+/).filter(Boolean).length;
-  const literal = [named.app];
-  if (named.title && words(named.title) <= 3) literal.push(named.title);
+  const literal = [about.app];
+  if (about.title && words(about.title) <= 3) literal.push(about.title);
   const asks = literal.map((term) =>
     get(`/blocks?q=${encodeURIComponent(term)}&limit=40`)
-      .then((blocks) => blocks.map((block) => ({ block, score: null }))));
-  if (named.title && words(named.title) > 3) {
-    asks.push(get(`/glance?q=${encodeURIComponent(named.title)}&k=8`)
-      .then((hits) => hits.filter((h) => (h.score ?? 0) >= floor)));
+      .then((blocks) => blocks.map((block) => ({ block, score: null, named: term }))));
+  if (about.title && words(about.title) > 3) {
+    asks.push(get(`/glance?q=${encodeURIComponent(about.title)}&k=8`)
+      .then((hits) => hits.filter((h) => (h.score ?? 0) >= floor)
+        .map((h) => ({ ...h, named: about.title }))));
   }
   // One lookup failing is that lookup having nothing to add.
   const found = (await Promise.all(asks.map((a) => a.catch(() => [])))).flat();
-  if (turn !== asking) return;
-
   const seen = new Set();
   const rank = (b) => (b.completion?.done ? 2 : b.completable ? 0 : 1);
-  const hits = found
+  return found
     .filter((h) => h.block?.id && !seen.has(h.block.id) && seen.add(h.block.id))
     .sort((a, b) => rank(a.block) - rank(b.block))
-    .slice(0, ABOUT_MAX);
-  if (!hits.length) return;
-
-  const box = fold(`About ${named.label}`, hits);
-  box.open = true;
-  into.appendChild(box);
+    .slice(0, NAMED_MAX);
 }
 
 /*
@@ -223,7 +219,8 @@ function sectionOf(hit, s) {
   if (!isAboveFold(b, !!s.undatedFurtherOut, s.horizon)) return "furtherOut";
   // Zero is off rather than "everything qualifies", so a library that has never
   // set a threshold behaves exactly as it did before.
-  if (s.threshold > 0 && (hit.score ?? 0) < s.threshold) return "lessSimilar";
+  // A name match has no score to fall short with — it says the word.
+  if (s.threshold > 0 && !hit.named && (hit.score ?? 0) < s.threshold) return "lessSimilar";
   // The reader's own split, and not one the Mac makes: something with a status
   // is something you can act on, and it goes first. Everything else is context
   // and waits behind a fold.
@@ -332,8 +329,13 @@ function card(hit) {
   // The score is shown rather than hidden. The daemon's own settings panel
   // tells you to "glance at a few and see where the useful ones stop", which is
   // advice you can only follow if the numbers are on screen.
-  // A match by name has no score — it says the word, which is not a degree.
-  if (hit.score != null) {
+  // A match by name says so instead of scoring: it says the word, which is not
+  // a degree of anything.
+  if (hit.named) {
+    const tag = el("span", "named", `mentions ${hit.named}`);
+    tag.title = "Found by name, not by similarity";
+    card.appendChild(tag);
+  } else if (hit.score != null) {
     const score = el("span", "score", hit.score.toFixed(2));
     score.title = "similarity";
     card.appendChild(score);

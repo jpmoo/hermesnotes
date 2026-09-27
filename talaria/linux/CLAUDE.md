@@ -611,11 +611,13 @@ desk used to open first and read after, which was harmless until a rung looked
 at pixels. `wm.capture` also re-asks the compositor and refuses unless the
 window in front is still the pid the blindlist judged.
 
-**The window's name is a second question, asked separately.** A screen
+**The window's name is a second question, asked alongside.** A screen
 reading of a chat app is the conversation, and "reimburse the team for Claude"
 shares no words with it — yet that is exactly what somebody using Claude wants
-to see. So the panel has an *About <window>* section above the results by
-meaning: the application's name (`com.anthropic.Claude` → "Claude") looked up
+to see. So Glance asks both and shows **one list** — they were two sections
+at first, which read as two subjects when there is one. Name matches lead,
+tagged "mentions Claude" in place of a score, then the results by meaning with
+anything already named left out. The name is the application's name (`com.anthropic.Claude` → "Claude") looked up
 as written in `/blocks?q=`, and the window's title with the app's name taken
 off — by meaning when it is a sentence, like a web page's, as written when it is
 short, and held to the Settings threshold like every other result. Open

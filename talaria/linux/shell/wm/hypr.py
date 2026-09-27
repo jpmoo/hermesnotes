@@ -664,6 +664,22 @@ def capture(pid: int) -> tuple[bytes | None, str]:
         return None, "the compositor did not say where the window is"
     if int(w) <= 0 or int(h) <= 0:
         return None, "the window has no size"
+    # **Nothing of ours on top of it.** This photographs a rectangle of the
+    # screen, not the window, so a Talaria panel lying over it would be read
+    # as the window's text — and it was: a capture of a terminal came back as
+    # the desk's Today and Glance quadrants. `shell.py` puts panels away before
+    # it reads; this is the check that it worked. Reading the title instead is
+    # a smaller answer, never a wrong one.
+    clients = ask("clients")
+    for client in clients if isinstance(clients, list) else []:
+        if not isinstance(client, dict) or client.get("pid") != os.getpid() or not client.get("mapped"):
+            continue
+        try:
+            (cx, cy), (cw, ch) = client["at"], client["size"]
+        except Exception:  # noqa: BLE001
+            continue
+        if cx < x + w and x < cx + cw and cy < y + h and y < cy + ch:
+            return None, "a Talaria window is covering it"
     import subprocess
 
     try:

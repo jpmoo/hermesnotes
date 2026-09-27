@@ -424,6 +424,65 @@ def copy_enabled() -> bool:
         return False
 
 
+_names: dict[str, str] = {}
+
+
+def app_name(window) -> str:
+    """
+    What an application calls itself — "Firefox", not `firefox_firefox`.
+
+    A window class is an identifier, and on this desktop a mangled one: a Snap
+    package is `<snap>_<app>`, a Flatpak or Electron app is reverse-DNS. The
+    name a person knows is in the application's desktop file, found by file
+    name or by the `StartupWMClass` it declares, across the same directories a
+    launcher searches. Where there is no desktop file at all the class is cut
+    to its last part, which is right for `com.anthropic.Claude` and harmless
+    elsewhere. Looked up once per class.
+    """
+    import glob
+    import os
+
+    key = window.window_class or window.resource_name or ""
+    if key in _names:
+        return _names[key]
+    found = None
+    if key:
+        home = (os.environ.get("XDG_DATA_HOME") or "").strip() or os.path.expanduser("~/.local/share")
+        dirs = [home] + [d for d in (os.environ.get("XDG_DATA_DIRS") or
+                                     "/usr/local/share:/usr/share").split(":") if d]
+        files = [f for d in dirs for f in glob.glob(os.path.join(d, "applications", "*.desktop"))]
+        want = key.lower()
+
+        def name_in(path: str) -> str | None:
+            try:
+                with open(path, encoding="utf8", errors="replace") as handle:
+                    in_entry = False
+                    for line in handle:
+                        line = line.strip()
+                        if line.startswith("["):
+                            in_entry = line == "[Desktop Entry]"
+                        elif in_entry and line.startswith("Name="):
+                            return line[5:].strip() or None
+            except OSError:
+                pass
+            return None
+
+        def declares(path: str) -> bool:
+            try:
+                with open(path, encoding="utf8", errors="replace") as handle:
+                    return any(line.strip().lower() == f"startupwmclass={want}" for line in handle)
+            except OSError:
+                return False
+
+        by_file = [f for f in files if os.path.basename(f)[:-8].lower() == want]
+        for path in by_file or [f for f in files if declares(f)]:
+            found = name_in(path)
+            if found:
+                break
+    _names[key] = found or window.name.rsplit(".", 1)[-1]
+    return _names[key]
+
+
 def about(window) -> dict | None:
     """
     What the window is called, as something to look the library up by.
@@ -443,7 +502,7 @@ def about(window) -> dict | None:
     """
     if window is None or window.blind:
         return None
-    app = window.name.rsplit(".", 1)[-1]
+    app = app_name(window)
 
     def plain(text: str) -> str:
         return text.lower().replace("-", " ").replace("_", " ").strip()
@@ -481,7 +540,7 @@ def selection_is_stale(changed_at: float | None, focused_at: float | None) -> bo
 def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
          clock_blind: bool = False, asked: bool = False,
          on_gui_thread: bool = True, screen: bool = False,
-         progress=None) -> Reading:
+         progress=None, settle: float = 0.0) -> Reading:
     """
     Climb until something answers.
 
@@ -609,6 +668,18 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
     if atspi_why != REACHED_NO_SELECTION and not stale and (asked or not clock_blind):
         text, how = primary_selection(allow_qt=on_gui_thread)
         if text and text.strip():
+            # Why a global buffer was trusted, in timings and never in text: it
+            # is the rung that has twice offered another application's
+            # highlight as this one's, and "why did it win" is not answerable
+            # after the fact without these three numbers.
+            now = time.monotonic()
+            print(
+                "talaria: primary selection accepted — "
+                f"changed {'never' if changed_at is None else f'{now - changed_at:.1f}s ago'}, "
+                f"focus {'never' if focused_at is None else f'{now - focused_at:.1f}s ago'}, "
+                f"clock {'blind' if clock_blind else 'sighted'}",
+                file=sys.stderr, flush=True,
+            )
             return Reading(text[:MAX_CHARS], "primary selection", how)
 
     # **The screen.** Nothing was selected, so the question is what the window
@@ -618,11 +689,16 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
         import screenread
         import wm
 
+        # Panels put away a moment ago are still sliding out; the compositor
+        # has unmapped them but is drawing them until the animation ends.
+        wait = settle - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
         pixels, how = wm.capture(window.pid)
         if pixels:
             # "Claude", not "com.anthropic.Claude": a reverse-domain class is an
             # identifier, and this is a sentence somebody reads.
-            label = window.name.rsplit(".", 1)[-1]
+            label = app_name(window)
             if progress is not None:
                 progress(Reading(None, "screen", f"Reading {label}…", window=label))
             text, how = screenread.recognize(pixels)

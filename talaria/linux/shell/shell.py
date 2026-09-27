@@ -26,6 +26,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon, QVBoxLayout, QWidget
 
 import threading
+import time
 
 import daemon
 import glance
@@ -909,6 +910,28 @@ class Shell(QObject):
 
         panel.view.page().runJavaScript(_harvest(), answered)
 
+    #: How long a panel takes to slide out once hidden. Hyprland unmaps it at
+    #: once and keeps drawing it until the animation ends, so a capture taken
+    #: in between photographs a panel that is officially gone.
+    SETTLE = 0.35
+
+    def _clear_view(self) -> float:
+        """
+        Put away every panel that would dismiss itself anyway, before a read.
+
+        Glance and the desk both take the focus, so these were going regardless
+        — but a panel the pointer rests on stays up after the focus leaves it
+        (see `_hide_if_still_inactive`), and one lying over the window in front
+        would be read as that window's text. Returns when the screen is clear
+        to photograph: now, or after the last one has slid out.
+        """
+        hid = False
+        for panel in self.panels.values():
+            if getattr(panel, "dismisses", False) and panel.isVisible():
+                panel.hide()
+                hid = True
+        return time.monotonic() + self.SETTLE if hid else 0.0
+
     def _reading(self, then, window, allow_copy: bool, screen: bool = False,
                  progress=None) -> None:
         """
@@ -946,6 +969,7 @@ class Shell(QObject):
             # Every read is asked for now — there is no ambient read left.
             asked=True,
             screen=screen,
+            settle=self._clear_view() if screen else 0.0,
             changed_at=self.frontmost.selection.changed_at,
             focused_at=self.frontmost.focused_at,
             clock_blind=self.frontmost.selection.blind,

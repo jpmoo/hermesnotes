@@ -500,7 +500,7 @@ def about(window) -> dict | None:
     None for a blindlisted window, whose title was never read and is not about
     to be searched for.
     """
-    if window is None or window.blind:
+    if window is None or window.blind or not (window.window_class or window.resource_name):
         return None
     app = app_name(window)
 
@@ -576,6 +576,10 @@ def read(window, allow_copy: bool = False, changed_at=None, focused_at=None,
     """
     if window is not None and window.blind:
         return Reading(None, "blindlist", f"{window.name} is on the blindlist — nothing was read")
+    # Focus on nothing — an empty workspace. Not a window that refused to be
+    # read, and not worth a selection from somewhere else either.
+    if window is not None and not window.window_class and not window.resource_name and not window.pid:
+        return Reading(None, "nothing", "Nothing is in front — no window has the focus.")
 
     # **The accessibility tree first, and this is a departure from the Mac's
     # order for a reason the Mac cannot have.**

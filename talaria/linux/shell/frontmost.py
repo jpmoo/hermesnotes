@@ -470,8 +470,14 @@ class Frontmost(QObject):
         if (window_class or "") in HELPERS or (resource_name or "") in HELPERS:
             return
 
+        # **No window at all is not an unknown window.** An empty workspace, or
+        # focus on a layer surface, arrives with no class and no pid. The
+        # blindlist refuses anything it cannot identify — rightly — so this read
+        # as "something was on the blindlist" over an empty desktop. It is
+        # nothing, and is said to be nothing: there is no window to protect.
+        nothing = not window_class and not resource_name and not pid
         # Here, and before anything else touches it.
-        blind = blindlist.is_blind(window_class or None, pid or None)
+        blind = False if nothing else blindlist.is_blind(window_class or None, pid or None)
         # Only a timestamp. What the selection *holds* is never sampled on a
         # window change — see `SelectionClock`.
         #

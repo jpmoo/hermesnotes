@@ -1103,3 +1103,9 @@ li.task.is-done > span { text-decoration: line-through; color: var(--muted); }
   padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .textsheet-text { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 10px 12px;
   white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, monospace; }
+
+/* New Block: a datespan's two ends, side by side, each under its own label. */
+.span-legs { display: flex; gap: 12px; }
+.span-leg { flex: 1; margin: 0; }
+.span-leg > span { display: block; margin-bottom: 4px; }
+.span-leg > input { width: 100%; }

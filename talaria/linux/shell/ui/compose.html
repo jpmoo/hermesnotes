@@ -41,7 +41,24 @@ const WIDGETS = {
   richtext: () => el("textarea"),
   number: () => { const i = el("input"); i.type = "number"; return i; },
   date: () => { const i = el("input"); i.type = "date"; return i; },
-  datespan: () => { const i = el("input"); i.type = "date"; return i; },
+  // Two dates, not one. A datespan is a single field with two ends — a task's
+  // Schedule is "Available" and "Due" — and it was drawn as one date box under
+  // the field's own label, so there was nowhere to say which end was meant,
+  // and the value went out as a bare string where the field holds a pair.
+  // Each end is labelled by the type's own words and either may be left empty.
+  datespan: (field) => {
+    const box = el("div", "span-legs");
+    for (const [end, label] of [["start", field.startLabel || "Start"], ["end", field.endLabel || "End"]]) {
+      const leg = el("label", "span-leg");
+      leg.appendChild(el("span", null, label));
+      const i = el("input");
+      i.type = "date";
+      i.dataset.end = end;
+      leg.appendChild(i);
+      box.appendChild(leg);
+    }
+    return box;
+  },
   enum: (field) => {
     const s = el("select");
     for (const option of field.options || []) s.appendChild(el("option", null, option));
@@ -298,10 +315,27 @@ async function create(typeId, go) {
       if (ids.length) properties[widget.dataset.key] = ids;
       continue;
     }
+    if (widget.dataset.kind === "datespan") {
+      // `{start, end}` as days, with only the ends that were given — the shape
+      // the Mac's composer writes and the one a datespan is read back in.
+      const span = {};
+      for (const leg of widget.querySelectorAll("input[data-end]")) {
+        if (leg.value) span[leg.dataset.end] = leg.value;
+      }
+      if (Object.keys(span).length) properties[widget.dataset.key] = span;
+      continue;
+    }
     const value = widget.value?.trim();
     if (!value) continue;
     if (widget.dataset.kind === "richtext") content = value;
     else if (widget.dataset.key === "title") properties.title = value;
+    // A number as a number: it is compared and summed on the far side, where
+    // "30" and 30 are not the same value. Something that is not a number is
+    // left out rather than sent as text.
+    else if (widget.dataset.kind === "number") {
+      const n = Number(value);
+      if (Number.isFinite(n)) properties[widget.dataset.key] = n;
+    }
     else properties[widget.dataset.key] = value;
   }
   if (!properties.title && !content) {
@@ -322,6 +356,7 @@ async function create(typeId, go) {
     seed = null;
     for (const widget of document.querySelectorAll("#fields [data-key]")) {
       if (widget.chosen) { widget.chosen = []; widget.querySelector(".chips").replaceChildren(); }
+      else if (widget.dataset.kind === "datespan") widget.querySelectorAll("input").forEach((i) => { i.value = ""; });
       else widget.value = "";
     }
     void made;

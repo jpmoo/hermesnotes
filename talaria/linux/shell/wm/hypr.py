@@ -337,12 +337,21 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
         return
     area = _area(monitor)
     match = f"title:^({_escape(title)})$"
+    # **The new rule syntax places a window relative to its monitor; the old
+    # one placed it on the whole layout.** `_area` and `_spot` answer in layout
+    # coordinates, which is what `windowrulev2 move` wanted — and on a monitor
+    # at 0,0 the two agree, which is how this went unseen. A `monitors.conf`
+    # that put the laptop panel at 3471,2346 beside an external display sent
+    # every panel to 7170,5080: the offset counted twice, and Talaria opened
+    # nothing anybody could see. So the rule-table forms get the position less
+    # the monitor's own; the keyword fallback keeps the layout position.
+    mx, my = int(monitor.get("x") or 0), int(monitor.get("y") or 0)
 
     if is_desk:
         ax, ay, aw, ah = area
-        if _lua_rule(title, f"size = {{ {aw}, {ah} }}, move = {{ {ax}, {ay} }}, no_anim = true"):
+        if _lua_rule(title, f"size = {{ {aw}, {ah} }}, move = {{ {ax - mx}, {ay - my} }}, no_anim = true"):
             return
-        if _match_rule(title, f"size {aw} {ah}, move {ax} {ay}, no_anim on"):
+        if _match_rule(title, f"size {aw} {ah}, move {ax - mx} {ay - my}, no_anim on"):
             return
         rules = [
             f"float, {match}",
@@ -354,10 +363,10 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
         width = min(width, area[2] - 2 * MARGIN)
         height = min(height, area[3] - 2 * MARGIN)
         x, y = _spot(_placement(), area, width, height)
-        if _lua_rule(title, f"size = {{ {width}, {height} }}, move = {{ {x}, {y} }}, animation = \"slide\"",
+        if _lua_rule(title, f"size = {{ {width}, {height} }}, move = {{ {x - mx}, {y - my} }}, animation = \"slide\"",
                      PANEL_RADIUS):
             return
-        if _match_rule(title, f"size {width} {height}, move {x} {y}, animation slide", PANEL_RADIUS):
+        if _match_rule(title, f"size {width} {height}, move {x - mx} {y - my}, animation slide", PANEL_RADIUS):
             return
         rules = [
             f"float, {match}",

@@ -14,8 +14,14 @@ import { usePanels } from "./right-panel.tsx";
  * @param ready whether the page's own content has arrived — members and sections
  *              come in on their own fetches, so this hunts for a beat rather than
  *              giving up on the first frame.
+ * @param seek  whether to go looking for the origin at all. Today passes false:
+ *              it is a page you read from the top, and coming Back to it from a
+ *              task it lists landed you centred on that task, halfway down the
+ *              day, which read as the page having opened in the wrong place. It
+ *              still spends the origin, so the block is not found later by some
+ *              other page that asked for nothing.
  */
-export function useOriginScroll(ready: boolean) {
+export function useOriginScroll(ready: boolean, seek = true) {
   const { scrollTarget, takeOrigin } = usePanels();
   const nonce = scrollTarget?.nonce ?? 0;
 
@@ -30,7 +36,7 @@ export function useOriginScroll(ready: boolean) {
     // the rail used to find the block some earlier navigation had recorded,
     // still sitting there, and center on it halfway down the day.
     const id = takeOrigin();
-    if (!id) return;
+    if (!id || !seek) return;
 
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -67,5 +73,5 @@ export function useOriginScroll(ready: boolean) {
       window.removeEventListener("touchmove", cancel);
       window.removeEventListener("keydown", cancel);
     };
-  }, [ready, nonce, takeOrigin]);
+  }, [ready, nonce, takeOrigin, seek]);
 }

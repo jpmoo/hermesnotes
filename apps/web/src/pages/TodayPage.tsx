@@ -297,7 +297,8 @@ export function TodayPage() {
 
   // Arriving from something the day shows — an embedded collection, a note
   // section, the scratchpad itself — puts it back in front of you.
-  useOriginScroll(!loading && sheet != null);
+  // Always from the top — see `seek` in useOriginScroll.
+  useOriginScroll(!loading && sheet != null, false);
 
   // Archiving something from anywhere takes it off the day at once, rather
   // than leaving it listed until the next load.

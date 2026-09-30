@@ -240,7 +240,7 @@ class Panel(QWidget):
             # The widget itself must paint nothing either. `WA_TranslucentBackground`
             # governs the window surface; a QWidget still fills its own rect from
             # the palette unless told otherwise, and that fill is square.
-            self.setStyleSheet("background: transparent;")
+            self._style_sheet()
             self.view_is_panel = True
             #: Whether losing focus dismisses it — see `event`. Every floating
             #: panel does; the desk is the one that does not, and it is not a
@@ -304,6 +304,44 @@ class Panel(QWidget):
         self.view.load(url)
         QShortcut(QKeySequence("Escape"), self, activated=self._escape)
 
+    def _style_sheet(self) -> None:
+        """
+        Transparent, except its tooltips.
+
+        A style sheet with no selector applies to everything the widget makes —
+        including the tooltips the web view asks Qt to show for a `title`. So
+        "paint nothing", written for the rounded corners, reached them too: a
+        tooltip with a background of alpha 0 and dark text, which Hyprland
+        composites as a black box with nothing legible in it. Measured, not
+        guessed: the tooltip's own pixels read (0, 0, 0, 0).
+
+        The tooltip gets the panel's colors: Noctalia's on a themed panel, the
+        system's own tooltip colors otherwise.
+        """
+        from PySide6.QtGui import QColor, QPalette
+
+        palette = QApplication.palette()
+        shade = theme.colors() if getattr(self, "dismisses", True) else {}
+        base = QColor(shade.get("canvas") or palette.color(QPalette.ColorRole.ToolTipBase).name())
+        text = QColor(shade.get("canvas-text") or palette.color(QPalette.ColorRole.ToolTipText).name())
+        # A quarter of the way from the background to the text, mixed here:
+        # Qt's style sheets have no `color-mix`, and one value they cannot parse
+        # can cost the whole sheet — the transparency included.
+        line = QColor(
+            round(base.red() * 0.75 + text.red() * 0.25),
+            round(base.green() * 0.75 + text.green() * 0.25),
+            round(base.blue() * 0.75 + text.blue() * 0.25),
+        )
+        # Every part under a selector. A bare `background: transparent;` beside
+        # a rule block is not valid, and Qt drops the rule without a word — the
+        # first try at this left the tooltip exactly as transparent as before.
+        # `QToolTip` after `QWidget`: the same weight, so the later one wins.
+        self.setStyleSheet(
+            "QWidget { background: transparent; }"
+            f" QToolTip {{ background-color: {base.name()}; color: {text.name()};"
+            f" border: 1px solid {line.name()}; padding: 4px 6px; }}"
+        )
+
     def apply_look(self) -> None:
         """
         Colors and solidity, laid onto the page. Again whenever they change.
@@ -318,6 +356,8 @@ class Panel(QWidget):
 
         themed = getattr(self, "dismisses", False) and getattr(self, "view_is_panel", False)
         sheet = theme.css() if themed else None
+        if getattr(self, "view_is_panel", False):
+            self._style_sheet()  # the tooltips follow a palette change too
         alpha = (theme.bar_opacity() if sheet else None) or frosting_alpha()
         self.view.page().runJavaScript(
             "(() => {"

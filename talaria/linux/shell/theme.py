@@ -74,3 +74,16 @@ def bar_opacity() -> float | None:
         if isinstance(value, (int, float)):
             return max(0.35, min(1.0, float(value)))
     return None
+
+
+def colors() -> dict[str, str]:
+    """
+    The rendered theme's base colors by variable name — `canvas`,
+    `canvas-text`, `accent-color` — for the parts of a panel that are Qt rather
+    than page and so cannot read CSS variables: its tooltips. Empty without
+    Noctalia.
+    """
+    import re
+
+    sheet = css() or ""
+    return {m.group(1): m.group(2) for m in re.finditer(r"--([a-z-]+):\s*(#[0-9a-fA-F]{3,8})\s*;", sheet)}

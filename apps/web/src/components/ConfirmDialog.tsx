@@ -136,7 +136,6 @@ export function MembersChoice({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span>
         Also {action} {noun}
-        {action === "unarchive" && " — whatever went into the Archive alongside it comes back too."}
       </span>
     </label>
   );

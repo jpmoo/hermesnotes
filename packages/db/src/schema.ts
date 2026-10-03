@@ -372,13 +372,34 @@ export const attachments = pgTable(
   },
 );
 
-/** Persisted AI-assistant conversation — one ongoing thread per user, with the
- * occasional 'summary' row condensing older turns near the context limit. */
+/** A conversation that lives on a canvas, drawn as a bubble beside the node it
+ * was started from. See migration 0034 for the shape and the why. */
+export const assistantThreads = pgTable("assistant_threads", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** The canvas collection the bubble sits on. */
+  collectionId: uuid("collection_id").references(() => blocks.id, { onDelete: "cascade" }),
+  /** The node it grew from: a block id, or an `n:` note id. */
+  anchorId: text("anchor_id"),
+  /** The bubble itself — a canvas note carrying this thread's id. */
+  noteId: text("note_id"),
+  title: text("title").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Persisted AI-assistant conversation — the panel's own thread (`threadId`
+ * null) and one per canvas bubble, with the occasional 'summary' row condensing
+ * older turns near the context limit. */
 export const assistantMessages = pgTable("assistant_messages", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  /** Null for the assistant panel's own thread. */
+  threadId: uuid("thread_id").references(() => assistantThreads.id, { onDelete: "cascade" }),
   seq: bigserial("seq", { mode: "number" }).notNull(),
   role: text("role").notNull(),
   kind: text("kind").notNull().default("message"),

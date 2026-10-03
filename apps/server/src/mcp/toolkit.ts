@@ -136,7 +136,7 @@ const READONLY_TOOLS = new Set([
  * shouldn't turn one read into hundreds of requests. An id that won't resolve is
  * simply absent, and renders as the id.
  */
-async function refTitleMap(
+export async function refTitleMap(
   api: Api,
   schema: PropertySchema | null | undefined,
   props: Record<string, unknown>,
@@ -190,7 +190,7 @@ async function projectNamesFor(api: Api, ctx: Ctx, tasks: HermesBlock[]): Promis
 }
 
 /** Every stored property the schema doesn't declare, so nothing is hidden. */
-function fmtExtraProps(
+export function fmtExtraProps(
   schema: PropertySchema | null | undefined,
   props: Record<string, unknown>,
   skip: string[] = [],
@@ -210,7 +210,7 @@ function fmtExtraProps(
  * An empty number renders as "-" rather than being dropped, so an unset number is
  * visibly unset and can never be read back as zero.
  */
-function fmtSchemaFields(
+export function fmtSchemaFields(
   schema: PropertySchema | null | undefined,
   props: Record<string, unknown>,
   skip: string[] = [],

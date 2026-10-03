@@ -1,4 +1,4 @@
-import { and, asc, eq, lte } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, type SQL } from "drizzle-orm";
 import { assistantMessages, type AgentStep } from "@hermes/db";
 import { db } from "../db.js";
 import { fetchModelContext, summarizeConversation } from "./agent.js";
@@ -12,10 +12,22 @@ interface StoredMessage extends ThreadMessage {
   seq: number;
 }
 
-/** One user's ongoing thread: the rolling summary (at most one row) plus the
- * verbatim messages after it, in order. */
+/**
+ * Which thread a query is about. `null` is the assistant panel's own thread —
+ * every message that predates canvas discussions — and must be asked for as
+ * `IS NULL`: `= NULL` matches nothing, and the panel would open empty.
+ */
+const inThread = (userId: string, threadId: string | null): SQL =>
+  and(
+    eq(assistantMessages.userId, userId),
+    threadId === null ? isNull(assistantMessages.threadId) : eq(assistantMessages.threadId, threadId),
+  )!;
+
+/** One thread: the rolling summary (at most one row) plus the verbatim
+ * messages after it, in order. */
 export async function loadThread(
   userId: string,
+  threadId: string | null = null,
 ): Promise<{ summary: string | null; messages: StoredMessage[] }> {
   const rows = await db
     .select({
@@ -26,7 +38,7 @@ export async function loadThread(
       seq: assistantMessages.seq,
     })
     .from(assistantMessages)
-    .where(eq(assistantMessages.userId, userId))
+    .where(inThread(userId, threadId))
     .orderBy(asc(assistantMessages.seq));
   let summary: string | null = null;
   const messages: StoredMessage[] = [];
@@ -42,12 +54,17 @@ export async function appendMessage(
   role: "user" | "assistant",
   content: string,
   steps?: AgentStep[] | null,
+  threadId: string | null = null,
 ): Promise<void> {
-  await db.insert(assistantMessages).values({ userId, role, kind: "message", content, steps: steps ?? null });
+  await db
+    .insert(assistantMessages)
+    .values({ userId, threadId, role, kind: "message", content, steps: steps ?? null });
 }
 
-export async function clearThread(userId: string): Promise<void> {
-  await db.delete(assistantMessages).where(eq(assistantMessages.userId, userId));
+/** Empty one thread. The panel's Clear used to mean "every message this user
+ * has", which would now also wipe every discussion on every canvas. */
+export async function clearThread(userId: string, threadId: string | null = null): Promise<void> {
+  await db.delete(assistantMessages).where(inThread(userId, threadId));
 }
 
 /** The model context for a turn: the rolling summary (if any) as a lead-in,
@@ -85,12 +102,14 @@ const MAX_VERBATIM_MESSAGES = 40;
  */
 export async function maybeSummarize(opts: {
   userId: string;
+  threadId?: string | null;
   url: string;
   model: string;
   numCtx: number;
   promptTokens: number;
 }): Promise<boolean> {
-  const thread = await loadThread(opts.userId);
+  const threadId = opts.threadId ?? null;
+  const thread = await loadThread(opts.userId, threadId);
   if (thread.messages.length <= KEEP_RECENT) return false;
   const overTokens = opts.promptTokens > 0 && opts.promptTokens >= opts.numCtx * SUMMARIZE_AT;
   if (!overTokens && thread.messages.length < MAX_VERBATIM_MESSAGES) return false;
@@ -109,17 +128,17 @@ export async function maybeSummarize(opts: {
       .delete(assistantMessages)
       .where(
         and(
-          eq(assistantMessages.userId, opts.userId),
+          inThread(opts.userId, threadId),
           eq(assistantMessages.kind, "message"),
           lte(assistantMessages.seq, cutoffSeq),
         ),
       );
     await tx
       .delete(assistantMessages)
-      .where(and(eq(assistantMessages.userId, opts.userId), eq(assistantMessages.kind, "summary")));
+      .where(and(inThread(opts.userId, threadId), eq(assistantMessages.kind, "summary")));
     await tx
       .insert(assistantMessages)
-      .values({ userId: opts.userId, role: "assistant", kind: "summary", content: summaryText });
+      .values({ userId: opts.userId, threadId, role: "assistant", kind: "summary", content: summaryText });
   });
   return true;
 }

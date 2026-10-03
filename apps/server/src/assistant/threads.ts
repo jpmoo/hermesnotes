@@ -27,13 +27,25 @@ const columns = {
   title: assistantThreads.title,
 };
 
+/**
+ * A new discussion. The id may come from the canvas, which draws the bubble —
+ * carrying that id — before this row exists; a uuid the client chose is as
+ * good as one Postgres chose, and a clash is a primary-key error, not a merge.
+ */
 export async function createThread(
   userId: string,
-  t: { collectionId: string; anchorId: string; noteId: string; title?: string },
+  t: { id?: string; collectionId: string; anchorId: string; noteId: string; title?: string },
 ): Promise<Thread> {
   const [row] = await db
     .insert(assistantThreads)
-    .values({ userId, collectionId: t.collectionId, anchorId: t.anchorId, noteId: t.noteId, title: t.title ?? "" })
+    .values({
+      ...(t.id ? { id: t.id } : {}),
+      userId,
+      collectionId: t.collectionId,
+      anchorId: t.anchorId,
+      noteId: t.noteId,
+      title: t.title ?? "",
+    })
     .returning(columns);
   return row!;
 }

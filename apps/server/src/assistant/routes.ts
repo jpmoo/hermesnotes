@@ -117,6 +117,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
     const userId = requireUser(req);
     const body = z
       .object({
+        id: z.string().uuid().optional(),
         collectionId: z.string().uuid(),
         // A block id or an `n:` note id — the vocabulary of canvas_edges.
         anchorId: z.string().min(1).max(200),

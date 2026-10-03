@@ -21,6 +21,25 @@ interface AssistantValue {
   stop: () => void;
   resolvePending: (idx: number, approve: boolean) => Promise<void>;
   clear: () => Promise<void>;
+  /** The discussion being shown — a canvas bubble's thread — or null for the
+   * panel's own conversation. */
+  thread: ThreadInfo | null;
+  /** Show a discussion (or, with null, the panel's own conversation) and bring
+   * the AI tab forward. */
+  openThread: (id: string | null) => void;
+  /** Bumped by `openThread`; the right panel follows it to the AI tab. */
+  openTick: number;
+  /** Titles discussions have taken from their first question, by thread id —
+   * so a bubble on a canvas can label itself without asking the server. */
+  titles: Record<string, string>;
+}
+
+export interface ThreadInfo {
+  id: string;
+  collectionId: string | null;
+  anchorId: string | null;
+  noteId: string | null;
+  title: string;
 }
 
 const Ctx = createContext<AssistantValue | null>(null);
@@ -36,6 +55,20 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const loaded = useRef(false);
   const inflight = useRef<AbortController | null>(null);
+  const [thread, setThread] = useState<ThreadInfo | null>(null);
+  const [openTick, setOpenTick] = useState(0);
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  /**
+   * Which thread the panel is showing *now*, for code that outlives a render.
+   *
+   * A turn streams for seconds. If somebody opens another bubble meanwhile, the
+   * tokens still arriving belong to the thread they were asked in — patching
+   * them into whatever list is on screen would write one discussion's answer
+   * into another. The server keeps the turn either way; this only decides
+   * whether it is drawn.
+   */
+  const shown = useRef<string | null>(null);
+  const q = (id: string | null) => (id ? `?threadId=${encodeURIComponent(id)}` : "");
 
   useEffect(() => {
     if (loaded.current) return;
@@ -46,6 +79,35 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       .catch(() => {});
   }, []);
 
+  const openThread = (id: string | null) => {
+    setOpenTick((t) => t + 1);
+    // Already showing it: bring the panel forward and leave the conversation
+    // alone. Clicking a cloud whose discussion is open would otherwise empty
+    // and refill it — a flash, and a turn mid-stream drawn over by its own
+    // history.
+    if (id === shown.current) return;
+    shown.current = id;
+    setError(null);
+    setMsgs([]);
+    if (!id) {
+      setThread(null);
+      void api
+        .get<{ messages: AssistantMsg[] }>("/assistant/messages")
+        .then((d) => shown.current === null && setMsgs(d.messages))
+        .catch(() => {});
+      return;
+    }
+    setThread({ id, collectionId: null, anchorId: null, noteId: null, title: titles[id] ?? "" });
+    void api
+      .get<ThreadInfo>(`/assistant/threads/${id}`)
+      .then((t) => shown.current === id && setThread(t))
+      .catch(() => {});
+    void api
+      .get<{ messages: AssistantMsg[] }>(`/assistant/messages${q(id)}`)
+      .then((d) => shown.current === id && setMsgs(d.messages))
+      .catch((e) => shown.current === id && setError(e instanceof ApiError ? "That discussion is gone." : null));
+  };
+
   const send = async (text: string) => {
     const t = text.trim();
     if (!t || busy) return;
@@ -53,9 +115,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     // The user message plus an empty assistant placeholder we stream into.
     setMsgs((m) => [...m, { role: "user", content: t }, { role: "assistant", content: "", steps: [], streaming: true }]);
     setBusy(true);
-    // Patch the last (assistant) message as events arrive.
-    const patchLast = (fn: (a: AssistantMsg) => AssistantMsg) =>
+    // Patch the last (assistant) message as events arrive — while this
+    // thread is still the one on screen; see `shown`.
+    const asked = shown.current;
+    const patchLast = (fn: (a: AssistantMsg) => AssistantMsg) => {
+      if (shown.current !== asked) return;
       setMsgs((m) => m.map((x, i) => (i === m.length - 1 ? fn(x) : x)));
+    };
 
     try {
       const ctrl = new AbortController();
@@ -64,7 +130,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json", "x-client-id": CLIENT_ID },
-        body: JSON.stringify({ message: t }),
+        body: JSON.stringify({ message: t, ...(asked ? { threadId: asked } : {}) }),
         signal: ctrl.signal,
       });
       if (res.status === 400) throw new ApiError(400, (await res.json().catch(() => ({})))?.error ?? "bad request");
@@ -74,7 +140,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       const decoder = new TextDecoder();
       let buf = "";
       let live = ""; // reply text since the last tool step
-      const apply = (ev: { type: string; text?: string; step?: AgentStep; reply?: string; steps?: AgentStep[]; pending?: PendingCall[]; message?: string }) => {
+      const apply = (ev: { type: string; text?: string; step?: AgentStep; reply?: string; steps?: AgentStep[]; pending?: PendingCall[]; message?: string; title?: string }) => {
+        // The discussion took its name from this question: the bubble that
+        // holds it can say so, whichever thread is on screen by now.
+        if (ev.type === "done" && ev.title && asked) {
+          setTitles((all) => ({ ...all, [asked]: ev.title! }));
+          if (shown.current === asked) setThread((th) => (th ? { ...th, title: ev.title! } : th));
+        }
         if (ev.type === "token") {
           live += ev.text ?? "";
           patchLast((a) => ({ ...a, content: live }));
@@ -84,7 +156,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         } else if (ev.type === "done") {
           patchLast((a) => ({ ...a, content: ev.reply ?? a.content, steps: ev.steps ?? a.steps, pending: ev.pending, streaming: false }));
         } else if (ev.type === "error") {
-          setError(ev.message ?? "The assistant is unavailable.");
+          if (shown.current === asked) setError(ev.message ?? "The assistant is unavailable.");
           patchLast((a) => ({ ...a, streaming: false }));
         }
       };
@@ -135,7 +207,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.post<{ steps: AgentStep[] }>("/assistant/confirm", { calls: pending });
+      const res = await api.post<{ steps: AgentStep[] }>("/assistant/confirm", {
+        calls: pending,
+        ...(shown.current ? { threadId: shown.current } : {}),
+      });
       setMsgs((m) => [...m, { role: "assistant", content: "Done.", steps: res.steps }]);
     } catch (e) {
       setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "Couldn't complete that.");
@@ -145,13 +220,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   };
 
   const clear = async () => {
-    await api.del("/assistant/messages").catch(() => {});
+    await api.del(`/assistant/messages${q(shown.current)}`).catch(() => {});
     setMsgs([]);
     setError(null);
   };
 
   return (
-    <Ctx.Provider value={{ msgs, busy, error, send, stop, resolvePending, clear }}>{children}</Ctx.Provider>
+    <Ctx.Provider
+      value={{ msgs, busy, error, send, stop, resolvePending, clear, thread, openThread, openTick, titles }}
+    >
+      {children}
+    </Ctx.Provider>
   );
 }
 

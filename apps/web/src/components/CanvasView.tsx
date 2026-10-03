@@ -30,6 +30,7 @@ import { captureField, runFieldClipboard, type FieldSelection } from "../lib/fie
 import { EphemeralNote } from "./EphemeralNote.tsx";
 import { PointerMenu } from "./PointerMenu.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
+import { useAssistant } from "../lib/assistant.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { QueryBuilder } from "./QueryBuilder.tsx";
@@ -95,6 +96,33 @@ interface NodeCtx extends Rect {
  * different sticky at every size.
  */
 const OUTLINE_FOLD = 14;
+
+/**
+ * A cloud, in its own unit box: start, then cubic segments (c1, c2, end).
+ *
+ * One list drawn two ways — as the `objectBoundingBox` clip path that cuts the
+ * node, and scaled to the node's pixels as its outline — so the border always
+ * lies exactly on the edge it borders. Lobes kept clear of the middle, where
+ * the text sits.
+ */
+const CLOUD: [number, number][] = [
+  [0.2, 0.84],
+  [0.06, 0.84], [0.0, 0.68], [0.07, 0.56],
+  [0.0, 0.44], [0.08, 0.27], [0.23, 0.29],
+  [0.25, 0.1], [0.45, 0.05], [0.56, 0.16],
+  [0.67, 0.03], [0.89, 0.08], [0.88, 0.29],
+  [1.0, 0.33], [1.02, 0.54], [0.94, 0.63],
+  [1.0, 0.8], [0.88, 0.92], [0.76, 0.87],
+  [0.66, 0.99], [0.44, 0.99], [0.36, 0.89],
+  [0.3, 0.93], [0.21, 0.92], [0.2, 0.84],
+];
+const cloudPath = (w: number, h: number): string => {
+  const p = CLOUD.map(([x, y]) => `${+(x * w).toFixed(3)} ${+(y * h).toFixed(3)}`);
+  const out = [`M ${p[0]}`];
+  for (let i = 1; i + 2 < p.length; i += 3) out.push(`C ${p[i]} ${p[i + 1]} ${p[i + 2]}`);
+  return `${out.join(" ")} Z`;
+};
+
 const outlinePath = (shape: string | null | undefined, w: number, h: number): string | null => {
   const f = Math.min(OUTLINE_FOLD, w / 2, h / 2);
   switch (shape) {
@@ -104,6 +132,8 @@ const outlinePath = (shape: string | null | undefined, w: number, h: number): st
       return `M ${w / 2} 0 L ${w} ${h} L 0 ${h} Z`;
     case "postIt":
       return `M 0 0 L ${w} 0 L ${w} ${h - f} L ${w - f} ${h} L 0 ${h} Z`;
+    case "cloud":
+      return cloudPath(w, h);
     default:
       // Rounded and square are not clipped, so their border is a real border
       // and draws itself.
@@ -145,6 +175,7 @@ const SHAPE_CHOICES: { name: string; key: string | null }[] = [
   { name: "Circle", key: "ellipse" },
   { name: "Triangle", key: "triangle" },
   { name: "Post-it", key: "postIt" },
+  { name: "Cloud", key: "cloud" },
 ];
 
 const SHAPES: Record<string, string> = {
@@ -153,6 +184,9 @@ const SHAPES: Record<string, string> = {
   triangle: "polygon(50% 0%, 100% 100%, 0% 100%)",
   // The cut corner of a sticky. The turned-up flap is drawn over it below.
   postIt: "polygon(0 0, 100% 0, 100% 78%, 78% 100%, 0 100%)",
+  // An SVG clip in unit coordinates, so it scales with the node — CSS `path()`
+  // speaks pixels and would be one size of cloud. Defined once per canvas.
+  cloud: "url(#cv-cloud-clip)",
 };
 export interface CanvasEdge {
   id: string;
@@ -200,6 +234,15 @@ interface CanvasNote extends Rect {
    * so the trade is worth making once and undoing at conversion.
    */
   image?: { name: string; mime: string; data: string } | null;
+  /**
+   * The discussion this note *is*, when it is a bubble.
+   *
+   * A discussion started from a node is drawn as a cloud beside it, wired to it
+   * by an ordinary connection, and the cloud is an ordinary note carrying the
+   * assistant thread's id. The canvas places and draws it; the server keeps the
+   * conversation and reads its context from what is connected here.
+   */
+  chatId?: string;
 }
 interface CanvasRegion {
   id: string;
@@ -217,6 +260,10 @@ const NOTE_H = 120;
 // Ephemeral notes are opaque sticky notes — post-it yellow by default so one
 // never renders see-through (a note created without a color still gets this).
 const NOTE_COLOR = "#fdf3d8";
+/** A discussion cloud: roomier than a note, because the lobes take the corners. */
+const BUBBLE_W = 240;
+const BUBBLE_H = 150;
+const BUBBLE_COLOR = "#e4f0f5";
 /** How much canvas the edge layer covers, centered on the origin. Generous
  *  enough that nothing is ever drawn outside it, small enough to stay cheap. */
 const EDGE_SPAN = 20000;
@@ -323,6 +370,7 @@ export function CanvasView({
   const cid = collection.id;
   const props = collection.properties as Record<string, unknown>;
   const { selectBlock, bottomSlotEl, selectedBlockId } = usePanels();
+  const { openThread, titles: discussionTitles, thread: shownDiscussion } = useAssistant();
   const nav = useNavigate();
   const isMobile = useIsMobile();
 
@@ -1679,6 +1727,7 @@ export function CanvasView({
   // panel's job, never the canvas's.
   const removeNode = async (id: string) => {
     if (id.startsWith("n:")) {
+      dropDiscussions(notes.filter((n) => n.id === id));
       saveNotes(notes.filter((n) => n.id !== id));
     } else {
       await api.del(`/collections/${cid}/members/${id}`);
@@ -1826,6 +1875,13 @@ export function CanvasView({
   const removalMessage = (ids: string[]) => {
     const c = countRemoval(ids);
     const parts: string[] = [];
+    const talks = notes.filter((n) => n.chatId && ids.includes(n.id)).length;
+    if (talks)
+      parts.push(
+        talks === 1
+          ? "The conversation in this discussion is deleted with it."
+          : `The conversations in ${talks} discussions are deleted with them.`,
+      );
     if (c.notes)
       parts.push(
         c.notes === 1
@@ -1849,7 +1905,10 @@ export function CanvasView({
     const nodeIds = ids.filter((id) => !regionIds.has(id));
     const noteIds = new Set(nodeIds.filter((id) => id.startsWith("n:")));
     const blockIds = nodeIds.filter((id) => !id.startsWith("n:"));
-    if (noteIds.size) saveNotes(notes.filter((n) => !noteIds.has(n.id)));
+    if (noteIds.size) {
+      dropDiscussions(notes.filter((n) => noteIds.has(n.id)));
+      saveNotes(notes.filter((n) => !noteIds.has(n.id)));
+    }
     saveRegions(
       regions
         .filter((r) => !pickedRegions.includes(r.id))
@@ -1862,6 +1921,7 @@ export function CanvasView({
     if (blockIds.length) onChanged();
   };
   const clearCanvas = async () => {
+    dropDiscussions(notes);
     saveNotes([]);
     saveEdges([]);
     saveRegions([]);
@@ -1988,6 +2048,79 @@ export function CanvasView({
     // than making the next act a click on what was just asked for.
     setFocusNote(id);
   };
+
+  // ── discussions ──────────────────────────────────────────────────────
+  //
+  // A discussion is started from a node and drawn as a cloud beside it, wired
+  // to it with an ordinary (canvas-only) connection. The assistant reads what
+  // is connected to the node — and to the cloud — every time it answers, so the
+  // brief is the canvas itself: wire a learning to the problem and the next
+  // reply knows it.
+
+  /**
+   * Start a discussion from a node.
+   *
+   * The thread's id is made here, so the cloud is drawn at once and the server
+   * row follows; the chat opens only once that row exists, so the panel never
+   * asks for a discussion the server has not heard of yet. If the server says
+   * no, the cloud goes again — a bubble that opens nothing is worse than none.
+   */
+  const discuss = async (anchorId: string) => {
+    const r = rectOf(anchorId);
+    if (!r) return;
+    const noteId = `n:${uid()}`;
+    const threadId = uid();
+    const spot = findSpot(r.x + r.w + 50 + BUBBLE_W / 2, r.y + r.h / 2, BUBBLE_W, BUBBLE_H, allRects());
+    const bubble: CanvasNote = {
+      id: noteId,
+      ...spot,
+      w: BUBBLE_W,
+      h: BUBBLE_H,
+      text: "",
+      color: BUBBLE_COLOR,
+      shape: "cloud",
+      chatId: threadId,
+    };
+    const nextNotes = [...notes, bubble];
+    const nextEdges = [
+      ...edges,
+      { id: uid(), from: anchorId, to: noteId, fromSide: "e" as Side, toSide: "w" as Side, live: false },
+    ];
+    saveNotes(nextNotes);
+    saveEdges(nextEdges);
+    try {
+      await api.post("/assistant/threads", { id: threadId, collectionId: cid, anchorId, noteId });
+      openThread(threadId);
+    } catch {
+      saveNotes(nextNotes.filter((n) => n.id !== noteId));
+      saveEdges(nextEdges.filter((e) => e.to !== noteId));
+    }
+  };
+
+  /** The conversations behind clouds that are leaving the canvas go with them.
+   *  Nothing on a canvas is undoable, and an orphaned discussion would be read
+   *  by nothing and found by nobody. */
+  const dropDiscussions = (gone: CanvasNote[]) => {
+    for (const n of gone) {
+      if (!n.chatId) continue;
+      void api.del(`/assistant/threads/${n.chatId}`).catch(() => {});
+      if (shownDiscussion?.id === n.chatId) openThread(null);
+    }
+  };
+
+  // A discussion names itself from its first question. Its cloud takes that
+  // name — unless somebody has already written one on it.
+  useEffect(() => {
+    let changed = false;
+    const next = notes.map((n) => {
+      const t = n.chatId ? discussionTitles[n.chatId] : undefined;
+      if (!t || n.text.trim()) return n;
+      changed = true;
+      return { ...n, text: t };
+    });
+    if (changed) saveNotes(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discussionTitles]);
 
   const convertNote = async (note: CanvasNote, type: BlockType) => {
     // A picture has no words. Its filename is the only thing it brought with
@@ -2397,6 +2530,16 @@ export function CanvasView({
         if (!locked && e.target === e.currentTarget) addNote(toCanvas(e.clientX, e.clientY));
       }}
     >
+      {/* The cloud's clip, in the node's own unit box — see `CLOUD`. One per
+          canvas; two canvases on a page define the same shape twice, which is
+          harmless. */}
+      <svg className="cv-defs" width="0" height="0" aria-hidden="true" focusable="false">
+        <defs>
+          <clipPath id="cv-cloud-clip" clipPathUnits="objectBoundingBox">
+            <path d={cloudPath(1, 1)} />
+          </clipPath>
+        </defs>
+      </svg>
       <div className="cv-layer" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
         {regions.map((rg) => {
           const rr = regionRect(rg);
@@ -2703,9 +2846,20 @@ export function CanvasView({
             ) : (
             <EphemeralNote
               text={n.text}
-              placeholder="Ephemeral note — right-click to convert"
+              placeholder={n.chatId ? "New discussion" : "Ephemeral note — right-click to convert"}
               autofocus={focusNote === n.id}
-              onFocusChange={(f) => f && setEphSel(n.id)}
+              // A cloud is a discussion: touching it opens the conversation,
+              // and its words are the discussion's name, still editable here.
+              onFocusChange={(f) => {
+                if (f) {
+                  if (n.chatId) openThread(n.chatId);
+                  else setEphSel(n.id);
+                } else if (n.chatId) {
+                  // Renamed on the canvas: the panel's heading says the same.
+                  const text = notes.find((x) => x.id === n.id)?.text.trim() ?? "";
+                  if (text) void api.patch(`/assistant/threads/${n.chatId}`, { title: text.slice(0, 200) }).catch(() => {});
+                }
+              }}
               onChange={(v) => saveNotes(notes.map((x) => (x.id === n.id ? { ...x, text: v } : x)))}
             />
             ),
@@ -2962,7 +3116,34 @@ export function CanvasView({
                 />
               ))}
             </div>
-            {menuNote && (
+            {/* A discussion, from any node: a block whatever its type, or a
+                note. A cloud opens its own instead — a discussion of a
+                discussion is a second thread nobody asked for. */}
+            <div className="menu-sep" />
+            {menuNote?.chatId ? (
+              <button
+                className="menu-item"
+                onClick={() => {
+                  const chatId = menuNote.chatId!;
+                  setNodeMenu(null);
+                  openThread(chatId);
+                }}
+              >
+                Open discussion
+              </button>
+            ) : (
+              <button
+                className="menu-item"
+                onClick={() => {
+                  const id = nodeMenu.id;
+                  setNodeMenu(null);
+                  void discuss(id);
+                }}
+              >
+                Discuss…
+              </button>
+            )}
+            {menuNote && !menuNote.chatId && (
               <>
                 <div className="menu-sep" />
                 <div className="hint" style={{ padding: "4px 10px" }}>Convert to…</div>
@@ -2998,7 +3179,11 @@ export function CanvasView({
                 setConfirmRemove([id]);
               }}
             >
-              {nodeMenu.id.startsWith("n:") ? "Delete note" : "Remove from canvas"}
+              {menuNote?.chatId
+                ? "Delete discussion"
+                : nodeMenu.id.startsWith("n:")
+                  ? "Delete note"
+                  : "Remove from canvas"}
             </button>
           </PointerMenu>,
           document.body,

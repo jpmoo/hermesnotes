@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUp, Sparkles, Square, Wrench } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowUp, MessageCircle, Sparkles, Square, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useAssistant } from "../lib/assistant.tsx";
 import { Markdown } from "./Markdown.tsx";
@@ -9,7 +9,7 @@ import { Markdown } from "./Markdown.tsx";
  * tab switches. This component only owns the composer text and scroll position.
  */
 export function AIPanel() {
-  const { msgs, busy, error, send, stop, resolvePending } = useAssistant();
+  const { msgs, busy, error, send, stop, resolvePending, thread, openThread } = useAssistant();
   const [input, setInput] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -33,8 +33,33 @@ export function AIPanel() {
 
   return (
     <div className="ai-panel">
+      {/* Which conversation this is. A discussion is a bubble on a canvas, read
+          with what is connected to it; saying so is the difference between
+          "the assistant forgot everything" and "this is a different chat". */}
+      {thread && (
+        <div className="ai-discussion">
+          <MessageCircle size={14} />
+          <span className="ai-discussion-title" title={thread.title || undefined}>
+            {thread.title || "New discussion"}
+          </span>
+          <button className="ai-discussion-back" onClick={() => openThread(null)} title="Back to the assistant">
+            <ArrowLeft size={13} /> Assistant
+          </button>
+        </div>
+      )}
       <div className="ai-thread" ref={threadRef}>
-        {msgs.length === 0 && (
+        {msgs.length === 0 && thread && (
+          <div className="ai-empty">
+            <MessageCircle size={22} />
+            <p>This discussion reads what is connected to its node on the canvas.</p>
+            <ul className="ai-suggest">
+              <li>"I'm considering doing X. Given the context, what are the pros and cons?"</li>
+              <li>"What am I missing?"</li>
+              <li>"Compare this with the other options discussed here"</li>
+            </ul>
+          </div>
+        )}
+        {msgs.length === 0 && !thread && (
           <div className="ai-empty">
             <Sparkles size={22} />
             <p>Ask me to find, create, or organize anything.</p>

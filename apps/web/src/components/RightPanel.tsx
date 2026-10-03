@@ -203,7 +203,7 @@ export function RightPanel() {
   const { ai: aiEnabled } = useAiConfig();
   // The AI-tab "clear conversation" action lives up in the header (next to the
   // pin) instead of its own toolbar row.
-  const { msgs: aiMsgs, busy: aiBusy, clear: clearAi } = useAssistant();
+  const { msgs: aiMsgs, busy: aiBusy, clear: clearAi, openTick, thread: aiThread } = useAssistant();
   const [confirmClear, setConfirmClear] = useState(false);
   const [tab, setTabRaw] = useState<Tab>(readTab);
   const setTab = (t: Tab) => {
@@ -216,6 +216,17 @@ export function RightPanel() {
   };
   // With no inference model configured, the AI tab is hidden — fall back to Info.
   const activeTab: Tab = tab === "ai" && !aiEnabled ? "info" : tab;
+  // A discussion was opened — from a bubble on a canvas, or back to the panel's
+  // own. Show it: the AI tab, and the panel itself if it was tucked away. Not
+  // through `revealTick`, which deliberately declines presses on writing
+  // surfaces and toggles on a second press — opening a discussion is never
+  // either of those.
+  useEffect(() => {
+    if (openTick === 0) return;
+    setTab("ai");
+    if (!isMobile) setRevealed(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTick]);
   // Which page the panel is sitting beside. The tools it offers (a filter, a
   // layout) belong to that page rather than to anything selected, and on a narrow
   // window the page's own heading may not be in view at all.
@@ -230,7 +241,8 @@ export function RightPanel() {
     if (pathname.startsWith("/settings")) return "Settings";
     return null;
   })();
-  const baseTitle = activeTab === "graph" ? "Graph" : activeTab === "ai" ? "AI" : "Info";
+  const baseTitle =
+    activeTab === "graph" ? "Graph" : activeTab === "ai" ? (aiThread ? "Discussion" : "AI") : "Info";
   // Only when the panel is showing the page's own tools: with a block selected
   // it's describing that block, and naming the page would misattribute it.
   const tabTitle =

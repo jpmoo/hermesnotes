@@ -1662,6 +1662,13 @@ export function CanvasView({
       }
       return;
     }
+    // A press on a discussion cloud that did not move it is "open this": with
+    // the first press selecting rather than reaching the text, focusing the
+    // cloud's text is no longer how anybody gets there.
+    if (d.kind === "node" && !d.moved) {
+      const chatId = notes.find((n) => n.id === d.id)?.chatId;
+      if (chatId) openThread(chatId);
+    }
     if (d.kind === "node" && d.moved) {
       const r = rectOf(d.id);
       if (!r) return;
@@ -2438,7 +2445,7 @@ export function CanvasView({
       key={id}
       data-block-id={id}
       data-shape={r.shape ?? undefined}
-      className={`cv-node${isNote ? " cv-note" : ""}${selected.includes(id) ? " cv-sel" : ""}${
+      className={`cv-node${isNote ? " cv-note" : ""}${isNote && notes.find((n) => n.id === id)?.chatId ? " cv-talk" : ""}${selected.includes(id) ? " cv-sel" : ""}${
         groupWith(id) ? " cv-group" : ""
       }${r.color ? " cv-shaded" : ""}${r.shape && SHAPES[r.shape] ? " cv-shaped" : ""}`}
       style={{
@@ -2469,17 +2476,26 @@ export function CanvasView({
         // its own — two outlines a pixel apart is a node that looks doubled.
         ...(borderOf(r) ? { border: "none", boxShadow: "none" } : {}),
       }}
-      // **Anywhere on a node is a grip**, not only the small one in its corner.
-      // Moving a node meant finding a 13px icon, and on a clipped shape — a
-      // circle, a triangle, a discussion cloud — the clip cut the icon away
-      // with the corner it sat in, so those could not be moved at all, and a
-      // press that just missed went through to the canvas and panned it. What
-      // is for working *in* (NOT_A_GRIP) keeps its own job; a press elsewhere
-      // takes hold, and only becomes a move once it travels (DRAG_SLOP), so a
-      // click still selects and opens.
+      // **Holding anywhere on a node takes hold of it.** Two presses, two jobs:
+      //
+      // - On a node that is not selected, the first press is always "this
+      //   one" — it selects, and if it moves it drags, wherever it landed:
+      //   on the title, in the text, on a tick. It takes the pointer at once,
+      //   so the browser cannot turn it into focusing a field, sweeping a text
+      //   selection, or clicking something inside the card, and nothing under
+      //   it can let the press fall through to the canvas and pan.
+      // - On the selected node, a press into what is for working in
+      //   (NOT_A_GRIP) is working in it: editing, selecting text, ticking. A
+      //   press elsewhere on it still drags, captured only once it travels
+      //   (DRAG_SLOP) so a click still reaches the card.
+      //
+      // Moving a node used to mean finding a 13px grip icon, which a clipped
+      // shape — a circle, a triangle, a discussion cloud — cut away entirely.
       onPointerDown={(e) => {
         const group = groupWith(id);
         if (group) return startGroupDrag(group, id, e);
+        const isSelected = selected.length === 1 && selected[0] === id;
+        if (!isSelected) return startNodeDrag(id, e);
         const t = e.target as HTMLElement;
         if (t.closest?.(NOT_A_GRIP)) return;
         startNodeDrag(id, e, true);

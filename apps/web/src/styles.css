@@ -5619,6 +5619,11 @@ input.matrix-axis-y::placeholder {
   outline-offset: 3px;
   border-radius: 3px;
 }
+/* A discussion cloud is not a temporary note waiting to become a block, and
+   its shape already says what it is: no dashed "ephemeral" frame around it. */
+.cv-node.cv-note.cv-talk:not(.cv-sel) {
+  outline: none;
+}
 /* Selection overrides it, and is left to: `.cv-node.cv-sel` is the same
    specificity and comes later, so a selected note wears the solid accent
    outline every selected thing wears. A rule here to "fix" that would only have

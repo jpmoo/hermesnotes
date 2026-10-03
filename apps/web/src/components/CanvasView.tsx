@@ -505,7 +505,10 @@ export function CanvasView({
   // Fill the viewport: measure where the canvas actually starts and take the
   // rest (the CSS calc() is only a first-paint fallback).
   // Which element owns the swipe in progress, and when it was last fed.
-  const wheelGesture = useRef<{ el: HTMLElement | null; at: number; hold?: boolean }>({ el: null, at: 0 });
+  const wheelGesture = useRef<{ el: HTMLElement | null; at: number; hold?: boolean; decided?: boolean }>({
+    el: null,
+    at: 0,
+  });
   const [wrapH, setWrapH] = useState<number | null>(null);
   useEffect(() => {
     const measure = () => {
@@ -1278,7 +1281,21 @@ export function CanvasView({
       const GESTURE_GAP_MS = 220;
       const fresh = e.timeStamp - wheelGesture.current.at > GESTURE_GAP_MS;
       wheelGesture.current.at = e.timeStamp;
-      if (fresh) {
+      if (fresh) wheelGesture.current.decided = false;
+      // **Decided once the swipe is moving, not on its first event.** A mouse
+      // wheel's first event carries the whole step; a trackpad's carries next to
+      // nothing — the fingers have only just begun, and the first few events are
+      // often zero vertically. Deciding on that event found nothing that could
+      // scroll "by zero", gave the gesture to the canvas, and kept it there for
+      // the rest of the swipe: on a trackpad, text never scrolled at all. Events
+      // too small to say which way the swipe is going decide nothing, and move
+      // nothing.
+      if (!wheelGesture.current.decided) {
+        if (Math.abs(e.deltaX) + Math.abs(e.deltaY) < 2) {
+          e.preventDefault();
+          return;
+        }
+        wheelGesture.current.decided = true;
         // Whatever the pointer is over that can scroll this way owns the swipe.
         // Walk up rather than looking for one known element: an ephemeral note's
         // body IS a textarea, and an imported block's long-text editor scrolls
@@ -1299,14 +1316,16 @@ export function CanvasView({
           }
         }
         wheelGesture.current.el = owner;
-        // **Writing in a node holds the canvas still.** With the caret in a
-        // node's text and the swipe over that node, a swipe is about the text:
-        // it scrolls when the text can, and otherwise does nothing — it used to
-        // fall through to the canvas whenever the text was already at that end
-        // or too short to scroll, and the page you were typing on slid away.
+        // **The node you are in holds the canvas still.** Writing in it, or
+        // having just clicked it — the first click on a node selects it rather
+        // than placing a caret, and that is already "in" it. A swipe over it is
+        // about its text: it scrolls when the text can, and otherwise nothing
+        // moves, rather than the canvas sliding out from under you whenever the
+        // text was at that end or too short to scroll.
         const node = (e.target as HTMLElement | null)?.closest?.(".cv-node");
         const active = document.activeElement;
-        wheelGesture.current.hold = !owner && !!node && !!active && node.contains(active);
+        wheelGesture.current.hold =
+          !owner && !!node && (node.classList.contains("cv-sel") || (!!active && node.contains(active)));
       }
       // The note scrolls itself (and stops at its end — overscroll-behavior
       // keeps the page out of it too).

@@ -296,6 +296,15 @@ const REGION_TOP = 44;
 const EDGE_COLORS = ["#5f6b74", "#5fa4b5", "#b5525f", "#2f6d4f", "#8a6d1f", "#6a5acd"];
 
 const uid = () => crypto.randomUUID();
+/** Screen pixels a press must travel before it is a drag rather than a click. */
+const DRAG_SLOP = 4;
+/**
+ * What in a node is for working *in* rather than moving it by: fields, ticks,
+ * buttons, links, and the node's own handles. A press anywhere else on a node
+ * takes hold of it — see `nodeBox`.
+ */
+const NOT_A_GRIP =
+  "input, textarea, select, button, a, label, [contenteditable=true], [contenteditable=''], .cv-handle, .cv-corner";
 
 /** Side anchor point of a rect. */
 function anchor(r: Rect, side: Side): { x: number; y: number } {
@@ -1126,7 +1135,20 @@ export function CanvasView({
   // ── pan / zoom ──
   const drag = useRef<
     | { kind: "pan"; sx: number; sy: number; ox: number; oy: number; moved: boolean }
-    | { kind: "node"; id: string; dx: number; dy: number; moved: boolean; startRegions: Record<string, Rect> }
+    | {
+        kind: "node";
+        id: string;
+        dx: number;
+        dy: number;
+        moved: boolean;
+        startRegions: Record<string, Rect>;
+        /** Where the press began, on screen — see the threshold in the move. */
+        sx: number;
+        sy: number;
+        /** A press anywhere on the node captures the pointer only once it is a
+         *  drag — see `startNodeDrag`. */
+        capture?: { el: HTMLElement; pointerId: number };
+      }
     | { kind: "resize"; id: string; corner: string; start: Rect; sx: number; sy: number }
     | { kind: "marquee" }
     | { kind: "region"; id: string; sx: number; sy: number; starts: Record<string, Rect>; moved: boolean }
@@ -1467,6 +1489,22 @@ export function CanvasView({
       if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 3) d.moved = true;
       setView((v) => ({ ...v, x: nx, y: ny }));
     } else if (d.kind === "node") {
+      // Not a drag until it has gone somewhere. The whole node is a handle now,
+      // so a click — to select, to open the card — is a press too, and a hand
+      // that wobbles a pixel would otherwise move the node and snap it to its
+      // neighbours on every click.
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_SLOP) return;
+      // Now it is a drag: hold on to the pointer, and stop the press from
+      // sweeping a text selection across the cards it passes.
+      if (!d.moved && d.capture) {
+        try {
+          d.capture.el.setPointerCapture(d.capture.pointerId);
+        } catch {
+          /* the pointer is already gone; the drag simply ends */
+        }
+        window.getSelection()?.removeAllRanges();
+        wrapRef.current?.classList.add("cv-dragging");
+      }
       const p = toCanvas(e.clientX, e.clientY);
       d.moved = true;
       const cur = rectOf(d.id);
@@ -1541,6 +1579,7 @@ export function CanvasView({
     }
   };
   const onPointerUp = () => {
+    wrapRef.current?.classList.remove("cv-dragging");
     const d = drag.current;
     drag.current = null;
     setGuides([]);
@@ -1637,7 +1676,16 @@ export function CanvasView({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const startNodeDrag = (id: string, e: ReactPointerEvent) => {
+  /**
+   * Take hold of a node.
+   *
+   * From the grip, at once: it is nothing but a handle. From anywhere else on
+   * the node (`deferred`), the press is left alone — no preventDefault, no
+   * pointer capture — until it travels past DRAG_SLOP, because until then it
+   * may be a click on something in the card: capturing the pointer on press
+   * would hand the click to the node's frame instead.
+   */
+  const startNodeDrag = (id: string, e: ReactPointerEvent, deferred = false) => {
     if (locked) return;
     if (e.button !== 0) return;
     const group = groupWith(id);
@@ -1646,8 +1694,10 @@ export function CanvasView({
     // node's own press handler never sees this one).
     setSelected([id]);
     dropCaret();
-    e.preventDefault();
-    e.stopPropagation();
+    if (!deferred) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const p = toCanvas(e.clientX, e.clientY);
     const r = rectOf(id);
     if (!r) return;
@@ -1659,8 +1709,18 @@ export function CanvasView({
       const rr = regionRect(rg);
       if (rr) startRegions[rg.id] = rr;
     }
-    drag.current = { kind: "node", id, dx: p.x - r.x, dy: p.y - r.y, moved: false, startRegions };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    drag.current = {
+      kind: "node",
+      id,
+      dx: p.x - r.x,
+      dy: p.y - r.y,
+      moved: false,
+      startRegions,
+      sx: e.clientX,
+      sy: e.clientY,
+      ...(deferred ? { capture: { el: e.currentTarget as HTMLElement, pointerId: e.pointerId } } : {}),
+    };
+    if (!deferred) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
   const startResize = (id: string, corner: string, e: ReactPointerEvent) => {
     if (locked) return;
@@ -2372,19 +2432,20 @@ export function CanvasView({
         // its own — two outlines a pixel apart is a node that looks doubled.
         ...(borderOf(r) ? { border: "none", boxShadow: "none" } : {}),
       }}
-      // Anywhere on a grouped node is a grip. The resize corners and connect
-      // handles stop propagation, so they keep their own jobs.
+      // **Anywhere on a node is a grip**, not only the small one in its corner.
+      // Moving a node meant finding a 13px icon, and on a clipped shape — a
+      // circle, a triangle, a discussion cloud — the clip cut the icon away
+      // with the corner it sat in, so those could not be moved at all, and a
+      // press that just missed went through to the canvas and panned it. What
+      // is for working *in* (NOT_A_GRIP) keeps its own job; a press elsewhere
+      // takes hold, and only becomes a move once it travels (DRAG_SLOP), so a
+      // click still selects and opens.
       onPointerDown={(e) => {
         const group = groupWith(id);
         if (group) return startGroupDrag(group, id, e);
-        // A press on the node itself rather than into its text selects it —
-        // that's what makes Delete mean this node. A press into a field is
-        // writing, and must leave the selection (and Delete) alone.
         const t = e.target as HTMLElement;
-        if (!t.closest?.("input, textarea, select, [contenteditable=true]")) {
-          setSelected([id]);
-          dropCaret();
-        }
+        if (t.closest?.(NOT_A_GRIP)) return;
+        startNodeDrag(id, e, true);
       }}
       onPointerEnter={() => (hoverNode.current = id)}
       onPointerLeave={() => (hoverNode.current = hoverNode.current === id ? null : hoverNode.current)}

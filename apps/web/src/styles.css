@@ -8228,6 +8228,12 @@ body:has(.embed-scratchpad) #root {
   clip-path: url(#cv-cloud-clip);
   padding: 15% 19% 12.5%;
 }
+/* A node being dragged by its body, not its grip: no text selection sweeping
+   across the cards it passes. */
+.cv-dragging,
+.cv-dragging * {
+  user-select: none !important;
+}
 .cv-defs {
   position: absolute;
   width: 0;

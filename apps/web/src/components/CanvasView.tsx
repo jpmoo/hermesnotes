@@ -505,7 +505,7 @@ export function CanvasView({
   // Fill the viewport: measure where the canvas actually starts and take the
   // rest (the CSS calc() is only a first-paint fallback).
   // Which element owns the swipe in progress, and when it was last fed.
-  const wheelGesture = useRef<{ el: HTMLElement | null; at: number }>({ el: null, at: 0 });
+  const wheelGesture = useRef<{ el: HTMLElement | null; at: number; hold?: boolean }>({ el: null, at: 0 });
   const [wrapH, setWrapH] = useState<number | null>(null);
   useEffect(() => {
     const measure = () => {
@@ -1299,10 +1299,22 @@ export function CanvasView({
           }
         }
         wheelGesture.current.el = owner;
+        // **Writing in a node holds the canvas still.** With the caret in a
+        // node's text and the swipe over that node, a swipe is about the text:
+        // it scrolls when the text can, and otherwise does nothing — it used to
+        // fall through to the canvas whenever the text was already at that end
+        // or too short to scroll, and the page you were typing on slid away.
+        const node = (e.target as HTMLElement | null)?.closest?.(".cv-node");
+        const active = document.activeElement;
+        wheelGesture.current.hold = !owner && !!node && !!active && node.contains(active);
       }
       // The note scrolls itself (and stops at its end — overscroll-behavior
       // keeps the page out of it too).
       if (wheelGesture.current.el?.isConnected) return;
+      if (wheelGesture.current.hold) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
     };

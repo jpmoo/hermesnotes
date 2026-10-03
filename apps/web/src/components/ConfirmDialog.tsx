@@ -136,9 +136,7 @@ export function MembersChoice({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span>
         Also {action} {noun}
-        {action === "archive"
-          ? " — for a collection whose blocks arrived with it, like an import."
-          : " — whatever went into the Archive alongside it comes back too."}
+        {action === "unarchive" && " — whatever went into the Archive alongside it comes back too."}
       </span>
     </label>
   );

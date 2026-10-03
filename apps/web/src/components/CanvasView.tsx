@@ -993,10 +993,36 @@ export function CanvasView({
     if (changed) saveRegions(next);
   };
 
-  const persistMemberCtx = (blockId: string, ctx: NodeCtx) =>
+  /**
+   * A member's placement and furniture, written to its membership context.
+   *
+   * It used to send position, size and colour and nothing else, so a shape, a
+   * border or "show the picture" set from the node menu lived in local state and
+   * was gone on the next load — while the same choices on a note, which persist
+   * through `canvas_notes`, survived. Each styling key the caller carries is now
+   * written: set when it has a value, taken out with `unsetContext` when it is
+   * back to its default (the rounded shape is an *absent* key, not a name). A key
+   * the caller does not carry at all is left as stored, so a drag that only knows
+   * the rectangle cannot strip a border somebody chose.
+   */
+  const persistMemberCtx = (blockId: string, ctx: NodeCtx) => {
+    const context: Record<string, unknown> = { x: ctx.x, y: ctx.y, w: ctx.w, h: ctx.h, color: ctx.color ?? null };
+    const unsetContext: string[] = [];
+    for (const key of ["shape", "stroke", "strokeWidth", "strokeStyle"] as const) {
+      if (!(key in ctx)) continue;
+      const v = ctx[key];
+      if (v === null || v === undefined || v === "") unsetContext.push(key);
+      else context[key] = v;
+    }
+    if ("showImage" in ctx) {
+      if (ctx.showImage) context.showImage = true;
+      else unsetContext.push("showImage");
+    }
     void api.patch(`/collections/${cid}/members/${blockId}`, {
-      context: { x: ctx.x, y: ctx.y, w: ctx.w, h: ctx.h, color: ctx.color ?? null },
+      context,
+      ...(unsetContext.length ? { unsetContext } : {}),
     });
+  };
 
   // ── auto-place members that arrived without a position (+ Add, finder,
   //    accepted query batches) ──

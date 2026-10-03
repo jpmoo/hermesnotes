@@ -5,30 +5,40 @@ import { loadThread } from "./store.js";
 import type { Thread } from "./threads.js";
 
 /**
- * What a discussion on a canvas is about, read fresh from the canvas each turn.
+ * What a discussion on a canvas is about: the whole canvas, read fresh each
+ * turn, as an outline under its questions.
  *
- * A bubble is started from a node — a problem, a decision — and that node's
- * neighbourhood *is* the brief: the learnings and context wired to it, anything
- * wired to the bubble itself, and the other bubbles started from the same node,
- * so a discussion of one option can weigh what was said about another. Nothing
- * is copied into the thread when it starts: the canvas is read again on every
- * message, so connecting a new learning to the problem changes the next answer
- * without anybody re-telling the chat.
+ * A canvas for thinking something through has a shape — problems and
+ * questions, and under each the learnings, context and considerations wired to
+ * it, which may themselves have things wired to them. Some considerations bear
+ * on more than one problem, and that is often the most useful thing on the
+ * map. So the brief is the map's own outline rather than a flat list:
  *
- * **One step out, deliberately.** The anchor, what touches it, and what touches
- * the bubble. Two steps would pull in the neighbours' neighbours — on a busy
- * canvas, most of it — and a model handed everything weighs nothing.
+ *   - **The discussion's own node first, in detail**, with everything wired
+ *     straight to it — and to the cloud — at full length. That is what the
+ *     person is asking about.
+ *   - **Then every question on the canvas** (nodes marked as a problem or
+ *     question — a canvas-only mark, `question` on the placement or the note),
+ *     with what can be reached from it laid out beneath. A branch stops where
+ *     it meets another question and says so, rather than wandering into that
+ *     question's territory.
+ *   - **Anything reached from more than one question says so** — "(also bears
+ *     on: …)" — so the model can see the shared considerations.
+ *   - **What no question reaches** is listed last, under "Elsewhere".
+ *   - **Discussions:** the other clouds off this node in full (summary and
+ *     latest turns), the ones under other questions as a line each.
  *
- * Read through the loopback API as the person asking, like every tool, so a
- * discussion can never see a block its owner could not. No type is named: a
- * block is described by its own schema's labels, whatever the type is called.
+ * Detail falls away with distance, so the whole map fits: full text near the
+ * discussion, a first line further out, a title at the edges, and a hard cap
+ * on the lot. Read through the loopback API as the person asking, like every
+ * tool; no type is named — a block is described by its own schema's labels.
  */
 
 interface Note {
   id: string;
   text?: string;
-  shape?: string | null;
   chatId?: string;
+  question?: boolean;
 }
 interface Edge {
   from: string;
@@ -45,19 +55,27 @@ interface Member {
   blockTypeId: string | null;
   content: string | null;
   properties: Record<string, unknown>;
+  context?: Record<string, unknown> | null;
 }
 
-/** Characters for the whole brief, and for any one piece of it. A model's
- * context is shared with the conversation itself; the brief may not crowd it
- * out, and one long note may not crowd out its neighbours. */
-const BRIEF_MAX = 14_000;
-const PIECE_MAX = 2_500;
+/** Characters for the whole brief, and for any one detailed piece of it. */
+const BRIEF_MAX = 18_000;
+const PIECE_MAX = 2_000;
+/** How far below a question the outline goes before it stops expanding. */
+const OUTLINE_DEPTH = 4;
 /** Of a sibling discussion: its summary, and this many of its latest messages. */
 const SIBLING_TURNS = 6;
 
 const clip = (s: string, n = PIECE_MAX) => (s.length > n ? `${s.slice(0, n)}…` : s);
+const oneLine = (s: string, n = 160) => clip(s.replace(/\s+/g, " ").trim(), n);
 
-export async function canvasBrief(api: Api, userId: string, thread: Thread): Promise<string> {
+export async function canvasBrief(
+  api: Api,
+  userId: string,
+  thread: Thread,
+  /** How other discussions are read — the store, except under test. */
+  load: typeof loadThread = loadThread,
+): Promise<string> {
   if (!thread.collectionId || !thread.anchorId) return "";
   const { collection, members } = await api.get<{
     collection: { properties: Record<string, unknown> };
@@ -68,102 +86,215 @@ export async function canvasBrief(api: Api, userId: string, thread: Thread): Pro
   const edges = (Array.isArray(props.canvas_edges) ? props.canvas_edges : []) as Edge[];
   const regions = (Array.isArray(props.canvas_regions) ? props.canvas_regions : []) as Region[];
 
-  // Undirected: "connected to" is what a person means by a line on a canvas,
-  // whichever end they started dragging from.
+  const memberById = new Map(members.map((m) => [m.id, m]));
+  const noteById = new Map(notes.map((n) => [n.id, n]));
+  const regionById = new Map(regions.map((r) => [r.id, r]));
+
+  // ── the graph ──────────────────────────────────────────────────────────
+  // Undirected: a line on a canvas means "these belong together", whichever
+  // end the person started dragging from. A region on the end of a line stands
+  // for what is in it — wiring a group to a problem in one stroke is the point
+  // of drawing the group — so it is expanded into its members here.
+  const expand = (id: string): string[] => regionById.get(id)?.memberIds ?? [id];
   const near = new Map<string, Set<string>>();
   const link = (a: string, b: string) => {
+    if (a === b) return;
     if (!near.has(a)) near.set(a, new Set());
     near.get(a)!.add(b);
   };
   for (const e of edges) {
     if (!e.from || !e.to) continue;
-    link(e.from, e.to);
-    link(e.to, e.from);
+    for (const a of expand(e.from)) for (const b of expand(e.to)) {
+      link(a, b);
+      link(b, a);
+    }
   }
-  const memberById = new Map(members.map((m) => [m.id, m]));
-  const noteById = new Map(notes.map((n) => [n.id, n]));
-  const regionById = new Map(regions.map((r) => [r.id, r]));
+  const neighbours = (id: string) => [...(near.get(id) ?? [])];
+
+  const isCloud = (id: string) => !!noteById.get(id)?.chatId;
+  const isQuestion = (id: string) =>
+    memberById.get(id)?.context?.question === true || noteById.get(id)?.question === true;
 
   const anchor = thread.anchorId;
   const bubble = thread.noteId;
-  // A region on the end of a line stands for what is in it: wiring a group of
-  // learnings to the problem in one stroke is the point of drawing the group.
-  const expand = (id: string): string[] => regionById.get(id)?.memberIds ?? [id];
-  const around = new Set<string>();
-  for (const id of [...(near.get(anchor) ?? []), ...(bubble ? near.get(bubble) ?? [] : [])]) {
-    for (const x of expand(id)) around.add(x);
-  }
-  around.delete(anchor);
-  if (bubble) around.delete(bubble);
+  // The discussion's own node is a question for this purpose whether or not it
+  // is marked: it is what is being asked about.
+  const questions = [
+    anchor,
+    ...[...memberById.keys(), ...noteById.keys()].filter((id) => id !== anchor && isQuestion(id) && !isCloud(id)),
+  ];
 
+  // ── naming and describing ─────────────────────────────────────────────
   const types = await api
     .get<{ id: string; name: string; propertySchema: PropertySchema | null }[]>("/block-types")
     .catch(() => []);
   const typeById = new Map(types.map((t) => [t.id, t]));
 
-  const describeBlock = async (m: Member): Promise<string> => {
-    const type = m.blockTypeId ? typeById.get(m.blockTypeId) : undefined;
-    const title = typeof m.properties?.title === "string" ? m.properties.title : "";
-    const head = `${title || (m.content ?? "").split("\n")[0] || "Untitled"}${type ? ` (${type.name})` : ""}`;
-    const lines = [head];
+  const nameOf = (id: string): string => {
+    const m = memberById.get(id);
+    if (m) {
+      const title = typeof m.properties?.title === "string" ? m.properties.title : "";
+      const type = m.blockTypeId ? typeById.get(m.blockTypeId)?.name : undefined;
+      return `${oneLine(title || (m.content ?? "").split("\n")[0] || "Untitled", 100)}${type ? ` (${type})` : ""}`;
+    }
+    const n = noteById.get(id);
+    if (n) return n.chatId ? `discussion "${oneLine(n.text ?? "", 80) || "untitled"}"` : `note: ${oneLine(n.text ?? "", 100) || "(empty)"}`;
+    return "(unknown)";
+  };
+
+  /** Everything a block says, by its own schema's labels. */
+  const detail = async (id: string): Promise<string> => {
+    const m = memberById.get(id);
+    if (!m) {
+      const n = noteById.get(id);
+      return n?.text?.trim() ? clip(n.text.trim()) : "";
+    }
+    const lines: string[] = [];
     if (m.content) lines.push(clip(m.content));
+    const type = m.blockTypeId ? typeById.get(m.blockTypeId) : undefined;
     const schema = type?.propertySchema ?? null;
     const refTitles = await refTitleMap(api, schema, m.properties ?? {}).catch(() => new Map<string, string>());
-    const fields = [
-      ...fmtSchemaFields(schema, m.properties ?? {}, [], refTitles),
-      ...fmtExtraProps(schema, m.properties ?? {}),
-    ];
-    if (fields.length) lines.push(...fields);
+    lines.push(...fmtSchemaFields(schema, m.properties ?? {}, [], refTitles), ...fmtExtraProps(schema, m.properties ?? {}));
     return lines.join("\n");
   };
-
-  const describe = async (id: string): Promise<string | null> => {
+  /** A first line of what a block or note says, for the outline's farther reaches. */
+  const gist = (id: string): string => {
     const m = memberById.get(id);
-    if (m) return describeBlock(m);
-    const n = noteById.get(id);
-    if (n && !n.chatId) return n.text?.trim() ? `Note: ${clip(n.text.trim())}` : null;
-    return null;
+    const text = m ? m.content ?? "" : noteById.get(id)?.text ?? "";
+    const first = text.split("\n").find((l) => l.trim()) ?? "";
+    return first && !(noteById.get(id) && !m) ? oneLine(first, 140) : "";
   };
 
-  const sections: string[] = [];
-  const anchorText = await describe(anchor);
-  sections.push(`## The node this discussion is about\n${anchorText ?? "(an empty node)"}`);
-
-  const context: string[] = [];
-  const siblings: Note[] = [];
-  for (const id of around) {
-    const n = noteById.get(id);
-    if (n?.chatId) {
-      if (n.chatId !== thread.id) siblings.push(n);
-      continue;
+  // ── who reaches what ──────────────────────────────────────────────────
+  // From each question, breadth first, not passing *through* another question
+  // (its neighbourhood is its own outline) and not through discussion clouds
+  // (a conversation is not a consideration).
+  const reachedBy = new Map<string, Set<string>>(); // node -> questions reaching it
+  const trees = new Map<string, Map<string, string[]>>(); // question -> parent -> children
+  const meets = new Map<string, Set<string>>(); // question -> other questions it touches
+  for (const q of questions) {
+    const children = new Map<string, string[]>();
+    const seen = new Set([q]);
+    let frontier = [q];
+    for (let depth = 0; depth < OUTLINE_DEPTH && frontier.length; depth++) {
+      const next: string[] = [];
+      for (const at of frontier) {
+        for (const nb of neighbours(at)) {
+          if (seen.has(nb) || nb === bubble || isCloud(nb)) continue;
+          seen.add(nb);
+          if (questions.includes(nb)) {
+            if (!meets.has(q)) meets.set(q, new Set());
+            meets.get(q)!.add(nb);
+            continue;
+          }
+          if (!children.has(at)) children.set(at, []);
+          children.get(at)!.push(nb);
+          if (!reachedBy.has(nb)) reachedBy.set(nb, new Set());
+          reachedBy.get(nb)!.add(q);
+          next.push(nb);
+        }
+      }
+      frontier = next;
     }
-    const text = await describe(id);
-    if (text) context.push(`### ${text}`);
+    trees.set(q, children);
   }
-  if (context.length) sections.push(`## Connected to it\n${context.join("\n\n")}`);
+  const alsoUnder = (id: string, q: string): string => {
+    const others = [...(reachedBy.get(id) ?? [])].filter((x) => x !== q);
+    return others.length ? `  (also bears on: ${others.map((x) => nameOf(x)).join("; ")})` : "";
+  };
 
-  // Other bubbles off the same node: what was concluded there, so this one
-  // need not start from nothing. Their summary and their latest turns — enough
-  // to know the gist without replaying a whole other conversation.
-  const others: string[] = [];
+  // ── writing it ────────────────────────────────────────────────────────
+  const sections: string[] = [];
+
+  // The discussion's own node, and what is wired straight to it or to the
+  // cloud, at full length.
+  const close = new Set<string>([...neighbours(anchor), ...(bubble ? neighbours(bubble) : [])]);
+  close.delete(anchor);
+  if (bubble) close.delete(bubble);
+  const own: string[] = [`## The node this discussion is about\n${nameOf(anchor)}${isQuestion(anchor) ? " — marked as a question" : ""}`];
+  const anchorDetail = await detail(anchor);
+  if (anchorDetail) own.push(anchorDetail);
+  const closeLines: string[] = [];
+  for (const id of close) {
+    if (isCloud(id)) continue;
+    const d = await detail(id);
+    closeLines.push(`### ${nameOf(id)}${alsoUnder(id, anchor)}${d ? `\n${d}` : ""}`);
+  }
+  if (closeLines.length) own.push(`## Wired directly to it\n${closeLines.join("\n\n")}`);
+  sections.push(own.join("\n\n"));
+
+  // The whole canvas as an outline under its questions.
+  const outline: string[] = [];
+  for (const q of questions) {
+    const children = trees.get(q)!;
+    const lines = [`- QUESTION: ${nameOf(q)}${q === anchor ? " ← this discussion" : ""}`];
+    const g = q === anchor ? "" : gist(q);
+    if (g) lines.push(`  ${g}`);
+    const walk = (at: string, depth: number) => {
+      for (const c of children.get(at) ?? []) {
+        const pad = "  ".repeat(depth + 1);
+        const line = depth < 2 ? gist(c) : "";
+        lines.push(`${pad}- ${nameOf(c)}${alsoUnder(c, q)}${line ? ` — ${line}` : ""}`);
+        walk(c, depth + 1);
+      }
+    };
+    walk(q, 0);
+    for (const other of meets.get(q) ?? []) lines.push(`  - → also leads to question: ${nameOf(other)}`);
+    outline.push(lines.join("\n"));
+  }
+  const reached = new Set([...questions, ...reachedBy.keys()]);
+  const elsewhere = [...memberById.keys(), ...noteById.keys()].filter(
+    (id) => !reached.has(id) && id !== bubble && !isCloud(id),
+  );
+  if (elsewhere.length) {
+    outline.push(
+      `- Elsewhere on the canvas (not connected to any question):\n` +
+        elsewhere.map((id) => `  - ${nameOf(id)}`).join("\n"),
+    );
+  }
+  const regionLines = regions
+    .filter((r) => r.title?.trim() && r.memberIds?.length)
+    .map((r) => `- Group "${oneLine(r.title!, 80)}": ${r.memberIds!.map((id) => nameOf(id)).join("; ")}`);
+  sections.push(
+    `## The whole canvas, as an outline under its questions\n${outline.join("\n")}` +
+      (regionLines.length ? `\n\nGroups drawn on the canvas:\n${regionLines.join("\n")}` : ""),
+  );
+
+  // Discussions: this node's other clouds in full, the rest as a line each.
+  const clouds = notes.filter((n) => n.chatId && n.chatId !== thread.id);
+  const siblings = clouds.filter((n) => neighbours(anchor).includes(n.id));
+  const distant = clouds.filter((n) => !siblings.includes(n));
+  const talk: string[] = [];
   for (const s of siblings) {
-    const t = await loadThread(userId, s.chatId!).catch(() => null);
+    const t = await load(userId, s.chatId!).catch(() => null);
     if (!t || (!t.summary && !t.messages.length)) continue;
     const turns = t.messages
       .slice(-SIBLING_TURNS)
       .map((m) => `${m.role === "user" ? "Person" : "Assistant"}: ${clip(m.content, 1_200)}`);
-    others.push(
-      `### "${(s.text ?? "").trim() || "Untitled discussion"}"\n` +
+    talk.push(
+      `### "${oneLine(s.text ?? "", 100) || "Untitled discussion"}" (about the same node)\n` +
         (t.summary ? `Summary: ${clip(t.summary, 1_500)}\n` : "") +
         turns.join("\n"),
     );
   }
-  if (others.length) sections.push(`## Other discussions started from the same node\n${others.join("\n\n")}`);
+  for (const s of distant) {
+    const about = neighbours(s.id).filter((x) => !isCloud(x)).map((x) => nameOf(x));
+    const t = await load(userId, s.chatId!).catch(() => null);
+    const last = t?.messages.filter((m) => m.role === "assistant").at(-1)?.content;
+    talk.push(
+      `- "${oneLine(s.text ?? "", 100) || "Untitled discussion"}"` +
+        (about.length ? ` about ${about.join("; ")}` : "") +
+        (last ? ` — last answer began: ${oneLine(last, 200)}` : ""),
+    );
+  }
+  if (talk.length) sections.push(`## Other discussions on this canvas\n${talk.join("\n\n")}`);
 
   const brief =
     "This conversation lives on a canvas, as a bubble connected to the node it was started from. " +
-    "What is connected on the canvas is the context for it — read it before answering, and say which " +
-    "pieces you are drawing on. It is re-read on every message, so it may have changed since earlier turns.\n\n" +
+    "The canvas is the context: problems and questions, with the learnings, context and considerations " +
+    "wired to them. Read it before answering, say which pieces you are drawing on, and point out when " +
+    "something bears on more than one question. It is re-read on every message, so it may have changed " +
+    "since earlier turns.\n\n" +
     sections.join("\n\n");
   return clip(brief, BRIEF_MAX);
 }

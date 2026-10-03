@@ -8234,6 +8234,62 @@ body:has(.embed-scratchpad) #root {
 .cv-dragging * {
   user-select: none !important;
 }
+/* A node marked as one of the canvas's problems or questions. */
+.cv-q-badge {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  z-index: 3;
+}
+/* The selected node's actions: start a discussion, mark it as a question. */
+.cv-node-actions {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  gap: 4px;
+  z-index: 4;
+  white-space: nowrap;
+}
+.cv-node-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface, #fff);
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.cv-node-action:hover {
+  border-color: var(--accent);
+}
+.cv-node-action svg {
+  color: var(--accent);
+}
+.cv-node-action.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.cv-node-action.on svg {
+  color: #fff;
+}
 .cv-defs {
   position: absolute;
   width: 0;

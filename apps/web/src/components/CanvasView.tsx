@@ -1,4 +1,15 @@
-import { Grid2x2, GripHorizontal, Image as ImageIcon, Minus, Pipette, Plus, Lock, Unlock } from "lucide-react";
+import {
+  Grid2x2,
+  GripHorizontal,
+  HelpCircle,
+  Image as ImageIcon,
+  MessageCircle,
+  Minus,
+  Pipette,
+  Plus,
+  Lock,
+  Unlock,
+} from "lucide-react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { readableOn } from "../lib/display.ts";
@@ -80,6 +91,15 @@ interface NodeCtx extends Rect {
   stroke?: string | null;
   strokeWidth?: number | null;
   strokeStyle?: string | null;
+  /**
+   * This node is a problem or question the canvas is working on.
+   *
+   * Furniture, like the shape: a fact about the node *on this canvas*, kept in
+   * its placement, never on the block — the same task can be the question on
+   * one canvas and a consideration on another. A discussion reads the canvas
+   * as an outline under its questions; see the server's `canvasBrief`.
+   */
+  question?: boolean;
 }
 
 /**
@@ -243,6 +263,8 @@ interface CanvasNote extends Rect {
    * conversation and reads its context from what is connected here.
    */
   chatId?: string;
+  /** See `NodeCtx.question`. */
+  question?: boolean;
 }
 interface CanvasRegion {
   id: string;
@@ -552,6 +574,7 @@ export function CanvasView({
           stroke: c.stroke ?? null,
           strokeWidth: typeof c.strokeWidth === "number" ? c.strokeWidth : null,
           strokeStyle: c.strokeStyle ?? null,
+          question: c.question === true,
         }
       : null;
   };
@@ -1071,9 +1094,10 @@ export function CanvasView({
       if (v === null || v === undefined || v === "") unsetContext.push(key);
       else context[key] = v;
     }
-    if ("showImage" in ctx) {
-      if (ctx.showImage) context.showImage = true;
-      else unsetContext.push("showImage");
+    for (const key of ["showImage", "question"] as const) {
+      if (!(key in ctx)) continue;
+      if (ctx[key]) context[key] = true;
+      else unsetContext.push(key);
     }
     void api.patch(`/collections/${cid}/members/${blockId}`, {
       context,
@@ -1856,6 +1880,19 @@ export function CanvasView({
     persistMemberCtx(id, ctx);
   };
 
+  /** Mark or unmark a node as one of the canvas's questions. */
+  const setQuestion = (id: string, question: boolean) => {
+    if (id.startsWith("n:")) {
+      saveNotes(notes.map((n) => (n.id === id ? { ...n, question } : n)));
+      return;
+    }
+    const r = rectOf(id) as NodeCtx | null;
+    if (!r) return;
+    const ctx = { ...r, question };
+    setLocal((p) => ({ ...p, [id]: ctx }));
+    persistMemberCtx(id, ctx);
+  };
+
   const setBorder = (id: string, patch: Partial<NodeCtx>) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
@@ -2514,6 +2551,49 @@ export function CanvasView({
               />
             )}
           </svg>
+        );
+      })()}
+      {/* One of the canvas's questions. Outside the sheet, so a cloud's or a
+          circle's clip cannot cut it off. */}
+      {(r as NodeCtx & { question?: boolean }).question && (
+        <span className="cv-q-badge" title="A problem or question on this canvas">
+          ?
+        </span>
+      )}
+      {/* What you can do with the one node selected — the way in to a
+          discussion, which a right-click menu alone kept out of sight. */}
+      {!locked && selected.length === 1 && selected[0] === id && (() => {
+        const chatId = isNote ? notes.find((n) => n.id === id)?.chatId : undefined;
+        const isQuestion = !!(r as NodeCtx & { question?: boolean }).question;
+        return (
+          <div className="cv-node-actions" onPointerDown={(e) => e.stopPropagation()}>
+            {chatId ? (
+              <button className="cv-node-action" onClick={() => openThread(chatId)} title="Open this discussion">
+                <MessageCircle size={13} /> Open
+              </button>
+            ) : (
+              <>
+                <button
+                  className="cv-node-action"
+                  onClick={() => void discuss(id)}
+                  title="Start a discussion with the AI about this, with what is connected to it"
+                >
+                  <MessageCircle size={13} /> Discuss
+                </button>
+                <button
+                  className={`cv-node-action${isQuestion ? " on" : ""}`}
+                  onClick={() => setQuestion(id, !isQuestion)}
+                  title={
+                    isQuestion
+                      ? "Unmark — no longer one of this canvas's problems or questions"
+                      : "Mark as a problem or question this canvas is working on (this canvas only)"
+                  }
+                >
+                  <HelpCircle size={13} /> {isQuestion ? "Question ✓" : "Question"}
+                </button>
+              </>
+            )}
+          </div>
         );
       })()}
       {(["nw", "ne", "sw", "se"] as const).map((c) => (
@@ -3181,6 +3261,22 @@ export function CanvasView({
                 note. A cloud opens its own instead — a discussion of a
                 discussion is a second thread nobody asked for. */}
             <div className="menu-sep" />
+            {!menuNote?.chatId && (() => {
+              const r = (menuNote ?? rectOf(nodeMenu.id)) as (NodeCtx & { question?: boolean }) | null;
+              const on = !!r?.question;
+              return (
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    const id = nodeMenu.id;
+                    setNodeMenu(null);
+                    setQuestion(id, !on);
+                  }}
+                >
+                  {on ? "Unmark as question" : "Mark as problem / question"}
+                </button>
+              );
+            })()}
             {menuNote?.chatId ? (
               <button
                 className="menu-item"

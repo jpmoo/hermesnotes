@@ -1411,6 +1411,20 @@ export function CanvasView({
     const tr = rectOf(target);
     const src = rectOf(link.from);
     if (!tr || !src) return;
+    // **A discussion cloud hangs off a problem or opportunity, and nothing
+    // else.** It is a conversation *about* one; wiring a learning or another
+    // cloud to it would make it something else — and the brief already brings
+    // in everything that bears on the problem, so there is nothing a direct
+    // line to the cloud would add.
+    const fromCloud = cloudOf(link.from);
+    const toCloud = cloudOf(target);
+    if (fromCloud || toCloud) {
+      const other = fromCloud ? target : link.from;
+      if (cloudOf(other) || !isProblem(other)) {
+        showToast("A discussion connects only to a problem or opportunity — mark the node as one first.");
+        return;
+      }
+    }
     // Meet the target on the side facing the source anchor.
     const sa = anchor(src, link.side);
     const dxc = sa.x - (tr.x + tr.w / 2);
@@ -1887,7 +1901,15 @@ export function CanvasView({
     persistMemberCtx(id, ctx);
   };
 
-  /** Mark or unmark a node as one of the canvas's questions. */
+  /** Whether a node is marked as a problem or opportunity on this canvas. */
+  const isProblem = (id: string): boolean =>
+    id.startsWith("n:")
+      ? notes.find((n) => n.id === id)?.question === true
+      : !!(rectOf(id) as (NodeCtx & { question?: boolean }) | null)?.question;
+  /** The discussion a cloud holds, or undefined for anything else. */
+  const cloudOf = (id: string): string | undefined => notes.find((n) => n.id === id)?.chatId;
+
+  /** Mark or unmark a node as one of the canvas's problems or opportunities. */
   const setQuestion = (id: string, question: boolean) => {
     if (id.startsWith("n:")) {
       saveNotes(notes.map((n) => (n.id === id ? { ...n, question } : n)));
@@ -2171,7 +2193,7 @@ export function CanvasView({
    */
   const discuss = async (anchorId: string) => {
     const r = rectOf(anchorId);
-    if (!r) return;
+    if (!r || !isProblem(anchorId)) return;
     const noteId = `n:${uid()}`;
     const threadId = uid();
     const spot = findSpot(r.x + r.w + 50 + BUBBLE_W / 2, r.y + r.h / 2, BUBBLE_W, BUBBLE_H, allRects());
@@ -2572,7 +2594,7 @@ export function CanvasView({
       {/* One of the canvas's questions. Outside the sheet, so a cloud's or a
           circle's clip cannot cut it off. */}
       {(r as NodeCtx & { question?: boolean }).question && (
-        <span className="cv-q-badge" title="A problem or question on this canvas">
+        <span className="cv-q-badge" title="A problem or opportunity on this canvas">
           ?
         </span>
       )}
@@ -2589,23 +2611,27 @@ export function CanvasView({
               </button>
             ) : (
               <>
-                <button
-                  className="cv-node-action"
-                  onClick={() => void discuss(id)}
-                  title="Start a discussion with the AI about this, with what is connected to it"
-                >
-                  <MessageCircle size={13} /> Discuss
-                </button>
+                {/* Discussions hang off problems and opportunities only — the
+                    mark comes first, and Discuss appears with it. */}
+                {isQuestion && (
+                  <button
+                    className="cv-node-action"
+                    onClick={() => void discuss(id)}
+                    title="Start a discussion with the AI about this, reading the whole canvas"
+                  >
+                    <MessageCircle size={13} /> Discuss
+                  </button>
+                )}
                 <button
                   className={`cv-node-action${isQuestion ? " on" : ""}`}
                   onClick={() => setQuestion(id, !isQuestion)}
                   title={
                     isQuestion
-                      ? "Unmark — no longer one of this canvas's problems or questions"
-                      : "Mark as a problem or question this canvas is working on (this canvas only)"
+                      ? "Unmark — no longer one of this canvas's problems or opportunities"
+                      : "Mark as a problem or opportunity this canvas is working on (this canvas only)"
                   }
                 >
-                  <HelpCircle size={13} /> {isQuestion ? "Question ✓" : "Question"}
+                  <HelpCircle size={13} /> {isQuestion ? "Problem / opportunity ✓" : "Problem / opportunity"}
                 </button>
               </>
             )}
@@ -3273,9 +3299,10 @@ export function CanvasView({
                 />
               ))}
             </div>
-            {/* A discussion, from any node: a block whatever its type, or a
-                note. A cloud opens its own instead — a discussion of a
-                discussion is a second thread nobody asked for. */}
+            {/* A discussion, from a node marked as a problem or opportunity —
+                a block whatever its type, or a note. A cloud opens its own
+                instead: a discussion of a discussion is a second thread nobody
+                asked for. */}
             <div className="menu-sep" />
             {!menuNote?.chatId && (() => {
               const r = (menuNote ?? rectOf(nodeMenu.id)) as (NodeCtx & { question?: boolean }) | null;
@@ -3289,7 +3316,7 @@ export function CanvasView({
                     setQuestion(id, !on);
                   }}
                 >
-                  {on ? "Unmark as question" : "Mark as problem / question"}
+                  {on ? "Unmark as problem / opportunity" : "Mark as problem / opportunity"}
                 </button>
               );
             })()}
@@ -3305,16 +3332,18 @@ export function CanvasView({
                 Open discussion
               </button>
             ) : (
-              <button
-                className="menu-item"
-                onClick={() => {
-                  const id = nodeMenu.id;
-                  setNodeMenu(null);
-                  void discuss(id);
-                }}
-              >
-                Discuss…
-              </button>
+              isProblem(nodeMenu.id) && (
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    const id = nodeMenu.id;
+                    setNodeMenu(null);
+                    void discuss(id);
+                  }}
+                >
+                  Discuss…
+                </button>
+              )
             )}
             {menuNote && !menuNote.chatId && (
               <>

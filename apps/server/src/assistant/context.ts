@@ -211,7 +211,7 @@ export async function canvasBrief(
   const close = new Set<string>([...neighbours(anchor), ...(bubble ? neighbours(bubble) : [])]);
   close.delete(anchor);
   if (bubble) close.delete(bubble);
-  const own: string[] = [`## The node this discussion is about\n${nameOf(anchor)}${isQuestion(anchor) ? " — marked as a question" : ""}`];
+  const own: string[] = [`## The node this discussion is about\n${nameOf(anchor)}${isQuestion(anchor) ? " — a problem or opportunity" : ""}`];
   const anchorDetail = await detail(anchor);
   if (anchorDetail) own.push(anchorDetail);
   const closeLines: string[] = [];
@@ -227,7 +227,7 @@ export async function canvasBrief(
   const outline: string[] = [];
   for (const q of questions) {
     const children = trees.get(q)!;
-    const lines = [`- QUESTION: ${nameOf(q)}${q === anchor ? " ← this discussion" : ""}`];
+    const lines = [`- PROBLEM/OPPORTUNITY: ${nameOf(q)}${q === anchor ? " ← this discussion" : ""}`];
     const g = q === anchor ? "" : gist(q);
     if (g) lines.push(`  ${g}`);
     const walk = (at: string, depth: number) => {
@@ -239,7 +239,7 @@ export async function canvasBrief(
       }
     };
     walk(q, 0);
-    for (const other of meets.get(q) ?? []) lines.push(`  - → also leads to question: ${nameOf(other)}`);
+    for (const other of meets.get(q) ?? []) lines.push(`  - → also leads to: ${nameOf(other)}`);
     outline.push(lines.join("\n"));
   }
   const reached = new Set([...questions, ...reachedBy.keys()]);
@@ -248,7 +248,7 @@ export async function canvasBrief(
   );
   if (elsewhere.length) {
     outline.push(
-      `- Elsewhere on the canvas (not connected to any question):\n` +
+      `- Elsewhere on the canvas (not connected to any problem or opportunity):\n` +
         elsewhere.map((id) => `  - ${nameOf(id)}`).join("\n"),
     );
   }
@@ -256,7 +256,7 @@ export async function canvasBrief(
     .filter((r) => r.title?.trim() && r.memberIds?.length)
     .map((r) => `- Group "${oneLine(r.title!, 80)}": ${r.memberIds!.map((id) => nameOf(id)).join("; ")}`);
   sections.push(
-    `## The whole canvas, as an outline under its questions\n${outline.join("\n")}` +
+    `## The whole canvas, as an outline under its problems and opportunities\n${outline.join("\n")}` +
       (regionLines.length ? `\n\nGroups drawn on the canvas:\n${regionLines.join("\n")}` : ""),
   );
 
@@ -291,10 +291,10 @@ export async function canvasBrief(
 
   const brief =
     "This conversation lives on a canvas, as a bubble connected to the node it was started from. " +
-    "The canvas is the context: problems and questions, with the learnings, context and considerations " +
+    "The canvas is the context: problems and opportunities, with the learnings, context and considerations " +
     "wired to them. Read it before answering, say which pieces you are drawing on, and point out when " +
-    "something bears on more than one question. It is re-read on every message, so it may have changed " +
-    "since earlier turns.\n\n" +
+    "something bears on more than one problem or opportunity. It is re-read on every message, so it may " +
+    "have changed since earlier turns.\n\n" +
     sections.join("\n\n");
   return clip(brief, BRIEF_MAX);
 }

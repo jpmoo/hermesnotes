@@ -88,6 +88,32 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
   };
   const threadQuery = z.object({ threadId: z.string().uuid().optional() });
 
+  /**
+   * What the person has open, said to the model — so "add this", "put it
+   * here" and "this canvas" mean the collection on screen.
+   *
+   * The panel's assistant used to be told nothing about the page, and an "add"
+   * on a canvas became canvas_create: a new canvas somewhere else. Read through
+   * the loopback API as the person, so it can only ever name something they
+   * can see; anything that is not a collection, or cannot be read, says nothing.
+   */
+  const viewingLine = async (api: Api, id: string | undefined): Promise<string> => {
+    if (!id) return "";
+    const b = await api
+      .get<{ collectionKind: string | null; properties: Record<string, unknown> }>(`/blocks/${id}`)
+      .catch(() => null);
+    if (!b?.collectionKind) return "";
+    const title = typeof b.properties?.title === "string" && b.properties.title.trim() ? b.properties.title.trim() : "Untitled";
+    const kind = b.collectionKind === "document" ? "spread" : b.collectionKind;
+    return (
+      `The person has the ${kind} "${title}" [${id}] open right now. "Add", "put", "here" and "this ${kind}" ` +
+      `mean this one — add to it rather than making anything new to hold it` +
+      (b.collectionKind === "canvas"
+        ? ": new thoughts as sticky notes on it (canvas_note), existing blocks with canvas_place. Use canvas_create only when they ask for a NEW canvas."
+        : ".")
+    );
+  };
+
   /** The persisted conversation (for hydrating the panel on load). */
   app.get("/assistant/messages", async (req) => {
     const userId = requireUser(req);
@@ -188,6 +214,8 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
         client: z.string().max(64).optional(),
         /** A canvas discussion, or absent for the panel's own thread. */
         threadId: z.string().uuid().optional(),
+        /** The collection on the person's screen, if the page is one. */
+        viewing: z.string().uuid().optional(),
       })
       .parse(req.body);
     const api = apiFor(req);
@@ -232,6 +260,9 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
         // Read the canvas fresh for this turn. A canvas that cannot be read is
         // a thinner answer, not a failed one.
         const brief = t ? await canvasBrief(api, userId, t).catch(() => "") : "";
+        // A discussion's brief already names its canvas; the page only matters
+        // to the panel's own conversation.
+        const page = t ? "" : await viewingLine(api, body.viewing);
 
         const result = await runAgent({
           url,
@@ -242,7 +273,7 @@ export async function assistantRoutes(app: FastifyInstance): Promise<void> {
           numCtx,
           maxSteps,
           signal: stop.signal,
-          systemExtra: [todayLine(timezone), surfaceLine(body), brief].filter(Boolean).join("\n"),
+          systemExtra: [todayLine(timezone), surfaceLine(body), page, brief].filter(Boolean).join("\n"),
           onEvent: send,
         });
 

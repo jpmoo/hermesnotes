@@ -41,7 +41,7 @@ import { captureField, runFieldClipboard, type FieldSelection } from "../lib/fie
 import { EphemeralNote } from "./EphemeralNote.tsx";
 import { PointerMenu } from "./PointerMenu.tsx";
 import { usePanels } from "../lib/right-panel.tsx";
-import { useAssistant } from "../lib/assistant.tsx";
+import { CANVAS_CHANGED, useAssistant } from "../lib/assistant.tsx";
 import { BlockCard } from "./BlockCard.tsx";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
 import { QueryBuilder } from "./QueryBuilder.tsx";
@@ -621,6 +621,50 @@ export function CanvasView({
     setNotes(next);
     persistProps({ canvas_notes: next });
   };
+
+  /**
+   * The assistant changed a canvas: read this one again from the server.
+   *
+   * Notes, connections and regions are read once on open and saved by
+   * replacing the whole list, so what the assistant wrote was invisible until a
+   * reload — and the next edit here wrote the old list back over it. Anything
+   * of ours still waiting in the debounce is saved first, so this cannot undo
+   * an edit either; then the server's copy replaces what is on screen, and the
+   * page reloads the members the assistant may have placed. Positions dragged
+   * this session (`local`) stay as they are — they were saved as they moved.
+   */
+  const rereadRef = useRef<() => Promise<void>>();
+  rereadRef.current = async () => {
+    if (persistTimer.current) {
+      clearTimeout(persistTimer.current);
+      persistTimer.current = undefined;
+      const p = pendingPatch.current;
+      pendingPatch.current = {};
+      if (Object.keys(p).length) await api.patch(`/collections/${cid}`, p).catch(() => {});
+    }
+    const d = await api
+      .get<{ collection: { properties: Record<string, unknown> } }>(`/collections/${cid}`)
+      .catch(() => null);
+    if (!d) return;
+    const pr = d.collection.properties ?? {};
+    setNotes(
+      Array.isArray(pr.canvas_notes)
+        ? (pr.canvas_notes as CanvasNote[]).map((n) => ({ ...n, color: n.color || NOTE_COLOR }))
+        : [],
+    );
+    setEdges(
+      Array.isArray(pr.canvas_edges)
+        ? (pr.canvas_edges as CanvasEdge[]).map((e) => (e.id ? e : { ...e, id: uid() }))
+        : [],
+    );
+    setRegions(Array.isArray(pr.canvas_regions) ? (pr.canvas_regions as CanvasRegion[]) : []);
+    onChanged();
+  };
+  useEffect(() => {
+    const onCanvasChanged = () => void rereadRef.current?.();
+    window.addEventListener(CANVAS_CHANGED, onCanvasChanged);
+    return () => window.removeEventListener(CANVAS_CHANGED, onCanvasChanged);
+  }, []);
   const saveEdges = (next: CanvasEdge[]) => {
     // Ping both endpoints of every edge that changed so an open info pane
     // refreshes its "Connected on canvas" list right away.

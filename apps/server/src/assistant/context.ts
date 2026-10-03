@@ -303,7 +303,10 @@ export async function canvasBrief(
     "discussions — read fresh for this message. You do not need to search for it, list its members or " +
     "read its blocks; it is all here. Answer from it, say which pieces you are drawing on, and point out " +
     "when something bears on more than one problem or opportunity. Use tools only to act — create a task, " +
-    "update a block — or to look up something that is not on the canvas, and when you act on a block " +
+    "update a block — or to look up something that is not on the canvas. \"Add\", \"put\" and \"here\" mean " +
+    "this canvas, never a new one. Anything new you add to it is a sticky note (canvas_note) wired to what it " +
+    "is about, unless the person explicitly asks for a block. " +
+    "When you act on a block " +
     `here, use the id in [brackets]. The canvas itself is collection [${thread.collectionId}].\n\n` +
     sections.join("\n\n");
   return clip(brief, BRIEF_MAX);

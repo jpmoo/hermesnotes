@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 import { api, apiBase, ApiError, CLIENT_ID, type AgentStep, type PendingCall } from "../api.ts";
 
 export interface AssistantMsg {
@@ -45,6 +46,22 @@ export interface ThreadInfo {
 const Ctx = createContext<AssistantValue | null>(null);
 
 /**
+ * The assistant changed a canvas — tell any canvas on screen to read itself
+ * again.
+ *
+ * A canvas reads its notes and connections once, when it opens, and saves them
+ * by replacing the whole list. So a note the assistant added was invisible
+ * until a reload, and the next thing you moved wrote the old list back over
+ * it — the note was gone before you ever saw it. Announced per tool step, not
+ * at the end of the turn, so the window in which an edit of yours can clobber
+ * the assistant's is one step wide rather than one turn.
+ */
+export const CANVAS_CHANGED = "hermes:canvas-changed";
+const touchesCanvas = (tool: string) =>
+  tool.startsWith("canvas_") || tool === "collection_add" || tool === "collection_remove";
+const announceCanvasChange = () => window.dispatchEvent(new Event(CANVAS_CHANGED));
+
+/**
  * Holds the AI conversation ABOVE the right-panel tabs, so switching to Info or
  * Graph (or a turn still running) never unmounts it. History is persisted
  * server-side; we hydrate once on mount and send only the new message each turn.
@@ -68,6 +85,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
    * whether it is drawn.
    */
   const shown = useRef<string | null>(null);
+  /**
+   * The collection on screen, if the page is one — sent with every message so
+   * "add this", "put it here" and "this canvas" mean the one being looked at.
+   * Without it the panel's assistant had no idea, and an "add" became a new
+   * canvas somewhere else.
+   */
+  const { pathname } = useLocation();
+  const viewing = /^\/collections\/([0-9a-f-]{36})/i.exec(pathname)?.[1];
   const q = (id: string | null) => (id ? `?threadId=${encodeURIComponent(id)}` : "");
 
   useEffect(() => {
@@ -130,7 +155,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json", "x-client-id": CLIENT_ID },
-        body: JSON.stringify({ message: t, ...(asked ? { threadId: asked } : {}) }),
+        body: JSON.stringify({
+          message: t,
+          ...(asked ? { threadId: asked } : {}),
+          ...(viewing ? { viewing } : {}),
+        }),
         signal: ctrl.signal,
       });
       if (res.status === 400) throw new ApiError(400, (await res.json().catch(() => ({})))?.error ?? "bad request");
@@ -152,6 +181,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           patchLast((a) => ({ ...a, content: live }));
         } else if (ev.type === "step") {
           live = ""; // reply text restarts after a tool runs
+          if (ev.step && touchesCanvas(ev.step.tool)) announceCanvasChange();
           patchLast((a) => ({ ...a, steps: [...(a.steps ?? []), ev.step!], content: "" }));
         } else if (ev.type === "done") {
           patchLast((a) => ({ ...a, content: ev.reply ?? a.content, steps: ev.steps ?? a.steps, pending: ev.pending, streaming: false }));
@@ -212,6 +242,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         ...(shown.current ? { threadId: shown.current } : {}),
       });
       setMsgs((m) => [...m, { role: "assistant", content: "Done.", steps: res.steps }]);
+      if (res.steps.some((st) => touchesCanvas(st.tool))) announceCanvasChange();
     } catch (e) {
       setError(e instanceof ApiError ? e.message.replace(/^API \d+:?\s*/, "") : "Couldn't complete that.");
     } finally {

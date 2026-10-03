@@ -1242,7 +1242,8 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
     "block_create",
     "Create a block of ANY type. `type` is a block-type name (omit, or 'text', for a plain note). " +
       "For text notes pass `content`; for typed blocks pass `title` and any other fields via `fields` " +
-      "(a JSON object of property-key → value, e.g. {\"description\":\"…\",\"location\":\"…\"}). Tags are created as needed.",
+      "(a JSON object of property-key → value, e.g. {\"description\":\"…\",\"location\":\"…\"}). Tags are created as needed. " +
+      "Not for putting something new on a canvas — that is canvas_note — unless the user explicitly asked for a block.",
     {
       type: z.string().optional(),
       title: z.string().optional(),
@@ -1606,6 +1607,7 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
 
   tool(
     "canvas_note",
+    "THE DEFAULT for anything new on a canvas: a thought, consideration, pro/con, summary or next step goes here, not into a new block, unless the user explicitly asks for a block. " +
     "Sticky notes on a canvas — the free-floating text that lives ONLY there. These are NOT Hermes blocks: they have no block id, don't appear in search or listings, and can't be linked from anywhere else. Use this (not block_create) whenever asked to jot a note, label, caption or comment ON a canvas. `action` is add (default), edit, or remove; for edit/remove, `note` identifies it by its id or by a fragment of its text (read the canvas with collection_members first). x/y are canvas coordinates, `color` a hex background. `text` is markdown — headings, lists, checkboxes, links — rendered the same way as any long-text field.",
     {
       canvas: z.string(),

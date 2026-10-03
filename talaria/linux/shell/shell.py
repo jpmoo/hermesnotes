@@ -303,6 +303,24 @@ class Panel(QWidget):
         self.view.loadFinished.connect(self._load_finished)
         self.view.load(url)
         QShortcut(QKeySequence("Escape"), self, activated=self._escape)
+        # A browser's reload keys. A web view is a browser with none of the
+        # browser around it, so Ctrl+Shift+R — the first thing anybody tries
+        # when the Hermes window shows something stale — did nothing at all.
+        # The shift forms skip the cache, which is what they mean in a browser
+        # and what a redeploy needs.
+        for keys in ("Ctrl+R", "F5"):
+            QShortcut(QKeySequence(keys), self, activated=lambda: self._reload(False))
+        for keys in ("Ctrl+Shift+R", "Shift+F5"):
+            QShortcut(QKeySequence(keys), self, activated=lambda: self._reload(True))
+
+    def _reload(self, fresh: bool) -> None:
+        """Reload the page — past the cache, with `fresh` — and say so in the log."""
+        print(f"talaria: reload{' (bypassing cache)' if fresh else ''} — {self.windowTitle()}",
+              file=sys.stderr, flush=True)
+        if fresh:
+            self.view.page().triggerAction(QWebEnginePage.WebAction.ReloadAndBypassCache)
+        else:
+            self.view.reload()
 
     def _style_sheet(self) -> None:
         """

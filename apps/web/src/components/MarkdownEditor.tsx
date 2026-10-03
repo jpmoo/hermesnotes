@@ -693,12 +693,22 @@ export function MarkdownEditor({
 
   useEffect(() => {
     if (!extract) return;
-    const close = () => setExtract(null);
+    // **pointerdown, in the capture phase, not mousedown.** A press that cancels
+    // its pointerdown suppresses the mousedown that would have followed — and
+    // on a canvas nearly every press does: taking hold of a node to drag it,
+    // panning the background. So right-clicking the text in a canvas node and
+    // then clicking anywhere on the canvas left this menu standing. Capture, so
+    // nothing that stops the press on its way can keep it from arriving; the
+    // menu's own presses are let through by asking whether they landed in it.
+    const close = (e: PointerEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setExtract(null);
+    };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setExtract(null);
-    document.addEventListener("mousedown", close);
+    document.addEventListener("pointerdown", close, true);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", close);
+      document.removeEventListener("pointerdown", close, true);
       document.removeEventListener("keydown", onKey);
     };
   }, [extract]);

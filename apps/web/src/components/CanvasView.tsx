@@ -1348,11 +1348,15 @@ export function CanvasView({
       const t = e.target as HTMLElement | null;
       const active = document.activeElement as HTMLElement | null;
       const host = active?.closest?.(".cv-node");
-      if (host && (!t || !host.contains(t))) active?.blur();
+      // Leaving a node's field blurs it — but not for that field's own menu,
+      // whose Cut, Copy and Paste act on it.
+      if (host && (!t || (!host.contains(t) && !t.closest(".extract-menu")))) active?.blur();
       if (!t || wrapRef.current?.contains(t)) return;
       // The canvas's own menus and dialogs are portalled out of the wrap, but
-      // they're still the canvas — and they act on what's selected.
-      if (t.closest(".cv-menu, .modal-backdrop")) return;
+      // they're still the canvas — and they act on what's selected. So are the
+      // menus its cards open, like the text editor's right-click menu: using
+      // one is still working on the node it came from.
+      if (t.closest(".cv-menu, .modal-backdrop, .extract-menu")) return;
       setSelected([]);
     };
     document.addEventListener("pointerdown", onDown, true);
@@ -1789,21 +1793,36 @@ export function CanvasView({
   const [edgeMenu, setEdgeMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [regionMenu, setRegionMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [syncNewCollection, setSyncNewCollection] = useState(true);
+  const closeMenus = () => {
+    setNodeMenu(null);
+    setEdgeMenu(null);
+    setRegionMenu(null);
+  };
   useEffect(() => {
     if (!nodeMenu && !edgeMenu && !regionMenu) return;
     // pointerdown, not mousedown: canvas drags preventDefault() their
     // pointerdown, which suppresses derived mouse events — a canvas click
     // would never close the menu otherwise.
+    //
+    // **And in the capture phase.** Listening as the press bubbled up meant
+    // anything that stopped it on the way — a node taking hold for a drag,
+    // the connect and resize handles, a region's grip, the selection's action
+    // bar — kept the press from ever arriving, and the menu stayed open over
+    // whatever had just been clicked. Capture runs first, before any of them
+    // can stop it.
     const close = (e: PointerEvent) => {
       const t = e.target as HTMLElement;
-      if (!t.closest(".cv-menu")) {
-        setNodeMenu(null);
-        setEdgeMenu(null);
-        setRegionMenu(null);
-      }
+      if (!t.closest(".cv-menu")) closeMenus();
     };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenus();
+    };
+    document.addEventListener("pointerdown", close, true);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", close, true);
+      document.removeEventListener("keydown", escape);
+    };
   }, [nodeMenu, edgeMenu, regionMenu]);
 
   /** Region → a real collection of its blocks (manual; optionally kept in sync). */
@@ -2514,6 +2533,13 @@ export function CanvasView({
       // Moving a node used to mean finding a 13px grip icon, which a clipped
       // shape — a circle, a triangle, a discussion cloud — cut away entirely.
       onPointerDown={(e) => {
+        // **Only presses that are really on this node.** A menu a card opens
+        // — the text editor's right-click menu — is portalled out to the page,
+        // but React still bubbles its events up through the node that owns it.
+        // A press on "Copy" arrived here, took hold of the node for a drag and
+        // captured the pointer, so the click landed on the node and Copy never
+        // ran: the menu stood there as if nothing had been chosen.
+        if (!(e.currentTarget as HTMLElement).contains(e.target as Node)) return;
         const group = groupWith(id);
         if (group) return startGroupDrag(group, id, e);
         const isSelected = selected.length === 1 && selected[0] === id;
@@ -3143,7 +3169,7 @@ export function CanvasView({
       {/* node menu */}
       {nodeMenu &&
         createPortal(
-          <PointerMenu x={nodeMenu.x} y={nodeMenu.y}>
+          <PointerMenu onPick={closeMenus} x={nodeMenu.x} y={nodeMenu.y}>
             {nodeMenu.field && (nodeMenu.field.text || nodeMenu.field.writable) && (
               <>
                 {(
@@ -3555,7 +3581,7 @@ export function CanvasView({
           const rg = regions.find((r) => r.id === regionMenu.id);
           if (!rg) return null;
           return createPortal(
-            <PointerMenu x={regionMenu.x} y={regionMenu.y}>
+            <PointerMenu onPick={closeMenus} x={regionMenu.x} y={regionMenu.y}>
               <input
                 className="cv-edge-label-input"
                 placeholder="Region title…"
@@ -3639,7 +3665,7 @@ export function CanvasView({
       {edgeMenu &&
         menuEdge &&
         createPortal(
-          <PointerMenu x={edgeMenu.x} y={edgeMenu.y}>
+          <PointerMenu onPick={closeMenus} x={edgeMenu.x} y={edgeMenu.y}>
             <input
               className="cv-edge-label-input"
               placeholder="Label…"

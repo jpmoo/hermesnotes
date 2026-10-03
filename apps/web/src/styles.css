@@ -689,6 +689,11 @@ label,
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* The browser's scroll anchoring re-picks an element to hold still as a
+     streaming reply re-renders, and drifted a scrolled-up reader down by a
+     line a second. The panel scrolls to the end itself when it is following
+     (AIPanel), so nothing here needs the browser's help. */
+  overflow-anchor: none;
   display: flex;
   flex-direction: column;
   gap: 12px;

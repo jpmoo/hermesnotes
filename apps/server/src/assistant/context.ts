@@ -135,7 +135,10 @@ export async function canvasBrief(
     if (m) {
       const title = typeof m.properties?.title === "string" ? m.properties.title : "";
       const type = m.blockTypeId ? typeById.get(m.blockTypeId)?.name : undefined;
-      return `${oneLine(title || (m.content ?? "").split("\n")[0] || "Untitled", 100)}${type ? ` (${type})` : ""}`;
+      // With its id: what the model reads here is what it may act on, and a
+      // name sends it searching — the first discussion spent eight tool calls
+      // looking up a block it had already been given, by a title it had to guess.
+      return `${oneLine(title || (m.content ?? "").split("\n")[0] || "Untitled", 100)}${type ? ` (${type})` : ""} [${id}]`;
     }
     const n = noteById.get(id);
     if (n) return n.chatId ? `discussion "${oneLine(n.text ?? "", 80) || "untitled"}"` : `note: ${oneLine(n.text ?? "", 100) || "(empty)"}`;
@@ -289,12 +292,19 @@ export async function canvasBrief(
   }
   if (talk.length) sections.push(`## Other discussions on this canvas\n${talk.join("\n\n")}`);
 
+  // **Say that this is all of it.** Without that, a careful model treats an
+  // outline as a lead and goes to check: the first discussion opened with a
+  // collection lookup by the outline's own label, three searches and two reads
+  // of blocks it already had, before answering from the brief anyway. Tools are
+  // for acting on the canvas, or for what is not on it.
   const brief =
     "This conversation lives on a canvas, as a bubble connected to the node it was started from. " +
-    "The canvas is the context: problems and opportunities, with the learnings, context and considerations " +
-    "wired to them. Read it before answering, say which pieces you are drawing on, and point out when " +
-    "something bears on more than one problem or opportunity. It is re-read on every message, so it may " +
-    "have changed since earlier turns.\n\n" +
+    "Below is that canvas, complete and current: every node on it, how they connect, and the other " +
+    "discussions — read fresh for this message. You do not need to search for it, list its members or " +
+    "read its blocks; it is all here. Answer from it, say which pieces you are drawing on, and point out " +
+    "when something bears on more than one problem or opportunity. Use tools only to act — create a task, " +
+    "update a block — or to look up something that is not on the canvas, and when you act on a block " +
+    `here, use the id in [brackets]. The canvas itself is collection [${thread.collectionId}].\n\n` +
     sections.join("\n\n");
   return clip(brief, BRIEF_MAX);
 }

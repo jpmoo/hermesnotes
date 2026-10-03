@@ -13,14 +13,58 @@ export function AIPanel() {
   const [input, setInput] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * Whether the view is following the end of the conversation.
+   *
+   * It used to scroll to the bottom on every change, which during a streamed
+   * reply is every token: scrolling up to start reading the answer was undone
+   * a few milliseconds later, until the whole thing had finished. Now it
+   * follows only while you are at the bottom. Scroll up and it stays where you
+   * put it; scroll back down to the end and it picks up again. Sending a
+   * message always returns to the end — that is where the answer will be.
+   */
+  const following = useRef(true);
+  /**
+   * Letting go is decided by what the *person* does, before the view moves.
+   *
+   * Reading it off scroll events lost a race: tokens arrive every few
+   * milliseconds, each one scrolls the view back to the end, and the browser
+   * sends one scroll event per frame — so by the time the event for a scroll
+   * up arrived, the panel had already pulled the view down again, the event
+   * said "at the bottom", and it kept following. A wheel or a swipe upward, a
+   * key that moves up, or taking hold of the scrollbar is the intent itself,
+   * and arrives first.
+   */
+  const letGo = () => {
+    following.current = false;
+  };
+  const onWheel = (e: React.WheelEvent) => e.deltaY < 0 && letGo();
+  const onThreadKey = (e: React.KeyboardEvent) =>
+    ["PageUp", "ArrowUp", "Home"].includes(e.key) && letGo();
+  const onPointerDown = (e: React.PointerEvent) => {
+    const el = threadRef.current;
+    // A press right of the content is on the scrollbar.
+    if (el && e.nativeEvent.offsetX > el.clientWidth) letGo();
+  };
+  /** Back at the end — by wheel, by scrollbar, by any means — takes hold again. */
+  const onScroll = () => {
+    const el = threadRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 24) following.current = true;
+  };
+  // Another conversation opens at its end, wherever you had scrolled to in
+  // the last one.
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
+    following.current = true;
+  }, [thread?.id]);
+  useEffect(() => {
+    if (following.current) threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [msgs, busy]);
 
   const submit = () => {
     const text = input.trim();
     if (!text || busy) return;
     setInput("");
+    following.current = true;
     void send(text);
   };
 
@@ -47,7 +91,15 @@ export function AIPanel() {
           </button>
         </div>
       )}
-      <div className="ai-thread" ref={threadRef}>
+      <div
+        className="ai-thread"
+        ref={threadRef}
+        onScroll={onScroll}
+        onWheel={onWheel}
+        onTouchMove={letGo}
+        onKeyDown={onThreadKey}
+        onPointerDown={onPointerDown}
+      >
         {msgs.length === 0 && thread && (
           <div className="ai-empty">
             <MessageCircle size={22} />

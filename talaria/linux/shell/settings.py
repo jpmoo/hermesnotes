@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QSpinBox, QVBoxLayout, QWidget,
 )
 
+import bluebubbles
 import daemon
 import probe
 
@@ -356,6 +357,21 @@ class SettingsWindow(QDialog):
         # the Mac still reads it.
         form.addWidget(desk)
 
+        # --- Messages ---------------------------------------------------------
+        messages = QGroupBox("Messages")
+        rows = QFormLayout(messages)
+        self.bluebubbles_codes = QCheckBox("Copy sign-in codes from BlueBubbles to the clipboard")
+        rows.addRow("", self.bluebubbles_codes)
+        found = bluebubbles.server() is not None
+        rows.addRow(_hint(
+            "When a text arrives carrying a verification code, the code goes onto the clipboard "
+            "and a notification says so. Uses the server and password the BlueBubbles app on this "
+            "machine is already signed in with — "
+            + ("found." if found else "<b>not found</b>; sign in to the BlueBubbles app first.")
+            + " Messages are read only for the code and not kept."
+        ))
+        form.addWidget(messages)
+
         form.addWidget(_hint(f"Written to {config_path()}, mode 0600."))
         form.addStretch(1)
 
@@ -394,6 +410,7 @@ class SettingsWindow(QDialog):
         self.glance_threshold.setValue(float(threshold) if isinstance(threshold, (int, float)) else 0.0)
         self.glance_separate_done.setChecked(bool(c.get("glanceSeparateDone")))
         self.glance_undated.setChecked(bool(c.get("glanceUndatedFurtherOut")))
+        self.bluebubbles_codes.setChecked(bool(c.get("blueBubblesCodes")))
         horizon = c.get("glanceHorizonDays")
         self.glance_horizon.setValue(int(horizon) if isinstance(horizon, int) and horizon > 0 else 21)
         placed = self.glance_placement.findData(c.get("glancePlacement") or "bottom-center")
@@ -467,6 +484,7 @@ class SettingsWindow(QDialog):
         for key, box in {
             "glanceSeparateDone": self.glance_separate_done,
             "glanceUndatedFurtherOut": self.glance_undated,
+            "blueBubblesCodes": self.bluebubbles_codes,
         }.items():
             if box.isChecked():
                 obj[key] = True

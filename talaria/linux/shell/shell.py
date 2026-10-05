@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon,
 import threading
 import time
 
+import bluebubbles
 import daemon
 import glance
 import scheme
@@ -695,6 +696,10 @@ class Shell(QObject):
         # otherwise. The focus is still tracked — it is what gets read.
         self.frontmost.start()
         self._watch_look()
+
+        # Sign-in codes from BlueBubbles. Always started; it asks config.json
+        # each time round, so the Settings switch takes effect without a restart.
+        bluebubbles.Listener().start()
 
         self.shortcuts = Shortcuts()
         # Queued because this Shell is a QObject on the main thread — see the

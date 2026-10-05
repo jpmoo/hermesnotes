@@ -206,6 +206,7 @@ was a second toolkit's idea of a tray icon. Needs
 | `ui/notefield.js` · `ui/mentions.js` | the long-text editor — every block rendered except the one the caret is in, with `@`/`#`/`|` pickers. Used by the desk's Today pane *and*, imported at runtime, by canvas notes. |
 | `ui/compose.html` | New Block. Summoned with something selected, it arrives filled in — the first line as the title, the whole selection as the body, laid into whichever fields the *type* declares. `toggle` reads before it shows the panel, the order Glance keeps and for the same reason. |
 | `export.py` | a canvas to a PNG or a PDF. Opens the page off-screen with `?export=1` and photographs it, because a page cannot render itself to a PDF or ask where to put a file. |
+| `bluebubbles.py` · `otp.py` | sign-in codes from texts onto the clipboard, behind Settings → Messages. Polls the BlueBubbles server the local Flatpak client is signed in to (its address and password are read from the client's `shared_preferences.json`, never copied); polled because Socket.IO would be a new dependency. `otp.find_code` only answers a message that says it is a code, skips promotions, and returns nothing when two candidates tie. |
 | `frontmost.py` · `blindlist.py` · `glance.py` | who is in front, what must not be read, and the ladder. |
 | `../canvas/` | the canvas fork. Built with vite into `shell/ui/canvas/`. |
 

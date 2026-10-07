@@ -440,7 +440,10 @@ over there.
   wants `windowrule match:title ^(…)$, float on, size W H, …` — the Lua field
   names, every effect valued, one line validated as a whole. So the order is
   `eval`, then that, then the old keywords. Rules set this way are runtime
-  state: `hyprctl reload` drops them, and panels tile until the shell restarts.
+  state and a reload drops them — including the reload Hyprland does by itself
+  whenever `hyprland.conf` is saved — so the shell writes them all again on the
+  `configreloaded` event. Before it did, editing any line of your own config
+  left every panel tiling until the shell restarted.
 - **The focused window is pulled, not pushed.** The event socket says *that* the
   focus moved; `activewindow` is then asked for class, title, pid and workspace
   in one reply. No process is spawned — the KDE path learned the hard way that
@@ -478,8 +481,8 @@ over there.
   the shell at login through `systemd-run`, since Hyprland reads no XDG
   autostart entry. `install.sh` also warns when `bindings.lua` or `autostart.lua`
   already mention `talaria-shell` from a hand setup, which would now fire twice.
-  Rules set through `eval` are runtime state: a `hyprctl reload` drops them, and
-  panels tile until the shell restarts.
+  Rules set through `eval` are runtime state; see above for how a reload is
+  survived.
 - **There is no KRunner.** Hyprland's launcher is whatever the distribution
   ships, so the runner is not started at all there rather than registering a
   D-Bus service nothing will call.

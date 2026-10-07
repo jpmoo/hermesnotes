@@ -317,6 +317,24 @@ def _match_rule(title: str, fields: str, radius: int = 0) -> bool:
         return False
 
 
+#: Every rule `place` has written, so it can write them again — see
+#: `_replace_after_reload`.
+_PLACED: dict[str, tuple[int, int, bool]] = {}
+
+
+def _replace_after_reload() -> None:
+    """
+    Write every panel's rule again, after Hyprland has reloaded its config.
+
+    Rules sent over the socket are runtime state, and a reload drops them. A
+    reload is not only `hyprctl reload`: Hyprland reloads by itself whenever
+    `hyprland.conf` is saved, so editing an unrelated line of your own config
+    left every Talaria panel tiling until the shell next started.
+    """
+    for title, (width, height, is_desk) in list(_PLACED.items()):
+        place(title, width, height, is_desk)
+
+
 def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
     """
     Write the rules that catch this panel when it opens.
@@ -332,6 +350,7 @@ def place(title: str, width: int, height: int, is_desk: bool = False) -> None:
     """
     if not _signature():
         return
+    _PLACED[title] = (width, height, is_desk)
     monitor = _monitor()
     if monitor is None:
         return
@@ -452,6 +471,8 @@ def run_window_source(arrive, fail) -> None:
                         text = line.decode("utf8", "replace")
                         if text.startswith(WATCHED):
                             _report(arrive)
+                        elif text.startswith("configreloaded>>"):
+                            _replace_after_reload()
         except Exception as err:  # noqa: BLE001
             attempts += 1
             if attempts == 1:

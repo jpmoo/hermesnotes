@@ -59,6 +59,23 @@ was not closed with the rest — and each says so at its own end rather than
 here. No count: the one that used to be in this spot drifted from three to ten
 without anybody noticing, which is what a number in prose does.
 
+### An object could not be archived over the live binding — closed
+
+**Was:** `archived` was read on every object and written by none. `PATCH`
+carried properties, tags and the body, and had no word for filing something
+away or bringing it back. A Talaris–Hermes sync could see that one side had
+archived a task and could not say so to the other, so it left the pair alone:
+three tasks archived in Hermes Notes stayed open in Talaris's inbox.
+
+**Now:** a patch may carry `archived`, a boolean, beside `set`; untouched when
+not named; refused with the rest of a stale patch. Four cases in
+`fixtures/archive.json`, four mutants caught.
+
+**Additive, so `format` does not bump.** A client that never names it changes
+nothing it did not change before.
+
+→ `fixtures/archive.json`
+
 ### A task could not say where its notes were — closed
 
 **Was:** `event`, `contact`, `note` and `project` each had a `body`; `task`

@@ -95,7 +95,7 @@ export const hermesAdapter = {
 
   /** The same applyPatch the block route uses. */
   patch: (
-    object: { properties?: Record<string, unknown>; version?: number; tags?: string[]; content?: string },
+    object: { properties?: Record<string, unknown>; version?: number; tags?: string[]; content?: string; archived?: boolean },
     p: {
       set?: Record<string, unknown>;
       unset?: string[];
@@ -103,6 +103,7 @@ export const hermesAdapter = {
       removeTags?: string[];
       version?: number;
       content?: string;
+      archived?: boolean;
     },
     caps: { richtext?: boolean } = {},
   ) => {
@@ -145,6 +146,8 @@ export const hermesAdapter = {
         properties: out.properties,
         ...(content !== undefined ? { content } : {}),
         ...(tags !== undefined ? { tags } : {}),
+        // Filed away or brought back, as the route does it after the version-checked write: only when the patch names it.
+        ...(out.ok && typeof p?.archived === "boolean" ? { archived: p.archived } : {}),
         ...(out.ok && object.version !== undefined ? { version: object.version + 1 } : {}),
       },
       fidelity: reports.length ? ("reduced" as const) : out.fidelity,

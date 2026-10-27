@@ -1,0 +1,134 @@
+{
+ "suite": "archive",
+ "about": "Filing an object away, and bringing it back: `archived` beside `set`, a boolean; untouched when not named; refused with the rest of a stale patch.",
+ "cases": [
+  {
+   "id": "archive/a-patch-files-it-away",
+   "level": 4,
+   "op": "patch",
+   "given": {
+    "object": {
+     "id": "o_1",
+     "type": "t_task",
+     "properties": {
+      "title": "Pack coffee",
+      "status": "open",
+      "owner": "o_9"
+     },
+     "archived": false
+    },
+    "patch": {
+     "archived": true
+    }
+   },
+   "expect": {
+    "ok": true,
+    "object": {
+     "archived": true,
+     "properties": {
+      "title": "Pack coffee",
+      "status": "open",
+      "owner": "o_9"
+     }
+    }
+   },
+   "why": "Archiving is the most common thing done to a finished task, and a sync with no way to say it left a task filed away in one app open in the other — found when three tasks archived in Hermes Notes stayed in Talaris's inbox."
+  },
+  {
+   "id": "archive/a-patch-brings-it-back",
+   "level": 4,
+   "op": "patch",
+   "given": {
+    "object": {
+     "id": "o_1",
+     "type": "t_task",
+     "properties": {
+      "title": "Pack coffee",
+      "status": "open",
+      "owner": "o_9"
+     },
+     "archived": true
+    },
+    "patch": {
+     "archived": false
+    }
+   },
+   "expect": {
+    "ok": true,
+    "object": {
+     "archived": false,
+     "properties": {
+      "title": "Pack coffee",
+      "status": "open",
+      "owner": "o_9"
+     }
+    }
+   },
+   "why": "Filing away is undone the same way it is done. `false` is a value, not an absence: an implementation that only ever sets the flag cannot bring anything back."
+  },
+  {
+   "id": "archive/a-patch-not-naming-it-leaves-it",
+   "level": 4,
+   "op": "patch",
+   "given": {
+    "object": {
+     "id": "o_1",
+     "type": "t_task",
+     "properties": {
+      "title": "Pack coffee",
+      "status": "open",
+      "owner": "o_9"
+     },
+     "archived": true
+    },
+    "patch": {
+     "set": {
+      "title": "Pack the good coffee"
+     }
+    }
+   },
+   "expect": {
+    "ok": true,
+    "object": {
+     "archived": true,
+     "properties": {
+      "title": "Pack the good coffee",
+      "status": "open",
+      "owner": "o_9"
+     }
+    }
+   },
+   "why": "A title changed is not a task brought back. A patch that does not name `archived` leaves it as it is, by the same rule as every property and the body."
+  },
+  {
+   "id": "archive/a-stale-patch-files-nothing-away",
+   "level": 4,
+   "op": "patch",
+   "given": {
+    "object": {
+     "id": "o_1",
+     "type": "t_task",
+     "properties": {
+      "title": "Pack coffee",
+      "status": "open",
+      "owner": "o_9"
+     },
+     "archived": false,
+     "version": 4
+    },
+    "patch": {
+     "archived": true,
+     "version": 3
+    }
+   },
+   "expect": {
+    "ok": false,
+    "conflict": true,
+    "object": {
+     "archived": false
+    }
+   },
+   "why": "A stale patch is refused whole, the flag included: one writer's archive landing over another's newer edit is the same silent revert as a property's."
+  }
+ ]
+}

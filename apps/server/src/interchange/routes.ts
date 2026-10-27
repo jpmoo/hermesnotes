@@ -798,6 +798,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           removeTags: z.array(z.string()).optional(),
           version: z.number().int(),
           content: z.string().optional(),
+          archived: z.boolean().optional(),
         })
         .parse(req.body);
       const userId = requireUser(req);
@@ -878,6 +879,30 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      // Filed away or brought back (`archived`, beside `set`), after the
+      // version-checked write, by Hermes' own archive and unarchive — which
+      // know what may not be put away (a period's note, an unfinished weekly
+      // review). Only when it changes anything: archiving again would restamp
+      // the time it was put away. Refused there, the rest has landed, and the
+      // answer says what did not.
+      const archiveReports: string[] = [];
+      if (body.archived !== undefined) {
+        const [now] = await db
+          .select({ archivedAt: blocks.archivedAt })
+          .from(blocks)
+          .where(and(eq(blocks.id, id), eq(blocks.ownerId, userId)))
+          .limit(1);
+        if (now && (now.archivedAt !== null) !== body.archived) {
+          const filed = await app.inject({
+            method: "POST",
+            url: `${mount}/blocks/${id}/${body.archived ? "archive" : "unarchive"}`,
+            headers: { authorization: req.headers.authorization ?? "", "content-type": "application/json" },
+            payload: {},
+          });
+          if (filed.statusCode >= 400) archiveReports.push("archived.refused");
+        }
+      }
+
       // Read back through the same path a reader would use, so the object in
       // this answer is the object the next `?since=` will carry — including
       // whatever the write did that the caller never asked for.
@@ -900,7 +925,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
       // whole of what it was asked, and says so — `fidelity` follows the
       // reports rather than being asserted beside them.
       // Words asked for and not kept — a block that is not text keeps no body — said, not answered ok.
-      const reports = [...files.reports];
+      const reports = [...files.reports, ...archiveReports];
       const kept = (object as { content?: string } | undefined)?.content ?? "";
       if (body_.body === "set" && kept !== body_.content) reports.push("content.not-kept");
       return {

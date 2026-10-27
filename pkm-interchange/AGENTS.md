@@ -972,7 +972,7 @@ So the two writes divide cleanly, and neither can do the other's damage:
 | | |
 |---|---|
 | `PUT .../objects/<id>` | make this exist. Never edits. Safe to repeat. |
-| `PATCH .../objects/<id>` | change what exists. Never creates. `set`/`unset`, tags, and the body (`content`). |
+| `PATCH .../objects/<id>` | change what exists. Never creates. `set`/`unset`, tags, the body (`content`), and `archived`. |
 
 The body is an object as the format describes one — `type`, `properties`,
 `content`, `tags`. It MAY carry `id`; if it does, it MUST match the id in the
@@ -1059,6 +1059,14 @@ lets the two copies drift apart without a word. → `fixtures/content.json`
 
 A producer that keeps no body MUST say so — `content.not-kept`, reduced — rather
 than answer `ok` for words it dropped.
+
+`archived` is written beside `set` too, as a boolean: `true` files the object
+away, `false` brings it back. It is not a property, for the reason `content` is
+not. **A patch that does not name it leaves it as it is** — a title changed is
+not a task brought back. Filing away is the most common thing done to a
+finished task, and without it a sync could carry everything about a task except
+that it was put away: archived in one app, it stayed open in the other.
+→ `fixtures/archive.json`
 
 If you version objects, a patch may carry `version`, and a stale one **MUST** be
 refused rather than merged. Merging looks helpful and is how one client's edit

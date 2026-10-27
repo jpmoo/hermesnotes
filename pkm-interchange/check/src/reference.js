@@ -215,6 +215,9 @@ export function patch(object, p = {}, capabilities = {}) {
     else next.content = p.content;
   }
 
+  // Filed away or brought back: beside `set`, a boolean, and left as it is when not named.
+  if (typeof p.archived === "boolean") next.archived = p.archived;
+
   // Named, never replaced. A whole-list write would delete every tag this
   // caller had not heard of, which is the round-trip rule broken on the field
   // most likely to be shared between tools.

@@ -72,6 +72,30 @@ const MUTANTS = [
     patch: (a) => ({ ...a, patch: (object, p, caps) => { const out = a.patch(object, p, caps); if (out.conflict && "content" in (p ?? {})) out.object = { ...out.object, content: p.content }; return out; } }),
   },
   {
+    // The gap the archive rule closed: a patch is properties, tags and the body, and a task filed away in one app stays open in the other.
+    name: "a patch ignores archived",
+    caught: "archive/a-patch-files-it-away",
+    patch: (a) => ({ ...a, patch: (object, p, caps) => { const { archived: _a, ...rest } = p ?? {}; return a.patch(object, rest, caps); } }),
+  },
+  {
+    // Only ever filed away: `false` read as nothing to do.
+    name: "archived: false is taken for absent",
+    caught: "archive/a-patch-brings-it-back",
+    patch: (a) => ({ ...a, patch: (object, p, caps) => a.patch(object, p?.archived === false ? (({ archived: _a, ...rest }) => rest)(p) : p, caps) }),
+  },
+  {
+    // A patch read as the whole object: what it does not name, archived among it, put back to the default.
+    name: "a patch not naming archived brings it back",
+    caught: "archive/a-patch-not-naming-it-leaves-it",
+    patch: (a) => ({ ...a, patch: (object, p, caps) => { const out = a.patch(object, p, caps); if (out.ok && !("archived" in (p ?? {}))) out.object = { ...out.object, archived: false }; return out; } }),
+  },
+  {
+    // The flag applied before the version is looked at.
+    name: "a stale patch still files it away",
+    caught: "archive/a-stale-patch-files-nothing-away",
+    patch: (a) => ({ ...a, patch: (object, p, caps) => { const out = a.patch(object, p, caps); if (out.conflict && typeof p?.archived === "boolean") out.object = { ...out.object, archived: p.archived }; return out; } }),
+  },
+  {
     // Dropped words answered with a plain ok.
     name: "a producer without bodies drops the words in silence",
     caught: "content/a-producer-without-bodies-says-so",

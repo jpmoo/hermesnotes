@@ -880,6 +880,8 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
     rollup: boolean;
     smart: boolean;
     semantic: boolean;
+    /** What the hit holds around where it matched (blocks/routes.ts, excerptOf). */
+    excerpt?: string;
   }
 
   tool(
@@ -914,7 +916,8 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
               }`
             : (h.blockTypeId && typeName.get(h.blockTypeId)) || "block";
       return hits
-        .map((h) => `- ${h.label} — ${kindOf(h)}${h.semantic ? " (semantic match)" : ""} [${h.id}]`)
+        // With what each holds where it matched: a result known by its title alone was passed over unread.
+        .map((h) => `- ${h.label} — ${kindOf(h)}${h.semantic ? " (semantic match)" : ""} [${h.id}]${h.excerpt ? `\n  ${h.excerpt}` : ""}`)
         .join("\n");
     }),
   );

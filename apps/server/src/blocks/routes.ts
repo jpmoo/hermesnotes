@@ -355,6 +355,42 @@ const flatten = (col: SQL | SQLWrapper) =>
     '\\[([^]]*)\\]\\((block|tag|person|new|fwd):[^)]*\\)', '\\1', 'g'
   )`;
 
+/**
+ * A block's text as it reads, for a search hit's excerpt: its body and every
+ * written value among its properties, marks and mention links flattened as
+ * `flatten` does in SQL, ids left out.
+ */
+function readableText(content: string | null, properties: unknown): string {
+  const values: string[] = [];
+  const walk = (v: unknown) => {
+    if (typeof v === "string") { if (!/^[0-9a-f-]{32,36}$/i.test(v.trim())) values.push(v); }
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(properties);
+  return [content ?? "", ...values].join("\n")
+    .replace(/<\/?mark[^>]*>/g, "")
+    .replace(/\[([^\]]*)\]\((?:block|tag|person|new|fwd):[^)]*\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * What a search hit holds, around the first place it matched (the whole term,
+ * else one of its words), or from its start: enough for whoever searched — a
+ * person, or an assistant reading the results — to see what is there without
+ * opening it. A "packing list" search returned Ocean City by its title alone,
+ * and its checklist went unread.
+ */
+function excerptOf(text: string, needles: string[]): string {
+  const low = text.toLowerCase();
+  const at = needles.map((n) => low.indexOf(n.toLowerCase())).filter((i) => i >= 0).sort((a, b) => a - b)[0];
+  if (at === undefined) return text.length > 180 ? `${text.slice(0, 180).trimEnd()}…` : text;
+  const from = Math.max(0, at - 50);
+  const to = Math.min(text.length, at + 150);
+  return `${from > 0 ? "…" : ""}${text.slice(from, to).trim()}${to < text.length ? "…" : ""}`;
+}
+
 /** Reusable predicate: the block is active (not archived). */
 const notArchived = sql`${blocks.archivedAt} IS NULL`;
 
@@ -973,6 +1009,8 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       properties: blocks.properties,
       content: blocks.content,
     };
+    // The term's words, for matching word by word after the whole phrase: "packing list" missed "Packing for Cancun".
+    const termWords = [...new Set(term.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3))].slice(0, 6);
     const toHit = (r: {
       id: string;
       blockTypeId: string | null;
@@ -996,7 +1034,17 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         rollup: r.collectionKind === "rollup",
         smart: props?.membership_mode === "smart",
         semantic,
+        excerpt: excerptOf(readableText(r.content, r.properties), semantic ? [] : [term, ...termWords]),
       };
+    };
+    const matching = (needle: string) => {
+      const l = `%${needle}%`;
+      return sql`(
+        ${blocks.properties}::text ILIKE ${l}
+        OR ${blocks.content} ILIKE ${l}
+        OR ${flatten(blocks.content)} ILIKE ${l}
+        OR ${flatten(sql`${blocks.properties}::text`)} ILIKE ${l}
+      )`;
     };
 
     const rows = await db
@@ -1023,6 +1071,36 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .limit(20);
     const literal = rows.map((r) => toHit(r, false));
 
+    // Then word by word, for a term of several words: those holding every word first, then those holding its rarest
+    // (the word fewest blocks hold, which says the most: "packing" over "list"), by how much of the term they hold,
+    // each word weighed by how rare it is.
+    let byWord: ReturnType<typeof toHit>[] = [];
+    if (termWords.length >= 2) {
+      const counts = await Promise.all(termWords.map(async (w) => {
+        const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(blocks).where(and(eq(blocks.ownerId, userId), notArchived, matching(w)));
+        return c?.n ?? 0;
+      }));
+      const rarest = termWords[counts.indexOf(Math.min(...counts.filter((n) => n > 0), Infinity))];
+      const known = new Set(literal.map((h) => h.id));
+      const candidates = rarest ? await db
+        .select(cols)
+        .from(blocks)
+        .where(and(eq(blocks.ownerId, userId), notArchived, matching(rarest)))
+        .orderBy(desc(blocks.updatedAt))
+        .limit(200) : [];
+      const weight = new Map(termWords.map((w, i) => [w, 1 / Math.log(2 + (counts[i] ?? 0))]));
+      byWord = candidates
+        .filter((r) => !known.has(r.id))
+        .map((r) => {
+          const text = readableText(r.content, r.properties).toLowerCase();
+          const held = termWords.filter((w) => text.includes(w));
+          return { r, all: held.length === termWords.length, score: held.reduce((sum, w) => sum + (weight.get(w) ?? 0), 0) };
+        })
+        .sort((a, b) => Number(b.all) - Number(a.all) || b.score - a.score)
+        .slice(0, Math.max(0, 25 - literal.length))
+        .map(({ r }) => toHit(r, false));
+    }
+
     // Semantic follow-ups the literal search missed.
     const [s] = await db
       .select({ sim: userSettings.defaultSimilarity })
@@ -1030,7 +1108,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
       .where(eq(userSettings.userId, userId))
       .limit(1);
     const semIds = await semanticIds(userId, term, s?.sim ?? 0.75);
-    const seen = new Set(literal.map((h) => h.id));
+    const seen = new Set([...literal, ...byWord].map((h) => h.id));
     const fresh = [...new Set(semIds)].filter((id) => !seen.has(id)).slice(0, 50);
     let semantic: ReturnType<typeof toHit>[] = [];
     if (fresh.length) {
@@ -1042,7 +1120,7 @@ export async function blockRoutes(app: FastifyInstance): Promise<void> {
         .limit(10);
       semantic = srows.map((r) => toHit(r, true));
     }
-    return [...literal, ...semantic];
+    return [...literal, ...byWord, ...semantic];
   });
 
   app.get("/blocks/search", async (req) => {

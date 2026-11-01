@@ -150,6 +150,17 @@ function slotChoices(fields: EditField[], kind: SlotKind): { value: string; labe
   if (kind === "body") out.unshift({ value: "content", label: "Its own words" });
   return out;
 }
+/**
+ * A slot's menu: its fitting fields, a text type's own title for its Title (a text note's title is the block's, not
+ * a field), and whatever the slot already holds even if none of those — so a menu never shows a value it lacks as
+ * "none" and saves it away. A note's profile saved here had its title dropped and its words pointed at an empty field.
+ */
+function slotOptions(fields: EditField[], kind: SlotKind, slot: string, isText: boolean, current: string): { value: string; label: string }[] {
+  const out = slotChoices(fields, kind);
+  if (isText && slot === "title" && !out.some((c) => c.value === "title")) out.unshift({ value: "title", label: "Its title" });
+  if (current && !out.some((c) => c.value === current)) out.unshift({ value: current, label: current });
+  return out;
+}
 const slotValue = (spec: unknown) => (spec === undefined || spec === null ? "" : typeof spec === "string" ? spec : JSON.stringify(spec));
 const slotSpec = (value: string): unknown => (value.startsWith("{") ? JSON.parse(value) : value);
 
@@ -564,7 +575,7 @@ export function TypeEditor({
         </div>
       )}
 
-      <ProfilesSection fields={fields} profiles={profiles} setProfiles={setProfiles} isTask={Boolean(activeStatus)} derivedTask={derivedTask} statusName={activeStatus ? activeStatus.label.trim() || activeStatus.key : ""} />
+      <ProfilesSection fields={fields} isText={isText} profiles={profiles} setProfiles={setProfiles} isTask={Boolean(activeStatus)} derivedTask={derivedTask} statusName={activeStatus ? activeStatus.label.trim() || activeStatus.key : ""} />
 
       {error && <div className="error">{error}</div>}
       <div className="type-actions">
@@ -642,6 +653,7 @@ const TASK_SLOTS: [string, string, SlotKind][] = [["title", "Name", "words"], ["
 
 function ProfilesSection({
   fields,
+  isText,
   profiles,
   setProfiles,
   isTask,
@@ -649,6 +661,7 @@ function ProfilesSection({
   statusName,
 }: {
   fields: EditField[];
+  isText: boolean;
   profiles: Record<string, Record<string, unknown>>;
   setProfiles: (next: Record<string, Record<string, unknown>>) => void;
   isTask: boolean;
@@ -707,7 +720,7 @@ function ProfilesSection({
         <div className="fields-table" key={name} style={{ marginTop: 8 }}>
           <div className="hint" style={{ margin: "4px 0" }}>{def.label}</div>
           {def.slots.map(([slot, label, kind]) => {
-            const choices = slotChoices(fields, kind);
+            const choices = slotOptions(fields, kind, slot, isText, slotValue(profiles[name]?.[slot]));
             return (
               <div className="field-row" key={slot}>
                 <span className="f-label" style={{ minWidth: 130 }}>{label}</span>
@@ -726,7 +739,7 @@ function ProfilesSection({
         <div className="fields-table" style={{ marginTop: 8 }}>
           <div className="hint" style={{ margin: "4px 0" }}>A task — because {statusName} is a status with completion (set under Status options)</div>
           {TASK_SLOTS.map(([slot, label, kind]) => {
-            const choices = slotChoices(fields, kind);
+            const choices = slotOptions(fields, kind, slot, isText, slotValue(taskSlot(slot)));
             return (
               <div className="field-row" key={slot}>
                 <span className="f-label" style={{ minWidth: 130 }}>{label}</span>

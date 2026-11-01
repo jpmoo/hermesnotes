@@ -15,7 +15,7 @@ export const V0_PROFILES = ["task", "event", "contact", "note", "journal", "proj
  * Each must name a `reference` field, because a name in a text field cannot be
  * followed, and following it is the whole reason the slot exists.
  */
-export const REFERENCE_SLOTS = { task: ["project"], event: ["attendees", "organizer"] };
+export const REFERENCE_SLOTS = { task: ["project"], note: ["project"], event: ["attendees", "organizer"] };
 
 /** What a task's status may mean, shared (Profiles, "What a status means"): the producer's options map onto these. */
 export const STATES = ["not-started", "in-progress", "waiting", "done", "cancelled"];

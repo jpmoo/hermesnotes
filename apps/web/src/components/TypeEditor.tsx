@@ -124,6 +124,8 @@ const PROFILE_SLOTS: Record<string, { label: string; slots: [string, string, Slo
   contact: { label: "A person", slots: [["title", "Name", "words"], ["email", "Email", "words"], ["phone", "Phone", "words"], ["organization", "Organization", "wordsOrRef"], ["role", "Role", "words"], ["body", "About", "body"]] },
   event: { label: "An event", slots: [["title", "Title", "words"], ["start", "Starts", "when"], ["end", "Ends", "when"], ["location", "Where", "words"], ["attendees", "Who is invited", "ref"], ["organizer", "Organizer", "ref"], ["body", "Description", "body"]] },
   project: { label: "A project", slots: [["title", "Name", "words"], ["body", "Description", "body"]] },
+  // A note, and the project it belongs to (pkm-interchange: note.project), as a task's.
+  note: { label: "A note", slots: [["title", "Title", "words"], ["body", "Body", "body"], ["project", "Project", "ref"]] },
 };
 const fitsSlot = (f: EditField, kind: SlotKind) =>
   kind === "ref" ? f.type === "reference"

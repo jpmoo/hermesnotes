@@ -31,7 +31,12 @@ const SEED_TYPES: SeedType[] = [
         // property — but with no field on the type there was nowhere in the
         // editor to put one. Unlocked: removable by anyone who doesn't want it.
         { key: "attachments", label: "Attachments", type: "attachments", order: 1, includeEmbed: false },
+        // The project a note belongs to, as a task's: the format's note.project, declared below. Unlocked, as
+        // attachments are: a note-taker who files nothing by project can take it away.
+        { key: "project", label: "Project", type: "reference", order: 2, includeEmbed: false },
       ],
+      // Declared, not derived, so the note can say its project (pkm-interchange, Profiles: note.project).
+      profiles: { note: { title: "title", body: "content", project: "project" } },
     },
   },
   {
@@ -151,6 +156,7 @@ const REF_TARGETS: Record<string, string> = {
   "organization.parent": "organization",
   "person.organization": "organization",
   "task.project": "project",
+  "text.project": "project",
 };
 
 export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<void> {

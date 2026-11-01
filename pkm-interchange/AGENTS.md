@@ -258,7 +258,7 @@ that the consumer should look for something like it.
 | `task` | `title`, `status`, `completeValues` (a list of values, not a field), `states` (a map of values, not a field), `start`, `due`, `project`, `body` |
 | `event` | `title`, `start`, `end`, `location`, `attendees`, `organizer`, `body` |
 | `contact` | `title`, `email`, `phone`, `organization`, `role`, `body` |
-| `note` | `title`, `body` |
+| `note` | `title`, `body`, `project` |
 | `journal` | `date` — see *The page for a date* |
 | `project` | `title`, `body` |
 
@@ -299,10 +299,11 @@ first is not more theirs than the second. `organization` names a `text` field
 or a `reference` to an organization the producer keeps as a thing of its own;
 either is right, and a consumer reads whichever it is given.
 
-**Three slots point at other things, and must name a `reference`:** `task`'s
-`project`, and `event`'s `attendees` and `organizer`. These are what make a
-library of people, meetings and work connected rather than a pile of titles —
-the people at a meeting, the project a task belongs to — and a text field
+**Four slots point at other things, and must name a `reference`:** `task`'s
+and `note`'s `project`, and `event`'s `attendees` and `organizer`. These are
+what make a library of people, meetings and work connected rather than a pile
+of titles — the people at a meeting, the project a task or a note belongs to —
+and a text field
 holding a name cannot be followed. A target is read as a person when its type
 declares `contact`, and as a project when it declares `project`; a target whose
 type declares neither is read as whatever it is, generically, and not guessed

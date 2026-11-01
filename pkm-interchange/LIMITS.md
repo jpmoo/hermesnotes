@@ -59,6 +59,32 @@ was not closed with the rest — and each says so at its own end rather than
 here. No count: the one that used to be in this spot drifted from three to ten
 without anybody noticing, which is what a number in prose does.
 
+### A note could not say which project it was in — closed
+
+**Was:** `task` had `project`; `note` had only `title` and `body`. A writing
+app keeps a project's pages with the project — Talaris's are files in the
+project's folder — and a note-taker files a note under one, but a note carried
+between them arrived as a note of no project, its tie lost on the way. Found
+when Talaris's project pages could not be synced to Hermes at all: the sync
+carried only notes of no project, because a note had no way to say it had one.
+
+**Now:** `note` has `project`, a pointing slot like `task`'s, and so it must
+name a `reference` (`profile.slot-not-a-reference`). Two cases in
+`fixtures/profile.json` and a mutant that knows a task's project points at
+something and not a note's. Hermes' Text type gains a Project field, declared
+in its note profile.
+
+**Additive, so `format` does not bump.** A producer that does not declare it
+says its notes keep no project, which is what its silence said before.
+
+**What is still open:** how a project's notes are gathered with it is each
+app's to work out — Hermes does not yet show a project's notes on the project —
+and nothing here asks it to. The slot says where a note belongs; what an app
+does with that is not the format's.
+
+→ `fixtures/profile.json` (`profile/a-note-says-its-project`,
+`profile/a-notes-project-must-be-a-reference`)
+
 ### An object could not be archived over the live binding — closed
 
 **Was:** `archived` was read on every object and written by none. `PATCH`

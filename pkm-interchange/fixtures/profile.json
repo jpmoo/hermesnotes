@@ -524,6 +524,88 @@
       "why": "`project`, `attendees` and `organizer` exist so a reader can follow them — to the project a task is part of, the people at a meeting. A text field holding a project's name looks the same and leads nowhere: two projects can share a name, one can be renamed, and the link silently becomes a word."
     },
     {
+      "id": "profile/a-note-says-its-project",
+      "level": 1,
+      "op": "read",
+      "given": {
+        "type": {
+          "id": "t_page",
+          "name": "Page",
+          "fields": [
+            {
+              "key": "title",
+              "kind": "text"
+            },
+            {
+              "key": "words",
+              "kind": "richtext"
+            },
+            {
+              "key": "project",
+              "kind": "reference",
+              "targetType": "t_project"
+            }
+          ],
+          "profiles": {
+            "note": {
+              "title": "title",
+              "body": "words",
+              "project": "project"
+            }
+          }
+        },
+        "object": {
+          "properties": {
+            "title": "Packing list",
+            "words": "- [ ] Passport",
+            "project": "o_trip"
+          }
+        }
+      },
+      "args": {
+        "key": "project",
+        "profile": "note"
+      },
+      "expect": "o_trip",
+      "why": "Notes belong to projects as tasks do: a writing app keeps a project's pages with it, and a note-taker files a note under one. With no slot to say so, a note that left its project arrived in the other app as a note of no project at all, and the tie was lost in carrying it."
+    },
+    {
+      "id": "profile/a-notes-project-must-be-a-reference",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "type": {
+          "id": "t_memo",
+          "name": "Memo",
+          "fields": [
+            {
+              "key": "title",
+              "kind": "text"
+            },
+            {
+              "key": "project_name",
+              "kind": "text"
+            }
+          ],
+          "profiles": {
+            "note": {
+              "title": "title",
+              "project": "project_name"
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "profile.slot-not-a-reference"
+          }
+        ]
+      },
+      "why": "A note's project is followed as a task's is, to the project itself. A project's name in a text field leads nowhere: two can share it, and one renamed leaves the note pointing at a word."
+    },
+    {
       "id": "profile/attendees-are-references",
       "level": 1,
       "op": "validate",

@@ -918,7 +918,11 @@ export async function defineTools(api: Api): Promise<ToolDef[]> {
       return hits
         // With what each holds where it matched: a result known by its title alone was passed over unread.
         .map((h) => `- ${h.label} — ${kindOf(h)}${h.semantic ? " (semantic match)" : ""} [${h.id}]${h.excerpt ? `\n  ${h.excerpt}` : ""}`)
-        .join("\n");
+        .join("\n")
+        // Said with the results: a packing list was made from two trips' excerpts — their first lines — and came out
+        // generic, the lists themselves never read.
+        + "\n\nEach excerpt is only a few lines of what the result holds. Before using what one holds (to answer from it, or to"
+        + " build on it), read it whole with block_get.";
     }),
   );
 

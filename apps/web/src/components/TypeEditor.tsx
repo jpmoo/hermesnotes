@@ -144,6 +144,10 @@ function slotChoices(fields: EditField[], kind: SlotKind): { value: string; labe
       out.push({ value: JSON.stringify({ field: f.key, part: "end" }), label: `${name} — ${f.endLabel || "end"}` });
     } else out.push({ value: f.key, label: name });
   }
+  // A body may also be the block's own text, the format's reserved `content` — where a text type's notes keep their
+  // words. Not offered, a profile declaring it showed the first field instead, and saved the type with that: a
+  // note's words read from an empty field, and a sync saw every note emptied.
+  if (kind === "body") out.unshift({ value: "content", label: "Its own words" });
   return out;
 }
 const slotValue = (spec: unknown) => (spec === undefined || spec === null ? "" : typeof spec === "string" ? spec : JSON.stringify(spec));

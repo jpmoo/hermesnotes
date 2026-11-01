@@ -156,7 +156,10 @@ function slotChoices(fields: EditField[], kind: SlotKind): { value: string; labe
  * "none" and saves it away. A note's profile saved here had its title dropped and its words pointed at an empty field.
  */
 function slotOptions(fields: EditField[], kind: SlotKind, slot: string, isText: boolean, current: string): { value: string; label: string }[] {
-  const out = slotChoices(fields, kind);
+  const all = slotChoices(fields, kind);
+  // A text type's body is its own words: a text note keeps them in its text, never in a field, so a field offered
+  // beside them only invites pointing the words somewhere empty. One already chosen still shows, by its label.
+  const out = isText && kind === "body" ? all.filter((c) => c.value === "content" || c.value === current) : all;
   if (isText && slot === "title" && !out.some((c) => c.value === "title")) out.unshift({ value: "title", label: "Its title" });
   if (current && !out.some((c) => c.value === current)) out.unshift({ value: current, label: current });
   return out;

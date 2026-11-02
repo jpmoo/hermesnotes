@@ -122,6 +122,7 @@ export async function loadContext(api: Api): Promise<Ctx> {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LISTED_ID_RE = /[([]([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[)\]]\s*$/i;
 
 /** Resolve an id-or-title to one block of the given type; error when ambiguous.
  * With `orCreate`, a name that matches nothing creates the block instead. */
@@ -133,6 +134,9 @@ async function resolveByTitle(
   orCreate = false,
 ): Promise<HermesBlock> {
   if (UUID_RE.test(ident.trim())) return api.get<HermesBlock>(`/blocks/${ident.trim()}`);
+  // A whole line of a listing, "Schedule dentist — due 2026-11-04 · Health (90a9…)", given back as it was read: its id.
+  const listed = ident.match(LISTED_ID_RE)?.[1];
+  if (listed) return api.get<HermesBlock>(`/blocks/${listed}`);
   const filterQuery: FilterGroup = {
     kind: "group",
     match: "all",

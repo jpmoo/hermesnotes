@@ -121,7 +121,7 @@ const SEED_TYPES: SeedType[] = [
         },
         { key: "location", type: "text", order: 4, includeEmbed: true },
         // The project a meeting belongs to, as a note's: the format's event.project. Unlocked, as a note's is.
-        { key: "project", label: "Project", type: "reference", order: 5, includeEmbed: false },
+        { key: "project", label: "Projects", type: "reference", order: 5, includeEmbed: false },
       ],
       profiles: {
         event: {
@@ -159,7 +159,7 @@ const SEED_TYPES: SeedType[] = [
         { key: "description", label: "About", type: "longtext", order: 2, includeEmbed: true, locked: true },
         { key: "organization", label: "Organization", type: "reference", order: 3, includeEmbed: false, locked: true },
         // The projects a person is part of: the format's contact.project. Unlocked, as a note's is.
-        { key: "project", label: "Project", type: "reference", order: 4, includeEmbed: false },
+        { key: "project", label: "Projects", type: "reference", order: 4, includeEmbed: false },
       ],
       profiles: {
         contact: { title: "title", organization: "organization", role: "role", project: "project", body: "description" },

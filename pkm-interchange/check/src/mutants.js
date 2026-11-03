@@ -681,6 +681,24 @@ const MUTANTS = [
     } }),
   },
   {
+    name: "knows a meeting's people point at something, and not its project",
+    caught: "profile/an-events-project-must-be-a-reference",
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      const kept = got.errors.filter((x) => !(x.code === "profile.slot-not-a-reference" && String(x.path).includes(".profiles.event.project")));
+      return { valid: kept.length === 0, errors: kept };
+    } }),
+  },
+  {
+    name: "knows a task's project points at something, and not a person's",
+    caught: "profile/a-persons-project-must-be-a-reference",
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      const kept = got.errors.filter((x) => !(x.code === "profile.slot-not-a-reference" && String(x.path).includes(".profiles.contact.")));
+      return { valid: kept.length === 0, errors: kept };
+    } }),
+  },
+  {
     name: "treats a patch as the whole object",
     caught: "operational/absent-is-not-delete",
     patch: (a) => ({

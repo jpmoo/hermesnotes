@@ -256,8 +256,8 @@ that the consumer should look for something like it.
 | profile | slots |
 |---|---|
 | `task` | `title`, `status`, `completeValues` (a list of values, not a field), `states` (a map of values, not a field), `start`, `due`, `project`, `body` |
-| `event` | `title`, `start`, `end`, `location`, `attendees`, `organizer`, `body` |
-| `contact` | `title`, `email`, `phone`, `organization`, `role`, `body` |
+| `event` | `title`, `start`, `end`, `location`, `attendees`, `organizer`, `project`, `body` |
+| `contact` | `title`, `email`, `phone`, `organization`, `role`, `project`, `body` |
 | `note` | `title`, `body`, `project` |
 | `journal` | `date` — see *The page for a date* |
 | `project` | `title`, `body` |
@@ -299,19 +299,20 @@ first is not more theirs than the second. `organization` names a `text` field
 or a `reference` to an organization the producer keeps as a thing of its own;
 either is right, and a consumer reads whichever it is given.
 
-**Four slots point at other things, and must name a `reference`:** `task`'s
-and `note`'s `project`, and `event`'s `attendees` and `organizer`. These are
+**Six slots point at other things, and must name a `reference`:** the `project`
+of a `task`, a `note`, an `event` and a `contact`, and `event`'s `attendees` and
+`organizer`. These are
 what make a library of people, meetings and work connected rather than a pile
-of titles — the people at a meeting, the project a task or a note belongs to —
-and a text field
+of titles — the people at a meeting, the project a task, a note, a meeting or a
+person belongs to — and a text field
 holding a name cannot be followed. A target is read as a person when its type
 declares `contact`, and as a project when it declares `project`; a target whose
 type declares neither is read as whatever it is, generically, and not guessed
 at. → `profile.slot-not-a-reference`
 
 **A project is a thing, not a list.** `project` is for a type whose objects are
-the work itself — named, described, archived when done, pointed at by the tasks
-and notes that belong to it. A list of tasks someone keeps is a collection
+the work itself — named, described, archived when done, pointed at by the tasks,
+notes, meetings and people that belong to it. A list of tasks someone keeps is a collection
 (*Collections and placement*), and a producer whose projects are only folders
 of tasks has collections, not projects. The two can coexist: a project is often
 shown as the collection of what points at it, and that collection is a view,

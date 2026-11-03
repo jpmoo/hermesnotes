@@ -59,6 +59,35 @@ was not closed with the rest — and each says so at its own end rather than
 here. No count: the one that used to be in this spot drifted from three to ten
 without anybody noticing, which is what a number in prose does.
 
+### A meeting or a person could not say which project they were in — closed
+
+**Was:** `task` and `note` had `project`; `event` and `contact` did not. A
+meeting about a project and a person working on one could be tied to it only by
+a mention in their words or by a field the format could not name, so a sync
+carried neither. Asked for by someone using Hermes Notes and Talaris together,
+who wanted a project's meetings and people kept with it in both.
+
+**Now:** `event` and `contact` have `project`, a pointing slot like the others,
+and so each must name a `reference` (`profile.slot-not-a-reference`). Four cases
+in `fixtures/profile.json` and two mutants. Hermes' Event and Person types gain
+a Project field, declared in their profiles.
+
+**Additive, so `format` does not bump.** A producer that does not declare the
+slot says only that it keeps no such thing, which is what its silence said
+before.
+
+**What is still open:** nothing here says what being in a project means for a
+person: a member, a client and somebody merely consulted all read alike. A
+consumer wanting that difference has `role` on the person, and otherwise the
+producer's own fields. An event that arrived from an outside calendar is not
+the format's concern either: whether it can hold a project depends on whether
+the app keeps an object of its own for it (*External feeds were never a gap*).
+
+→ `fixtures/profile.json` (`profile/an-event-says-its-project`,
+`profile/a-person-says-their-projects`,
+`profile/an-events-project-must-be-a-reference`,
+`profile/a-persons-project-must-be-a-reference`)
+
 ### A note could not say which project it was in — closed
 
 **Was:** `task` had `project`; `note` had only `title` and `body`. A writing

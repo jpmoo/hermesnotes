@@ -33,6 +33,12 @@ const KIND: Record<string, string> = {
 };
 
 export interface ExportInput {
+  /**
+   * The zone this library's clock times are written in, the user's own (IANA).
+   * Hermes holds them as they read on that clock, with no offset, so a reader
+   * elsewhere has nothing else to go by: told, it can say when they really are.
+   */
+  timeZone?: string | null;
   types: HermesType[];
   blocks: HermesBlock[];
   memberships: HermesMembership[];
@@ -169,7 +175,8 @@ export function toInterchange(input: ExportInput): {
   // ---- types -------------------------------------------------------------
   const types = input.types.map((t) => {
     const schema = t.propertySchema;
-    const fields = (schema?.fields ?? []).flatMap((f) => mapField(f, note));
+    const fields = (schema?.fields ?? []).flatMap((f) => mapField(f, note)).map((f) =>
+      input.timeZone && (f.kind === "datetime" || f.kind === "datespan") && !("timezone" in f) ? { ...f, timezone: input.timeZone } : f);
     // Hermes keeps `title` on every block rather than in a type's field list,
     // and every type but a text one declares it in the schema anyway. A text
     // type's schema is the body alone, so the note profile derived below mapped

@@ -1,4 +1,4 @@
-import { attachmentBlobs, attachments, blockTags, blockTypes, blocks, changes, memberships, series, tags } from "@hermes/db";
+import { attachmentBlobs, attachments, blockTags, blockTypes, blocks, changes, memberships, series, tags, userSettings } from "@hermes/db";
 import {
   CONFORMANCE,
   bodyOf,
@@ -18,6 +18,7 @@ import { authenticate, requireUser } from "../auth/middleware.js";
 import { runQuery } from "../collections/query.js";
 import { db } from "../db.js";
 import { env } from "../env.js";
+import { effectiveTimeZone } from "../lib/timezone.js";
 
 /**
  * The interchange binding: what this instance honours, and everything it holds.
@@ -336,7 +337,9 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
         }
       }
 
+      const [zone] = await db.select({ tz: userSettings.timezone }).from(userSettings).where(eq(userSettings.userId, userId)).limit(1);
       const { envelope, findings } = toInterchange({
+        timeZone: effectiveTimeZone(zone?.tz),
         queryMembers,
         types: types.map((t) => ({ ...t, propertySchema: t.propertySchema ?? null })),
         blocks: rows.map((b) => ({

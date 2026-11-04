@@ -159,7 +159,7 @@ The type system is open. Producers do not share an ontology, so an export carrie
 
 `text` · `richtext` · `number` · `boolean` · `url` · `date` · `datetime` · `datespan` · `enum` · `reference` · `attachment`
 
-Dates are `YYYY-MM-DD`. Datetimes are `YYYY-MM-DDTHH:mm` with an optional `timezone` on the field (IANA name). A `datespan` is `{ "start": ..., "end": ... }`, both optional, with producer-supplied labels — do not assume the labels are "Start" and "Due".
+Dates are `YYYY-MM-DD`. Datetimes are `YYYY-MM-DDTHH:mm` with an optional `timezone` on the field (IANA name), which says the clock they read on; a `datespan` field's may say the same of its ends. A `datespan` is `{ "start": ..., "end": ... }`, both optional, with producer-supplied labels — do not assume the labels are "Start" and "Due".
 
 **The list is open.** A producer with a kind nobody has standardized declares it anyway and it travels untouched; consumers treat an unknown kind as opaque and must not drop the field. The alternative is that a field's type becomes unsayable while its values survive, leaving a consumer holding data it cannot describe.
 

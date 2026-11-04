@@ -177,7 +177,7 @@ and the write-only names are `placement.region-not-declared`,
 | `envelope.format` | `format` present but not `pkm-interchange/<n>` |
 | `value.cardinality` | a `many` field holding a scalar, or a single field holding a list |
 | `profile.field-not-declared` | a v0 profile mapping onto a field its type hasn't got |
-| `profile.slot-not-a-reference` | `task.project`, `note.project`, `event.project`, `contact.project`, `event.attendees` or `event.organizer` naming a field that is not a `reference` |
+| `profile.slot-not-a-reference` | `task.project`, `note.project`, `event.project`, `contact.project`, `organization.parent`, `event.attendees` or `event.organizer` naming a field that is not a `reference` |
 | `inline.field-not-declared` | an inline edge names a field its type hasn't got |
 | `relation.no-target` | an edge with no `to` |
 | `stub.suggests-not-a-profile` | a stub's `suggests` naming a type id rather than a profile |

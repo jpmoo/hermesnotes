@@ -124,6 +124,7 @@ const PROFILE_SLOTS: Record<string, { label: string; slots: [string, string, Slo
   contact: { label: "A person", slots: [["title", "Name", "words"], ["email", "Email", "words"], ["phone", "Phone", "words"], ["organization", "Organization", "wordsOrRef"], ["role", "Role", "words"], ["project", "Project", "ref"], ["body", "About", "body"]] },
   event: { label: "An event", slots: [["title", "Title", "words"], ["start", "Starts", "when"], ["end", "Ends", "when"], ["location", "Where", "words"], ["attendees", "Who is invited", "ref"], ["organizer", "Organizer", "ref"], ["project", "Project", "ref"], ["body", "Description", "body"]] },
   project: { label: "A project", slots: [["title", "Name", "words"], ["body", "Description", "body"]] },
+  organization: { label: "An organization", slots: [["title", "Name", "words"], ["body", "About", "body"], ["parent", "Part of", "ref"]] },
   // A note, and the project it belongs to (pkm-interchange: note.project), as a task's.
   note: { label: "A note", slots: [["title", "Title", "words"], ["body", "Body", "body"], ["project", "Project", "ref"]] },
 };

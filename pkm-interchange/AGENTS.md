@@ -246,7 +246,7 @@ live binding*, declared as `attachment-files`.
 
 A profile declaration maps a producer's own fields onto a vocabulary a stranger can consume. It is a *mapping*, not a claim of identity — a type named `Chore` or `Errand` or `明日の仕事` declaring the `task` profile is consumable by any task-aware tool.
 
-v0 profiles: `task`, `event`, `contact`, `note`, `journal`, `project`.
+v0 profiles: `task`, `event`, `contact`, `note`, `journal`, `project`, `organization`.
 
 **Their slots.** Each slot names one of the producer's fields — a key, or
 `{ "field": …, "part": "start" | "end" }` for half of a `datespan` — and every
@@ -261,6 +261,7 @@ that the consumer should look for something like it.
 | `note` | `title`, `body`, `project` |
 | `journal` | `date` — see *The page for a date* |
 | `project` | `title`, `body` |
+| `organization` | `title`, `body`, `parent` |
 
 **What a status means.** A task's `status` is the producer's own field with
 its own options — `todo`, `doing`, `En attente` — and `completeValues` says
@@ -297,17 +298,19 @@ too: its notes, wherever the producer keeps them. `email` and
 `phone` may name a `many` field: a person with two addresses has two, and the
 first is not more theirs than the second. `organization` names a `text` field
 or a `reference` to an organization the producer keeps as a thing of its own;
-either is right, and a consumer reads whichever it is given.
+either is right, and a consumer reads whichever it is given. A kept one declares
+`organization`, so a consumer knows it for what it is without reading its name.
 
-**Six slots point at other things, and must name a `reference`:** the `project`
-of a `task`, a `note`, an `event` and a `contact`, and `event`'s `attendees` and
-`organizer`. These are
+**Seven slots point at other things, and must name a `reference`:** the `project`
+of a `task`, a `note`, an `event` and a `contact`, `event`'s `attendees` and
+`organizer`, and `organization`'s `parent`. These are
 what make a library of people, meetings and work connected rather than a pile
 of titles — the people at a meeting, the project a task, a note, a meeting or a
 person belongs to — and a text field
 holding a name cannot be followed. A target is read as a person when its type
-declares `contact`, and as a project when it declares `project`; a target whose
-type declares neither is read as whatever it is, generically, and not guessed
+declares `contact`, as a project when it declares `project`, and as an
+organization when it declares `organization`; a target whose type declares none
+of them is read as whatever it is, generically, and not guessed
 at. → `profile.slot-not-a-reference`
 
 **A project is a thing, not a list.** `project` is for a type whose objects are

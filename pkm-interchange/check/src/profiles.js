@@ -8,14 +8,14 @@
 export const META_KEYS = new Set(["type", "created", "updated"]);
 
 /** The v0 profile vocabulary. Anything else is preserved and ignored. */
-export const V0_PROFILES = ["task", "event", "contact", "note", "journal", "project"];
+export const V0_PROFILES = ["task", "event", "contact", "note", "journal", "project", "organization"];
 
 /**
  * The slots that point at other things: a meeting's people, a task's project.
  * Each must name a `reference` field, because a name in a text field cannot be
  * followed, and following it is the whole reason the slot exists.
  */
-export const REFERENCE_SLOTS = { task: ["project"], note: ["project"], event: ["attendees", "organizer", "project"], contact: ["project"] };
+export const REFERENCE_SLOTS = { task: ["project"], note: ["project"], event: ["attendees", "organizer", "project"], contact: ["project"], organization: ["parent"] };
 
 /** What a task's status may mean, shared (Profiles, "What a status means"): the producer's options map onto these. */
 export const STATES = ["not-started", "in-progress", "waiting", "done", "cancelled"];

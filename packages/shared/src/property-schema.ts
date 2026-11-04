@@ -218,7 +218,7 @@ export const TASK_STATES = ["not-started", "in-progress", "waiting", "done", "ca
 export type TaskState = (typeof TASK_STATES)[number];
 
 /** The profile vocabulary a consumer can rely on. Anything else is carried, not read. */
-export const PROFILE_NAMES = ["task", "event", "contact", "note", "project"] as const;
+export const PROFILE_NAMES = ["task", "event", "contact", "note", "project", "organization"] as const;
 export type ProfileName = (typeof PROFILE_NAMES)[number];
 
 export interface ResolvedProfile {

@@ -59,6 +59,34 @@ was not closed with the rest — and each says so at its own end rather than
 here. No count: the one that used to be in this spot drifted from three to ten
 without anybody noticing, which is what a number in prose does.
 
+### An organization could be pointed at and not known for one — closed
+
+**Was:** `contact` had `organization`, a text field or a reference to a thing
+the producer keeps. But nothing said what that thing was. A type of
+organizations declared nothing, because there was nothing to declare, so a
+consumer met a person's reference and a target of no known kind. Found when
+Talaris and Hermes Notes had to keep organizations in step: Hermes keeps them
+as things with parents, and a sync could not find them without their name.
+
+**Now:** `organization` joins the vocabulary with `title`, `body` and `parent`,
+as `project` did, and `parent` must name a `reference`
+(`profile.slot-not-a-reference`). Three cases in `fixtures/profile.json` and a
+mutant. `contact.organization` stays what it was, a text field or a reference,
+because an address book keeps words and that is still right.
+
+**Additive, so `format` does not bump.** A producer that keeps organizations as
+words has nothing to declare, and says what it said before.
+
+**What is still open:** two producers with organizations of one name have
+nothing but that name to match them by at first, and a name is not an identity.
+A sync asks, or matches where that is certain, as it does for people. And an
+organization's own `project` is not a slot: it reaches a project through its
+people, and a direct tie waits until someone needs one.
+
+→ `fixtures/profile.json` (`profile/an-organization-says-it-is-one`,
+`profile/an-organizations-parent-must-be-a-reference`,
+`profile/a-person-points-at-an-organization`)
+
 ### A meeting or a person could not say which project they were in — closed
 
 **Was:** `task` and `note` had `project`; `event` and `contact` did not. A

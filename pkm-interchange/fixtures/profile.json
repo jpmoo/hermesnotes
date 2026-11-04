@@ -770,6 +770,127 @@
       "why": "The same rule for a person. A text field saying what someone works on is a note about them, and is welcome as one; declared as `project` it claims a tie that cannot be followed."
     },
     {
+      "id": "profile/an-organization-says-it-is-one",
+      "level": 1,
+      "op": "profilesOf",
+      "given": {
+        "type": {
+          "id": "t_school",
+          "name": "School",
+          "fields": [
+            {
+              "key": "name",
+              "kind": "text"
+            },
+            {
+              "key": "about",
+              "kind": "richtext"
+            },
+            {
+              "key": "district",
+              "kind": "reference",
+              "targetType": "t_school",
+              "many": true
+            }
+          ],
+          "profiles": {
+            "organization": {
+              "title": "name",
+              "body": "about",
+              "parent": "district"
+            }
+          }
+        }
+      },
+      "expect": [
+        "organization"
+      ],
+      "why": "A type called School is an organization because it says so. Without the profile, a reference from a person led to something of no known kind, and the only way to find someone's organizations was by the type's name."
+    },
+    {
+      "id": "profile/an-organizations-parent-must-be-a-reference",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "type": {
+          "id": "t_firm",
+          "name": "Firm",
+          "fields": [
+            {
+              "key": "title",
+              "kind": "text"
+            },
+            {
+              "key": "parent_name",
+              "kind": "text"
+            }
+          ],
+          "profiles": {
+            "organization": {
+              "title": "title",
+              "parent": "parent_name"
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "profile.slot-not-a-reference"
+          }
+        ]
+      },
+      "why": "A parent is followed, to the organization itself. Its name in a text field leads nowhere: two can share it, and one renamed leaves the child pointing at a word."
+    },
+    {
+      "id": "profile/a-person-points-at-an-organization",
+      "level": 1,
+      "op": "read",
+      "given": {
+        "type": {
+          "id": "t_colleague",
+          "name": "Colleague",
+          "fields": [
+            {
+              "key": "name",
+              "kind": "text"
+            },
+            {
+              "key": "works_at",
+              "kind": "reference",
+              "targetType": "t_school",
+              "many": true
+            }
+          ],
+          "profiles": {
+            "contact": {
+              "title": "name",
+              "organization": "works_at"
+            }
+          }
+        },
+        "object": {
+          "properties": {
+            "name": "Sam Rivera",
+            "works_at": [
+              "o_school",
+              "o_board"
+            ]
+          }
+        }
+      },
+      "args": {
+        "key": "organization",
+        "profile": "contact"
+      },
+      "expect": [
+        "o_school",
+        "o_board"
+      ],
+      "why": "A person may belong to several, and a producer that keeps organizations as things gives the list of them. A producer that keeps words gives the words; a consumer reads whichever it is given."
+    },
+    {
       "id": "profile/attendees-are-references",
       "level": 1,
       "op": "validate",

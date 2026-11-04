@@ -146,6 +146,8 @@ const SEED_TYPES: SeedType[] = [
         // refTypeId wired to the organization type itself after insert.
         { key: "parent", label: "Parent Organization", type: "reference", order: 2, includeEmbed: false, locked: true },
       ],
+      // Declared, so what points at one knows it for one (pkm-interchange, Profiles: organization).
+      profiles: { organization: { title: "title", body: "description", parent: "parent" } },
     },
   },
   {

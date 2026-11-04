@@ -699,6 +699,15 @@ const MUTANTS = [
     } }),
   },
   {
+    name: "knows a person's project points at something, and not an organization's parent",
+    caught: "profile/an-organizations-parent-must-be-a-reference",
+    patch: (a) => ({ ...a, validate: (e) => {
+      const got = a.validate(e);
+      const kept = got.errors.filter((x) => !(x.code === "profile.slot-not-a-reference" && String(x.path).includes(".profiles.organization.")));
+      return { valid: kept.length === 0, errors: kept };
+    } }),
+  },
+  {
     name: "treats a patch as the whole object",
     caught: "operational/absent-is-not-delete",
     patch: (a) => ({

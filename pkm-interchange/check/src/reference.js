@@ -709,7 +709,7 @@ export const adapter = {
   // And it claims everything, so nothing is scoped away from it. A real
   // implementation declares what it actually does and is measured on that.
   conformance: {
-    profiles: ["task", "event", "contact", "note", "journal", "project"],
+    profiles: ["task", "event", "contact", "note", "journal", "project", "organization"],
     features: ["series", "placement", "derivations", "relations", "attachments", "addresses", "ordering", "hierarchy", "attachment-files"],
   },
   validate,

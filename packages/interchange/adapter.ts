@@ -368,7 +368,7 @@ export const hermesAdapter = {
    */
   profilesOf: (type: Type) => {
     const declared = Object.keys((type.profiles ?? {}) as Record<string, unknown>).filter((p) =>
-      ["task", "event", "contact", "note", "journal", "project"].includes(p),
+      ["task", "event", "contact", "note", "journal", "project", "organization"].includes(p),
     );
     if (declared.length) return declared;
     return hermesProfilesOf(asSchema(type)).map((p) => p.name);

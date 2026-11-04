@@ -17,7 +17,7 @@ import { validate } from "./validate.js";
  * suite or by `--url`, and this says so rather than scoring what it cannot see.
  */
 
-const V0_PROFILES = ["task", "event", "contact", "note", "project"];
+const V0_PROFILES = ["task", "event", "contact", "note", "project", "organization"];
 
 export function assess(envelope) {
   const e = envelope ?? {};

@@ -20,6 +20,9 @@ import { db } from "../db.js";
 import { env } from "../env.js";
 import { effectiveTimeZone } from "../lib/timezone.js";
 
+/** The mark on a weekly-review reflection (review/routes.ts), which this binding does not offer. */
+const REVIEW_REFLECTION = "review_reflection";
+
 /**
  * The interchange binding: what this instance honours, and everything it holds.
  *
@@ -189,7 +192,17 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           .select({ blockId: changes.blockId, op: changes.op, seq: changes.seq })
           .from(changes)
           .where(and(eq(changes.ownerId, userId), gt(changes.seq, since)));
-        delta = { rows };
+        // A reflection's own changes go unsaid, as the reflection does (below).
+        // Only those still here can be told apart; one swept away reaches a
+        // follower as a delete of something it was never given, which it drops.
+        const hidden = new Set(
+          (await db
+            .select({ id: blocks.id })
+            .from(blocks)
+            .where(and(eq(blocks.ownerId, userId), sql`jsonb_exists(${blocks.properties}, ${REVIEW_REFLECTION})`)))
+            .map((r) => r.id),
+        );
+        delta = { rows: rows.filter((r) => !hidden.has(r.blockId)) };
       }
       const types = await db
         .select({
@@ -216,7 +229,14 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           version: blocks.version,
         })
         .from(blocks)
-        .where(eq(blocks.ownerId, userId));
+        // Weekly-review reflections stay in Hermes. They are the review's own
+        // working pages, which it makes on opening and sweeps away when left
+        // empty, and Hermes' own listings already hide them as system blocks
+        // (collections/query.ts) — offered to another app, each one arrived
+        // there and was then reported deleted, a question about something the
+        // person never made. The daily note is the periodic kind that travels,
+        // as the format's `journal`; a week has no such place in the format.
+        .where(and(eq(blocks.ownerId, userId), sql`NOT jsonb_exists(${blocks.properties}, ${REVIEW_REFLECTION})`));
 
       // Tags. The exporter has always known how to emit these and this query
       // never fetched them, so every export went out with none — a whole
@@ -293,7 +313,7 @@ export async function interchangeRoutes(app: FastifyInstance): Promise<void> {
           version: memberships.version,
         })
         .from(memberships)
-        .innerJoin(blocks, and(eq(blocks.id, memberships.blockId), eq(blocks.ownerId, userId)));
+        .innerJoin(blocks, and(eq(blocks.id, memberships.blockId), eq(blocks.ownerId, userId), sql`NOT jsonb_exists(${blocks.properties}, ${REVIEW_REFLECTION})`));
 
       /**
        * What each live smart collection currently matches.

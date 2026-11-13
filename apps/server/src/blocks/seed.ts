@@ -145,9 +145,11 @@ const SEED_TYPES: SeedType[] = [
         { key: "description", label: "About", type: "longtext", order: 1, includeEmbed: true, locked: true },
         // refTypeId wired to the organization type itself after insert.
         { key: "parent", label: "Parent Organization", type: "reference", order: 2, includeEmbed: false, locked: true },
+        // The projects an organization is in: the format's organization.project. Unlocked, as a person's is.
+        { key: "project", label: "Projects", type: "reference", order: 3, includeEmbed: false },
       ],
       // Declared, so what points at one knows it for one (pkm-interchange, Profiles: organization).
-      profiles: { organization: { title: "title", body: "description", parent: "parent" } },
+      profiles: { organization: { title: "title", body: "description", parent: "parent", project: "project" } },
     },
   },
   {
@@ -178,6 +180,7 @@ const REF_TARGETS: Record<string, string> = {
   "text.project": "project",
   "event.project": "project",
   "person.project": "project",
+  "organization.project": "project",
 };
 
 export async function seedBlockTypes(db: Inserter, ownerId: string): Promise<void> {

@@ -59,6 +59,30 @@ was not closed with the rest — and each says so at its own end rather than
 here. No count: the one that used to be in this spot drifted from three to ten
 without anybody noticing, which is what a number in prose does.
 
+### An organization could not say which project it was in — closed
+
+**Was:** `organization` had `title`, `body` and `parent`, and reached a project
+only through its people. Someone using Hermes Notes and Talaris together keeps
+a family as an organization, and wanted it in the household's project; a person
+in that family was then nowhere near the project, because nothing tied the
+family to it, and a field of the app's own could not be carried.
+
+**Now:** `organization` has `project`, a pointing slot like the others, so it
+must name a `reference` (`profile.slot-not-a-reference`). Two cases in
+`fixtures/profile.json` and a mutant. Hermes' Organization type gains a
+Projects field, declared in its profile.
+
+**Additive, so `format` does not bump.** A producer that does not declare the
+slot keeps no such tie, which is what its silence said before.
+
+**What is still open:** whether a person in an organization is in its projects
+is not the format's to say. It carries the two ties; a consumer that walks from
+one to the other (Talaris does, for its assistant's memory) makes that reading
+itself.
+
+→ `fixtures/profile.json` (`profile/an-organization-says-its-projects`,
+`profile/an-organizations-project-must-be-a-reference`)
+
 ### An organization could be pointed at and not known for one — closed
 
 **Was:** `contact` had `organization`, a text field or a reference to a thing
@@ -79,9 +103,9 @@ words has nothing to declare, and says what it said before.
 
 **What is still open:** two producers with organizations of one name have
 nothing but that name to match them by at first, and a name is not an identity.
-A sync asks, or matches where that is certain, as it does for people. And an
-organization's own `project` is not a slot: it reaches a project through its
-people, and a direct tie waits until someone needs one.
+A sync asks, or matches where that is certain, as it does for people. (An
+organization's own `project` was left here until someone needed it; it is
+closed below.)
 
 → `fixtures/profile.json` (`profile/an-organization-says-it-is-one`,
 `profile/an-organizations-parent-must-be-a-reference`,

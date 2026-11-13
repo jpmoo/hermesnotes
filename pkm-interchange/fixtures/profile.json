@@ -891,6 +891,89 @@
       "why": "A person may belong to several, and a producer that keeps organizations as things gives the list of them. A producer that keeps words gives the words; a consumer reads whichever it is given."
     },
     {
+      "id": "profile/an-organization-says-its-projects",
+      "level": 1,
+      "op": "read",
+      "given": {
+        "type": {
+          "id": "t_firm",
+          "name": "Firm",
+          "fields": [
+            {
+              "key": "name",
+              "kind": "text"
+            },
+            {
+              "key": "work",
+              "kind": "reference",
+              "targetType": "t_project",
+              "many": true
+            }
+          ],
+          "profiles": {
+            "organization": {
+              "title": "name",
+              "project": "work"
+            }
+          }
+        },
+        "object": {
+          "properties": {
+            "name": "Regional Center",
+            "work": [
+              "o_tech_plan",
+              "o_budget"
+            ]
+          }
+        }
+      },
+      "args": {
+        "key": "project",
+        "profile": "organization"
+      },
+      "expect": [
+        "o_tech_plan",
+        "o_budget"
+      ],
+      "why": "An organization is in projects as a person is: a vendor on two contracts, a family in the household's planning. The slot gives back the whole list; and a person in that organization is, by way of it, near those projects too, which is a consumer's to make of as it likes."
+    },
+    {
+      "id": "profile/an-organizations-project-must-be-a-reference",
+      "level": 1,
+      "op": "validate",
+      "given": {
+        "type": {
+          "id": "t_firm",
+          "name": "Firm",
+          "fields": [
+            {
+              "key": "title",
+              "kind": "text"
+            },
+            {
+              "key": "project_name",
+              "kind": "text"
+            }
+          ],
+          "profiles": {
+            "organization": {
+              "title": "title",
+              "project": "project_name"
+            }
+          }
+        }
+      },
+      "expect": {
+        "valid": false,
+        "errors": [
+          {
+            "code": "profile.slot-not-a-reference"
+          }
+        ]
+      },
+      "why": "The same rule as a person's. A project named in words cannot be followed, and one renamed leaves the organization pointing at a word."
+    },
+    {
       "id": "profile/attendees-are-references",
       "level": 1,
       "op": "validate",

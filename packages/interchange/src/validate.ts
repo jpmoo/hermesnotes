@@ -18,7 +18,7 @@ export interface Invalid {
 
 const PROFILES = ["task", "event", "contact", "note", "journal", "project", "organization"];
 /** The slots that point at other things — a task's project, a meeting's people — and so must name a reference. */
-const REFERENCE_SLOTS: Record<string, string[]> = { task: ["project"], note: ["project"], event: ["attendees", "organizer", "project"], contact: ["project"], organization: ["parent"] };
+const REFERENCE_SLOTS: Record<string, string[]> = { task: ["project"], note: ["project"], event: ["attendees", "organizer", "project"], contact: ["project"], organization: ["parent", "project"] };
 /** The five a task status may mean (Profiles, "What a status means"). */
 const STATES = ["not-started", "in-progress", "waiting", "done", "cancelled"];
 
